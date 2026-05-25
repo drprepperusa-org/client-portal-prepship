@@ -964,6 +964,13 @@ a { color: inherit; text-decoration: none; }
   height: 29px;
   display: block;
 }
+.portal-platform-image-logo {
+  width: 32px;
+  height: 32px;
+  display: block;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
 .portal-platform-logo-sm {
   width: 34px;
   height: 34px;
@@ -973,6 +980,10 @@ a { color: inherit; text-decoration: none; }
 .portal-platform-logo-sm svg {
   width: 21px;
   height: 21px;
+}
+.portal-platform-logo-sm .portal-platform-image-logo {
+  width: 23px;
+  height: 23px;
 }
 .portal-platform-logo-sm .portal-platform-wordmark {
   max-width: 30px;
@@ -1000,7 +1011,6 @@ a { color: inherit; text-decoration: none; }
 .portal-platform-custom { background: #eef1f4; color: #667085; }
 .portal-platform-amazon { background: #111827; color: #ff9900; }
 .portal-platform-walmart { background: #fff; color: #ffc220; border: 1px solid #d8dee6; }
-.portal-walmart-spark { padding: 2px; }
 .portal-platform-ebay { background: #fff; color: #e53238; border: 1px solid #d8dee6; }
 .portal-platform-etsy { background: #f56400; font-style: italic; font-family: Georgia, serif; }
 .portal-platform-tiktok { background: #020617; }
