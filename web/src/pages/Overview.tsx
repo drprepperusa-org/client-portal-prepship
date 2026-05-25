@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, DollarSign, Package, TrendingU
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { ErrorPanel, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreLogo } from '../components/store-connections/StoreLogo';
-import { findPlatform } from '../components/store-connections/storePlatforms';
+import { findConnectionPlatform } from '../components/store-connections/storePlatforms';
 import { safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -40,8 +40,8 @@ export default function Overview() {
   }).length ?? 0;
   const stores = (carrierAccounts.data?.data ?? []).map((row) => ({
         provider: row.provider,
-        platform: findPlatform(row.provider),
         name: String(row.label ?? row.provider ?? 'Store connection'),
+        platform: findConnectionPlatform(row.provider, row.label),
         store: String(row.accountIdentifier ?? row.account_identifier ?? 'Connected account'),
         today: 0,
         status: 'Connected',

@@ -271,3 +271,34 @@ export function findPlatform(providerOrId: string | null | undefined): StorePlat
     ) ?? storePlatforms[0]!
   );
 }
+
+export function findConnectionPlatform(provider: string | null | undefined, label: string | null | undefined): StorePlatform {
+  const labelValue = normalizeProvider(label);
+  const providerValue = normalizeProvider(provider);
+  const combined = `${labelValue}_${providerValue}`;
+  const keywordMap = [
+    ['walmart', 'walmart'],
+    ['easy_post', 'easypost'],
+    ['easypost', 'easypost'],
+    ['shipp', 'shipp'],
+    ['ups', 'ups'],
+    ['shopify', 'shopify'],
+    ['woocommerce', 'woocommerce'],
+    ['bigcommerce', 'bigcommerce'],
+    ['squarespace', 'squarespace'],
+    ['wix', 'wix'],
+    ['magento', 'magento'],
+    ['adobe_commerce', 'magento'],
+    ['amazon', 'amazon'],
+    ['ebay', 'ebay'],
+    ['etsy', 'etsy'],
+    ['tiktok', 'tiktok'],
+    ['faire', 'faire'],
+  ] as const;
+
+  for (const [keyword, platformId] of keywordMap) {
+    if (combined.includes(keyword)) return findPlatform(platformId);
+  }
+
+  return findPlatform(provider ?? label);
+}

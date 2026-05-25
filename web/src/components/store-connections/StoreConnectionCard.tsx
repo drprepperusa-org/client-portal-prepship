@@ -2,7 +2,7 @@ import { CheckCircle2, Unplug } from 'lucide-react';
 import { safeDate } from '../../lib/api';
 import type { CarrierAccount } from '../../types/portal';
 import { StoreLogo } from './StoreLogo';
-import { findPlatform } from './storePlatforms';
+import { findConnectionPlatform } from './storePlatforms';
 
 export function StoreConnectionCard({
   account,
@@ -15,8 +15,8 @@ export function StoreConnectionCard({
   onEdit: () => void;
   onDisconnect: () => void;
 }) {
-  const platform = findPlatform(account.provider);
-  const name = account.label ?? platform.name;
+  const name = account.label ?? account.provider ?? 'Store connection';
+  const platform = findConnectionPlatform(account.provider, name);
   const identifier = account.accountIdentifier ?? account.account_identifier ?? 'Connected account';
 
   return (
