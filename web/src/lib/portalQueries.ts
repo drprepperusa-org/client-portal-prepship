@@ -9,7 +9,7 @@ import {
   demoOrders,
   demoShipments,
 } from './demo-data';
-import type { CarrierAccount } from '../types/portal';
+import type { CarrierAccount, OrderStatus } from '../types/portal';
 
 const enabled = (token: string | null) => Boolean(token);
 
@@ -17,7 +17,7 @@ export const portalQueryKeys = {
   root: ['portal'] as const,
   dashboard: ['portal', 'dashboard'] as const,
   dailyCounts: ['portal', 'daily-counts'] as const,
-  orders: ['portal', 'orders'] as const,
+  orders: (status?: OrderStatus | 'all') => ['portal', 'orders', status ?? 'all'] as const,
   shipments: ['portal', 'shipments'] as const,
   inventory: ['portal', 'inventory'] as const,
   billing: ['portal', 'billing'] as const,
@@ -63,12 +63,23 @@ export function useDailyCountsQuery(token: string | null) {
   });
 }
 
-export function useOrdersQuery(token: string | null) {
+function demoOrdersForStatus(status: OrderStatus | 'all') {
+  if (status === 'all') return demoOrders;
+  const data = demoOrders.data.filter((order) => order.orderStatus === status);
+  return {
+    ...demoOrders,
+    data,
+    pagination: demoOrders.pagination
+      ? { ...demoOrders.pagination, total: data.length, totalPages: data.length > 0 ? 1 : 0 }
+      : undefined,
+  };
+}
+
+export function useOrdersQuery(token: string | null, status: OrderStatus | 'all' = 'all') {
   return useQuery({
-    queryKey: portalQueryKeys.orders,
+    queryKey: portalQueryKeys.orders(status),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrders) : portalApi.orders(token!)),
-    placeholderData: keepPreviousData,
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.orders(token!, { status })),
   });
 }
 

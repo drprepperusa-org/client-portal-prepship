@@ -17,7 +17,12 @@ test('client portal dashboard and navigation are client-safe', async ({ page }) 
 
   await page.goto(`${baseUrl}/dashboard/orders`);
   await expect(page.getByRole('heading', { name: 'Orders' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Awaiting shipment' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('DP-10491')).toBeVisible();
+  await page.getByRole('tab', { name: 'Shipped' }).click();
+  await expect(page.getByText('DP-10464')).toBeVisible();
+  await page.getByRole('tab', { name: 'Cancelled' }).click();
+  await expect(page.getByText('No cancelled orders found')).toBeVisible();
   await expect(page.getByText('Purchase label')).toHaveCount(0);
   await expect(page.getByText('Batch')).toHaveCount(0);
 

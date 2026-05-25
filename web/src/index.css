@@ -275,6 +275,34 @@ a { color: inherit; text-decoration: none; }
   color: var(--gray-500);
   font-size: .8rem;
 }
+.portal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--gray-200);
+}
+.portal-tab {
+  height: 36px;
+  border: 1px solid #dbe6ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #526276;
+  padding: 0 14px;
+  font-size: .78rem;
+  font-weight: 900;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.portal-tab:hover {
+  background: #f4fbff;
+  color: #0a5f86;
+}
+.portal-tab.active {
+  border-color: rgba(3, 176, 247, .45);
+  background: var(--theme-blue-soft);
+  color: #0a5f86;
+  box-shadow: inset 0 0 0 1px rgba(3, 176, 247, .08);
+}
 .portal-muted-icon { color: #c7cdd3; }
 .portal-chart-wrap {
   height: 270px;

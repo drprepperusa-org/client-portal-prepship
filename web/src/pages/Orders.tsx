@@ -1,12 +1,22 @@
+import { useMemo, useState } from 'react';
 import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge, TableSkeleton } from '../components/PortalPrimitives';
 import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useOrdersQuery } from '../lib/portalQueries';
+import type { OrderStatus } from '../types/portal';
+
+const orderTabs: Array<{ value: OrderStatus; label: string; empty: string }> = [
+  { value: 'awaiting_shipment', label: 'Awaiting shipment', empty: 'Awaiting shipment orders will appear here after they sync into PrepShip.' },
+  { value: 'shipped', label: 'Shipped', empty: 'Shipped orders will appear here after fulfillment.' },
+  { value: 'cancelled', label: 'Cancelled', empty: 'Cancelled orders will appear here when available in your scoped account.' },
+];
 
 export default function Orders() {
   const auth = useAuth();
-  const orders = useOrdersQuery(auth.accessToken);
+  const [activeStatus, setActiveStatus] = useState<OrderStatus>('awaiting_shipment');
+  const orders = useOrdersQuery(auth.accessToken, activeStatus);
   const isFirstLoad = orders.isLoading && !orders.data;
+  const activeTab = useMemo(() => orderTabs.find((tab) => tab.value === activeStatus) ?? orderTabs[0]!, [activeStatus]);
 
   return (
     <>
@@ -22,7 +32,24 @@ export default function Orders() {
           onRetry={() => void orders.refetch()}
         />
       ) : null}
-      <Panel title="Order activity" right={<span className="text-xs font-bold text-ink-3">{orders.data?.pagination?.total ?? 0} orders</span>}>
+      <Panel
+        title="Order activity"
+        right={<span className="text-xs font-bold text-ink-3">{orders.data?.pagination?.total ?? orders.data?.data.length ?? 0} orders</span>}
+      >
+        <div className="portal-tabs" role="tablist" aria-label="Order status">
+          {orderTabs.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={activeStatus === tab.value}
+              className={`portal-tab ${activeStatus === tab.value ? 'active' : ''}`}
+              onClick={() => setActiveStatus(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
         {isFirstLoad ? (
           <TableSkeleton rows={6} columns={6} />
         ) : (
@@ -78,7 +105,7 @@ export default function Orders() {
             ]}
           />
         )}
-        {!orders.isLoading && (orders.data?.data.length ?? 0) === 0 ? <EmptyState title="No orders found" body="Your scoped orders will appear here after they sync into PrepShip." /> : null}
+        {!orders.isLoading && (orders.data?.data.length ?? 0) === 0 ? <EmptyState title={`No ${activeTab.label.toLowerCase()} orders found`} body={activeTab.empty} /> : null}
       </Panel>
     </>
   );
