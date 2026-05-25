@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, DollarSign, Package, TrendingUp, Truck } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { ErrorPanel, TableSkeleton } from '../components/PortalPrimitives';
 import { safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -11,6 +11,11 @@ import {
   useOrdersQuery,
   useShipmentsQuery,
 } from '../lib/portalQueries';
+
+const DashboardCharts = lazy(() => import('../components/DashboardCharts').then((module) => ({ default: module.OrderVolumeChart })));
+const ChannelMixChart = lazy(() => import('../components/DashboardCharts').then((module) => ({ default: module.ChannelMixChart })));
+
+const chartColors = ['#03b0f7', '#22c55e', '#f59e0b', '#6366f1', '#ef4444', '#14b8a6'];
 
 export default function Overview() {
   const auth = useAuth();
@@ -39,6 +44,33 @@ export default function Overview() {
         status: 'Connected',
         tone: 'connected',
       }));
+  const orderChartData = useMemo(
+    () =>
+      (dailyCounts.data?.data ?? []).map((day) => ({
+        day: String(day.day),
+        total: Number(day.total ?? 0),
+        awaiting: Number(day.awaiting ?? 0),
+        shipped: Number(day.shipped ?? 0),
+        cancelled: Number(day.cancelled ?? 0),
+      })),
+    [dailyCounts.data],
+  );
+  const channelMixData = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const order of orders.data?.data ?? []) {
+      const rawChannel = order.sourceProvider ?? order.carrierCode ?? 'PrepShip';
+      const channel = String(rawChannel).trim() || 'PrepShip';
+      counts.set(channel, (counts.get(channel) ?? 0) + 1);
+    }
+    if (counts.size === 0) {
+      for (const store of stores) counts.set(store.name, Math.max(1, Number(store.today ?? 0)));
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, count], index) => ({ name, count, color: chartColors[index % chartColors.length] ?? chartColors[0] ?? '#03b0f7' }));
+  }, [orders.data, stores]);
+  const orderTotal = orderChartData.reduce((sum, day) => sum + day.total, 0);
 
   return (
     <div className="portal-page">
@@ -61,15 +93,18 @@ export default function Overview() {
           <div className="portal-card-head">
             <div>
               <h2>Orders volume</h2>
-              <div className="portal-card-sub">Last 7 days - {safeNumber(dailyCounts.data?.data.reduce((sum, day) => sum + day.total, 0))} orders</div>
+              <div className="portal-card-sub">Last 30 days - {safeNumber(orderTotal)} orders</div>
             </div>
             <TrendingUp size={16} className="portal-muted-icon" />
           </div>
           <div className="portal-chart-wrap">
-            <div className="portal-chart-empty">
-              <span>{dailyCounts.isLoading ? 'Loading order volume...' : 'No orders in the last 7 days'}</span>
-              <small>Orders placed today will appear here automatically.</small>
-            </div>
+            {dailyCounts.isLoading && !dailyCounts.data ? (
+              <ChartLoading label="Loading order volume..." />
+            ) : (
+              <Suspense fallback={<ChartLoading label="Loading chart..." />}>
+                <DashboardCharts data={orderChartData} />
+              </Suspense>
+            )}
           </div>
         </section>
 
@@ -77,10 +112,18 @@ export default function Overview() {
           <div className="portal-card-head">
             <div>
               <h2>Channel mix</h2>
-              <div className="portal-card-sub">{stores.length} {stores.length === 1 ? 'channel' : 'channels'}</div>
+              <div className="portal-card-sub">{channelMixData.length} {channelMixData.length === 1 ? 'channel' : 'channels'}</div>
             </div>
           </div>
-          <div className="portal-chart-wrap" />
+          <div className="portal-chart-wrap">
+            {orders.isLoading && !orders.data && carrierAccounts.isLoading && !carrierAccounts.data ? (
+              <ChartLoading label="Loading channel mix..." />
+            ) : (
+              <Suspense fallback={<ChartLoading label="Loading chart..." />}>
+                <ChannelMixChart data={channelMixData} />
+              </Suspense>
+            )}
+          </div>
         </section>
       </div>
 
@@ -148,6 +191,15 @@ export default function Overview() {
           </div>}
         </section>
       </div>
+    </div>
+  );
+}
+
+function ChartLoading({ label }: { label: string }) {
+  return (
+    <div className="portal-chart-empty">
+      <span>{label}</span>
+      <small>Preparing dashboard chart data.</small>
     </div>
   );
 }

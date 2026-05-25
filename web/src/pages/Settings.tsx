@@ -66,7 +66,7 @@ export default function Settings() {
             <label>
               Default landing page
               <select value={defaultView} onChange={(event) => setDefaultView(event.target.value)}>
-                <option value="dashboard">Overview</option>
+                <option value="dashboard">Dashboard</option>
                 <option value="orders">Orders</option>
                 <option value="inventory">Inventory</option>
                 <option value="shipments">Shipments</option>

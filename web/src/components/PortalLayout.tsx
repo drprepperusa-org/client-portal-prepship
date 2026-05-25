@@ -14,7 +14,7 @@ import {
 import { useAuth } from '../lib/auth';
 
 const navItems = [
-  { to: '/dashboard', label: 'Overview', description: 'Executive status board', group: 'Operations', icon: LayoutDashboard, end: true },
+  { to: '/dashboard', label: 'Dashboard', description: 'Executive status board', group: 'Operations', icon: LayoutDashboard, end: true },
   { to: '/dashboard/orders', label: 'Orders', description: 'Client-scoped order queue', group: 'Operations', icon: ShoppingCart },
   { to: '/dashboard/inbound', label: 'Inbound', description: 'Restock and receiving watch', group: 'Operations', icon: PackagePlus },
   { to: '/dashboard/inventory', label: 'Inventory', description: 'SKU stock visibility', group: 'Operations', icon: Boxes },
