@@ -6,6 +6,7 @@ import type {
   StoreConnectionWizardStep,
   StorePlatform,
 } from '../../types/portal';
+import { StoreLogo } from './StoreLogo';
 import { findPlatform, storePlatformCategories, storePlatforms } from './storePlatforms';
 
 function blankDraft(platform: StorePlatform, account?: CarrierAccount): StoreConnectionDraft {
@@ -155,9 +156,7 @@ export function StoreConnectionWizard({
             </div>
             <div className="portal-setup-body">
               <div className="portal-selected-platform">
-                <div className={`portal-platform-logo portal-platform-${selectedPlatform.logoClass}`}>
-                  <span>{selectedPlatform.logoText}</span>
-                </div>
+                <StoreLogo platform={selectedPlatform} />
                 <div>
                   <strong>{selectedPlatform.name}</strong>
                   <span>{selectedPlatform.description}</span>
@@ -219,9 +218,7 @@ export function StoreConnectionWizard({
               <p>PrepShip will save this store connection under your permitted client scope.</p>
             </div>
             <div className="portal-review-box">
-              <div className={`portal-platform-logo portal-platform-${selectedPlatform.logoClass}`}>
-                <span>{selectedPlatform.logoText}</span>
-              </div>
+              <StoreLogo platform={selectedPlatform} label={draft.label} />
               <div>
                 <strong>{draft.label}</strong>
                 <span>{selectedPlatform.name}</span>
@@ -254,9 +251,7 @@ function PlatformCard({
 }) {
   return (
     <button type="button" className="portal-platform-card" onClick={onChoose}>
-      <div className={`portal-platform-logo portal-platform-${platform.logoClass}`}>
-        <span>{platform.logoText}</span>
-      </div>
+      <StoreLogo platform={platform} />
       <div className="portal-platform-copy">
         <strong>{platform.name}{count > 0 ? <small> - {count} already connected</small> : null}</strong>
         <span>{platform.description}</span>

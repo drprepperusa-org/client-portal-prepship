@@ -1,6 +1,8 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, DollarSign, Package, TrendingUp, Truck } from 'lucide-react';
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { ErrorPanel, TableSkeleton } from '../components/PortalPrimitives';
+import { StoreLogo } from '../components/store-connections/StoreLogo';
+import { findPlatform } from '../components/store-connections/storePlatforms';
 import { safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -37,7 +39,8 @@ export default function Overview() {
     return reorder > 0 && stock <= reorder;
   }).length ?? 0;
   const stores = (carrierAccounts.data?.data ?? []).map((row) => ({
-        icon: String(row.provider ?? '?').slice(0, 1).toUpperCase(),
+        provider: row.provider,
+        platform: findPlatform(row.provider),
         name: String(row.label ?? row.provider ?? 'Store connection'),
         store: String(row.accountIdentifier ?? row.account_identifier ?? 'Connected account'),
         today: 0,
@@ -172,7 +175,12 @@ export default function Overview() {
           {carrierAccounts.isLoading && !carrierAccounts.data ? <TableSkeleton rows={4} columns={4} /> : <div className="portal-connections-list">
             {stores.map((store) => (
               <div key={`${store.name}-${store.store}`} className="portal-connection-row">
-                <div className={`portal-channel-logo portal-channel-${store.name.split(' ')[0]?.toLowerCase() ?? 'store'}`}>{store.icon}</div>
+                <StoreLogo
+                  platform={store.platform}
+                  provider={store.provider}
+                  label={store.name}
+                  className="portal-platform-logo-sm"
+                />
                 <div className="portal-connection-meta">
                   <div className="portal-connection-name">{store.name}</div>
                   <div className="portal-connection-store">{store.store}</div>

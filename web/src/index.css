@@ -959,15 +959,41 @@ a { color: inherit; text-decoration: none; }
   font-size: .95rem;
   flex: 0 0 auto;
 }
+.portal-platform-logo svg {
+  width: 29px;
+  height: 29px;
+  display: block;
+}
+.portal-platform-logo-sm {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  font-size: .72rem;
+}
+.portal-platform-logo-sm svg {
+  width: 21px;
+  height: 21px;
+}
+.portal-platform-logo-sm .portal-platform-wordmark {
+  max-width: 30px;
+}
 .portal-platform-logo span {
   max-width: 42px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.portal-platform-shopify { background: #8cc94f; }
+.portal-platform-wordmark {
+  display: inline-block;
+  max-width: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
+.portal-platform-shopify { background: #95bf47; }
 .portal-platform-woocommerce { background: #7f54b3; }
-.portal-platform-bigcommerce { background: #111827; }
+.portal-platform-bigcommerce { background: #121118; }
 .portal-platform-squarespace { background: #000; }
 .portal-platform-wix { background: #fff; color: #111827; border: 1px solid #d8dee6; }
 .portal-platform-magento { background: #f26322; }
@@ -978,6 +1004,12 @@ a { color: inherit; text-decoration: none; }
 .portal-platform-etsy { background: #f56400; font-style: italic; font-family: Georgia, serif; }
 .portal-platform-tiktok { background: #020617; }
 .portal-platform-faire { background: #020617; font-family: Georgia, serif; font-style: italic; }
+.portal-platform-shipp { background: #0f172a; color: #38bdf8; }
+.portal-platform-easypost { background: #fff; color: #193f78; border: 1px solid #d8dee6; font-size: .78rem; }
+.portal-platform-ups { background: #351c15; color: #ffb500; }
+.portal-platform-wordmark-easypost > span { color: #ff9e1b; }
+.portal-platform-wordmark-faire { font-family: Georgia, serif; font-style: italic; letter-spacing: .01em; }
+.portal-platform-wordmark-shipp { font-weight: 950; letter-spacing: -.02em; }
 .portal-store-wizard-backdrop {
   position: fixed;
   inset: 0;

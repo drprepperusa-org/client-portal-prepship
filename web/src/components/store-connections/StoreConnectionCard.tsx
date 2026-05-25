@@ -1,6 +1,7 @@
 import { CheckCircle2, Unplug } from 'lucide-react';
 import { safeDate } from '../../lib/api';
 import type { CarrierAccount } from '../../types/portal';
+import { StoreLogo } from './StoreLogo';
 import { findPlatform } from './storePlatforms';
 
 export function StoreConnectionCard({
@@ -21,9 +22,7 @@ export function StoreConnectionCard({
   return (
     <div className="portal-store-card">
       <div className="portal-store-card-top">
-        <div className={`portal-platform-logo portal-platform-${platform.logoClass}`}>
-          <span>{platform.logoText}</span>
-        </div>
+        <StoreLogo platform={platform} provider={account.provider} label={name} />
         <span className="portal-status portal-status-connected">
           <CheckCircle2 size={14} /> Connected
         </span>

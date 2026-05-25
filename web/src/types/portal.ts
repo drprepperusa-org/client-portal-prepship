@@ -138,6 +138,7 @@ export type CredentialField = {
 export type StorePlatform = {
   id: string;
   provider: string;
+  aliases?: string[];
   name: string;
   category: StorePlatformCategory;
   description: string;

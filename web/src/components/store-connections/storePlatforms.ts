@@ -55,6 +55,7 @@ export const storePlatforms: StorePlatform[] = [
   {
     id: 'squarespace',
     provider: 'squarespace',
+    aliases: ['squarespace_commerce'],
     name: 'Squarespace Commerce',
     category: 'Direct-to-consumer',
     description: 'Fulfillment for Squarespace stores.',
@@ -82,6 +83,7 @@ export const storePlatforms: StorePlatform[] = [
   {
     id: 'magento',
     provider: 'magento',
+    aliases: ['adobe', 'adobe_commerce', 'adobe_commerce_magento'],
     name: 'Adobe Commerce (Magento)',
     category: 'Direct-to-consumer',
     description: 'Enterprise storefront integration via REST.',
@@ -109,6 +111,7 @@ export const storePlatforms: StorePlatform[] = [
   {
     id: 'amazon',
     provider: 'amazon',
+    aliases: ['amazon_seller', 'amazon_seller_central'],
     name: 'Amazon Seller Central',
     category: 'Marketplaces',
     description: 'FBM orders and FBA prep workflows.',
@@ -124,6 +127,7 @@ export const storePlatforms: StorePlatform[] = [
   {
     id: 'walmart',
     provider: 'walmart',
+    aliases: ['walmart_marketplace'],
     name: 'Walmart Marketplace',
     category: 'Marketplaces',
     description: 'Add another Walmart Marketplace store.',
@@ -167,6 +171,7 @@ export const storePlatforms: StorePlatform[] = [
   {
     id: 'tiktok',
     provider: 'tiktok',
+    aliases: ['tiktok_shop'],
     name: 'TikTok Shop',
     category: 'Social commerce',
     description: 'Ship orders from TikTok Shop with same-day visibility.',
@@ -194,6 +199,50 @@ export const storePlatforms: StorePlatform[] = [
   },
 ];
 
+const carrierPlatforms: StorePlatform[] = [
+  {
+    id: 'shipp',
+    provider: 'shipp',
+    aliases: ['shipp_carrier'],
+    name: 'Shipp Carrier',
+    category: 'Direct-to-consumer',
+    description: 'Connected carrier account for Shipp labels.',
+    logoText: 'Shipp',
+    logoClass: 'shipp',
+    accountLabel: 'Account identifier',
+    accountPlaceholder: 'Shipp account',
+    credentialFields: keySecretFields,
+  },
+  {
+    id: 'easypost',
+    provider: 'easypost',
+    aliases: ['easy_post', 'easy_post_carrier', 'easypost_carrier'],
+    name: 'EasyPost Carrier',
+    category: 'Direct-to-consumer',
+    description: 'Connected carrier account for EasyPost labels.',
+    logoText: 'EasyPost',
+    logoClass: 'easypost',
+    accountLabel: 'Account identifier',
+    accountPlaceholder: 'EasyPost account',
+    credentialFields: keySecretFields,
+  },
+  {
+    id: 'ups',
+    provider: 'ups',
+    aliases: ['ups_carrier'],
+    name: 'UPS Carrier',
+    category: 'Direct-to-consumer',
+    description: 'Connected carrier account for UPS labels.',
+    logoText: 'UPS',
+    logoClass: 'ups',
+    accountLabel: 'Account identifier',
+    accountPlaceholder: 'UPS account',
+    credentialFields: keySecretFields,
+  },
+];
+
+const connectionPlatforms = [...storePlatforms, ...carrierPlatforms];
+
 export const storePlatformCategories = [
   'Direct-to-consumer',
   'Marketplaces',
@@ -201,7 +250,24 @@ export const storePlatformCategories = [
   'Retail / Wholesale',
 ] as const;
 
+function normalizeProvider(value: string | null | undefined) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 export function findPlatform(providerOrId: string | null | undefined): StorePlatform {
-  const value = String(providerOrId ?? '').toLowerCase();
-  return storePlatforms.find((platform) => platform.id === value || platform.provider === value) ?? storePlatforms[0]!;
+  const value = normalizeProvider(providerOrId);
+  return (
+    connectionPlatforms.find(
+      (platform) =>
+        normalizeProvider(platform.id) === value ||
+        normalizeProvider(platform.provider) === value ||
+        normalizeProvider(platform.name) === value ||
+        platform.aliases?.some((alias) => normalizeProvider(alias) === value),
+    ) ?? storePlatforms[0]!
+  );
 }
