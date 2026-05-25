@@ -11,6 +11,9 @@ import {
 } from 'react-icons/si';
 import { FaAmazon, FaMagento } from 'react-icons/fa';
 import type { StorePlatform } from '../../types/portal';
+import EasyPostLogo from './logos/easypost';
+import ShippLogo from './logos/shipp';
+import WalmartLogo from './logos/walmart';
 
 type StoreLogoProps = {
   platform?: StorePlatform;
@@ -26,6 +29,8 @@ const logoAliases: Record<string, string> = {
   easy_post: 'easypost',
   easy_post_carrier: 'easypost',
   easypost_carrier: 'easypost',
+  walmart_shipping: 'walmartshipping',
+  walmartshipping: 'walmartshipping',
   shipp_carrier: 'shipp',
   shopify_plus: 'shopify',
   tiktok_shop: 'tiktok',
@@ -62,6 +67,7 @@ function resolveLogoKey(platform?: StorePlatform, provider?: string | null, labe
     if (normalized.includes('seller') && normalized.includes('amazon')) return 'amazon';
     if (normalized.includes('magento') || normalized.includes('adobe_commerce')) return 'magento';
     if (normalized.includes('tiktok')) return 'tiktok';
+    if (normalized.includes('walmart_shipping') || normalized.includes('walmartshipping')) return 'walmartshipping';
     if (normalized.includes('walmart')) return 'walmart';
     if (normalized.includes('shipp')) return 'shipp';
     if (normalized.includes('ups')) return 'ups';
@@ -76,25 +82,22 @@ const logoRenderers: Record<string, () => JSX.Element> = {
   bigcommerce: () => <SiBigcommerce aria-hidden="true" />,
   ebay: () => <SiEbay aria-hidden="true" />,
   etsy: () => <SiEtsy aria-hidden="true" />,
+  easypost: () => <EasyPostLogo height={30} className="portal-easypost-logo" />,
   magento: () => <FaMagento aria-hidden="true" />,
+  shipp: () => <ShippLogo height={13} className="portal-shipp-logo" />,
   shopify: () => <SiShopify aria-hidden="true" />,
   squarespace: () => <SiSquarespace aria-hidden="true" />,
   tiktok: () => <SiTiktok aria-hidden="true" />,
   ups: () => <SiUps aria-hidden="true" />,
-  walmart: () => <WalmartSpark />,
+  walmart: () => <WalmartLogo height={30} className="portal-walmart-logo" />,
+  walmartshipping: () => <WalmartLogo height={30} className="portal-walmart-logo" />,
   wix: () => <SiWix aria-hidden="true" />,
   woocommerce: () => <SiWoocommerce aria-hidden="true" />,
 };
 
 const wordmarkRenderers: Record<string, () => JSX.Element> = {
   custom: () => <span className="portal-platform-wordmark">API</span>,
-  easypost: () => (
-    <span className="portal-platform-wordmark portal-platform-wordmark-easypost">
-      Easy<span>Post</span>
-    </span>
-  ),
   faire: () => <span className="portal-platform-wordmark portal-platform-wordmark-faire">faire</span>,
-  shipp: () => <span className="portal-platform-wordmark portal-platform-wordmark-shipp">Shipp</span>,
 };
 
 export function StoreLogo({ platform, provider, label, className = '' }: StoreLogoProps) {
@@ -109,20 +112,5 @@ export function StoreLogo({ platform, provider, label, className = '' }: StoreLo
     >
       {renderer ? renderer() : <span className="portal-platform-wordmark">{fallback}</span>}
     </div>
-  );
-}
-
-function WalmartSpark() {
-  return (
-    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" className="portal-walmart-spark">
-      <g fill="currentColor">
-        <rect x="28" y="4" width="8" height="22" rx="4" transform="rotate(-3 32 15)" />
-        <rect x="28" y="38" width="8" height="22" rx="4" transform="rotate(3 32 49)" />
-        <rect x="28" y="4" width="8" height="22" rx="4" transform="rotate(58 32 32)" />
-        <rect x="28" y="4" width="8" height="22" rx="4" transform="rotate(122 32 32)" />
-        <rect x="28" y="38" width="8" height="22" rx="4" transform="rotate(58 32 32)" />
-        <rect x="28" y="38" width="8" height="22" rx="4" transform="rotate(122 32 32)" />
-      </g>
-    </svg>
   );
 }

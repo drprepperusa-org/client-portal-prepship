@@ -127,7 +127,7 @@ export const storePlatforms: StorePlatform[] = [
   {
     id: 'walmart',
     provider: 'walmart',
-    aliases: ['walmart_marketplace'],
+    aliases: ['walmart_marketplace', 'walmart_shipping', 'walmartshipping'],
     name: 'Walmart Marketplace',
     category: 'Marketplaces',
     description: 'Add another Walmart Marketplace store.',
@@ -214,6 +214,19 @@ const carrierPlatforms: StorePlatform[] = [
     credentialFields: keySecretFields,
   },
   {
+    id: 'walmartshipping',
+    provider: 'walmart_shipping',
+    aliases: ['walmartshipping', 'walmart_shipping_carrier'],
+    name: 'Walmart Shipping',
+    category: 'Direct-to-consumer',
+    description: 'Connected carrier account for Walmart Shipping labels.',
+    logoText: 'Walmart',
+    logoClass: 'walmartshipping',
+    accountLabel: 'Account identifier',
+    accountPlaceholder: 'Walmart Shipping account',
+    credentialFields: keySecretFields,
+  },
+  {
     id: 'easypost',
     provider: 'easypost',
     aliases: ['easy_post', 'easy_post_carrier', 'easypost_carrier'],
@@ -277,6 +290,8 @@ export function findConnectionPlatform(provider: string | null | undefined, labe
   const providerValue = normalizeProvider(provider);
   const combined = `${labelValue}_${providerValue}`;
   const keywordMap = [
+    ['walmart_shipping', 'walmartshipping'],
+    ['walmartshipping', 'walmartshipping'],
     ['walmart', 'walmart'],
     ['easy_post', 'easypost'],
     ['easypost', 'easypost'],
