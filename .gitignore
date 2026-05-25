@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vercel
+.claude/settings.local.json
+undefined/
+.codex/
+test-results/
+cron-inventory.csv
+PARITY_PLAN_ORDER_LIST.md
+
+# Working artifacts (logs, generated reports, ad-hoc analysis output)
+outputs/
+reports/
+
+# One-off research artifacts (raw API field tables, etc.)
+ShipStation_API_Field_Tables.xlsx
+ShipStation_API_Fieldr.md
+
+# Local dev artifacts
+ruvector.db
+web/ruvector.db

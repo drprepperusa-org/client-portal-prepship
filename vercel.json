@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "web/dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/:path((?!carrier-accounts|carriers/|store-accounts|oauth/|debug-env|migrate-from|admin/|cron/).+)",
+      "destination": "https://prepshipv4-api-l5xc.onrender.com/:path"
+    },
+    {
+      "source": "/oauth/:path*",
+      "destination": "/api/oauth/:path*"
+    },
+    { "source": "/maintenance", "destination": "/maintenance.html" },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/sync-walmart-fees",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
