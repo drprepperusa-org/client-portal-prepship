@@ -1,4 +1,4 @@
-import { CheckCircle2, RotateCcw, Unplug } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Trash2 } from 'lucide-react';
 import { useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { safeDate } from '../../lib/api';
 import type { CarrierAccount } from '../../types/portal';
@@ -20,8 +20,8 @@ export function StoreConnectionCard({
   const name = account.label ?? account.provider ?? 'Store connection';
   const platform = findConnectionPlatform(account.provider, name);
   const identifier = account.accountIdentifier ?? account.account_identifier ?? 'Connected account';
-  const source = account.source ?? 'portal';
   const providerLabel = platform.name;
+  const connectedDate = safeDate(account.createdAt);
 
   function toggleCard() {
     setFlipped((value) => !value);
@@ -41,7 +41,6 @@ export function StoreConnectionCard({
   return (
     <div
       className={`portal-store-card${flipped ? ' is-flipped' : ''}`}
-      role="button"
       tabIndex={0}
       aria-label={`${name} connection card`}
       onClick={toggleCard}
@@ -55,21 +54,18 @@ export function StoreConnectionCard({
               <CheckCircle2 size={14} /> Connected
             </span>
           </div>
-          <h2>{name}</h2>
-          <div className="portal-store-sub" title={identifier}>{identifier}</div>
-
-          <div className="portal-store-stats">
+          <div className="portal-store-front-main">
+            <h2>{name}</h2>
+            <p>{providerLabel}</p>
+          </div>
+          <div className="portal-store-front-meta">
             <div>
-              <span>Provider</span>
-              <strong>{providerLabel}</strong>
-            </div>
-            <div>
-              <span>Last Sync</span>
+              <span>Last sync</span>
               <strong>Live</strong>
             </div>
             <div>
               <span>Connected</span>
-              <strong>{safeDate(account.createdAt)}</strong>
+              <strong>{connectedDate}</strong>
             </div>
           </div>
 
@@ -78,7 +74,7 @@ export function StoreConnectionCard({
               Reconfigure
             </button>
             <button type="button" className="portal-store-danger" disabled={busy} onClick={onDisconnect}>
-              <Unplug size={16} /> {busy ? 'Working...' : 'Disconnect'}
+              <Trash2 size={16} /> {busy ? 'Working...' : 'Disconnect'}
             </button>
           </div>
         </div>
@@ -99,17 +95,21 @@ export function StoreConnectionCard({
           </div>
           <h2>Connection details</h2>
           <div className="portal-store-back-grid">
-            <div>
+            <div className="portal-store-detail-wide">
               <span>Account identifier</span>
-              <strong>{identifier}</strong>
+              <strong className="portal-store-detail-code">{identifier}</strong>
             </div>
             <div>
               <span>Provider</span>
               <strong>{providerLabel}</strong>
             </div>
             <div>
-              <span>Source</span>
-              <strong>{source}</strong>
+              <span>Last sync</span>
+              <strong>Live</strong>
+            </div>
+            <div>
+              <span>Connected</span>
+              <strong>{connectedDate}</strong>
             </div>
           </div>
           <div className="portal-store-actions" onClick={stopCardToggle}>
@@ -117,7 +117,7 @@ export function StoreConnectionCard({
               Back
             </button>
             <button type="button" className="portal-store-danger" disabled={busy} onClick={onDisconnect}>
-              <Unplug size={16} /> {busy ? 'Working...' : 'Disconnect'}
+              <Trash2 size={16} /> {busy ? 'Working...' : 'Disconnect'}
             </button>
           </div>
         </div>

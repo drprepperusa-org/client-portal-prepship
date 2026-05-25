@@ -1,12 +1,15 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   BarChart3,
   Boxes,
   LayoutDashboard,
   LogOut,
+  Menu,
   PackagePlus,
   Plug,
   Settings,
+  X,
   ShoppingCart,
   Receipt,
   Truck,
@@ -30,14 +33,34 @@ export default function PortalLayout() {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const email = auth.user?.email ?? 'admin@drprepper.com';
   const activeTitle =
     navItems.find((item) =>
       item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
     ) ?? navItems[0]!;
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
   return (
-    <div className="portal-shell">
+    <div className={`portal-shell${mobileNavOpen ? ' portal-nav-open' : ''}`}>
+      <button
+        type="button"
+        className="portal-mobile-menu-button"
+        aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
+        aria-expanded={mobileNavOpen}
+        onClick={() => setMobileNavOpen((value) => !value)}
+      >
+        {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+      <button
+        type="button"
+        className="portal-mobile-backdrop"
+        aria-label="Close navigation"
+        onClick={() => setMobileNavOpen(false)}
+      />
       <aside className="portal-sidebar">
         <Link to="/dashboard" className="portal-brand">
           DR PREPPER<span>USA</span>
