@@ -6,7 +6,6 @@ import {
   SiSquarespace,
   SiTiktok,
   SiUps,
-  SiWalmart,
   SiWix,
   SiWoocommerce,
 } from 'react-icons/si';
@@ -82,7 +81,7 @@ const logoRenderers: Record<string, () => JSX.Element> = {
   squarespace: () => <SiSquarespace aria-hidden="true" />,
   tiktok: () => <SiTiktok aria-hidden="true" />,
   ups: () => <SiUps aria-hidden="true" />,
-  walmart: () => <SiWalmart aria-hidden="true" />,
+  walmart: () => <WalmartSpark />,
   wix: () => <SiWix aria-hidden="true" />,
   woocommerce: () => <SiWoocommerce aria-hidden="true" />,
 };
@@ -110,5 +109,20 @@ export function StoreLogo({ platform, provider, label, className = '' }: StoreLo
     >
       {renderer ? renderer() : <span className="portal-platform-wordmark">{fallback}</span>}
     </div>
+  );
+}
+
+function WalmartSpark() {
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" className="portal-walmart-spark">
+      <g fill="currentColor">
+        <rect x="28" y="3" width="8" height="25" rx="4" transform="rotate(-3 32 15.5)" />
+        <rect x="28" y="36" width="8" height="25" rx="4" transform="rotate(3 32 48.5)" />
+        <rect x="28" y="3" width="8" height="25" rx="4" transform="rotate(58 32 32)" />
+        <rect x="28" y="3" width="8" height="25" rx="4" transform="rotate(122 32 32)" />
+        <rect x="28" y="36" width="8" height="25" rx="4" transform="rotate(58 32 32)" />
+        <rect x="28" y="36" width="8" height="25" rx="4" transform="rotate(122 32 32)" />
+      </g>
+    </svg>
   );
 }
