@@ -51,6 +51,26 @@ export const API_BASE = resolvedApiBase.replace(/\/+$/, '');
 
 type QueryValue = string | number | boolean | null | undefined;
 const API_TIMEOUT_MS = 15000;
+const BACKFILL_TIMEOUT_MS = 120000;
+
+export type BackfillTarget = 'orders' | 'shipments' | 'inventory-from-orders' | 'products' | 'all';
+export type BackfillMode = 'incremental' | 'full';
+
+export type BackfillStepResult = {
+  target: Exclude<BackfillTarget, 'all'>;
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+};
+
+export type BackfillResponse = {
+  ok: boolean;
+  target: BackfillTarget;
+  mode: BackfillMode;
+  startedAt: string;
+  finishedAt: string;
+  results: BackfillStepResult[];
+};
 
 function queryString(params: Record<string, QueryValue>) {
   const search = new URLSearchParams();
@@ -102,9 +122,10 @@ export async function apiSend<T>(
   path: string,
   body?: unknown,
   params: Record<string, QueryValue> = {},
+  timeoutMs = API_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}${queryString(params)}`, {
@@ -238,6 +259,12 @@ export const portalApi = {
   },
   setSetting(token: string, key: string, value: string) {
     return apiSend<PortalSetting>(token, 'PUT', `/settings/${encodeURIComponent(key)}`, { value });
+  },
+  syncStatus(token: string) {
+    return apiGet<Record<string, unknown>>(token, '/sync/status');
+  },
+  backfill(token: string, body: { target: BackfillTarget; mode: BackfillMode; pageSize?: number }) {
+    return apiSend<BackfillResponse>(token, 'POST', '/sync/backfill', body, {}, BACKFILL_TIMEOUT_MS);
   },
   products(token: string) {
     return apiGet<Paginated<Record<string, unknown>>>(token, '/products', {

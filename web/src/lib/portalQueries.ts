@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { portalApi } from './api';
+import { portalApi, type BackfillMode, type BackfillResponse, type BackfillTarget } from './api';
 import {
   DEMO_TOKEN,
   demoBilling,
@@ -23,6 +23,7 @@ export const portalQueryKeys = {
   billing: ['portal', 'billing'] as const,
   clients: ['portal', 'clients'] as const,
   settings: ['portal', 'settings'] as const,
+  syncStatus: ['portal', 'sync-status'] as const,
   products: ['portal', 'products'] as const,
   analysisOverview: ['portal', 'analysis-overview'] as const,
   dailyShipments: ['portal', 'daily-shipments'] as const,
@@ -42,6 +43,45 @@ function demoCarrierFromBody(input: { id?: number; body: Record<string, unknown>
     accountIdentifier: String(input.body.accountIdentifier ?? fallback?.accountIdentifier ?? fallback?.account_identifier ?? 'Demo account'),
     active: true,
     createdAt: fallback?.createdAt ?? now,
+  };
+}
+
+function demoSyncStatus() {
+  const now = new Date().toISOString();
+  return {
+    status: 'done',
+    mode: 'demo',
+    lastSyncAt: now,
+    cadenceMinutes: {
+      orders: 3,
+      shipments: 3,
+      inventoryFromOrders: 30,
+      productCatalog: 60,
+    },
+    orders: { lastSyncedAt: now },
+    shipments: { lastSyncedAt: now },
+    queue: { enabled: true, started: true },
+    worker: { stale: false },
+  };
+}
+
+function demoBackfillResponse(input: { target: BackfillTarget; mode: BackfillMode }): BackfillResponse {
+  const startedAt = new Date().toISOString();
+  const targets =
+    input.target === 'all'
+      ? (['orders', 'shipments', 'inventory-from-orders', 'products'] as const)
+      : ([input.target] as const);
+  return {
+    ok: true,
+    target: input.target,
+    mode: input.mode,
+    startedAt,
+    finishedAt: new Date(Date.now() + 450).toISOString(),
+    results: targets.map((target) => ({
+      target,
+      ok: true,
+      data: { demo: true, message: `${target} backfill queued` },
+    })),
   };
 }
 
@@ -130,6 +170,15 @@ export function useSettingsQuery(token: string | null) {
       demoAllowed(token!)
         ? Promise.resolve({ data: [{ key: 'defaultView', value: 'dashboard' }, { key: 'pageSize', value: '25' }] })
         : portalApi.settings(token!),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSyncStatusQuery(token: string | null) {
+  return useQuery({
+    queryKey: portalQueryKeys.syncStatus,
+    enabled: enabled(token),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoSyncStatus()) : portalApi.syncStatus(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -245,6 +294,28 @@ export function useSetSettingMutation(token: string | null) {
     },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: portalQueryKeys.settings });
+    },
+  });
+}
+
+export function useBackfillMutation(token: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { target: BackfillTarget; mode: BackfillMode; pageSize?: number }) => {
+      if (!token) throw new Error('Missing portal session');
+      if (demoAllowed(token)) return demoBackfillResponse(input);
+      return portalApi.backfill(token, input);
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: portalQueryKeys.syncStatus });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dailyCounts });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.orders('all') });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.shipments });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.inventory });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.products });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.analysisOverview });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dailyShipments });
     },
   });
 }
