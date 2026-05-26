@@ -13,6 +13,7 @@ function assert(condition, message) {
 
 const packageJson = JSON.parse(read('package.json'));
 const main = read('src/main.ts');
+const vercel = read('vercel.json');
 const login = read('web/src/pages/Login.tsx');
 const auth = read('web/src/lib/auth.tsx');
 
@@ -35,6 +36,11 @@ assert(
 
 assert(main.includes("'/api/client-portal'"), 'main.ts must protect /api/client-portal');
 assert(main.includes("app.route('/api/client-portal'"), 'main.ts must mount /api/client-portal route');
+assert(
+  vercel.includes('"/api/client-portal/:path*"') &&
+    vercel.includes('prepshipv4-api-l5xc.onrender.com/api/client-portal/:path*'),
+  'vercel.json must preserve /api/client-portal prefix when proxying to Render',
+);
 assert(auth.includes('signUp') === false, 'frontend auth context must not expose public signUp');
 assert(!/Create one|create account|sign up|signup/i.test(login), 'login page must not advertise public signup');
 assert(/provisioned|provided|invited/i.test(login), 'login page must explain invite/provisioned access');
