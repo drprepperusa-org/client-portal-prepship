@@ -10,10 +10,6 @@ import type { Session, User } from '@supabase/supabase-js';
 import { DEMO_TOKEN } from './demo-data';
 import { supabase } from './supabase';
 
-type SignUpResult = {
-  needsEmailConfirmation: boolean;
-};
-
 type AuthState = {
   session: Session | null;
   user: User | null;
@@ -21,7 +17,6 @@ type AuthState = {
   accessToken: string | null;
   isDemo: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
   resetPasswordForEmail: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
@@ -124,15 +119,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         if (data.session) setSession(data.session);
-      },
-      signUp: async (email, password) => {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: buildRedirect('/login') },
-        });
-        if (error) throw error;
-        return { needsEmailConfirmation: !data.session };
       },
       signOut: async () => {
         setSession(null);

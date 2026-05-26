@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import PortalLayout from './components/PortalLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './lib/auth';
+import Analysis from './pages/Analysis';
 import Inbound from './pages/Inbound';
 import Inventory from './pages/Inventory';
 import Invoices from './pages/Invoices';
@@ -39,10 +40,12 @@ export default function App() {
         <Route path="inbound" element={<Inbound />} />
         <Route path="shipments" element={<Shipments />} />
         <Route path="inventory" element={<Inventory />} />
+        <Route path="analysis" element={<Analysis />} />
         <Route path="reports" element={<Reports />} />
         <Route path="invoices" element={<Invoices />} />
         <Route path="connections" element={<Connections />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="settings/:section" element={<Settings />} />
       </Route>
       <Route path="/portal/*" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

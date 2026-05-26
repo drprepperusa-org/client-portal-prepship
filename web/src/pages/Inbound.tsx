@@ -1,5 +1,5 @@
 import { Download, PackageCheck } from 'lucide-react';
-import { EmptyState, ErrorPanel, KpiSkeletonGrid, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
+import { DataTable, EmptyState, ErrorPanel, KpiSkeletonGrid, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useInventoryQuery, useProductsQuery } from '../lib/portalQueries';
@@ -71,30 +71,42 @@ export default function Inbound() {
       </div>}
 
       <Panel title="Receiving watchlist" right={<span className="text-xs font-bold text-ink-3">{safeNumber(lowStock.length)} SKU(s)</span>}>
-        {inventory.isLoading && !inventory.data ? <TableSkeleton rows={5} columns={5} /> : <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-surface-2 text-[11px] uppercase text-ink-3">
-              <tr>
-                <th className="px-5 py-3 font-black">SKU</th>
-                <th className="px-5 py-3 font-black">Product</th>
-                <th className="px-5 py-3 font-black">Stock</th>
-                <th className="px-5 py-3 font-black">Reorder</th>
-                <th className="px-5 py-3 font-black">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {lowStock.map((item) => (
-                <tr key={item.id} className="transition-colors duration-200 hover:bg-brand-bg/50 motion-reduce:transition-none">
-                  <td className="px-5 py-4 font-black text-ink">{item.sku ?? `SKU ${item.id}`}</td>
-                  <td className="px-5 py-4 text-ink-2">{item.name ?? 'Unnamed item'}</td>
-                  <td className="px-5 py-4 text-ink-2">{safeNumber(item.effectiveStock ?? item.stockQty)}</td>
-                  <td className="px-5 py-4 text-ink-2">{safeNumber(item.reorderLevel)}</td>
-                  <td className="px-5 py-4 text-ink-2">{safeDate(item.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>}
+        {inventory.isLoading && !inventory.data ? <TableSkeleton rows={5} columns={5} /> : (
+          <DataTable
+            tableId="inbound-receiving-watchlist"
+            rows={lowStock}
+            getRowKey={(item) => item.id}
+            columns={[
+              {
+                key: 'sku',
+                header: 'SKU',
+                render: (item) => <span className="font-black text-ink">{item.sku ?? `SKU ${item.id}`}</span>,
+              },
+              {
+                key: 'product',
+                header: 'Product',
+                render: (item) => <span className="font-semibold text-ink-2">{item.name ?? 'Unnamed item'}</span>,
+              },
+              {
+                key: 'stock',
+                header: 'Stock',
+                className: 'right',
+                render: (item) => <span className="font-black tabular-nums text-ink">{safeNumber(item.effectiveStock ?? item.stockQty)}</span>,
+              },
+              {
+                key: 'reorder',
+                header: 'Reorder',
+                className: 'right',
+                render: (item) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(item.reorderLevel)}</span>,
+              },
+              {
+                key: 'updated',
+                header: 'Updated',
+                render: (item) => <span className="font-semibold text-ink-2">{safeDate(item.updatedAt)}</span>,
+              },
+            ]}
+          />
+        )}
         {!inventory.isLoading && lowStock.length === 0 ? <EmptyState title="No inbound attention needed" body="Low-stock and receiving-watch SKUs will appear here." /> : null}
       </Panel>
     </>

@@ -22,6 +22,8 @@
     "guard:enterprise-readiness-closeout": "node scripts/enterprise-readiness-closeout-guard.mjs",
     "guard:frontend-failure-states": "npm run test:frontend-failure-states",
     "guard:orders-startup-requests": "npm run test:orders-startup-requests",
+    "guard:client-portal-architecture": "node scripts/client-portal-architecture-guard.mjs",
+    "guard:client-portal-api": "node scripts/client-portal-api-guard.mjs",
     "guard:source-of-truth": "node scripts/source-of-truth-guard.mjs",
     "guard:shipping-certification": "node scripts/shipping-certification-guard.mjs",
     "guard:site-actions": "node scripts/site-action-functionality-guard.mjs",

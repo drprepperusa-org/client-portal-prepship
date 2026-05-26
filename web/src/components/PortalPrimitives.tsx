@@ -1,5 +1,12 @@
-import type { ReactNode } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  DEFAULT_TABLE_PAGE_SIZE_OPTIONS,
+  MIN_TABLE_COLUMN_WIDTH,
+  reorderTableColumns,
+  resizeTableColumn,
+} from '../lib/tablePreferences';
 
 export function PageHeader({
   title,
@@ -88,50 +95,285 @@ export type DataTableColumn<T> = {
   header: ReactNode;
   className?: string;
   render: (row: T) => ReactNode;
+  width?: string;
 };
 
 export function DataTable<T>({
   columns,
   rows,
   getRowKey,
+  onRowClick,
+  checkboxSelection = false,
+  pageSizeOptions = [...DEFAULT_TABLE_PAGE_SIZE_OPTIONS],
+  initialPageSize = DEFAULT_TABLE_PAGE_SIZE,
+  tableId,
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
   getRowKey: (row: T) => string | number;
+  onRowClick?: (row: T) => void;
+  checkboxSelection?: boolean;
+  pageSizeOptions?: number[];
+  initialPageSize?: number;
+  tableId?: string;
 }) {
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [selectedRows, setSelectedRows] = useState<Set<string | number>>(new Set());
+  const columnSignature = columns.map((column) => column.key).join('|');
+  const pageSizeSignature = pageSizeOptions.join('|');
+  const normalizedPageSizeOptions = useMemo(() => pageSizeOptions, [pageSizeSignature]);
+  const storageKey = `portal.table.${tableId ?? columnSignature.replace(/\|/g, '.')}`;
+  const defaultOrder = useMemo(() => columns.map((column) => column.key), [columnSignature]);
+  const [columnOrder, setColumnOrder] = useState<string[]>(defaultOrder);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const resizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    setColumnOrder((previous) => {
+      const known = previous.filter((key) => defaultOrder.includes(key));
+      const missing = defaultOrder.filter((key) => !known.includes(key));
+      return [...known, ...missing];
+    });
+  }, [defaultOrder]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { order?: unknown; widths?: unknown; pageSize?: unknown };
+      if (Array.isArray(parsed.order)) {
+        const savedOrder = parsed.order.filter((value): value is string => typeof value === 'string');
+        const known = savedOrder.filter((key) => defaultOrder.includes(key));
+        const missing = defaultOrder.filter((key) => !known.includes(key));
+        setColumnOrder([...known, ...missing]);
+      }
+      if (parsed.widths && typeof parsed.widths === 'object') {
+        setColumnWidths(parsed.widths as Record<string, number>);
+      }
+      if (typeof parsed.pageSize === 'number' && normalizedPageSizeOptions.includes(parsed.pageSize)) {
+        setPageSize(parsed.pageSize);
+      }
+    } catch {
+      // Ignore invalid saved table preferences.
+    }
+  }, [defaultOrder, normalizedPageSizeOptions, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(storageKey, JSON.stringify({ order: columnOrder, widths: columnWidths, pageSize }));
+  }, [columnOrder, columnWidths, pageSize, storageKey]);
+
+  useEffect(() => {
+    function onPointerMove(event: PointerEvent) {
+      const state = resizeRef.current;
+      if (!state) return;
+      setColumnWidths((previous) => ({
+        ...previous,
+        [state.key]: resizeTableColumn(state.startWidth, event.clientX - state.startX),
+      }));
+    }
+
+    function onPointerUp() {
+      resizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, []);
+
+  const orderedColumns = useMemo(() => {
+    const map = new Map(columns.map((column) => [column.key, column]));
+    return columnOrder.map((key) => map.get(key)).filter((column): column is DataTableColumn<T> => Boolean(column));
+  }, [columnOrder, columns]);
+  const totalPages = Math.max(Math.ceil(rows.length / pageSize), 1);
+  const safePage = Math.min(page, totalPages - 1);
+  const visibleRows = useMemo(
+    () => rows.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [pageSize, rows, safePage]
+  );
+  const firstRow = rows.length === 0 ? 0 : safePage * pageSize + 1;
+  const lastRow = Math.min((safePage + 1) * pageSize, rows.length);
+  const allVisibleSelected =
+    visibleRows.length > 0 && visibleRows.every((row) => selectedRows.has(getRowKey(row)));
+
+  function toggleRow(rowKey: string | number) {
+    setSelectedRows((previous) => {
+      const next = new Set(previous);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  }
+
+  function toggleVisibleRows() {
+    setSelectedRows((previous) => {
+      const next = new Set(previous);
+      if (allVisibleSelected) {
+        visibleRows.forEach((row) => next.delete(getRowKey(row)));
+      } else {
+        visibleRows.forEach((row) => next.add(getRowKey(row)));
+      }
+      return next;
+    });
+  }
+
   return (
-    <div className="overflow-x-auto rounded-b-card">
-      <table className="min-w-full border-collapse text-left text-sm">
-        <thead className="bg-surface-2">
-          <tr>
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                className={`whitespace-nowrap border-b border-line px-5 py-3 text-[11px] font-black uppercase tracking-[0.08em] text-ink-3 ${column.className?.includes('right') ? 'text-right' : ''}`}
-              >
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((row) => (
-            <tr
-              key={getRowKey(row)}
-              className="transition-colors duration-200 ease-out hover:bg-brand-bg/50 focus-within:bg-brand-bg/50 motion-reduce:transition-none"
-            >
-              {columns.map((column) => (
-                <td
+    <div className="overflow-hidden rounded-b-card bg-surface">
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse text-left text-xs">
+          <thead className="bg-surface-2">
+            <tr>
+              {checkboxSelection ? (
+                <th className="w-12 border-b border-r border-line px-3 py-2">
+                  <label className="grid h-5 w-5 cursor-pointer place-items-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Select visible rows"
+                      checked={allVisibleSelected}
+                      onChange={toggleVisibleRows}
+                      className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)]"
+                    />
+                  </label>
+                </th>
+              ) : null}
+              {orderedColumns.map((column) => (
+                <th
                   key={column.key}
-                  className={`px-5 py-4 align-middle text-ink-2 ${column.className?.includes('right') ? 'text-right' : ''}`}
+                  draggable
+                  onDragStart={(event) => {
+                    setDraggedColumn(column.key);
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', column.key);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const dragged = draggedColumn ?? event.dataTransfer.getData('text/plain');
+                    if (!dragged) return;
+                    setColumnOrder((previous) => reorderTableColumns(previous, dragged, column.key));
+                    setDraggedColumn(null);
+                  }}
+                  onDragEnd={() => setDraggedColumn(null)}
+                  style={{ width: columnWidths[column.key] ?? column.width ?? undefined }}
+                  className={`group relative whitespace-nowrap border-b border-r border-line px-3 py-2 pr-6 text-[10px] font-black uppercase tracking-[0.08em] text-ink-3 last:border-r-0 ${column.className?.includes('right') ? 'text-right' : ''} ${draggedColumn === column.key ? 'opacity-55' : ''}`}
                 >
-                  {column.render(row)}
-                </td>
+                  {column.header}
+                  <button
+                    type="button"
+                    aria-label={`Resize ${String(column.header)} column`}
+                    className="portal-table-resize-handle"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      resizeRef.current = {
+                        key: column.key,
+                        startX: event.clientX,
+                        startWidth: columnWidths[column.key] ?? event.currentTarget.parentElement?.getBoundingClientRect().width ?? MIN_TABLE_COLUMN_WIDTH,
+                      };
+                      document.body.style.cursor = 'col-resize';
+                      document.body.style.userSelect = 'none';
+                    }}
+                  />
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => {
+              const rowKey = getRowKey(row);
+              const selected = selectedRows.has(rowKey);
+              return (
+                <tr
+                  key={rowKey}
+                  onClick={() => onRowClick?.(row)}
+                  className={`border-b border-line transition-colors duration-200 ease-out last:border-b-0 hover:bg-brand-bg/50 focus-within:bg-brand-bg/50 motion-reduce:transition-none ${
+                    selected ? 'bg-brand-bg/55' : ''
+                  } ${onRowClick ? 'cursor-pointer' : ''}`}
+                >
+                  {checkboxSelection ? (
+                    <td className="w-12 border-r border-line px-3 py-2 align-middle">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select row ${String(rowKey)}`}
+                        checked={selected}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={() => toggleRow(rowKey)}
+                        className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)]"
+                      />
+                    </td>
+                  ) : null}
+                  {orderedColumns.map((column) => (
+                    <td
+                      key={column.key}
+                      style={{ width: columnWidths[column.key] ?? column.width ?? undefined }}
+                      className={`border-r border-line px-3 py-2 align-middle text-ink-2 last:border-r-0 ${column.className?.includes('right') ? 'text-right' : ''}`}
+                    >
+                      {column.render(row)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {visibleRows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length + (checkboxSelection ? 1 : 0)} className="px-5 py-10 text-center text-sm font-bold text-ink-3">
+                  No rows to display
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-col gap-3 border-t border-line bg-surface px-4 py-3 text-xs font-bold text-ink-2 sm:flex-row sm:items-center sm:justify-end">
+        <label className="flex items-center gap-2">
+          Rows per page:
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setPage(0);
+            }}
+            className="h-8 rounded-lg border border-line bg-surface px-2 text-xs font-black text-ink outline-none transition-colors hover:bg-surface-2 focus:border-brand"
+          >
+            {normalizedPageSizeOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+        <span className="tabular-nums text-ink-2">{firstRow}-{lastRow} of {rows.length}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Previous page"
+            disabled={safePage <= 0}
+            onClick={() => setPage((value) => Math.max(value - 1, 0))}
+            className="grid h-8 w-8 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Next page"
+            disabled={safePage >= totalPages - 1}
+            onClick={() => setPage((value) => Math.min(value + 1, totalPages - 1))}
+            className="grid h-8 w-8 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

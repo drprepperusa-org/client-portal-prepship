@@ -33,6 +33,11 @@ Status key:
   reproducible and refreshable, not mutation owners.
 - Caches such as `rate_cache` are performance artifacts. They are not billing
   or audit truth.
+- Client portal reads use `/api/client-portal/*` as a safe DTO boundary over
+  operational truth. The portal boundary may narrow by `clientIds` and
+  `storeIds`, but it must not become a new source of truth or expose raw
+  credentials, provider payloads, internal notes, labels, or unrestricted
+  financial fields.
 
 ## Domain Matrix
 

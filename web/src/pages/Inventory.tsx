@@ -2,6 +2,7 @@ import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, Ta
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useInventoryQuery } from '../lib/portalQueries';
+import type { PortalInventoryItem } from '../types/portal';
 
 export default function Inventory() {
   const auth = useAuth();
@@ -27,9 +28,16 @@ export default function Inventory() {
           <TableSkeleton rows={7} columns={7} />
         ) : (
           <DataTable
+            tableId="inventory-stock-levels"
             rows={inventory.data?.data ?? []}
             getRowKey={(item) => item.id}
             columns={[
+              {
+                key: 'image',
+                header: 'Image',
+                width: '76px',
+                render: (item) => <InventoryThumb item={item} />,
+              },
               {
                 key: 'sku',
                 header: 'SKU',
@@ -83,5 +91,40 @@ export default function Inventory() {
         {!inventory.isLoading && (inventory.data?.data.length ?? 0) === 0 ? <EmptyState title="No inventory found" body="Active SKUs for your scoped account will appear here." /> : null}
       </Panel>
     </>
+  );
+}
+
+function inventoryImageUrl(item: PortalInventoryItem) {
+  return item.imageUrl ?? null;
+}
+
+function inventoryAlt(item: PortalInventoryItem) {
+  return item.name ?? item.sku ?? `SKU ${item.id}`;
+}
+
+function skuInitial(item: PortalInventoryItem) {
+  return (item.sku ?? item.name ?? 'SKU').slice(0, 2).toUpperCase();
+}
+
+function InventoryThumb({ item }: { item: PortalInventoryItem }) {
+  const imageUrl = inventoryImageUrl(item);
+  const alt = inventoryAlt(item);
+  const fallback = skuInitial(item);
+
+  return (
+    <div className="group relative inline-flex">
+      <div className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-white p-1 text-[10px] font-black text-brand ring-1 ring-line">
+        {imageUrl ? (
+          <img src={imageUrl} alt={alt} className="absolute inset-1 h-[calc(100%-0.5rem)] w-[calc(100%-0.5rem)] object-contain" loading="lazy" />
+        ) : (
+          <span>{fallback}</span>
+        )}
+      </div>
+      {imageUrl ? (
+        <div className="pointer-events-none absolute left-12 top-1/2 z-30 hidden -translate-y-1/2 rounded-xl bg-white p-2 shadow-[0_18px_45px_rgba(18,40,63,.22)] ring-1 ring-line group-hover:block">
+          <img src={imageUrl} alt="" className="h-36 w-36 object-contain" loading="lazy" />
+        </div>
+      ) : null}
+    </div>
   );
 }

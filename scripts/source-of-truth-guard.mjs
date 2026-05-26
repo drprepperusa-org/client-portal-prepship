@@ -118,6 +118,7 @@ const patterns = [
       'src/services/order-sync.ts',
       'src/services/shipment-sync.ts',
       'src/services/inventory-enrichment.ts',
+      'scripts/client-portal-api-guard.mjs',
       'scripts/client-redaction-guard.mjs',
       'scripts/reconcile-shipstation-awaiting.ts',
       'scripts/sync-shipstation-products.ts',

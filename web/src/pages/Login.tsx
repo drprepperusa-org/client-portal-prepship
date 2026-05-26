@@ -86,7 +86,7 @@ export default function Login() {
         background:
           'radial-gradient(900px 700px at 78% 12%, rgba(3,176,247,0.08), transparent 60%), radial-gradient(1100px 800px at 12% 100%, rgba(50,70,100,0.10), transparent 65%), linear-gradient(180deg, #0c1118 0%, #0a0e15 100%)',
         color: C.text,
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
       <div className="pointer-events-none absolute right-6 top-6 z-20 hidden items-center gap-2.5 lg:flex" aria-live="polite">
@@ -189,7 +189,7 @@ export default function Login() {
               Welcome back
             </h2>
             <p className="relative mt-2 text-sm leading-relaxed" style={{ color: C.muted }}>
-              Sign in to your PrepShip account.
+              Sign in with the portal access provided by DR PREPPER USA.
             </p>
 
             <form onSubmit={submit} className="relative mt-8 space-y-5">
@@ -271,10 +271,7 @@ export default function Login() {
             </form>
 
             <div className="relative mt-8 text-center text-[13px]" style={{ color: C.muted }}>
-              Don't have an account?{' '}
-              <span className="font-medium" style={{ color: C.accent }}>
-                Create one
-              </span>
+              Portal access is invite-only and provisioned after your PrepShip client setup is complete.
             </div>
           </div>
         </section>

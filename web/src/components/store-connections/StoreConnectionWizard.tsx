@@ -38,6 +38,7 @@ export function StoreConnectionWizard({
   const initialPlatform = findPlatform(account?.provider ?? 'walmart');
   const [step, setStep] = useState<StoreConnectionWizardStep>(account ? 'setup' : 'platforms');
   const [query, setQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('All');
   const [draft, setDraft] = useState<StoreConnectionDraft>(() => blankDraft(initialPlatform, account ?? undefined));
   const selectedPlatform = findPlatform(draft.platformId);
 
@@ -60,14 +61,27 @@ export function StoreConnectionWizard({
 
   const filteredPlatforms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return storePlatforms;
-    return storePlatforms.filter((platform) =>
-      [platform.name, platform.description, platform.provider, platform.category]
+    return storePlatforms.filter((platform) => {
+      const categoryMatch = activeCategory === 'All' || platform.category === activeCategory;
+      if (!categoryMatch) return false;
+      if (!normalized) return true;
+      return [platform.name, platform.description, platform.provider, platform.category]
         .join(' ')
         .toLowerCase()
-        .includes(normalized),
-    );
-  }, [query]);
+        .includes(normalized);
+    });
+  }, [activeCategory, query]);
+
+  const categoryFilters = useMemo(
+    () => [
+      { label: 'All', count: storePlatforms.length },
+      ...storePlatformCategories.map((category) => ({
+        label: category,
+        count: storePlatforms.filter((platform) => platform.category === category).length,
+      })),
+    ],
+    [],
+  );
 
   function choosePlatform(platform: StorePlatform) {
     setDraft(blankDraft(platform));
@@ -101,9 +115,17 @@ export function StoreConnectionWizard({
         {step === 'platforms' ? (
           <>
             <div className="portal-store-wizard-head">
-              <div className="portal-wizard-eyebrow">Connect a store</div>
-              <h2 id="store-wizard-title">Where do your orders come from?</h2>
-              <p>Select a platform and we'll walk you through connecting it in 2-5 minutes.</p>
+              <div className="portal-wizard-title-row">
+                <div>
+                  <div className="portal-wizard-eyebrow">Connect a store</div>
+                  <h2 id="store-wizard-title">Where do your orders come from?</h2>
+                  <p>Select a platform and we'll walk you through connecting it in 2-5 minutes.</p>
+                </div>
+                <div className="portal-wizard-metrics" aria-label="Store connection summary">
+                  <span>{storePlatforms.length} platforms</span>
+                  <span>{accounts.length} connected</span>
+                </div>
+              </div>
               <label className="portal-platform-search">
                 <Search size={19} />
                 <input
@@ -114,29 +136,39 @@ export function StoreConnectionWizard({
                 />
               </label>
             </div>
-            <div className="portal-platform-scroll">
-              {storePlatformCategories.map((category) => {
-                const rows = filteredPlatforms.filter((platform) => platform.category === category);
-                if (rows.length === 0) return null;
-                return (
-                  <section className="portal-platform-section" key={category}>
-                    <h3>{category}</h3>
-                    <div className="portal-platform-grid">
-                      {rows.map((platform) => (
-                        <PlatformCard
-                          key={platform.id}
-                          platform={platform}
-                          count={connectionCounts.get(platform.provider) ?? 0}
-                          onChoose={() => choosePlatform(platform)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                );
-              })}
-              {filteredPlatforms.length === 0 ? (
-                <div className="portal-platform-empty">No platforms match that search.</div>
-              ) : null}
+            <div className="portal-platform-browser">
+              <aside className="portal-platform-rail" aria-label="Store platform categories">
+                {categoryFilters.map((category) => (
+                  <button
+                    key={category.label}
+                    type="button"
+                    className={category.label === activeCategory ? 'active' : ''}
+                    onClick={() => setActiveCategory(category.label)}
+                  >
+                    <span>{category.label}</span>
+                    <small>{category.count}</small>
+                  </button>
+                ))}
+              </aside>
+              <div className="portal-platform-scroll">
+                <div className="portal-platform-list-head">
+                  <span>{activeCategory === 'All' ? 'Supported platforms' : activeCategory}</span>
+                  <strong>{filteredPlatforms.length}</strong>
+                </div>
+                <div className="portal-platform-list">
+                  {filteredPlatforms.map((platform) => (
+                    <PlatformCard
+                      key={platform.id}
+                      platform={platform}
+                      count={connectionCounts.get(platform.provider) ?? 0}
+                      onChoose={() => choosePlatform(platform)}
+                    />
+                  ))}
+                </div>
+                {filteredPlatforms.length === 0 ? (
+                  <div className="portal-platform-empty">No platforms match that search.</div>
+                ) : null}
+              </div>
             </div>
             <div className="portal-wizard-scroll-cue" />
           </>
@@ -256,7 +288,8 @@ function PlatformCard({
         <strong>{platform.name}{count > 0 ? <small> - {count} already connected</small> : null}</strong>
         <span>{platform.description}</span>
       </div>
-      <span className="portal-platform-add"><Plus size={19} /></span>
+      <span className="portal-platform-kind">{platform.category}</span>
+      <span className="portal-platform-add"><Plus size={17} /> Connect</span>
     </button>
   );
 }

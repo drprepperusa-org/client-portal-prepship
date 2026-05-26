@@ -1,5 +1,7 @@
 import type {
   BillingSummaryRow,
+  AnalysisSkuBreakdown,
+  AnalysisSkuOrdersResponse,
   CarrierAccount,
   DashboardSummary,
   OrderStatus,
@@ -70,6 +72,12 @@ export type BackfillResponse = {
   startedAt: string;
   finishedAt: string;
   results: BackfillStepResult[];
+};
+
+export type PortalMe = {
+  id: string | null;
+  email: string | null;
+  isAdmin: boolean;
 };
 
 function queryString(params: Record<string, QueryValue>) {
@@ -202,6 +210,77 @@ export function defaultRange(days = 30) {
 }
 
 export const portalApi = {
+  clientPortal: {
+    me(token: string) {
+      return apiGet<PortalMe & { role?: string | null; clientIds?: number[]; storeIds?: number[] }>(
+        token,
+        '/api/client-portal/me',
+      );
+    },
+    dashboard(token: string, range = defaultRange()) {
+      return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range);
+    },
+    dailyCounts(token: string, range = defaultRange()) {
+      return apiGet<{ data: Array<{ day: string; awaiting: number; shipped: number; cancelled: number; total: number }> }>(
+        token,
+        '/api/client-portal/daily-counts',
+        range,
+      );
+    },
+    orders(token: string, options: { status?: OrderStatus | 'all'; search?: string; page?: number } = {}) {
+      return apiGet<Paginated<PortalOrder>>(token, '/api/client-portal/orders', {
+        page: options.page ?? 1,
+        pageSize: 25,
+        status: options.status === 'all' ? undefined : options.status,
+        search: options.search,
+      });
+    },
+    shipments(token: string, options: { page?: number } = {}) {
+      return apiGet<Paginated<PortalShipment>>(token, '/api/client-portal/shipments', {
+        page: options.page ?? 1,
+        pageSize: 25,
+      });
+    },
+    inventory(token: string, options: { search?: string; lowStock?: boolean; page?: number } = {}) {
+      return apiGet<Paginated<PortalInventoryItem>>(token, '/api/client-portal/inventory', {
+        page: options.page ?? 1,
+        pageSize: 25,
+        search: options.search,
+        lowStock: options.lowStock,
+      });
+    },
+    billingSummary(token: string) {
+      return apiGet<{ data: BillingSummaryRow[]; grandTotal?: number | string }>(
+        token,
+        '/api/client-portal/reports',
+      );
+    },
+    analysisOverview(token: string) {
+      return apiGet<Record<string, unknown>>(token, '/api/client-portal/analysis');
+    },
+    skuBreakdown(token: string, range = defaultRange()) {
+      return apiGet<AnalysisSkuBreakdown>(token, '/api/client-portal/analysis', {
+        dateFrom: `${range.from}T00:00:00.000Z`,
+        dateTo: `${range.to}T23:59:59.999Z`,
+      });
+    },
+    dailyShipments(token: string, range = defaultRange()) {
+      return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(
+        token,
+        '/api/client-portal/reports',
+        {
+          dateFrom: `${range.from}T00:00:00.000Z`,
+          dateTo: `${range.to}T23:59:59.999Z`,
+        },
+      );
+    },
+    integrations(token: string) {
+      return apiGet<{ data: CarrierAccount[] }>(token, '/api/client-portal/integrations');
+    },
+    activity(token: string) {
+      return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/api/client-portal/activity');
+    },
+  },
   dashboard(token: string, range = defaultRange()) {
     return apiGet<DashboardSummary>(token, '/dashboard/summary', range);
   },
@@ -257,6 +336,9 @@ export const portalApi = {
   settings(token: string) {
     return apiGet<{ data: PortalSetting[] }>(token, '/settings');
   },
+  me(token: string) {
+    return apiGet<PortalMe>(token, '/users/me');
+  },
   setSetting(token: string, key: string, value: string) {
     return apiSend<PortalSetting>(token, 'PUT', `/settings/${encodeURIComponent(key)}`, { value });
   },
@@ -274,6 +356,19 @@ export const portalApi = {
   },
   analysisOverview(token: string) {
     return apiGet<Record<string, unknown>>(token, '/analysis/overview');
+  },
+  skuBreakdown(token: string, range = defaultRange()) {
+    return apiGet<AnalysisSkuBreakdown>(token, '/analysis/sku-breakdown', {
+      dateFrom: `${range.from}T00:00:00.000Z`,
+      dateTo: `${range.to}T23:59:59.999Z`,
+      limit: 200,
+    });
+  },
+  skuOrders(token: string, inventoryId: number, range = defaultRange()) {
+    return apiGet<AnalysisSkuOrdersResponse>(token, `/inventory/${inventoryId}/sku-orders`, {
+      dateFrom: `${range.from}T00:00:00.000Z`,
+      dateTo: `${range.to}T23:59:59.999Z`,
+    });
   },
   dailyShipments(token: string, range = defaultRange()) {
     return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(

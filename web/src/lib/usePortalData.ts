@@ -54,17 +54,17 @@ export function usePortalData<T>(
 export function portalLoaders() {
   return {
     dashboard: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve(demoDashboard) : portalApi.dashboard(token),
+      token === DEMO_TOKEN ? Promise.resolve(demoDashboard) : portalApi.clientPortal.dashboard(token),
     dailyCounts: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve(demoDailyCounts) : portalApi.dailyCounts(token),
+      token === DEMO_TOKEN ? Promise.resolve(demoDailyCounts) : portalApi.clientPortal.dailyCounts(token),
     orders: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve(demoOrders) : portalApi.orders(token),
+      token === DEMO_TOKEN ? Promise.resolve(demoOrders) : portalApi.clientPortal.orders(token),
     shipments: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve(demoShipments) : portalApi.shipments(token),
+      token === DEMO_TOKEN ? Promise.resolve(demoShipments) : portalApi.clientPortal.shipments(token),
     inventory: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve(demoInventory) : portalApi.inventory(token),
+      token === DEMO_TOKEN ? Promise.resolve(demoInventory) : portalApi.clientPortal.inventory(token),
     billing: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve(demoBilling) : portalApi.billingSummary(token),
+      token === DEMO_TOKEN ? Promise.resolve(demoBilling) : portalApi.clientPortal.billingSummary(token),
     clients: (token: string) =>
       token === DEMO_TOKEN ? Promise.resolve({ data: [{ id: 1, name: 'DrPrepperUSA', active: true }] }) : portalApi.clients(token),
     settings: (token: string) =>
@@ -74,12 +74,12 @@ export function portalLoaders() {
     products: (token: string) =>
       token === DEMO_TOKEN ? Promise.resolve({ data: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }) : portalApi.products(token),
     analysisOverview: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve({ ordersToday: 2, ordersWeek: 18, shippedToday: 3, shippedWeek: 25 }) : portalApi.analysisOverview(token),
+      token === DEMO_TOKEN ? Promise.resolve({ ordersToday: 2, ordersWeek: 18, shippedToday: 3, shippedWeek: 25 }) : portalApi.clientPortal.analysisOverview(token),
     dailyShipments: (token: string) =>
-      token === DEMO_TOKEN ? Promise.resolve({ data: [{ day: '2026-05-25', shipments: 3 }, { day: '2026-05-24', shipments: 5 }] }) : portalApi.dailyShipments(token),
+      token === DEMO_TOKEN ? Promise.resolve({ data: [{ day: '2026-05-25', shipments: 3 }, { day: '2026-05-24', shipments: 5 }] }) : portalApi.clientPortal.dailyShipments(token),
     carrierAccounts: (token: string) =>
       token === DEMO_TOKEN
         ? Promise.resolve({ data: [{ id: 1, provider: 'walmart', label: 'Walmart Marketplace', accountIdentifier: 'Walmart Seller (b05d64...)', active: true, createdAt: '2026-05-06T00:00:00.000Z' }] })
-        : portalApi.carrierAccounts(token),
+        : portalApi.clientPortal.integrations(token),
   };
 }
