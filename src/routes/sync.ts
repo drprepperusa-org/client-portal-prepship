@@ -90,6 +90,10 @@ async function runBackfillTarget(
         sinceMs: fullResync ? 0 : undefined,
         awaitingSinceMs: fullResync ? 0 : undefined,
         pageSize,
+        // Per user override unlock shipped data on 2026-05-23: the
+        // operator-requested full backfill must include shipped/cancelled
+        // order detail rows, not just awaiting-to-terminal status catch-up.
+        includeTerminalOrderDetails: fullResync,
       });
       const shouldBackfillRates = fullResync || result.synced > 0;
       const rateBackfillJob = shouldBackfillRates

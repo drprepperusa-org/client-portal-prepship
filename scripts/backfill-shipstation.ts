@@ -49,6 +49,9 @@ async function main() {
   const orderRes = await syncOrders({
     sinceMs: 0,
     awaitingSinceMs: 0,
+    // Per user override unlock shipped data on 2026-05-23: this operator
+    // backfill intentionally upserts historical shipped/cancelled orders.
+    includeTerminalOrderDetails: true,
   });
   console.log(
     `      done in ${hh(Date.now() - ordersT0)} — synced=${orderRes.synced} pages=${orderRes.pages}`,

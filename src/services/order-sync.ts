@@ -412,6 +412,7 @@ async function syncOrdersForAccount(
     awaitingSinceMs?: number;
     pageSize?: number;
     skipStatusPasses?: boolean;
+    includeTerminalOrderDetails?: boolean;
   },
   storeToClient: Awaited<ReturnType<typeof buildStoreToClientMap>>
 ): Promise<{ synced: number; pages: number; sinceIso: string }> {
@@ -454,7 +455,10 @@ async function syncOrdersForAccount(
         orderStatus: pass.orderStatus,
         sinceMs: pass.sinceMs,
         pageSize,
-        statusOnly: true,
+        // Per user override unlock shipped data on 2026-05-23: explicit
+        // full backfills may upsert shipped/cancelled order detail rows.
+        // Routine scheduler sync keeps the safer status-only catch-up path.
+        statusOnly: opts.includeTerminalOrderDetails !== true,
       });
       total += result.synced;
       if (result.pages > maxPages) maxPages = result.pages;
@@ -510,6 +514,7 @@ export async function syncOrders(opts: {
   awaitingSinceMs?: number;
   pageSize?: number;
   skipStatusPasses?: boolean;
+  includeTerminalOrderDetails?: boolean;
 } = {}): Promise<SyncResult> {
   const runStartMs = Date.now();
   const storeToClient = await buildStoreToClientMap();
