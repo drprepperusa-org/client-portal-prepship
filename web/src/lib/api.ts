@@ -214,60 +214,64 @@ export const portalApi = {
     me(token: string) {
       return apiGet<PortalMe & { role?: string | null; clientIds?: number[]; storeIds?: number[] }>(
         token,
-        '/api/client-portal/me',
+        '/users/me',
       );
     },
     dashboard(token: string, range = defaultRange()) {
-      return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range);
+      return apiGet<DashboardSummary>(token, '/dashboard/summary', range);
     },
     dailyCounts(token: string, range = defaultRange()) {
       return apiGet<{ data: Array<{ day: string; awaiting: number; shipped: number; cancelled: number; total: number }> }>(
         token,
-        '/api/client-portal/daily-counts',
+        '/dashboard/daily-counts',
         range,
       );
     },
     orders(token: string, options: { status?: OrderStatus | 'all'; search?: string; page?: number } = {}) {
-      return apiGet<Paginated<PortalOrder>>(token, '/api/client-portal/orders', {
+      return apiGet<Paginated<PortalOrder>>(token, '/orders', {
         page: options.page ?? 1,
         pageSize: 25,
+        includeTotal: true,
         status: options.status === 'all' ? undefined : options.status,
         search: options.search,
       });
     },
     shipments(token: string, options: { page?: number } = {}) {
-      return apiGet<Paginated<PortalShipment>>(token, '/api/client-portal/shipments', {
+      return apiGet<Paginated<PortalShipment>>(token, '/shipments', {
         page: options.page ?? 1,
         pageSize: 25,
+        voided: false,
       });
     },
     inventory(token: string, options: { search?: string; lowStock?: boolean; page?: number } = {}) {
-      return apiGet<Paginated<PortalInventoryItem>>(token, '/api/client-portal/inventory', {
+      return apiGet<Paginated<PortalInventoryItem>>(token, '/inventory', {
         page: options.page ?? 1,
         pageSize: 25,
         search: options.search,
         lowStock: options.lowStock,
+        active: true,
       });
     },
     billingSummary(token: string) {
       return apiGet<{ data: BillingSummaryRow[]; grandTotal?: number | string }>(
         token,
-        '/api/client-portal/reports',
+        '/billing/summary',
       );
     },
     analysisOverview(token: string) {
-      return apiGet<Record<string, unknown>>(token, '/api/client-portal/analysis');
+      return apiGet<Record<string, unknown>>(token, '/analysis/sku-breakdown');
     },
     skuBreakdown(token: string, range = defaultRange()) {
-      return apiGet<AnalysisSkuBreakdown>(token, '/api/client-portal/analysis', {
+      return apiGet<AnalysisSkuBreakdown>(token, '/analysis/sku-breakdown', {
         dateFrom: `${range.from}T00:00:00.000Z`,
         dateTo: `${range.to}T23:59:59.999Z`,
+        limit: 200,
       });
     },
     dailyShipments(token: string, range = defaultRange()) {
       return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(
         token,
-        '/api/client-portal/reports',
+        '/analysis/daily-shipments',
         {
           dateFrom: `${range.from}T00:00:00.000Z`,
           dateTo: `${range.to}T23:59:59.999Z`,
@@ -275,10 +279,10 @@ export const portalApi = {
       );
     },
     integrations(token: string) {
-      return apiGet<{ data: CarrierAccount[] }>(token, '/api/client-portal/integrations');
+      return apiGet<{ data: CarrierAccount[] }>(token, '/carrier-accounts');
     },
     activity(token: string) {
-      return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/api/client-portal/activity');
+      return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/users/me');
     },
   },
   dashboard(token: string, range = defaultRange()) {
