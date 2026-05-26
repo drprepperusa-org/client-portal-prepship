@@ -59,11 +59,17 @@ const listQuery = paginationSchema.extend({
   orderId: z.coerce.number().int().optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),
-  voided: z.coerce.boolean().optional(),
+  voided: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
   // Admin escape hatch — return shipments from disabled clients too.
   // Default behavior (omitted/false) excludes them, matching the
   // visibility policy used by every other listing route.
-  includeInactiveClients: z.coerce.boolean().optional(),
+  includeInactiveClients: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
 });
 
 app.get('/', zValidator('query', listQuery), async (c) => {

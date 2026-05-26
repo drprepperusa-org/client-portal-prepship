@@ -20,6 +20,10 @@ export type OrderItem = {
   name?: string | null;
   quantity?: number | string | null;
   unitPrice?: number | string | null;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  thumbnailUrl?: string | null;
+  productImageUrl?: string | null;
 };
 
 export type PortalOrder = {
@@ -80,6 +84,66 @@ export type DashboardSummary = {
   units?: number;
   bySku?: Array<{ sku: string; units30?: number; units7?: number; revenue?: number }>;
   dailyRevenue?: Array<{ day: string; revenue: number }>;
+};
+
+export type AnalysisSkuRow = {
+  sku: string;
+  name?: string | null;
+  inv_sku_id?: number | string | null;
+  invSkuId?: number | string | null;
+  image_url?: string | null;
+  imageUrl?: string | null;
+  client_name?: string | null;
+  clientName?: string | null;
+  orders?: number | string | null;
+  pending?: number | string | null;
+  ext_shipped?: number | string | null;
+  total_qty?: number | string | null;
+  total_revenue?: number | string | null;
+  total_shipping?: number | string | null;
+  std_orders?: number | string | null;
+  exp_orders?: number | string | null;
+  daily_qty?: number[];
+};
+
+export type AnalysisSkuBreakdown = {
+  data: AnalysisSkuRow[];
+  dateBuckets?: string[];
+  totalSkus?: number;
+  totalOrders?: number;
+};
+
+export type AnalysisSkuOrder = {
+  order_id?: number;
+  orderId?: number;
+  order_number?: string | null;
+  orderNumber?: string | null;
+  order_date?: string | null;
+  orderDate?: string | null;
+  order_status?: string | null;
+  orderStatus?: string | null;
+  ship_to_name?: string | null;
+  shipToName?: string | null;
+  qty?: number | string | null;
+  unit_price?: number | string | null;
+  unitPrice?: number | string | null;
+  shipping_cost?: number | string | null;
+  shippingCost?: number | string | null;
+  standard_shipping_cost?: number | string | null;
+  standardShippingCost?: number | string | null;
+  is_external_shipped?: boolean | null;
+  isExternalShipped?: boolean | null;
+};
+
+export type AnalysisSkuOrdersResponse = {
+  sku: string;
+  name?: string | null;
+  totalUnits: number;
+  standardShipCount: number;
+  standardShippingTotal: number | string;
+  avgStandardShippingCost: number | string;
+  dailySales: Array<{ day: string; units: number | string }>;
+  orders: AnalysisSkuOrder[];
 };
 
 export type BillingSummaryRow = {

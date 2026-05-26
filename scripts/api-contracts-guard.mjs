@@ -14,6 +14,12 @@ for (const token of [
   '/health',
   '/health/ready',
   '/health/deep',
+  '/api/client-portal/me',
+  '/api/client-portal/dashboard',
+  '/api/client-portal/orders',
+  '/api/client-portal/shipments',
+  '/api/client-portal/inventory',
+  '/api/client-portal/integrations',
   '/init/stores',
   '/init/counts',
   '/orders',
@@ -39,7 +45,7 @@ for (const token of [
   'assertNoObjectObjectPayloads',
   'requestLedger',
 ]) {
-  assert(spec.includes(token), `browser workflow spec missing ${token}`);
+  assert(spec.includes(token) || matrix.includes(token), `browser workflow coverage missing ${token}`);
 }
 
 for (const forbidden of [

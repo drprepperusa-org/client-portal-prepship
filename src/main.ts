@@ -32,6 +32,7 @@ import adminRoute from './routes/admin';
 import carrierAccountsRoute from './routes/carrier-accounts';
 import carriersRoute from './routes/carriers';
 import usersRoute from './routes/users';
+import clientPortalRoute from './routes/client-portal';
 import workerRoute from './routes/worker';
 import observabilityRoute from './routes/observability';
 import workflowsRoute from './routes/workflows';
@@ -139,6 +140,7 @@ const protectedPrefixes = [
   '/carrier-accounts',
   '/carriers',
   '/users',
+  '/api/client-portal',
   '/worker',
   '/observability',
   '/workflows',
@@ -178,6 +180,7 @@ app.route('/admin', adminRoute);
 app.route('/carrier-accounts', carrierAccountsRoute);
 app.route('/carriers', carriersRoute);
 app.route('/users', usersRoute);
+app.route('/api/client-portal', clientPortalRoute);
 app.route('/worker', workerRoute);
 app.route('/observability', observabilityRoute);
 app.route('/workflows', workflowsRoute);

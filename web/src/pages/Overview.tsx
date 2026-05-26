@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, DollarSign, Package, TrendingUp, Truck } from 'lucide-react';
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ErrorPanel, TableSkeleton } from '../components/PortalPrimitives';
+import { DataTable, ErrorPanel, StatusBadge, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreLogo } from '../components/store-connections/StoreLogo';
 import { findConnectionPlatform } from '../components/store-connections/storePlatforms';
 import { safeMoney, safeNumber } from '../lib/api';
@@ -140,33 +140,39 @@ export default function Overview() {
           {orders.isLoading && !orders.data ? (
             <TableSkeleton rows={4} columns={5} />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="portal-table min-w-[680px]">
-                <thead>
-                  <tr>
-                    <th>Order</th>
-                    <th>Channel</th>
-                    <th>Customer</th>
-                    <th className="right">Items</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(orders.data?.data ?? []).slice(0, 5).map((order) => (
-                    <tr key={order.id} className="transition-colors duration-200 hover:bg-brand-bg/50 motion-reduce:transition-none">
-                      <td className="mono">{order.orderNumber ?? order.externalOrderId ?? order.id}</td>
-                      <td>{order.sourceProvider ?? order.carrierCode ?? 'PrepShip'}</td>
-                      <td>{order.shipToName ?? 'Customer'}</td>
-                      <td className="right">{order.items?.length ?? 0}</td>
-                      <td><span className={`portal-badge portal-badge-${String(order.orderStatus ?? 'pending').toLowerCase()}`}>{String(order.orderStatus ?? 'pending').replace('_', ' ')}</span></td>
-                    </tr>
-                  ))}
-                  {!orders.isLoading && (orders.data?.data.length ?? 0) === 0 ? (
-                    <tr><td colSpan={5} className="portal-empty">No orders yet.</td></tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              tableId="overview-recent-orders"
+              rows={orders.data?.data ?? []}
+              getRowKey={(order) => order.id}
+              columns={[
+                {
+                  key: 'order',
+                  header: 'Order',
+                  render: (order) => <span className="font-mono text-xs font-black text-ink">{order.orderNumber ?? order.externalOrderId ?? order.id}</span>,
+                },
+                {
+                  key: 'channel',
+                  header: 'Channel',
+                  render: (order) => <span className="font-semibold text-ink-2">{order.sourceProvider ?? order.carrierCode ?? 'PrepShip'}</span>,
+                },
+                {
+                  key: 'customer',
+                  header: 'Customer',
+                  render: (order) => <span className="font-semibold text-ink-2">{order.shipToName ?? 'Customer'}</span>,
+                },
+                {
+                  key: 'items',
+                  header: 'Items',
+                  className: 'right',
+                  render: (order) => <span className="font-black tabular-nums text-ink">{order.items?.length ?? 0}</span>,
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  render: (order) => <StatusBadge value={order.orderStatus} />,
+                },
+              ]}
+            />
           )}
         </section>
 
@@ -187,10 +193,6 @@ export default function Overview() {
                 <div className="portal-connection-meta">
                   <div className="portal-connection-name">{store.name}</div>
                   <div className="portal-connection-store">{store.store}</div>
-                </div>
-                <div className="portal-connection-stat">
-                  <span className="portal-stat-num">{store.today}</span>
-                  <span className="portal-stat-lbl">today</span>
                 </div>
                 <span className={`portal-status portal-status-${store.tone}`}>
                   {store.tone === 'connected' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}

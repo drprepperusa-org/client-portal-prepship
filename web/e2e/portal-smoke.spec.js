@@ -8,8 +8,9 @@ test('client portal dashboard and navigation are client-safe', async ({ page }) 
   });
   await page.goto(`${baseUrl}/dashboard`);
 
+  await page.locator('aside[aria-label="Client portal navigation"]').hover();
   await expect(page.getByText('DR PREPPERUSA')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Dashboard/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Dashboard$/ })).toBeVisible();
   await expect(page.getByText('Open Orders')).toBeVisible();
   await expect(page.getByText('Orders volume')).toBeVisible();
   await expect(page.getByText('Connected Stores')).toBeVisible();

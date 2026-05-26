@@ -76,7 +76,7 @@ export function StoreConnectionCard({
               Reconfigure
             </button>
             <button type="button" className="portal-store-danger" disabled={busy || flipped} onClick={onDisconnect}>
-              <Trash2 size={16} /> {busy ? 'Working...' : 'Disconnect'}
+              <Trash2 size={13} /> {busy ? 'Working...' : 'Disconnect'}
             </button>
           </div>
         </div>
@@ -93,7 +93,7 @@ export function StoreConnectionCard({
                 toggleCard();
               }}
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={14} />
             </button>
           </div>
           <h2>Connection details</h2>

@@ -3,6 +3,7 @@ import { portalApi, type BackfillMode, type BackfillResponse, type BackfillTarge
 import {
   DEMO_TOKEN,
   demoBilling,
+  demoAnalysisSkuBreakdown,
   demoDailyCounts,
   demoDashboard,
   demoInventory,
@@ -23,9 +24,13 @@ export const portalQueryKeys = {
   billing: ['portal', 'billing'] as const,
   clients: ['portal', 'clients'] as const,
   settings: ['portal', 'settings'] as const,
+  me: ['portal', 'me'] as const,
   syncStatus: ['portal', 'sync-status'] as const,
   products: ['portal', 'products'] as const,
   analysisOverview: ['portal', 'analysis-overview'] as const,
+  analysisSkuBreakdown: ['portal', 'analysis-sku-breakdown'] as const,
+  analysisSkuOrders: (inventoryId?: number | null, range?: { from: string; to: string }) =>
+    ['portal', 'analysis-sku-orders', inventoryId ?? 'none', range?.from ?? 'default', range?.to ?? 'default'] as const,
   dailyShipments: ['portal', 'daily-shipments'] as const,
   carrierAccounts: ['portal', 'carrier-accounts'] as const,
 };
@@ -89,7 +94,7 @@ export function useDashboardQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.dashboard,
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoDashboard) : portalApi.dashboard(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoDashboard) : portalApi.clientPortal.dashboard(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -98,7 +103,7 @@ export function useDailyCountsQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.dailyCounts,
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoDailyCounts) : portalApi.dailyCounts(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoDailyCounts) : portalApi.clientPortal.dailyCounts(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -119,7 +124,7 @@ export function useOrdersQuery(token: string | null, status: OrderStatus | 'all'
   return useQuery({
     queryKey: portalQueryKeys.orders(status),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.orders(token!, { status })),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.clientPortal.orders(token!, { status })),
   });
 }
 
@@ -127,7 +132,7 @@ export function useShipmentsQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.shipments,
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoShipments) : portalApi.shipments(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoShipments) : portalApi.clientPortal.shipments(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -136,7 +141,7 @@ export function useInventoryQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.inventory,
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoInventory) : portalApi.inventory(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoInventory) : portalApi.clientPortal.inventory(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -145,7 +150,7 @@ export function useBillingQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.billing,
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoBilling) : portalApi.billingSummary(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoBilling) : portalApi.clientPortal.billingSummary(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -170,6 +175,18 @@ export function useSettingsQuery(token: string | null) {
       demoAllowed(token!)
         ? Promise.resolve({ data: [{ key: 'defaultView', value: 'dashboard' }, { key: 'pageSize', value: '25' }] })
         : portalApi.settings(token!),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useMeQuery(token: string | null) {
+  return useQuery({
+    queryKey: portalQueryKeys.me,
+    enabled: enabled(token),
+    queryFn: () =>
+      demoAllowed(token!)
+        ? Promise.resolve({ id: 'demo-client-user', email: 'client@drprepperusa.org', isAdmin: true })
+        : portalApi.clientPortal.me(token!),
     placeholderData: keepPreviousData,
   });
 }
@@ -202,7 +219,31 @@ export function useAnalysisOverviewQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve({ ordersToday: 2, ordersWeek: 18, shippedToday: 3, shippedWeek: 25 })
-        : portalApi.analysisOverview(token!),
+        : portalApi.clientPortal.analysisOverview(token!),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAnalysisSkuBreakdownQuery(token: string | null, range?: { from: string; to: string }) {
+  return useQuery({
+    queryKey: [...portalQueryKeys.analysisSkuBreakdown, range?.from ?? 'default', range?.to ?? 'default'] as const,
+    enabled: enabled(token),
+    queryFn: () =>
+      demoAllowed(token!)
+        ? Promise.resolve(demoAnalysisSkuBreakdown)
+        : portalApi.clientPortal.skuBreakdown(token!, range),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAnalysisSkuOrdersQuery(token: string | null, inventoryId: number | null, range?: { from: string; to: string }) {
+  return useQuery({
+    queryKey: portalQueryKeys.analysisSkuOrders(inventoryId, range),
+    enabled: enabled(token) && inventoryId !== null,
+    queryFn: () =>
+      demoAllowed(token!)
+        ? Promise.resolve({ sku: '', totalUnits: 0, standardShipCount: 0, standardShippingTotal: 0, avgStandardShippingCost: 0, dailySales: [], orders: [] })
+        : portalApi.skuOrders(token!, inventoryId!, range),
     placeholderData: keepPreviousData,
   });
 }
@@ -214,7 +255,7 @@ export function useDailyShipmentsQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve({ data: [{ day: '2026-05-25', shipments: 3 }, { day: '2026-05-24', shipments: 5 }] })
-        : portalApi.dailyShipments(token!),
+        : portalApi.clientPortal.dailyShipments(token!),
     placeholderData: keepPreviousData,
   });
 }
@@ -226,7 +267,7 @@ export function useCarrierAccountsQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve({ data: [{ id: 1, provider: 'walmart', label: 'Walmart Marketplace', accountIdentifier: 'Walmart Seller (b05d64...)', active: true, createdAt: '2026-05-06T00:00:00.000Z' }] })
-        : portalApi.carrierAccounts(token!),
+        : portalApi.clientPortal.integrations(token!),
     placeholderData: keepPreviousData,
   });
 }

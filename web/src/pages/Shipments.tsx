@@ -38,6 +38,7 @@ export default function Shipments() {
           <TableSkeleton rows={6} columns={5} />
         ) : (
           <DataTable
+            tableId="shipments-history"
             rows={shipments.data?.data ?? []}
             getRowKey={(shipment) => shipment.id}
             columns={[
