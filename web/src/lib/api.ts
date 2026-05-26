@@ -252,10 +252,13 @@ export const portalApi = {
         active: true,
       });
     },
-    billingSummary(token: string) {
+    billingSummary(token: string, range = defaultRange()) {
+      const dateFrom = `${range.from}T00:00:00.000Z`;
+      const dateTo = `${range.to}T23:59:59.999Z`;
       return apiGet<{ data: BillingSummaryRow[]; grandTotal?: number | string }>(
         token,
         '/billing/summary',
+        { dateFrom, dateTo },
       );
     },
     analysisOverview(token: string) {
