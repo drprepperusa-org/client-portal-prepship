@@ -28,6 +28,10 @@ export type OrderItem = {
 
 export type PortalOrder = {
   id: number;
+  clientId?: number | null;
+  client_id?: number | null;
+  storeId?: number | string | null;
+  store_id?: number | string | null;
   orderNumber?: string | null;
   externalOrderId?: string | null;
   sourceProvider?: string | null;
@@ -88,6 +92,8 @@ export type DashboardSummary = {
 
 export type AnalysisSkuRow = {
   sku: string;
+  client_id?: number | string | null;
+  clientId?: number | string | null;
   name?: string | null;
   inv_sku_id?: number | string | null;
   invSkuId?: number | string | null;
@@ -175,6 +181,8 @@ export type PortalSetting = {
 export type CarrierAccount = {
   id?: number;
   clientId?: number | null;
+  clientIds?: number[] | null;
+  assignedClientIds?: number[] | null;
   provider?: string | null;
   label?: string | null;
   accountIdentifier?: string | null;

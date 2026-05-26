@@ -12,6 +12,7 @@ import type {
   PortalSetting,
   PortalShipment,
 } from '../types/portal';
+import { portalScopeFromToken } from './portalScope';
 
 const PRODUCTION_API_BASE = 'https://prepshipv4-api-l5xc.onrender.com';
 const DEV_API_PORT = 3000;
@@ -88,6 +89,42 @@ function queryString(params: Record<string, QueryValue>) {
   }
   const out = search.toString();
   return out ? `?${out}` : '';
+}
+
+function firstScopedStoreId(token: string) {
+  const scope = portalScopeFromToken(token);
+  return scope.isRestricted && scope.storeIds.length === 1 ? scope.storeIds[0] : undefined;
+}
+
+async function apiGetScopedByClient<T extends { data: unknown[]; pagination?: { page: number; pageSize: number; total: number; totalPages: number } }>(
+  token: string,
+  path: string,
+  params: Record<string, QueryValue>,
+): Promise<T> {
+  const scope = portalScopeFromToken(token);
+  if (!scope.isRestricted || scope.clientIds.length <= 1) {
+    return apiGet<T>(token, path, {
+      ...params,
+      clientId: scope.isRestricted ? scope.clientIds[0] : params.clientId,
+    });
+  }
+
+  const pages = await Promise.all(
+    scope.clientIds.map((clientId) => apiGet<T>(token, path, { ...params, clientId })),
+  );
+  const data = pages.flatMap((page) => page.data);
+  const first = pages[0];
+  return {
+    ...first,
+    data,
+    pagination: first?.pagination
+      ? {
+          ...first.pagination,
+          total: data.length,
+          totalPages: data.length > 0 ? Math.ceil(data.length / first.pagination.pageSize) : 0,
+        }
+      : first?.pagination,
+  } as T;
 }
 
 export async function apiGet<T>(
@@ -228,23 +265,24 @@ export const portalApi = {
       );
     },
     orders(token: string, options: { status?: OrderStatus | 'all'; search?: string; page?: number } = {}) {
-      return apiGet<Paginated<PortalOrder>>(token, '/orders', {
+      return apiGetScopedByClient<Paginated<PortalOrder>>(token, '/orders', {
         page: options.page ?? 1,
         pageSize: 25,
         includeTotal: true,
         status: options.status === 'all' ? undefined : options.status,
         search: options.search,
+        storeId: firstScopedStoreId(token),
       });
     },
     shipments(token: string, options: { page?: number } = {}) {
-      return apiGet<Paginated<PortalShipment>>(token, '/shipments', {
+      return apiGetScopedByClient<Paginated<PortalShipment>>(token, '/shipments', {
         page: options.page ?? 1,
         pageSize: 25,
         voided: false,
       });
     },
     inventory(token: string, options: { search?: string; lowStock?: boolean; page?: number } = {}) {
-      return apiGet<Paginated<PortalInventoryItem>>(token, '/inventory', {
+      return apiGetScopedByClient<Paginated<PortalInventoryItem>>(token, '/inventory', {
         page: options.page ?? 1,
         pageSize: 25,
         search: options.search,
@@ -265,10 +303,11 @@ export const portalApi = {
       return apiGet<Record<string, unknown>>(token, '/analysis/sku-breakdown');
     },
     skuBreakdown(token: string, range = defaultRange()) {
-      return apiGet<AnalysisSkuBreakdown>(token, '/analysis/sku-breakdown', {
+      return apiGetScopedByClient<AnalysisSkuBreakdown>(token, '/analysis/sku-breakdown', {
         dateFrom: `${range.from}T00:00:00.000Z`,
         dateTo: `${range.to}T23:59:59.999Z`,
         limit: 200,
+        storeId: firstScopedStoreId(token),
       });
     },
     dailyShipments(token: string, range = defaultRange()) {
