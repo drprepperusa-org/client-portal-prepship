@@ -220,6 +220,27 @@ function ordersScopeFromContext(c: Context): ClientStoreScope {
   });
 }
 
+function callerAssigneeFilter(c: Context): SQL | undefined {
+  const role = c.get('role' as never) as string | undefined;
+  // Per user override unlock shipped data on 2026-05-23: client portal roles
+  // read shipped/cancelled history through client/store scope, not warehouse
+  // order assignment. Mutation lockdown remains in assertOrderEditable().
+  if (role === 'client_user' || role === 'read_only_support') return undefined;
+
+  const callerEmail = c.get('email' as never) as string | undefined;
+  const callerUserId = c.get('userId' as never) as string | undefined;
+  const callerIsAdmin = isAdminEmail(callerEmail);
+  return !callerIsAdmin && callerUserId
+    ? eq(orders.assignedToUserId, callerUserId)
+    : undefined;
+}
+
+function callerCacheIdentity(c: Context): string {
+  const callerEmail = c.get('email' as never) as string | undefined;
+  const callerUserId = c.get('userId' as never) as string | undefined;
+  return isAdminEmail(callerEmail) ? 'admin' : callerUserId ?? 'anonymous';
+}
+
 function canViewOrderFinancials(c: Context): boolean {
   return hasAppPermission(
     {
@@ -791,14 +812,7 @@ app.get('/daily-counts', zValidator('query', dailyCountsQuery), async (c) => {
   const q = c.req.valid('query');
   const dailyCountsScope = ordersScopeFromContext(c);
 
-  // Same assignee-scoping rules as GET / (admins see all; workers see only
-  // their assigned orders).
-  const callerEmail = c.get('email' as never) as string | undefined;
-  const callerUserId = c.get('userId' as never) as string | undefined;
-  const callerIsAdmin = isAdminEmail(callerEmail);
-  const assigneeFilter = !callerIsAdmin && callerUserId
-    ? eq(orders.assignedToUserId, callerUserId)
-    : undefined;
+  const assigneeFilter = callerAssigneeFilter(c);
 
   // Inclusive date range: to-date covers through 23:59:59.999 of that day so
   // orders created at the very end of the window aren't dropped.
@@ -854,12 +868,7 @@ app.get('/dashboard-sales', zValidator('query', dashboardSalesQuery), async (c) 
   const startedAt = performance.now();
   const dashboardSalesScope = ordersScopeFromContext(c);
 
-  const callerEmail = c.get('email' as never) as string | undefined;
-  const callerUserId = c.get('userId' as never) as string | undefined;
-  const callerIsAdmin = isAdminEmail(callerEmail);
-  const assigneeFilter = !callerIsAdmin && callerUserId
-    ? eq(orders.assignedToUserId, callerUserId)
-    : undefined;
+  const assigneeFilter = callerAssigneeFilter(c);
 
   const fromDate = new Date(`${q.from}T00:00:00.000Z`);
   const toDate = new Date(`${q.to}T23:59:59.999Z`);
@@ -897,7 +906,7 @@ app.get('/dashboard-sales', zValidator('query', dashboardSalesQuery), async (c) 
     storeId: q.storeId ?? null,
     includeInactiveClients,
     hideTestOrders: q.hideTestOrders === true,
-    caller: callerIsAdmin ? 'admin' : callerUserId ?? 'anonymous',
+    caller: callerCacheIdentity(c),
     scopeClientIds: dashboardSalesScope.isRestricted ? dashboardSalesScope.clientIds : null,
     scopeStoreIds: dashboardSalesScope.isRestricted ? dashboardSalesScope.storeIds : null,
   });
@@ -1083,6 +1092,12 @@ const orderListSelect = {
   sourceAccountId: orders.sourceAccountId,
   sourceOrderId: orders.sourceOrderId,
   sourceOrderNumber: orders.sourceOrderNumber,
+  clientName: sql<string | null>`(
+    select c.name
+    from ${clients} c
+    where c.id = ${orders.clientId}
+    limit 1
+  )`.as('clientName'),
   customerEmail: orders.customerEmail,
   shipToName: orders.shipToName,
   shipToCity: orders.shipToCity,
@@ -1126,16 +1141,7 @@ app.get('/', zValidator('query', listQuery), async (c) => {
   const searchPattern = search ? `%${search}%` : null;
   const includeInactiveClients = q.includeInactive === true || q.includeInactiveClients === true;
 
-  // Order assignment scoping. Admins see every order. Non-admin callers see
-  // only orders whose assigned_to_user_id matches their Supabase UUID. An
-  // unassigned order is invisible to non-admins. Admin status is decided by
-  // the caller's email (see src/lib/admin-emails.ts).
-  const callerEmail = c.get('email' as never) as string | undefined;
-  const callerUserId = c.get('userId' as never) as string | undefined;
-  const callerIsAdmin = isAdminEmail(callerEmail);
-  const assigneeFilter = !callerIsAdmin && callerUserId
-    ? eq(orders.assignedToUserId, callerUserId)
-    : undefined;
+  const assigneeFilter = callerAssigneeFilter(c);
   const excludeIds = (q.excludeClientId ?? '')
     .split(',')
     .map((s) => Number.parseInt(s.trim(), 10))

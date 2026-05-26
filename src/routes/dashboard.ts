@@ -94,6 +94,12 @@ const activeInventoryClientPredicate = sql`(
 )`;
 
 function callerAssigneeFilter(c: Context) {
+  const role = c.get('role' as never) as string | undefined;
+  // Per user override unlock shipped data on 2026-05-23: client portal roles
+  // read aggregate order history through client/store scope, not warehouse
+  // order assignment. This does not enable shipped/cancelled mutations.
+  if (role === 'client_user' || role === 'read_only_support') return undefined;
+
   const callerEmail = c.get('email' as never) as string | undefined;
   const callerUserId = c.get('userId' as never) as string | undefined;
   const callerIsAdmin = isAdminEmail(callerEmail);

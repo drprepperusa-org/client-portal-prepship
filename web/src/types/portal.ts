@@ -10,6 +10,7 @@ export type Paginated<T> = {
     pageSize: number;
     total: number;
     totalPages: number;
+    clientTotals?: Array<{ clientId: number; total: number }>;
   };
 };
 
@@ -30,6 +31,8 @@ export type PortalOrder = {
   id: number;
   clientId?: number | null;
   client_id?: number | null;
+  clientName?: string | null;
+  client_name?: string | null;
   storeId?: number | string | null;
   store_id?: number | string | null;
   orderNumber?: string | null;

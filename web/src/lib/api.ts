@@ -114,14 +114,21 @@ async function apiGetScopedByClient<T extends { data: unknown[]; pagination?: { 
   );
   const data = pages.flatMap((page) => page.data);
   const first = pages[0];
+  const pageSize = first?.pagination?.pageSize ?? Number(params.pageSize ?? 25);
+  const clientTotals = pages.map((page, index) => ({
+    clientId: scope.clientIds[index]!,
+    total: Number(page.pagination?.total ?? page.data.length ?? 0),
+  }));
+  const total = clientTotals.reduce((sum, row) => sum + row.total, 0);
   return {
     ...first,
     data,
     pagination: first?.pagination
       ? {
           ...first.pagination,
-          total: data.length,
-          totalPages: data.length > 0 ? Math.ceil(data.length / first.pagination.pageSize) : 0,
+          total,
+          totalPages: total > 0 ? Math.ceil(total / pageSize) : 0,
+          clientTotals,
         }
       : first?.pagination,
   } as T;

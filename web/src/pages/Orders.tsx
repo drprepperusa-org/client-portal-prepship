@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge, TableSkeleton } from '../components/PortalPrimitives';
 import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -14,11 +14,40 @@ const orderTabs: Array<{ value: OrderStatus; label: string; empty: string }> = [
 export default function Orders() {
   const auth = useAuth();
   const [activeStatus, setActiveStatus] = useState<OrderStatus>('awaiting_shipment');
+  const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
   const [selectedOrder, setSelectedOrder] = useState<PortalOrder | null>(null);
   const orders = useOrdersQuery(auth.accessToken, activeStatus);
   const inventory = useInventoryQuery(auth.accessToken);
   const isFirstLoad = orders.isLoading && !orders.data;
   const activeTab = useMemo(() => orderTabs.find((tab) => tab.value === activeStatus) ?? orderTabs[0]!, [activeStatus]);
+  const rows = orders.data?.data ?? [];
+  const storeBuckets = useMemo(() => {
+    const names = new Map<number, string>();
+    const rowCounts = new Map<number, number>();
+    for (const order of rows) {
+      const clientId = orderClientId(order);
+      if (clientId == null) continue;
+      names.set(clientId, orderClientName(order));
+      rowCounts.set(clientId, (rowCounts.get(clientId) ?? 0) + 1);
+    }
+    const totals = orders.data?.pagination?.clientTotals ?? [];
+    const ids = new Set<number>([...names.keys(), ...totals.map((row) => row.clientId)]);
+    return [...ids]
+      .map((clientId) => ({
+        clientId,
+        name: names.get(clientId) ?? `Client ${clientId}`,
+        count: totals.find((row) => row.clientId === clientId)?.total ?? rowCounts.get(clientId) ?? 0,
+      }))
+      .filter((bucket) => bucket.count > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [orders.data?.pagination?.clientTotals, rows]);
+  const filteredRows = useMemo(
+    () => activeClientId === 'all' ? rows : rows.filter((order) => orderClientId(order) === activeClientId),
+    [activeClientId, rows],
+  );
+  const visibleTotal = activeClientId === 'all'
+    ? orders.data?.pagination?.total ?? rows.length
+    : storeBuckets.find((bucket) => bucket.clientId === activeClientId)?.count ?? filteredRows.length;
   const inventoryImages = useMemo(() => {
     const map = new Map<string, PortalInventoryItem>();
     for (const item of inventory.data?.data ?? []) {
@@ -53,6 +82,12 @@ export default function Orders() {
     setSelectedOrder(order);
   }
 
+  useEffect(() => {
+    if (activeClientId !== 'all' && !storeBuckets.some((bucket) => bucket.clientId === activeClientId)) {
+      setActiveClientId('all');
+    }
+  }, [activeClientId, storeBuckets]);
+
   return (
     <>
       <PageHeader
@@ -69,7 +104,7 @@ export default function Orders() {
       ) : null}
       <Panel
         title="Order activity"
-        right={<span className="text-xs font-bold text-ink-3">{orders.data?.pagination?.total ?? orders.data?.data.length ?? 0} orders</span>}
+        right={<span className="text-xs font-bold text-ink-3">{visibleTotal} orders</span>}
       >
         <div className="flex gap-2 overflow-x-auto border-b border-line px-4 pt-2" role="tablist" aria-label="Order status">
           {orderTabs.map((tab) => (
@@ -85,12 +120,33 @@ export default function Orders() {
             </button>
           ))}
         </div>
+        {storeBuckets.length > 1 ? (
+          <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-3" aria-label="Store order filters">
+            <button
+              type="button"
+              className={`h-9 shrink-0 rounded-lg px-3 text-xs font-black ring-1 transition-colors ${activeClientId === 'all' ? 'bg-brand text-white ring-brand' : 'bg-surface text-ink-2 ring-line hover:bg-brand-bg hover:text-brand'}`}
+              onClick={() => setActiveClientId('all')}
+            >
+              All stores <span className="ml-2 tabular-nums">{orders.data?.pagination?.total ?? rows.length}</span>
+            </button>
+            {storeBuckets.map((bucket) => (
+              <button
+                key={bucket.clientId}
+                type="button"
+                className={`h-9 shrink-0 rounded-lg px-3 text-xs font-black ring-1 transition-colors ${activeClientId === bucket.clientId ? 'bg-brand text-white ring-brand' : 'bg-surface text-ink-2 ring-line hover:bg-brand-bg hover:text-brand'}`}
+                onClick={() => setActiveClientId(bucket.clientId)}
+              >
+                {bucket.name} <span className="ml-2 tabular-nums">{bucket.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {isFirstLoad ? (
           <TableSkeleton rows={6} columns={6} />
         ) : (
           <DataTable
             tableId={`orders-${activeStatus}`}
-            rows={orders.data?.data ?? []}
+            rows={filteredRows}
             getRowKey={(order) => order.id}
             onRowClick={openOrder}
             columns={[
@@ -160,7 +216,7 @@ export default function Orders() {
             ]}
           />
         )}
-        {!orders.isLoading && (orders.data?.data.length ?? 0) === 0 ? <EmptyState title={`No ${activeTab.label.toLowerCase()} orders found`} body={activeTab.empty} /> : null}
+        {!orders.isLoading && filteredRows.length === 0 ? <EmptyState title={`No ${activeTab.label.toLowerCase()} orders found`} body={activeTab.empty} /> : null}
       </Panel>
       <OrderDetailDrawer
         order={selectedOrder}
@@ -170,6 +226,15 @@ export default function Orders() {
       />
     </>
   );
+}
+
+function orderClientId(order: PortalOrder) {
+  const value = Number(order.clientId ?? order.client_id);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function orderClientName(order: PortalOrder) {
+  return order.clientName ?? order.client_name ?? 'Client';
 }
 
 function OrderThumb({ order, imageUrl, fallback }: { order: PortalOrder; imageUrl: string | null; fallback: string }) {
