@@ -22,6 +22,7 @@ function assert(condition, message) {
 }
 
 const ordersSource = read('src/routes/orders.ts');
+const dashboardSource = read('src/routes/dashboard.ts');
 const manifestsSource = read('src/routes/manifests.ts');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -44,6 +45,18 @@ assert(
   ordersSource.includes('const orderScope = ordersScopeFromContext(c)') &&
     ordersSource.includes('orderScopePredicate(orderScope)'),
   'orders list applies client/store scope',
+);
+assert(
+  ordersSource.includes('function callerAssigneeFilter') &&
+    ordersSource.includes("role === 'client_user'") &&
+    ordersSource.includes("role === 'read_only_support'"),
+  'orders route skips warehouse assignee scope for external client portal roles',
+);
+assert(
+  dashboardSource.includes('function callerAssigneeFilter') &&
+    dashboardSource.includes("role === 'client_user'") &&
+    dashboardSource.includes("role === 'read_only_support'"),
+  'dashboard route skips warehouse assignee scope for external client portal roles',
 );
 assert(
   ordersSource.includes('const dailyCountsScope = ordersScopeFromContext(c)') &&
