@@ -89,6 +89,7 @@ assert(queries.includes('portalApi.clientPortal.'), 'portal queries must use por
 assert(!queries.includes('portalApi.orders(token!') && !queries.includes('portalApi.inventory(token!'), 'portal queries must not use broad order/inventory reads');
 assert(queries.includes('filterPortalPaginated') && queries.includes('filterPortalDataResponse'), 'portal queries must filter legacy responses through token client/store scope before rendering');
 assert(api.includes('apiGetScopedByClient') && api.includes('portalScopeFromToken'), 'portal API helpers must pass client scope to legacy list routes while Render lacks /api/client-portal routes');
+assert(api.includes('apiGetScopedDashboard') && api.includes('apiGetScopedDailyCounts') && api.includes('apiGetScopedBillingSummary'), 'portal aggregate helpers must request one scoped legacy result per allowed client');
 assert(apiContracts.includes('site-actions.spec.js'), 'api-contracts guard must target existing site actions workflow spec');
 
 if (process.exitCode) process.exit(process.exitCode);

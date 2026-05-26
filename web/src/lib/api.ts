@@ -127,6 +127,92 @@ async function apiGetScopedByClient<T extends { data: unknown[]; pagination?: { 
   } as T;
 }
 
+async function apiGetScopedDashboard(token: string, path: string, params: Record<string, QueryValue>) {
+  const scope = portalScopeFromToken(token);
+  if (!scope.isRestricted) return apiGet<DashboardSummary>(token, path, params);
+  if (!scope.clientIds.length && !scope.storeIds.length) {
+    return { revenue: 0, units: 0, bySku: [], dailyRevenue: [] };
+  }
+
+  const scopedIds = scope.clientIds.length ? scope.clientIds : [undefined];
+  const pages = await Promise.all(
+    scopedIds.map((clientId) =>
+      apiGet<DashboardSummary>(token, path, {
+        ...params,
+        clientId,
+        storeId: clientId === undefined ? firstScopedStoreId(token) : undefined,
+      }),
+    ),
+  );
+
+  return pages.reduce<DashboardSummary>(
+    (total, page) => ({
+      revenue: Number(total.revenue ?? 0) + Number(page.revenue ?? 0),
+      units: Number(total.units ?? 0) + Number(page.units ?? 0),
+      bySku: [...(total.bySku ?? []), ...(page.bySku ?? [])],
+      dailyRevenue: [...(total.dailyRevenue ?? []), ...(page.dailyRevenue ?? [])],
+    }),
+    { revenue: 0, units: 0, bySku: [], dailyRevenue: [] },
+  );
+}
+
+async function apiGetScopedDailyCounts(token: string, path: string, params: Record<string, QueryValue>) {
+  const scope = portalScopeFromToken(token);
+  if (!scope.isRestricted) {
+    return apiGet<{ data: Array<{ day: string; awaiting: number; shipped: number; cancelled: number; total: number }> }>(
+      token,
+      path,
+      params,
+    );
+  }
+  if (!scope.clientIds.length && !scope.storeIds.length) return { data: [] };
+
+  const scopedIds = scope.clientIds.length ? scope.clientIds : [undefined];
+  const pages = await Promise.all(
+    scopedIds.map((clientId) =>
+      apiGet<{ data: Array<{ day: string; awaiting: number; shipped: number; cancelled: number; total: number }> }>(
+        token,
+        path,
+        {
+          ...params,
+          clientId,
+          storeId: clientId === undefined ? firstScopedStoreId(token) : undefined,
+        },
+      ),
+    ),
+  );
+  const byDay = new Map<string, { day: string; awaiting: number; shipped: number; cancelled: number; total: number }>();
+  for (const page of pages) {
+    for (const row of page.data ?? []) {
+      const current = byDay.get(row.day) ?? { day: row.day, awaiting: 0, shipped: 0, cancelled: 0, total: 0 };
+      current.awaiting += Number(row.awaiting ?? 0);
+      current.shipped += Number(row.shipped ?? 0);
+      current.cancelled += Number(row.cancelled ?? 0);
+      current.total += Number(row.total ?? 0);
+      byDay.set(row.day, current);
+    }
+  }
+  return { data: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)) };
+}
+
+async function apiGetScopedBillingSummary(token: string, path: string, params: Record<string, QueryValue>) {
+  const scope = portalScopeFromToken(token);
+  if (!scope.isRestricted || scope.clientIds.length <= 1) {
+    return apiGet<{ data: BillingSummaryRow[]; grandTotal?: number | string }>(token, path, {
+      ...params,
+      clientId: scope.isRestricted ? scope.clientIds[0] : params.clientId,
+    });
+  }
+  const pages = await Promise.all(
+    scope.clientIds.map((clientId) =>
+      apiGet<{ data: BillingSummaryRow[]; grandTotal?: number | string }>(token, path, { ...params, clientId }),
+    ),
+  );
+  const data = pages.flatMap((page) => page.data ?? []);
+  const grandTotal = data.reduce((sum, row) => sum + Number(row.grandTotal ?? 0), 0);
+  return { data, grandTotal };
+}
+
 export async function apiGet<T>(
   token: string,
   path: string,
@@ -255,10 +341,10 @@ export const portalApi = {
       );
     },
     dashboard(token: string, range = defaultRange()) {
-      return apiGet<DashboardSummary>(token, '/dashboard/summary', range);
+      return apiGetScopedDashboard(token, '/dashboard/summary', range);
     },
     dailyCounts(token: string, range = defaultRange()) {
-      return apiGet<{ data: Array<{ day: string; awaiting: number; shipped: number; cancelled: number; total: number }> }>(
+      return apiGetScopedDailyCounts(
         token,
         '/dashboard/daily-counts',
         range,
@@ -293,7 +379,7 @@ export const portalApi = {
     billingSummary(token: string, range = defaultRange()) {
       const dateFrom = `${range.from}T00:00:00.000Z`;
       const dateTo = `${range.to}T23:59:59.999Z`;
-      return apiGet<{ data: BillingSummaryRow[]; grandTotal?: number | string }>(
+      return apiGetScopedBillingSummary(
         token,
         '/billing/summary',
         { dateFrom, dateTo },
@@ -321,7 +407,7 @@ export const portalApi = {
       );
     },
     integrations(token: string) {
-      return apiGet<{ data: CarrierAccount[] }>(token, '/carrier-accounts');
+      return apiGetScopedByClient<{ data: CarrierAccount[] }>(token, '/carrier-accounts', {});
     },
     activity(token: string) {
       return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/users/me');

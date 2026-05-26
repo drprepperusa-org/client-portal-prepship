@@ -40,6 +40,38 @@ import {
 
 const TABLE = 'carrier_accounts';
 
+function normalizedScopeIds(value: unknown): number[] {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  return Array.from(
+    new Set(
+      values
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item) && item > 0),
+    ),
+  );
+}
+
+function clientPortalScopeFromPayload(payload: Record<string, any>) {
+  const appMetadata = payload?.app_metadata && typeof payload.app_metadata === 'object'
+    ? payload.app_metadata
+    : {};
+  const role = String(appMetadata.role ?? payload.role ?? '');
+  const permissions = Array.isArray(appMetadata.permissions)
+    ? appMetadata.permissions.filter((item: unknown): item is string => typeof item === 'string')
+    : [];
+  const clientIds = normalizedScopeIds(appMetadata.clientIds ?? appMetadata.client_ids ?? payload.clientIds ?? payload.client_ids);
+  const isGlobal = role === 'admin' || permissions.includes('scope:global');
+  const isRestricted = !isGlobal && (role === 'client_user' || role === 'read_only_support' || clientIds.length > 0);
+  return { clientIds, isRestricted };
+}
+
+function accountVisibleToClientScope(row: any, allowedClientIds: number[]): boolean {
+  const clientId = Number(row?.clientId ?? row?.client_id);
+  if (Number.isFinite(clientId) && allowedClientIds.includes(clientId)) return true;
+  const assignedClientIds = normalizedScopeIds(row?.assignedClientIds ?? row?.assigned_client_ids);
+  return assignedClientIds.some((id) => allowedClientIds.includes(id));
+}
+
 // Provider validation: lowercase slug pattern instead of an explicit list.
 // This used to be a hardcoded Set that drifted out of sync with verify.ts's
 // VERIFIERS map every time a new carrier was added — bug #lessonlearned.
@@ -95,14 +127,22 @@ export default async function handler(req: any, res: any): Promise<void> {
       const url = new URL(req.url ?? '', 'http://x');
       const source = url.searchParams.get('source');
       const pending = url.searchParams.get('pending');
+      const requestedClientId = Number(url.searchParams.get('clientId') ?? NaN);
       // pending=1 means "source=portal AND not yet linked into the markup
       // table" — for now just filters by source since we don't have a
       // reviewed_at column. Tightening can come later.
       const wantSource = source && ALLOWED_ACCOUNT_SOURCES.has(source) ? source : null;
-      const rows = await listCredentialAccounts(sql, TABLE, {
+      const rawRows = await listCredentialAccounts(sql, TABLE, {
         source: wantSource,
         includeAssignments: true,
       });
+      const scope = clientPortalScopeFromPayload(verified.payload as Record<string, any>);
+      const allowedClientIds = Number.isFinite(requestedClientId) && requestedClientId > 0
+        ? [requestedClientId]
+        : scope.clientIds;
+      const rows = scope.isRestricted || allowedClientIds.length > 0
+        ? rawRows.filter((row) => accountVisibleToClientScope(row, allowedClientIds))
+        : rawRows;
       res.status(200).json({ data: rows, pending: pending === '1' });
       return;
     }

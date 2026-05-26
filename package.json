@@ -59,6 +59,7 @@
     "smoke:shipping:test-label": "tsx scripts/smoke-shipping-test-label.ts",
     "smoke:shipping:real-label": "tsx scripts/smoke-shipping-real-label.ts",
     "smoke:marketplace-confirm": "tsx scripts/smoke-marketplace-confirm.ts",
+    "smoke:client-portal-scope": "node scripts/client-portal-production-scope-smoke.mjs",
     "test:auth-coverage": "node scripts/auth-coverage-guard.mjs",
     "test:raw-error-response-audit": "node scripts/raw-error-response-audit-guard.mjs",
     "test:rbac-permissions": "node scripts/rbac-permissions-guard.mjs",

@@ -3,7 +3,6 @@ import { portalApi, type BackfillMode, type BackfillResponse, type BackfillTarge
 import {
   filterPortalDataResponse,
   filterPortalPaginated,
-  restrictedEmptyDashboard,
 } from './portalScope';
 import {
   DEMO_TOKEN,
@@ -102,7 +101,7 @@ export function useDashboardQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve(demoDashboard)
-        : portalApi.clientPortal.dashboard(token!).then((summary) => restrictedEmptyDashboard(summary, token)),
+        : portalApi.clientPortal.dashboard(token!),
     placeholderData: keepPreviousData,
   });
 }
@@ -114,7 +113,7 @@ export function useDailyCountsQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve(demoDailyCounts)
-        : portalApi.clientPortal.dailyCounts(token!).then((response) => filterPortalDataResponse(response, token)),
+        : portalApi.clientPortal.dailyCounts(token!),
     placeholderData: keepPreviousData,
   });
 }
