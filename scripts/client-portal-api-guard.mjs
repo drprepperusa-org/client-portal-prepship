@@ -74,6 +74,17 @@ assert(scope.includes('client_user') && scope.includes('read_only_support'), 'sc
 assert(scope.includes('client portal scope required'), 'scope must deny unscoped external users');
 assert(audit.includes('password') && audit.includes('token') && audit.includes('credentials'), 'audit sanitizer must strip sensitive keys');
 assert(api.includes('clientPortal:'), 'portalApi must expose clientPortal namespace');
+assert(
+  api.includes("'/dashboard/summary'") &&
+    api.includes("'/orders'") &&
+    api.includes("'/inventory'") &&
+    api.includes("'/carrier-accounts'"),
+  'portalApi.clientPortal must use currently deployed backend-compatible paths while Render lacks /api/client-portal routes',
+);
+assert(
+  /billingSummary\(token: string, range = defaultRange\(\)\)[\s\S]*dateFrom[\s\S]*dateTo[\s\S]*'\/billing\/summary'/.test(api),
+  'portalApi.clientPortal.billingSummary must send dateFrom/dateTo required by /billing/summary',
+);
 assert(queries.includes('portalApi.clientPortal.'), 'portal queries must use portalApi.clientPortal reads');
 assert(!queries.includes('portalApi.orders(token!') && !queries.includes('portalApi.inventory(token!'), 'portal queries must not use broad order/inventory reads');
 assert(apiContracts.includes('site-actions.spec.js'), 'api-contracts guard must target existing site actions workflow spec');
