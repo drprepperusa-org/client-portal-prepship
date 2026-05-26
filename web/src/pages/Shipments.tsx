@@ -4,6 +4,16 @@ import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useShipmentsQuery } from '../lib/portalQueries';
 
+function safeExternalUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Shipments() {
   const auth = useAuth();
   const shipments = useShipmentsQuery(auth.accessToken);
@@ -73,14 +83,18 @@ export default function Shipments() {
                 key: 'label',
                 header: 'Label',
                 className: 'right',
-                render: (shipment) =>
-                  shipment.labelUrl ? (
-                    <a href={shipment.labelUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-3 text-xs font-black text-white">
+                render: (shipment) => {
+                  const labelUrl = safeExternalUrl(shipment.labelUrl);
+                  return labelUrl ? (
+                    <a href={labelUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-3 text-xs font-black text-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.985] motion-reduce:transform-none motion-reduce:transition-none">
                       Label <ExternalLink size={13} />
                     </a>
+                  ) : shipment.labelUrl ? (
+                    <span className="text-xs font-bold text-danger">Invalid label link</span>
                   ) : (
                     <span className="text-xs font-bold text-ink-3">No label</span>
-                  ),
+                  );
+                },
               },
             ]}
           />

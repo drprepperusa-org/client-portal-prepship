@@ -26,7 +26,11 @@ export default function Invoices() {
           : await apiText(auth.accessToken, '/billing/invoice', { clientId, dateFrom, dateTo });
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        URL.revokeObjectURL(url);
+        throw new Error('Your browser blocked the invoice window. Allow popups for this portal and try again.');
+      }
       window.setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : String(err));
@@ -76,8 +80,8 @@ export default function Invoices() {
                   <div className="mt-1 text-sm font-black text-ink">{safeMoney(row.grandTotal)}</div>
                 </div>
                 {row.clientId ? (
-                  <button type="button" onClick={() => void downloadInvoice(row.clientId)} disabled={busyClient === row.clientId} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-xs font-black text-white disabled:opacity-60">
-                    {busyClient === row.clientId ? 'Opening...' : 'Invoice'} <Download size={13} />
+                  <button type="button" onClick={() => void downloadInvoice(row.clientId)} disabled={busyClient === row.clientId} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-brand px-3 text-xs font-black text-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.985] disabled:opacity-60 disabled:hover:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none">
+                    {busyClient === row.clientId ? 'Opening...' : 'Open invoice'} <Download size={13} />
                   </button>
                 ) : null}
               </div>

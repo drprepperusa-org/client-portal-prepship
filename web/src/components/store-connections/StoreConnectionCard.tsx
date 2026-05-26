@@ -41,13 +41,15 @@ export function StoreConnectionCard({
   return (
     <div
       className={`portal-store-card${flipped ? ' is-flipped' : ''}`}
+      role="button"
       tabIndex={0}
+      aria-expanded={flipped}
       aria-label={`${name} connection card`}
       onClick={toggleCard}
       onKeyDown={onKeyDown}
     >
       <div className="portal-store-card-inner">
-        <div className="portal-store-card-face portal-store-card-front">
+        <div className="portal-store-card-face portal-store-card-front" aria-hidden={flipped}>
           <div className="portal-store-card-top">
             <StoreLogo platform={platform} provider={account.provider} label={name} />
             <span className="portal-status portal-status-connected">
@@ -70,10 +72,10 @@ export function StoreConnectionCard({
           </div>
 
           <div className="portal-store-actions" onClick={stopCardToggle}>
-            <button type="button" className="portal-store-secondary" disabled={busy} onClick={onEdit}>
+            <button type="button" className="portal-store-secondary" disabled={busy || flipped} onClick={onEdit}>
               Reconfigure
             </button>
-            <button type="button" className="portal-store-danger" disabled={busy} onClick={onDisconnect}>
+            <button type="button" className="portal-store-danger" disabled={busy || flipped} onClick={onDisconnect}>
               <Trash2 size={16} /> {busy ? 'Working...' : 'Disconnect'}
             </button>
           </div>
@@ -85,6 +87,7 @@ export function StoreConnectionCard({
             <button
               type="button"
               className="portal-store-back-button"
+              disabled={!flipped}
               onClick={(event) => {
                 stopCardToggle(event);
                 toggleCard();
@@ -111,14 +114,6 @@ export function StoreConnectionCard({
               <span>Connected</span>
               <strong>{connectedDate}</strong>
             </div>
-          </div>
-          <div className="portal-store-actions" onClick={stopCardToggle}>
-            <button type="button" className="portal-store-secondary" onClick={toggleCard}>
-              Back
-            </button>
-            <button type="button" className="portal-store-danger" disabled={busy} onClick={onDisconnect}>
-              <Trash2 size={16} /> {busy ? 'Working...' : 'Disconnect'}
-            </button>
           </div>
         </div>
       </div>

@@ -14,6 +14,7 @@ export default function Reports() {
   const queries = [dashboard, dailyCounts, dailyShipments, billing];
 
   const orderTotal = dailyCounts.data?.data.reduce((sum, day) => sum + Number(day.total ?? 0), 0) ?? 0;
+  const maxDailyOrders = Math.max(...(dailyCounts.data?.data ?? []).map((day) => Number(day.total ?? 0)), 1);
   const shippedTotal = dailyCounts.data?.data.reduce((sum, day) => sum + Number(day.shipped ?? 0), 0) ?? 0;
   const billingTotal = billing.data?.data.reduce((sum, row) => sum + Number(row.grandTotal ?? 0), 0) ?? 0;
   const shipmentRows = Array.isArray(dailyShipments.data)
@@ -48,8 +49,7 @@ export default function Reports() {
         <Panel title="Daily order counts">
           {dailyCounts.isLoading && !dailyCounts.data ? <TableSkeleton rows={6} columns={3} /> : <div className="portal-report-bars">
             {(dailyCounts.data?.data ?? []).map((day) => {
-              const max = Math.max(orderTotal, 1);
-              const width = `${Math.max((Number(day.total ?? 0) / max) * 100, day.total ? 8 : 0)}%`;
+              const width = `${Math.max((Number(day.total ?? 0) / maxDailyOrders) * 100, day.total ? 8 : 0)}%`;
               return (
                 <div className="portal-report-row" key={day.day}>
                   <span>{day.day}</span>

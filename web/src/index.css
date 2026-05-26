@@ -1182,7 +1182,7 @@ a { color: inherit; text-decoration: none; }
 .portal-store-wizard-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: 120;
   background: rgba(17, 24, 39, .48);
   display: grid;
   place-items: center;

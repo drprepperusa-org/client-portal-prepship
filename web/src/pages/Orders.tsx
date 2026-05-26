@@ -36,14 +36,14 @@ export default function Orders() {
         title="Order activity"
         right={<span className="text-xs font-bold text-ink-3">{orders.data?.pagination?.total ?? orders.data?.data.length ?? 0} orders</span>}
       >
-        <div className="portal-tabs" role="tablist" aria-label="Order status">
+        <div className="flex gap-2 overflow-x-auto border-b border-line px-4 pt-3" role="tablist" aria-label="Order status">
           {orderTabs.map((tab) => (
             <button
               key={tab.value}
               type="button"
               role="tab"
               aria-selected={activeStatus === tab.value}
-              className={`portal-tab ${activeStatus === tab.value ? 'active' : ''}`}
+              className={`relative h-11 shrink-0 rounded-t-lg px-3 text-xs font-black transition-all duration-200 ease-out after:absolute after:inset-x-3 after:bottom-1 after:h-0.5 after:rounded-full after:bg-brand after:transition-transform after:duration-200 hover:bg-brand-bg/60 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 motion-reduce:transform-none motion-reduce:transition-none ${activeStatus === tab.value ? 'bg-brand-bg text-brand after:scale-x-100' : 'text-ink-2 after:scale-x-0'}`}
               onClick={() => setActiveStatus(tab.value)}
             >
               {tab.label}

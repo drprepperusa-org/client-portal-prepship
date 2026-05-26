@@ -11,6 +11,10 @@ import {
   startQueuedSyncScheduler,
   stopQueuedSyncScheduler,
 } from './services/sync-job-queue';
+import {
+  startWorkflowWorkerQueue,
+  stopWorkflowWorkerQueue,
+} from './services/workflows/queue';
 import { ensureOrdersPerformanceIndexes } from './services/orders-performance-maintenance';
 import { ensureReportingMetricsTables } from './services/reporting-metrics';
 
@@ -25,6 +29,7 @@ function startKeepAliveHeartbeat(): void {
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`[worker] received ${signal}; shutting down`);
+  await stopWorkflowWorkerQueue();
   if (env.USE_PG_BOSS_SCHEDULER) {
     await stopQueuedSyncScheduler();
   } else {
@@ -105,6 +110,8 @@ async function main(): Promise<void> {
     await setWorkerMode('disabled');
     startKeepAliveHeartbeat();
   }
+
+  await startWorkflowWorkerQueue();
 }
 
 void main();

@@ -34,6 +34,9 @@ import carriersRoute from './routes/carriers';
 import usersRoute from './routes/users';
 import workerRoute from './routes/worker';
 import observabilityRoute from './routes/observability';
+import workflowsRoute from './routes/workflows';
+import workflowRunsRoute from './routes/workflow-runs';
+import workflowStepRunsRoute from './routes/workflow-step-runs';
 
 type AppVars = {
   requestId: string;
@@ -138,6 +141,9 @@ const protectedPrefixes = [
   '/users',
   '/worker',
   '/observability',
+  '/workflows',
+  '/workflow-runs',
+  '/workflow-step-runs',
 ];
 
 for (const prefix of protectedPrefixes) {
@@ -174,6 +180,9 @@ app.route('/carriers', carriersRoute);
 app.route('/users', usersRoute);
 app.route('/worker', workerRoute);
 app.route('/observability', observabilityRoute);
+app.route('/workflows', workflowsRoute);
+app.route('/workflow-runs', workflowRunsRoute);
+app.route('/workflow-step-runs', workflowStepRunsRoute);
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 

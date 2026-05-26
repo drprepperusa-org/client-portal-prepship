@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, DollarSign, Package, TrendingUp, Truck } from 'lucide-react';
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { ErrorPanel, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreLogo } from '../components/store-connections/StoreLogo';
 import { findConnectionPlatform } from '../components/store-connections/storePlatforms';
@@ -134,43 +135,45 @@ export default function Overview() {
         <section className="portal-card">
           <div className="portal-card-head">
             <h2>Recent Orders</h2>
-            <a href="/dashboard/orders" className="portal-link">View all <ArrowRight size={14} /></a>
+            <Link to="/dashboard/orders" className="portal-link inline-flex items-center gap-1 transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.985] motion-reduce:transform-none motion-reduce:transition-none">View all <ArrowRight size={14} /></Link>
           </div>
           {orders.isLoading && !orders.data ? (
             <TableSkeleton rows={4} columns={5} />
           ) : (
-            <table className="portal-table">
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Channel</th>
-                  <th>Customer</th>
-                  <th className="right">Items</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(orders.data?.data ?? []).slice(0, 5).map((order) => (
-                  <tr key={order.id}>
-                    <td className="mono">{order.orderNumber ?? order.externalOrderId ?? order.id}</td>
-                    <td>{order.sourceProvider ?? order.carrierCode ?? 'PrepShip'}</td>
-                    <td>{order.shipToName ?? 'Customer'}</td>
-                    <td className="right">{order.items?.length ?? 0}</td>
-                    <td><span className={`portal-badge portal-badge-${String(order.orderStatus ?? 'pending').toLowerCase()}`}>{String(order.orderStatus ?? 'pending').replace('_', ' ')}</span></td>
+            <div className="overflow-x-auto">
+              <table className="portal-table min-w-[680px]">
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Channel</th>
+                    <th>Customer</th>
+                    <th className="right">Items</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-                {!orders.isLoading && (orders.data?.data.length ?? 0) === 0 ? (
-                  <tr><td colSpan={5} className="portal-empty">No orders yet.</td></tr>
-                ) : null}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(orders.data?.data ?? []).slice(0, 5).map((order) => (
+                    <tr key={order.id} className="transition-colors duration-200 hover:bg-brand-bg/50 motion-reduce:transition-none">
+                      <td className="mono">{order.orderNumber ?? order.externalOrderId ?? order.id}</td>
+                      <td>{order.sourceProvider ?? order.carrierCode ?? 'PrepShip'}</td>
+                      <td>{order.shipToName ?? 'Customer'}</td>
+                      <td className="right">{order.items?.length ?? 0}</td>
+                      <td><span className={`portal-badge portal-badge-${String(order.orderStatus ?? 'pending').toLowerCase()}`}>{String(order.orderStatus ?? 'pending').replace('_', ' ')}</span></td>
+                    </tr>
+                  ))}
+                  {!orders.isLoading && (orders.data?.data.length ?? 0) === 0 ? (
+                    <tr><td colSpan={5} className="portal-empty">No orders yet.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
 
         <section className="portal-card">
           <div className="portal-card-head">
             <h2>Connected Stores</h2>
-            <a href="/dashboard/connections" className="portal-link">Manage <ArrowRight size={14} /></a>
+            <Link to="/dashboard/connections" className="portal-link inline-flex items-center gap-1 transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.985] motion-reduce:transform-none motion-reduce:transition-none">Manage <ArrowRight size={14} /></Link>
           </div>
           {carrierAccounts.isLoading && !carrierAccounts.data ? <TableSkeleton rows={4} columns={4} /> : <div className="portal-connections-list">
             {stores.map((store) => (

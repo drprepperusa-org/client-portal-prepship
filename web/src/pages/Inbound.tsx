@@ -84,7 +84,7 @@ export default function Inbound() {
             </thead>
             <tbody className="divide-y divide-line">
               {lowStock.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.id} className="transition-colors duration-200 hover:bg-brand-bg/50 motion-reduce:transition-none">
                   <td className="px-5 py-4 font-black text-ink">{item.sku ?? `SKU ${item.id}`}</td>
                   <td className="px-5 py-4 text-ink-2">{item.name ?? 'Unnamed item'}</td>
                   <td className="px-5 py-4 text-ink-2">{safeNumber(item.effectiveStock ?? item.stockQty)}</td>

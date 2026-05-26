@@ -70,7 +70,11 @@ export default function Connections() {
           <h1>Store Connections</h1>
           <p>Paste your store's API credentials and we'll handle the rest: orders and webhooks sync automatically.</p>
         </div>
-        <button type="button" className="portal-add-store" onClick={openAddWizard}>
+        <button
+          type="button"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-card bg-brand px-6 text-sm font-black text-white shadow-md shadow-brand/20 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-brand-dark hover:shadow-lg hover:shadow-brand/25 active:translate-y-0 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 motion-reduce:transform-none motion-reduce:transition-none"
+          onClick={openAddWizard}
+        >
           <Plus size={20} /> Add store
         </button>
       </div>

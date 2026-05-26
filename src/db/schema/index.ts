@@ -20,3 +20,4 @@ export * from './sync-meta';
 export * from './carrier-accounts';
 export * from './fulfillment-outbox';
 export * from './analytics-cache';
+export * from './workflows';
