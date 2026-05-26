@@ -16,27 +16,56 @@ const enabled = (token: string | null) => Boolean(token);
 
 export const portalQueryKeys = {
   root: ['portal'] as const,
-  dashboard: ['portal', 'dashboard'] as const,
-  dailyCounts: ['portal', 'daily-counts'] as const,
-  orders: (status?: OrderStatus | 'all') => ['portal', 'orders', status ?? 'all'] as const,
-  shipments: ['portal', 'shipments'] as const,
-  inventory: ['portal', 'inventory'] as const,
-  billing: ['portal', 'billing'] as const,
-  clients: ['portal', 'clients'] as const,
-  settings: ['portal', 'settings'] as const,
-  me: ['portal', 'me'] as const,
-  syncStatus: ['portal', 'sync-status'] as const,
-  products: ['portal', 'products'] as const,
-  analysisOverview: ['portal', 'analysis-overview'] as const,
-  analysisSkuBreakdown: ['portal', 'analysis-sku-breakdown'] as const,
-  analysisSkuOrders: (inventoryId?: number | null, range?: { from: string; to: string }) =>
-    ['portal', 'analysis-sku-orders', inventoryId ?? 'none', range?.from ?? 'default', range?.to ?? 'default'] as const,
-  dailyShipments: ['portal', 'daily-shipments'] as const,
-  carrierAccounts: ['portal', 'carrier-accounts'] as const,
+  dashboard: (token?: string | null) => ['portal', portalSessionKey(token), 'dashboard'] as const,
+  dailyCounts: (token?: string | null) => ['portal', portalSessionKey(token), 'daily-counts'] as const,
+  orders: (token?: string | null, status?: OrderStatus | 'all') => ['portal', portalSessionKey(token), 'orders', status ?? 'all'] as const,
+  shipments: (token?: string | null) => ['portal', portalSessionKey(token), 'shipments'] as const,
+  inventory: (token?: string | null) => ['portal', portalSessionKey(token), 'inventory'] as const,
+  billing: (token?: string | null) => ['portal', portalSessionKey(token), 'billing'] as const,
+  clients: (token?: string | null) => ['portal', portalSessionKey(token), 'clients'] as const,
+  settings: (token?: string | null) => ['portal', portalSessionKey(token), 'settings'] as const,
+  me: (token?: string | null) => ['portal', portalSessionKey(token), 'me'] as const,
+  syncStatus: (token?: string | null) => ['portal', portalSessionKey(token), 'sync-status'] as const,
+  products: (token?: string | null) => ['portal', portalSessionKey(token), 'products'] as const,
+  analysisOverview: (token?: string | null) => ['portal', portalSessionKey(token), 'analysis-overview'] as const,
+  analysisSkuBreakdown: (token?: string | null) => ['portal', portalSessionKey(token), 'analysis-sku-breakdown'] as const,
+  analysisSkuOrders: (token?: string | null, inventoryId?: number | null, range?: { from: string; to: string }) =>
+    ['portal', portalSessionKey(token), 'analysis-sku-orders', inventoryId ?? 'none', range?.from ?? 'default', range?.to ?? 'default'] as const,
+  dailyShipments: (token?: string | null) => ['portal', portalSessionKey(token), 'daily-shipments'] as const,
+  carrierAccounts: (token?: string | null) => ['portal', portalSessionKey(token), 'carrier-accounts'] as const,
 };
 
 function demoAllowed(token: string) {
   return token === DEMO_TOKEN && import.meta.env.VITE_ENABLE_DEMO === 'true';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function decodeBase64Url(value: string): string {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  return typeof globalThis.atob === 'function' ? globalThis.atob(padded) : '';
+}
+
+function portalSessionKey(token?: string | null) {
+  if (!token) return 'anonymous';
+  if (token === DEMO_TOKEN) return 'demo';
+  const [, payload] = token.split('.');
+  if (!payload) return 'unknown';
+  try {
+    const parsed = JSON.parse(decodeBase64Url(payload)) as unknown;
+    if (!isRecord(parsed)) return 'unknown';
+    const appMetadata = isRecord(parsed.app_metadata) ? parsed.app_metadata : {};
+    return [
+      String(parsed.sub ?? parsed.email ?? 'unknown'),
+      String(appMetadata.clientIds ?? appMetadata.client_ids ?? parsed.clientIds ?? parsed.client_ids ?? ''),
+      String(appMetadata.storeIds ?? appMetadata.store_ids ?? parsed.storeIds ?? parsed.store_ids ?? ''),
+    ].join(':');
+  } catch {
+    return 'unknown';
+  }
 }
 
 function demoCarrierFromBody(input: { id?: number; body: Record<string, unknown> }, fallback?: CarrierAccount): CarrierAccount {
@@ -92,7 +121,7 @@ function demoBackfillResponse(input: { target: BackfillTarget; mode: BackfillMod
 
 export function useDashboardQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.dashboard,
+    queryKey: portalQueryKeys.dashboard(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoDashboard) : portalApi.clientPortal.dashboard(token!)),
     placeholderData: keepPreviousData,
@@ -101,7 +130,7 @@ export function useDashboardQuery(token: string | null) {
 
 export function useDailyCountsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.dailyCounts,
+    queryKey: portalQueryKeys.dailyCounts(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoDailyCounts) : portalApi.clientPortal.dailyCounts(token!)),
     placeholderData: keepPreviousData,
@@ -122,7 +151,7 @@ function demoOrdersForStatus(status: OrderStatus | 'all') {
 
 export function useOrdersQuery(token: string | null, status: OrderStatus | 'all' = 'all') {
   return useQuery({
-    queryKey: portalQueryKeys.orders(status),
+    queryKey: portalQueryKeys.orders(token, status),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.clientPortal.orders(token!, { status })),
   });
@@ -130,7 +159,7 @@ export function useOrdersQuery(token: string | null, status: OrderStatus | 'all'
 
 export function useShipmentsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.shipments,
+    queryKey: portalQueryKeys.shipments(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoShipments) : portalApi.clientPortal.shipments(token!)),
     placeholderData: keepPreviousData,
@@ -139,7 +168,7 @@ export function useShipmentsQuery(token: string | null) {
 
 export function useInventoryQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.inventory,
+    queryKey: portalQueryKeys.inventory(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoInventory) : portalApi.clientPortal.inventory(token!)),
     placeholderData: keepPreviousData,
@@ -148,7 +177,7 @@ export function useInventoryQuery(token: string | null) {
 
 export function useBillingQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.billing,
+    queryKey: portalQueryKeys.billing(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoBilling) : portalApi.clientPortal.billingSummary(token!)),
     placeholderData: keepPreviousData,
@@ -157,7 +186,7 @@ export function useBillingQuery(token: string | null) {
 
 export function useClientsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.clients,
+    queryKey: portalQueryKeys.clients(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -169,7 +198,7 @@ export function useClientsQuery(token: string | null) {
 
 export function useSettingsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.settings,
+    queryKey: portalQueryKeys.settings(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -181,7 +210,7 @@ export function useSettingsQuery(token: string | null) {
 
 export function useMeQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.me,
+    queryKey: portalQueryKeys.me(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -193,7 +222,7 @@ export function useMeQuery(token: string | null) {
 
 export function useSyncStatusQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.syncStatus,
+    queryKey: portalQueryKeys.syncStatus(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoSyncStatus()) : portalApi.syncStatus(token!)),
     placeholderData: keepPreviousData,
@@ -202,7 +231,7 @@ export function useSyncStatusQuery(token: string | null) {
 
 export function useProductsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.products,
+    queryKey: portalQueryKeys.products(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -214,7 +243,7 @@ export function useProductsQuery(token: string | null) {
 
 export function useAnalysisOverviewQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.analysisOverview,
+    queryKey: portalQueryKeys.analysisOverview(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -226,7 +255,7 @@ export function useAnalysisOverviewQuery(token: string | null) {
 
 export function useAnalysisSkuBreakdownQuery(token: string | null, range?: { from: string; to: string }) {
   return useQuery({
-    queryKey: [...portalQueryKeys.analysisSkuBreakdown, range?.from ?? 'default', range?.to ?? 'default'] as const,
+    queryKey: [...portalQueryKeys.analysisSkuBreakdown(token), range?.from ?? 'default', range?.to ?? 'default'] as const,
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -238,7 +267,7 @@ export function useAnalysisSkuBreakdownQuery(token: string | null, range?: { fro
 
 export function useAnalysisSkuOrdersQuery(token: string | null, inventoryId: number | null, range?: { from: string; to: string }) {
   return useQuery({
-    queryKey: portalQueryKeys.analysisSkuOrders(inventoryId, range),
+    queryKey: portalQueryKeys.analysisSkuOrders(token, inventoryId, range),
     enabled: enabled(token) && inventoryId !== null,
     queryFn: () =>
       demoAllowed(token!)
@@ -250,7 +279,7 @@ export function useAnalysisSkuOrdersQuery(token: string | null, inventoryId: num
 
 export function useDailyShipmentsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.dailyShipments,
+    queryKey: portalQueryKeys.dailyShipments(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -262,7 +291,7 @@ export function useDailyShipmentsQuery(token: string | null) {
 
 export function useCarrierAccountsQuery(token: string | null) {
   return useQuery({
-    queryKey: portalQueryKeys.carrierAccounts,
+    queryKey: portalQueryKeys.carrierAccounts(token),
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
@@ -279,8 +308,8 @@ export function useSaveCarrierAccountMutation(token: string | null) {
       if (!token) throw new Error('Missing portal session');
       if (demoAllowed(token)) {
         const existing = client
-          .getQueryData<{ data: CarrierAccount[] }>(portalQueryKeys.carrierAccounts)
-          ?.data.find((account) => account.id === input.id);
+          .getQueryData<{ data: CarrierAccount[] }>(portalQueryKeys.carrierAccounts(token))
+          ?.data.find((account: CarrierAccount) => account.id === input.id);
         return { data: demoCarrierFromBody(input, existing) };
       }
       if (input.id) return portalApi.updateCarrierAccount(token, input.id, input.body);
@@ -289,7 +318,7 @@ export function useSaveCarrierAccountMutation(token: string | null) {
     onSuccess: (result, input) => {
       const saved = result.data;
       if (token && demoAllowed(token) && saved) {
-        client.setQueryData<{ data: CarrierAccount[] }>(portalQueryKeys.carrierAccounts, (previous) => {
+        client.setQueryData<{ data: CarrierAccount[] }>(portalQueryKeys.carrierAccounts(token), (previous) => {
           const rows = previous?.data ?? [];
           if (input.id) {
             return { data: rows.map((account) => (account.id === input.id ? { ...account, ...saved } : account)) };
@@ -298,8 +327,8 @@ export function useSaveCarrierAccountMutation(token: string | null) {
         });
         return;
       }
-      void client.invalidateQueries({ queryKey: portalQueryKeys.carrierAccounts });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.carrierAccounts(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard(token) });
     },
   });
 }
@@ -314,13 +343,13 @@ export function useDeleteCarrierAccountMutation(token: string | null) {
     },
     onSuccess: (_result, id) => {
       if (token && demoAllowed(token)) {
-        client.setQueryData<{ data: CarrierAccount[] }>(portalQueryKeys.carrierAccounts, (previous) => ({
+        client.setQueryData<{ data: CarrierAccount[] }>(portalQueryKeys.carrierAccounts(token), (previous) => ({
           data: (previous?.data ?? []).filter((account) => account.id !== id),
         }));
         return;
       }
-      void client.invalidateQueries({ queryKey: portalQueryKeys.carrierAccounts });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.carrierAccounts(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard(token) });
     },
   });
 }
@@ -334,7 +363,7 @@ export function useSetSettingMutation(token: string | null) {
       return portalApi.setSetting(token, input.key, input.value);
     },
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: portalQueryKeys.settings });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.settings(token) });
     },
   });
 }
@@ -348,15 +377,15 @@ export function useBackfillMutation(token: string | null) {
       return portalApi.backfill(token, input);
     },
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: portalQueryKeys.syncStatus });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.dailyCounts });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.orders('all') });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.shipments });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.inventory });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.products });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.analysisOverview });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.dailyShipments });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.syncStatus(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dailyCounts(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.orders(token, 'all') });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.shipments(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.inventory(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.products(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.analysisOverview(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dailyShipments(token) });
     },
   });
 }
