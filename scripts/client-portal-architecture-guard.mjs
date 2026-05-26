@@ -37,9 +37,13 @@ assert(
 assert(main.includes("'/api/client-portal'"), 'main.ts must protect /api/client-portal');
 assert(main.includes("app.route('/api/client-portal'"), 'main.ts must mount /api/client-portal route');
 assert(
-  vercel.includes('"/api/client-portal/:path*"') &&
-    vercel.includes('prepshipv4-api-l5xc.onrender.com/api/client-portal/:path*'),
-  'vercel.json must preserve /api/client-portal prefix when proxying to Render',
+  vercel.includes('"/api/client-portal/dashboard"') &&
+    vercel.includes('prepshipv4-api-l5xc.onrender.com/dashboard/summary') &&
+    vercel.includes('"/api/client-portal/orders/:path*"') &&
+    vercel.includes('prepshipv4-api-l5xc.onrender.com/orders/:path*') &&
+    vercel.includes('"/api/client-portal/integrations"') &&
+    vercel.includes('prepshipv4-api-l5xc.onrender.com/carrier-accounts'),
+  'vercel.json must map client portal routes to the currently deployed Render API routes',
 );
 assert(auth.includes('signUp') === false, 'frontend auth context must not expose public signUp');
 assert(!/Create one|create account|sign up|signup/i.test(login), 'login page must not advertise public signup');
