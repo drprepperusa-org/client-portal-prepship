@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge, TableSkeleton } from '../components/PortalPrimitives';
-import { StoreBadge, StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
+import type { ColumnDef } from '@tanstack/react-table';
+import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge } from '../components/PortalPrimitives';
+import { StoreFilterBar, storeNameForClient } from '../components/StoreScopeControls';
+import { Table } from '../components/ui/Table';
 import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useClientsQuery, useInventoryQuery, useOrdersQuery } from '../lib/portalQueries';
@@ -110,6 +112,115 @@ export default function Orders() {
     setSelectedOrder(order);
   }
 
+  const orderColumns = useMemo<ColumnDef<PortalOrder>[]>(
+    () => [
+      {
+        id: 'image',
+        header: 'Image',
+        size: 92,
+        minSize: 76,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <OrderThumb
+            order={row.original}
+            imageUrl={orderImageUrl(row.original)}
+            fallback={orderInitial(row.original)}
+          />
+        ),
+      },
+      {
+        id: 'order',
+        header: 'Order',
+        size: 190,
+        minSize: 150,
+        accessorFn: (order) => order.orderNumber ?? order.externalOrderId ?? String(order.id),
+        cell: ({ row }) => {
+          const order = row.original;
+          return (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openOrder(order);
+                }}
+                className="block text-left text-xs font-black text-ink transition-colors hover:text-brand"
+              >
+                {order.orderNumber ?? order.externalOrderId ?? order.id}
+                <span className="mt-0.5 block text-[11px] font-bold text-ink-3">Click for full details</span>
+              </button>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        size: 150,
+        minSize: 132,
+        accessorFn: (order) => order.orderStatus ?? '',
+        cell: ({ row }) => <StatusBadge value={row.original.orderStatus} />,
+      },
+      {
+        id: 'recipient',
+        header: 'Recipient',
+        size: 210,
+        minSize: 170,
+        accessorFn: (order) => order.shipToName ?? '',
+        cell: ({ row }) => {
+          const order = row.original;
+          return (
+            <div className="min-w-0">
+              <div className="truncate text-xs font-semibold text-ink-2">{order.shipToName ?? 'Not available'}</div>
+              <div className="truncate text-[11px] text-ink-3">{[order.shipToCity, order.shipToState].filter(Boolean).join(', ') || 'No city/state'}</div>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'items',
+        header: 'Items',
+        size: 190,
+        minSize: 150,
+        accessorFn: (order) => order.items?.[0]?.sku ?? order.items?.[0]?.name ?? '',
+        cell: ({ row }) => {
+          const order = row.original;
+          return (
+            <div className="min-w-0">
+              <div className="truncate text-xs font-semibold text-ink-2">{order.items?.[0]?.sku ?? 'Mixed items'}</div>
+              <div className="text-[11px] text-ink-3">{order.items?.length ?? 0} line(s)</div>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'carrier',
+        header: 'Carrier',
+        size: 170,
+        minSize: 140,
+        accessorFn: (order) => order.label?.carrierCode ?? order.carrierCode ?? '',
+        cell: ({ row }) => {
+          const order = row.original;
+          return (
+            <div className="min-w-0">
+              <div className="truncate text-xs font-semibold text-ink-2">{order.label?.carrierCode ?? order.carrierCode ?? '-'}</div>
+              <div className="truncate text-[11px] text-ink-3">{order.label?.serviceCode ?? order.serviceCode ?? ''}</div>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'date',
+        header: 'Date',
+        size: 140,
+        minSize: 124,
+        accessorFn: (order) => order.orderDate ?? '',
+        cell: ({ row }) => <span className="text-xs font-semibold text-ink-2">{safeDate(row.original.orderDate)}</span>,
+      },
+    ],
+    [inventoryImages],
+  );
+
   useEffect(() => {
     if (activeClientId !== 'all' && !storeBuckets.some((bucket) => bucket.clientId === activeClientId)) {
       setActiveClientId('all');
@@ -120,7 +231,7 @@ export default function Orders() {
     <>
       <PageHeader
         title="Orders"
-        subtitle="Read-only order visibility for your assigned client/store scope."
+        subtitle="View synced orders by status, recipient, items, and carrier."
         action={<RefreshButton loading={orders.isFetching} onClick={() => void orders.refetch()} />}
       />
       {orders.error ? (
@@ -177,84 +288,19 @@ export default function Orders() {
             ))}
           </div>
         ) : null}
-        {isFirstLoad ? (
-          <TableSkeleton rows={6} columns={6} />
-        ) : (
-          <DataTable
+        <div className="p-4">
+          <Table
             tableId={`orders-${activeStatus}`}
-            rows={filteredRows}
-            getRowKey={(order) => order.id}
+            data={filteredRows}
+            columns={orderColumns}
+            loading={isFirstLoad}
+            skeletonRows={6}
+            defaultPageSize={25}
+            pageSizeOptions={[10, 25, 50, 100]}
             onRowClick={openOrder}
-            columns={[
-              {
-                key: 'image',
-                header: 'Image',
-                width: '92px',
-                render: (order) => <OrderThumb order={order} imageUrl={orderImageUrl(order)} fallback={orderInitial(order)} />,
-              },
-              {
-                key: 'order',
-                header: 'Order',
-                render: (order) => (
-                  <div className="space-y-1.5">
-                    <StoreBadge name={storeNameForClient(clientRows(clients.data), orderClientId(order), orderClientName(order))} compact />
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openOrder(order);
-                      }}
-                      className="block text-left text-xs font-black text-ink transition-colors hover:text-brand"
-                    >
-                      {order.orderNumber ?? order.externalOrderId ?? order.id}
-                      <span className="mt-0.5 block text-[11px] font-bold text-ink-3">Click for full details</span>
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: 'status',
-                header: 'Status',
-                render: (order) => <StatusBadge value={order.orderStatus} />,
-              },
-              {
-                key: 'recipient',
-                header: 'Recipient',
-                render: (order) => (
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold text-ink-2">{order.shipToName ?? 'Not available'}</div>
-                    <div className="truncate text-[11px] text-ink-3">{[order.shipToCity, order.shipToState].filter(Boolean).join(', ') || 'No city/state'}</div>
-                  </div>
-                ),
-              },
-              {
-                key: 'items',
-                header: 'Items',
-                render: (order) => (
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold text-ink-2">{order.items?.[0]?.sku ?? 'Mixed items'}</div>
-                    <div className="text-[11px] text-ink-3">{order.items?.length ?? 0} line(s)</div>
-                  </div>
-                ),
-              },
-              {
-                key: 'carrier',
-                header: 'Carrier',
-                render: (order) => (
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold text-ink-2">{order.label?.carrierCode ?? order.carrierCode ?? '-'}</div>
-                    <div className="truncate text-[11px] text-ink-3">{order.label?.serviceCode ?? order.serviceCode ?? ''}</div>
-                  </div>
-                ),
-              },
-              {
-                key: 'date',
-                header: 'Date',
-                render: (order) => <span className="text-xs font-semibold text-ink-2">{safeDate(order.orderDate)}</span>,
-              },
-            ]}
+            emptyMessage={`No ${activeTab.label.toLowerCase()} orders found`}
           />
-        )}
+        </div>
         {!orders.isLoading && filteredRows.length === 0 ? <EmptyState title={`No ${activeTab.label.toLowerCase()} orders found`} body={activeTab.empty} /> : null}
       </Panel>
       <OrderDetailDrawer

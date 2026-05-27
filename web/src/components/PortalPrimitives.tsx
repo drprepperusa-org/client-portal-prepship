@@ -20,10 +20,6 @@ export function PageHeader({
   return (
     <div className="portal-section-header mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
       <div className="min-w-0">
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-[11px] font-black uppercase text-brand ring-1 ring-brand/15">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
-          Client operations
-        </div>
         <h1 className="text-2xl font-black text-ink md:text-[32px] md:leading-tight">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-ink-2">{subtitle}</p>
       </div>
@@ -301,6 +297,7 @@ export function DataTable<T>({
               return (
                 <tr
                   key={rowKey}
+                  data-selected={selected ? 'true' : 'false'}
                   onClick={() => onRowClick?.(row)}
                   className={`border-b border-line transition-colors duration-200 ease-out last:border-b-0 hover:bg-brand-bg/45 focus-within:bg-brand-bg/45 motion-reduce:transition-none ${
                     selected ? 'bg-brand-bg/55' : ''

@@ -35,7 +35,7 @@ export default function Inventory() {
     <>
       <PageHeader
         title="Inventory"
-        subtitle="Current active SKU balances visible to your assigned client/store scope."
+        subtitle="Review active SKU balances, reorder levels, and recent item movement."
         action={<RefreshButton loading={inventory.isFetching} onClick={() => void inventory.refetch()} />}
       />
       {inventory.error ? (
@@ -66,7 +66,6 @@ export default function Inventory() {
                 header: 'SKU',
                 render: (item) => (
                   <div className="min-w-0 space-y-1">
-                    <StoreBadge name={storeNameForClient(stores, clientIdOf(item), item.storeName ?? item.clientName)} compact />
                     <div className="truncate font-black text-ink">{item.sku ?? `SKU ${item.id}`}</div>
                     <div className="truncate text-xs font-semibold text-ink-3">{item.name ?? 'Unnamed item'}</div>
                   </div>

@@ -26,10 +26,10 @@ export default {
       // Fallback triplets match the default Indigo theme.
       colors: {
         brand: {
-          DEFAULT: 'rgb(var(--brand-rgb, 42 91 215) / <alpha-value>)',
-          dark: 'rgb(var(--brand-2-rgb, 26 72 192) / <alpha-value>)',
-          bg: 'rgb(var(--brand-bg-rgb, 238 242 255) / <alpha-value>)',
-          border: 'rgb(var(--brand-border-rgb, 195 208 245) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--brand-rgb, 3 169 244) / <alpha-value>)',
+          dark: 'rgb(var(--brand-2-rgb, 2 119 189) / <alpha-value>)',
+          bg: 'rgb(var(--brand-bg-rgb, 232 247 255) / <alpha-value>)',
+          border: 'rgb(var(--brand-border-rgb, 151 218 250) / <alpha-value>)',
         },
         ok: {
           DEFAULT: 'rgb(var(--ok-rgb, 22 163 74) / <alpha-value>)',

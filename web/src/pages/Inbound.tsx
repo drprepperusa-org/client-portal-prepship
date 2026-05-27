@@ -20,7 +20,7 @@ export default function Inbound() {
     <>
       <PageHeader
         title="Inbound"
-        subtitle="Receiving visibility for SKUs in your assigned client/store scope."
+        subtitle="Monitor receiving watchlists, restock needs, and inbound SKU activity."
         action={<RefreshButton loading={inventory.isFetching} onClick={() => { void inventory.refetch(); }} />}
       />
       {inventory.error ? (

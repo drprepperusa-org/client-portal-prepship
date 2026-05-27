@@ -46,7 +46,7 @@ export default function Reports() {
     <>
       <PageHeader
         title="Reports"
-        subtitle="Live client-scoped operating totals from the same PrepShip backend."
+        subtitle="Track operating totals, shipment activity, billing, and daily order trends."
         action={<RefreshButton loading={queries.some((query) => query.isFetching)} onClick={() => queries.forEach((query) => void query.refetch())} />}
       />
       {queries.find((query) => query.error)?.error ? (
