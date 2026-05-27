@@ -63,6 +63,9 @@ export type PortalShipment = {
   orderId?: number | null;
   orderNumber?: string | null;
   clientId?: number | null;
+  clientName?: string | null;
+  storeId?: number | string | null;
+  storeName?: string | null;
   carrierCode?: string | null;
   serviceCode?: string | null;
   trackingNumber?: string | null;
@@ -75,6 +78,9 @@ export type PortalShipment = {
 export type PortalInventoryItem = {
   id: number;
   clientId?: number | null;
+  clientName?: string | null;
+  storeIds?: Array<string | number> | null;
+  storeName?: string | null;
   sku?: string | null;
   name?: string | null;
   stockQty?: number | string | null;
@@ -182,6 +188,10 @@ export type PortalSetting = {
 export type CarrierAccount = {
   id?: number;
   clientId?: number | null;
+  clientName?: string | null;
+  storeName?: string | null;
+  storeIds?: Array<string | number> | null;
+  assignedClientIds?: number[];
   provider?: string | null;
   label?: string | null;
   accountIdentifier?: string | null;

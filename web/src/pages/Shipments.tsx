@@ -1,8 +1,17 @@
+import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
+import { StoreBadge, StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
 import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useShipmentsQuery } from '../lib/portalQueries';
+import { useClientsQuery, useShipmentsQuery } from '../lib/portalQueries';
+import type { PortalClient } from '../types/portal';
+
+function clientRows(value: unknown): PortalClient[] {
+  if (Array.isArray(value)) return value as PortalClient[];
+  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) return (value as { data: PortalClient[] }).data;
+  return [];
+}
 
 function safeExternalUrl(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -16,8 +25,22 @@ function safeExternalUrl(value: unknown): string | null {
 
 export default function Shipments() {
   const auth = useAuth();
+  const clients = useClientsQuery(auth.accessToken);
   const shipments = useShipmentsQuery(auth.accessToken);
+  const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
+  const [search, setSearch] = useState('');
   const isFirstLoad = shipments.isLoading && !shipments.data;
+  const stores = clientRows(clients.data);
+  const rows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (shipments.data?.data ?? []).filter((shipment) => {
+      const clientId = clientIdOf(shipment);
+      if (activeClientId !== 'all' && clientId !== activeClientId) return false;
+      if (!query) return true;
+      const store = storeNameForClient(stores, clientId, shipment.storeName ?? shipment.clientName);
+      return [store, shipment.orderNumber, shipment.trackingNumber, shipment.labelTracking, shipment.carrierCode, shipment.serviceCode].filter(Boolean).join(' ').toLowerCase().includes(query);
+    });
+  }, [activeClientId, search, shipments.data?.data, stores]);
 
   return (
     <>
@@ -34,19 +57,21 @@ export default function Shipments() {
         />
       ) : null}
       <Panel title="Shipment history" right={<span className="text-xs font-bold text-ink-3">{shipments.data?.pagination?.total ?? 0} shipments</span>}>
+        <StoreFilterBar clients={stores} value={activeClientId} onChange={setActiveClientId} search={search} onSearchChange={setSearch} label="Shipment store" />
         {isFirstLoad ? (
           <TableSkeleton rows={6} columns={5} />
         ) : (
           <DataTable
             tableId="shipments-history"
-            rows={shipments.data?.data ?? []}
+            rows={rows}
             getRowKey={(shipment) => shipment.id}
             columns={[
               {
                 key: 'order',
                 header: 'Order',
                 render: (shipment) => (
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-1">
+                    <StoreBadge name={storeNameForClient(stores, clientIdOf(shipment), shipment.storeName ?? shipment.clientName)} compact />
                     <div className="truncate font-black text-ink">{shipment.orderNumber ?? `Order ${shipment.orderId ?? '-'}`}</div>
                     <div className="text-xs font-semibold text-ink-3">{safeDate(shipment.shipDate)}</div>
                   </div>
@@ -100,7 +125,7 @@ export default function Shipments() {
             ]}
           />
         )}
-        {!shipments.isLoading && (shipments.data?.data.length ?? 0) === 0 ? <EmptyState title="No shipments found" body="Shipped labels and tracking will appear here after fulfillment." /> : null}
+        {!shipments.isLoading && rows.length === 0 ? <EmptyState title="No shipments found" body="Shipped labels and tracking for the selected store scope will appear here." /> : null}
       </Panel>
     </>
   );

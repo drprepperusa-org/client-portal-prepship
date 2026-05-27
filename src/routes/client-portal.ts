@@ -244,8 +244,13 @@ app.get('/orders', async (c) => {
     status ? eq(orders.orderStatus, status) : undefined,
   );
   const rows = await db
-    .select()
+    .select({
+      order: orders,
+      clientName: clients.name,
+      storeIds: clients.storeIds,
+    })
     .from(orders)
+    .leftJoin(clients, eq(clients.id, orders.clientId))
     .where(where)
     .orderBy(desc(orders.orderDate), desc(orders.id))
     .limit(pageSize)
@@ -254,7 +259,7 @@ app.get('/orders', async (c) => {
   const count = countRows[0]?.count ?? rows.length;
   await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId });
   return c.json({
-    data: rows.map((row) => toPortalOrderDto(row, { includeFinancials: scope.canViewFinancials })),
+    data: rows.map((row) => toPortalOrderDto({ ...row.order, clientName: row.clientName, storeName: row.clientName }, { includeFinancials: scope.canViewFinancials })),
     pagination: {
       page,
       pageSize,
@@ -273,10 +278,15 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
   const id = Number(c.req.param('id'));
-  const [row] = await db.select().from(orders).where(and(eq(orders.id, id), orderScopePredicate(scope))).limit(1);
+  const [row] = await db
+    .select({ order: orders, clientName: clients.name })
+    .from(orders)
+    .leftJoin(clients, eq(clients.id, orders.clientId))
+    .where(and(eq(orders.id, id), orderScopePredicate(scope)))
+    .limit(1);
   if (!row) return c.json({ error: 'Order not found' }, 404);
   await recordPortalAudit('portal.orders.detail.view', scope, { orderId: id });
-  return c.json({ data: toPortalOrderDto(row, { includeFinancials: scope.canViewFinancials }) });
+  return c.json({ data: toPortalOrderDto({ ...row.order, clientName: row.clientName, storeName: row.clientName }, { includeFinancials: scope.canViewFinancials }) });
 });
 
 app.get('/shipments', async (c) => {
@@ -289,8 +299,14 @@ app.get('/shipments', async (c) => {
     shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) })
   );
   const rows = await db
-    .select()
+    .select({
+      shipment: shipments,
+      clientName: clients.name,
+      storeId: orders.storeId,
+    })
     .from(shipments)
+    .leftJoin(clients, eq(clients.id, shipments.clientId))
+    .leftJoin(orders, eq(orders.id, shipments.orderId))
     .where(where)
     .orderBy(desc(shipments.shipDate), desc(shipments.id))
     .limit(pageSize)
@@ -299,7 +315,7 @@ app.get('/shipments', async (c) => {
   const count = countRows[0]?.count ?? rows.length;
   await recordPortalAudit('portal.shipments.list', scope, { page, pageSize });
   return c.json({
-    data: rows.map(toPortalShipmentDto),
+    data: rows.map((row) => toPortalShipmentDto({ ...row.shipment, clientName: row.clientName, storeName: row.clientName, storeId: row.storeId })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
   });
 });
@@ -314,8 +330,13 @@ app.get('/inventory', async (c) => {
     inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) })
   );
   const rows = await db
-    .select()
+    .select({
+      item: inventory,
+      clientName: clients.name,
+      storeIds: clients.storeIds,
+    })
     .from(inventory)
+    .leftJoin(clients, eq(clients.id, inventory.clientId))
     .where(where)
     .orderBy(desc(inventory.updatedAt), desc(inventory.id))
     .limit(pageSize)
@@ -324,7 +345,7 @@ app.get('/inventory', async (c) => {
   const count = countRows[0]?.count ?? rows.length;
   await recordPortalAudit('portal.inventory.list', scope, { page, pageSize });
   return c.json({
-    data: rows.map(toPortalInventoryDto),
+    data: rows.map((row) => toPortalInventoryDto({ ...row.item, clientName: row.clientName, storeName: row.clientName, storeIds: row.storeIds })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
   });
 });

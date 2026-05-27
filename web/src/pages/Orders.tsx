@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge, TableSkeleton } from '../components/PortalPrimitives';
+import { StoreBadge, StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
 import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useInventoryQuery, useOrdersQuery } from '../lib/portalQueries';
-import type { OrderItem, OrderStatus, PortalInventoryItem, PortalOrder } from '../types/portal';
+import { useClientsQuery, useInventoryQuery, useOrdersQuery } from '../lib/portalQueries';
+import type { OrderItem, OrderStatus, PortalClient, PortalInventoryItem, PortalOrder } from '../types/portal';
 
 const orderTabs: Array<{ value: OrderStatus; label: string; empty: string }> = [
   { value: 'awaiting_shipment', label: 'Awaiting shipment', empty: 'Awaiting shipment orders will appear here after they sync into PrepShip.' },
@@ -11,12 +12,22 @@ const orderTabs: Array<{ value: OrderStatus; label: string; empty: string }> = [
   { value: 'cancelled', label: 'Cancelled', empty: 'Cancelled orders will appear here when available in your scoped account.' },
 ];
 
+function clientRows(value: unknown): PortalClient[] {
+  if (Array.isArray(value)) return value as PortalClient[];
+  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
+    return (value as { data: PortalClient[] }).data;
+  }
+  return [];
+}
+
 export default function Orders() {
   const auth = useAuth();
   const [activeStatus, setActiveStatus] = useState<OrderStatus>('awaiting_shipment');
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
+  const [search, setSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PortalOrder | null>(null);
   const orders = useOrdersQuery(auth.accessToken, activeStatus);
+  const clients = useClientsQuery(auth.accessToken);
   const inventory = useInventoryQuery(auth.accessToken);
   const isFirstLoad = orders.isLoading && !orders.data;
   const activeTab = useMemo(() => orderTabs.find((tab) => tab.value === activeStatus) ?? orderTabs[0]!, [activeStatus]);
@@ -27,7 +38,7 @@ export default function Orders() {
     for (const order of rows) {
       const clientId = orderClientId(order);
       if (clientId == null) continue;
-      names.set(clientId, orderClientName(order));
+      names.set(clientId, storeNameForClient(clientRows(clients.data), clientId, orderClientName(order)));
       rowCounts.set(clientId, (rowCounts.get(clientId) ?? 0) + 1);
     }
     const totals = orders.data?.pagination?.clientTotals ?? [];
@@ -40,10 +51,27 @@ export default function Orders() {
       }))
       .filter((bucket) => bucket.count > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [orders.data?.pagination?.clientTotals, rows]);
+  }, [clients.data, orders.data?.pagination?.clientTotals, rows]);
   const filteredRows = useMemo(
-    () => activeClientId === 'all' ? rows : rows.filter((order) => orderClientId(order) === activeClientId),
-    [activeClientId, rows],
+    () => {
+      const query = search.trim().toLowerCase();
+      return rows.filter((order) => {
+        const clientId = orderClientId(order);
+        if (activeClientId !== 'all' && clientId !== activeClientId) return false;
+        if (!query) return true;
+        const storeName = storeNameForClient(clientRows(clients.data), clientId, orderClientName(order));
+        return [
+          storeName,
+          order.orderNumber,
+          order.externalOrderId,
+          order.shipToName,
+          order.items?.[0]?.sku,
+          order.items?.[0]?.name,
+          order.carrierCode,
+        ].filter(Boolean).join(' ').toLowerCase().includes(query);
+      });
+    },
+    [activeClientId, clients.data, rows, search],
   );
   const visibleTotal = activeClientId === 'all'
     ? orders.data?.pagination?.total ?? rows.length
@@ -106,6 +134,14 @@ export default function Orders() {
         title="Order activity"
         right={<span className="text-xs font-bold text-ink-3">{visibleTotal} orders</span>}
       >
+        <StoreFilterBar
+          clients={clientRows(clients.data)}
+          value={activeClientId}
+          onChange={setActiveClientId}
+          search={search}
+          onSearchChange={setSearch}
+          label="Order store"
+        />
         <div className="flex gap-2 overflow-x-auto border-b border-line px-4 pt-2" role="tablist" aria-label="Order status">
           {orderTabs.map((tab) => (
             <button
@@ -160,17 +196,20 @@ export default function Orders() {
                 key: 'order',
                 header: 'Order',
                 render: (order) => (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openOrder(order);
-                    }}
-                    className="text-left text-xs font-black text-ink transition-colors hover:text-brand"
-                  >
-                    {order.orderNumber ?? order.externalOrderId ?? order.id}
-                    <span className="mt-0.5 block text-[11px] font-bold text-ink-3">Click for full details</span>
-                  </button>
+                  <div className="space-y-1.5">
+                    <StoreBadge name={storeNameForClient(clientRows(clients.data), orderClientId(order), orderClientName(order))} compact />
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openOrder(order);
+                      }}
+                      className="block text-left text-xs font-black text-ink transition-colors hover:text-brand"
+                    >
+                      {order.orderNumber ?? order.externalOrderId ?? order.id}
+                      <span className="mt-0.5 block text-[11px] font-bold text-ink-3">Click for full details</span>
+                    </button>
+                  </div>
                 ),
               },
               {

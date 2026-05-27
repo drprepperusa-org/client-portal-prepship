@@ -28,9 +28,16 @@ function safeItems(value: unknown): Array<Record<string, unknown>> {
   });
 }
 
-export function toPortalOrderDto(row: Order, options: { includeFinancials?: boolean } = {}) {
+export function toPortalOrderDto(
+  row: Order & { clientName?: string | null; storeName?: string | null },
+  options: { includeFinancials?: boolean } = {}
+) {
   return {
     id: row.id,
+    clientId: row.clientId,
+    clientName: row.clientName ?? row.storeName ?? null,
+    storeId: row.storeId,
+    storeName: row.storeName ?? row.clientName ?? null,
     orderNumber: row.orderNumber,
     externalOrderId: row.externalOrderId,
     sourceProvider: row.sourceProvider,
@@ -52,12 +59,15 @@ export function toPortalOrderDto(row: Order, options: { includeFinancials?: bool
   };
 }
 
-export function toPortalShipmentDto(row: Shipment) {
+export function toPortalShipmentDto(row: Shipment & { clientName?: string | null; storeName?: string | null; storeId?: number | null }) {
   return {
     id: row.id,
     orderId: row.orderId,
     orderNumber: row.orderNumber,
     clientId: row.clientId,
+    clientName: row.clientName ?? row.storeName ?? null,
+    storeId: row.storeId ?? null,
+    storeName: row.storeName ?? row.clientName ?? null,
     carrierCode: row.carrierCode,
     serviceCode: row.serviceCode,
     trackingNumber: row.trackingNumber,
@@ -67,10 +77,13 @@ export function toPortalShipmentDto(row: Shipment) {
   };
 }
 
-export function toPortalInventoryDto(row: Inventory & { soldLast30Days?: number | string | null }) {
+export function toPortalInventoryDto(row: Inventory & { soldLast30Days?: number | string | null; clientName?: string | null; storeName?: string | null; storeIds?: number[] | null }) {
   return {
     id: row.id,
     clientId: row.clientId,
+    clientName: row.clientName ?? row.storeName ?? null,
+    storeIds: row.storeIds ?? [],
+    storeName: row.storeName ?? row.clientName ?? null,
     sku: row.sku,
     name: row.name,
     stockQty: row.stockQty,
@@ -92,6 +105,9 @@ export function toPortalIntegrationDto(row: {
   source?: string | null;
   type?: string;
   assignedClientIds?: number[];
+  clientName?: string | null;
+  storeName?: string | null;
+  storeIds?: number[] | null;
   active?: boolean | null;
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
@@ -108,5 +124,8 @@ export function toPortalIntegrationDto(row: {
     updatedAt: iso(row.updatedAt),
     type: row.type ?? 'carrier',
     assignedClientIds: row.assignedClientIds ?? [],
+    clientName: row.clientName ?? row.storeName ?? null,
+    storeName: row.storeName ?? row.clientName ?? null,
+    storeIds: row.storeIds ?? [],
   };
 }

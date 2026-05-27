@@ -1,13 +1,35 @@
+import { useMemo, useState } from 'react';
 import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
+import { StoreBadge, StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useInventoryQuery } from '../lib/portalQueries';
-import type { PortalInventoryItem } from '../types/portal';
+import { useClientsQuery, useInventoryQuery } from '../lib/portalQueries';
+import type { PortalClient, PortalInventoryItem } from '../types/portal';
+
+function clientRows(value: unknown): PortalClient[] {
+  if (Array.isArray(value)) return value as PortalClient[];
+  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) return (value as { data: PortalClient[] }).data;
+  return [];
+}
 
 export default function Inventory() {
   const auth = useAuth();
+  const clients = useClientsQuery(auth.accessToken);
   const inventory = useInventoryQuery(auth.accessToken);
+  const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
+  const [search, setSearch] = useState('');
   const isFirstLoad = inventory.isLoading && !inventory.data;
+  const stores = clientRows(clients.data);
+  const rows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (inventory.data?.data ?? []).filter((item) => {
+      const clientId = clientIdOf(item);
+      if (activeClientId !== 'all' && clientId !== activeClientId) return false;
+      if (!query) return true;
+      const store = storeNameForClient(stores, clientId, item.storeName ?? item.clientName);
+      return [store, item.sku, item.name].filter(Boolean).join(' ').toLowerCase().includes(query);
+    });
+  }, [activeClientId, inventory.data?.data, search, stores]);
 
   return (
     <>
@@ -24,12 +46,13 @@ export default function Inventory() {
         />
       ) : null}
       <Panel title="Stock levels" right={<span className="text-xs font-bold text-ink-3">{inventory.data?.pagination?.total ?? 0} SKUs</span>}>
+        <StoreFilterBar clients={stores} value={activeClientId} onChange={setActiveClientId} search={search} onSearchChange={setSearch} label="Inventory store" />
         {isFirstLoad ? (
           <TableSkeleton rows={7} columns={7} />
         ) : (
           <DataTable
             tableId="inventory-stock-levels"
-            rows={inventory.data?.data ?? []}
+            rows={rows}
             getRowKey={(item) => item.id}
             columns={[
               {
@@ -42,7 +65,8 @@ export default function Inventory() {
                 key: 'sku',
                 header: 'SKU',
                 render: (item) => (
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-1">
+                    <StoreBadge name={storeNameForClient(stores, clientIdOf(item), item.storeName ?? item.clientName)} compact />
                     <div className="truncate font-black text-ink">{item.sku ?? `SKU ${item.id}`}</div>
                     <div className="truncate text-xs font-semibold text-ink-3">{item.name ?? 'Unnamed item'}</div>
                   </div>
@@ -88,7 +112,7 @@ export default function Inventory() {
             ]}
           />
         )}
-        {!inventory.isLoading && (inventory.data?.data.length ?? 0) === 0 ? <EmptyState title="No inventory found" body="Active SKUs for your scoped account will appear here." /> : null}
+        {!inventory.isLoading && rows.length === 0 ? <EmptyState title="No inventory found" body="Active SKUs for your selected store scope will appear here." /> : null}
       </Panel>
     </>
   );
