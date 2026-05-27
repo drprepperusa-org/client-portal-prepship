@@ -191,7 +191,7 @@ export function useClientsQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve({ data: [{ id: 1, name: 'DrPrepperUSA', active: true }] })
-        : portalApi.clients(token!),
+        : portalApi.clientPortal.clients(token!),
     placeholderData: keepPreviousData,
   });
 }
@@ -203,7 +203,7 @@ export function useSettingsQuery(token: string | null) {
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve({ data: [{ key: 'defaultView', value: 'dashboard' }, { key: 'pageSize', value: '25' }] })
-        : portalApi.settings(token!),
+        : portalApi.clientPortal.settings(token!),
     placeholderData: keepPreviousData,
   });
 }
@@ -224,7 +224,7 @@ export function useSyncStatusQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.syncStatus(token),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoSyncStatus()) : portalApi.syncStatus(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoSyncStatus()) : portalApi.clientPortal.syncStatus(token!)),
     placeholderData: keepPreviousData,
   });
 }
@@ -374,7 +374,7 @@ export function useBackfillMutation(token: string | null) {
     mutationFn: async (input: { target: BackfillTarget; mode: BackfillMode; pageSize?: number }) => {
       if (!token) throw new Error('Missing portal session');
       if (demoAllowed(token)) return demoBackfillResponse(input);
-      return portalApi.backfill(token, input);
+      return portalApi.clientPortal.backfill(token, input);
     },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: portalQueryKeys.syncStatus(token) });

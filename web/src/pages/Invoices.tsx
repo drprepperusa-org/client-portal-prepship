@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
-import { apiText, defaultRange, safeMoney, safeNumber } from '../lib/api';
+import { defaultRange, portalApi, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { DEMO_TOKEN } from '../lib/demo-data';
-import { useBillingQuery } from '../lib/portalQueries';
+import { useBillingQuery, useMeQuery } from '../lib/portalQueries';
 
 export default function Invoices() {
   const auth = useAuth();
+  const me = useMeQuery(auth.accessToken);
   const billing = useBillingQuery(auth.accessToken);
   const range = defaultRange();
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -23,7 +24,7 @@ export default function Invoices() {
       const html =
         auth.accessToken === DEMO_TOKEN
           ? `<h1>DrPrepperUSA Invoice</h1><p>Demo invoice for client ${clientId}</p>`
-          : await apiText(auth.accessToken, '/billing/invoice', { clientId, dateFrom, dateTo });
+          : await portalApi.clientPortal.invoice(auth.accessToken, { clientId, dateFrom, dateTo });
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const opened = window.open(url, '_blank', 'noopener,noreferrer');
@@ -43,8 +44,8 @@ export default function Invoices() {
     <>
       <PageHeader
         title="Invoices"
-        subtitle="Billing summaries are shown only when your PrepShip role has invoice visibility."
-        action={<RefreshButton loading={billing.isFetching} onClick={() => void billing.refetch()} />}
+        subtitle="Billing summaries are visible only for admin accounts or portal users explicitly granted billing visibility."
+        action={<RefreshButton loading={billing.isFetching || me.isFetching} onClick={() => { void billing.refetch(); void me.refetch(); }} />}
       />
       {billing.error ? (
         <div className="mb-5">
@@ -88,7 +89,16 @@ export default function Invoices() {
             ))}
           </div>
         )}
-        {!billing.isLoading && (billing.data?.data.length ?? 0) === 0 ? <EmptyState title="No invoices available" body="If you expect invoices here, ask PrepShip to grant billing visibility to your portal account." /> : null}
+        {!billing.isLoading && (billing.data?.data.length ?? 0) === 0 ? (
+          <EmptyState
+            title={me.data?.canViewFinancials ? 'No invoices available' : 'Invoice visibility not enabled'}
+            body={
+              me.data?.canViewFinancials
+                ? 'No billable invoice rows were found for your current scoped stores in this billing window.'
+                : 'This store-level account does not have billing visibility. An admin can grant financials:read when needed.'
+            }
+          />
+        ) : null}
       </Panel>
     </>
   );

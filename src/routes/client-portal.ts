@@ -5,7 +5,12 @@ import { carrierAccountClients, carrierAccounts } from '../db/schema/carrier-acc
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
 import { orders } from '../db/schema/orders';
+import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
+import { billingSummary } from '../services/billing';
+import { getSyncStatus } from '../services/order-sync';
+import { getShipmentSyncStatus } from '../services/shipment-sync';
+import { getPersistedWorkerStatus } from '../services/worker-status';
 import { isAdminEmail } from '../lib/admin-emails';
 import {
   toPortalIntegrationDto,
@@ -47,22 +52,49 @@ function intArrayLiteral(values: number[]) {
   return sql`array[${sql.join(values.map((id) => sql`${id}`), sql`, `)}]::int[]`;
 }
 
+function requestedClientId(c: Context) {
+  return parsePositiveInt(c.req.query('clientId'));
+}
+
+function requestedStoreId(c: Context) {
+  return parsePositiveInt(c.req.query('storeId'));
+}
+
 function clientScopePredicate(scope: ClientPortalScope): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   if (!scope.clientIds.length) return sql`false`;
   return inArray(clients.id, scope.clientIds);
 }
 
-function orderScopePredicate(scope: ClientPortalScope): SQL | undefined {
+function clientFilterPredicate(scope: ClientPortalScope, clientId?: number | null, storeId?: number | null): SQL | undefined {
+  return and(
+    clientScopePredicate(scope),
+    clientId ? eq(clients.id, clientId) : undefined,
+    storeId ? sql`${clients.storeIds} && ${intArrayLiteral([storeId])}` : undefined,
+  );
+}
+
+function orderScopePredicate(
+  scope: ClientPortalScope,
+  filters: { clientId?: number | null; storeId?: number | null } = {}
+): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   const predicates: SQL[] = [];
   if (scope.clientIds.length) predicates.push(inArray(orders.clientId, scope.clientIds));
   if (scope.storeIds.length) predicates.push(inArray(orders.storeId, scope.storeIds));
   if (!predicates.length) return sql`false`;
-  return predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+  const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+  return and(
+    scopePredicate,
+    filters.clientId ? eq(orders.clientId, filters.clientId) : undefined,
+    filters.storeId ? eq(orders.storeId, filters.storeId) : undefined,
+  );
 }
 
-function inventoryScopePredicate(scope: ClientPortalScope): SQL | undefined {
+function inventoryScopePredicate(
+  scope: ClientPortalScope,
+  filters: { clientId?: number | null; storeId?: number | null } = {}
+): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   const predicates: SQL[] = [];
   if (scope.clientIds.length) predicates.push(inArray(inventory.clientId, scope.clientIds));
@@ -74,10 +106,24 @@ function inventoryScopePredicate(scope: ClientPortalScope): SQL | undefined {
     )`);
   }
   if (!predicates.length) return sql`false`;
-  return predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+  const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+  return and(
+    scopePredicate,
+    filters.clientId ? eq(inventory.clientId, filters.clientId) : undefined,
+    filters.storeId
+      ? sql`exists (
+          select 1 from ${clients} filtered_client
+          where filtered_client.id = ${inventory.clientId}
+            and filtered_client.store_ids && ${intArrayLiteral([filters.storeId])}
+        )`
+      : undefined,
+  );
 }
 
-function shipmentScopePredicate(scope: ClientPortalScope): SQL | undefined {
+function shipmentScopePredicate(
+  scope: ClientPortalScope,
+  filters: { clientId?: number | null; storeId?: number | null } = {}
+): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   const predicates: SQL[] = [];
   if (scope.clientIds.length) predicates.push(inArray(shipments.clientId, scope.clientIds));
@@ -89,7 +135,18 @@ function shipmentScopePredicate(scope: ClientPortalScope): SQL | undefined {
     )`);
   }
   if (!predicates.length) return sql`false`;
-  return predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+  const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+  return and(
+    scopePredicate,
+    filters.clientId ? eq(shipments.clientId, filters.clientId) : undefined,
+    filters.storeId
+      ? sql`exists (
+          select 1 from ${orders} filtered_order
+          where filtered_order.id = ${shipments.orderId}
+            and filtered_order.store_id = ${filters.storeId}
+        )`
+      : undefined,
+  );
 }
 
 function scopeOrResponse(c: Context) {
@@ -106,8 +163,13 @@ app.get('/me', async (c) => {
     email: scope.email ?? null,
     role: scope.role ?? null,
     isAdmin: isAdminEmail(scope.email),
+    isGlobal: scope.isGlobal,
+    isRestricted: scope.isRestricted,
     clientIds: scope.clientIds,
     storeIds: scope.storeIds,
+    permissions: scope.permissions,
+    canViewFinancials: scope.canViewFinancials,
+    canViewCredentials: scope.canViewCredentials,
   });
 });
 
@@ -116,7 +178,11 @@ app.get('/dashboard', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('from')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('to')) ?? new Date();
-  const where = and(orderScopePredicate(scope), gte(orders.orderDate, from), lte(orders.orderDate, to));
+  const where = and(
+    orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    gte(orders.orderDate, from),
+    lte(orders.orderDate, to)
+  );
   const rows = await db.select().from(orders).where(where).limit(1000);
   const revenue = scope.canViewFinancials
     ? rows.reduce((sum, row) => sum + Number(row.orderTotal ?? 0), 0)
@@ -136,7 +202,7 @@ app.get('/daily-counts', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('from')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('to')) ?? new Date();
-  const scopePredicate = orderScopePredicate(scope);
+  const scopePredicate = orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) });
   const rows = await db.execute<{
     day: string;
     order_status: string;
@@ -172,10 +238,10 @@ app.get('/orders', async (c) => {
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const status = c.req.query('status');
   const clientId = parsePositiveInt(c.req.query('clientId'));
+  const storeId = parsePositiveInt(c.req.query('storeId'));
   const where = and(
-    orderScopePredicate(scope),
+    orderScopePredicate(scope, { clientId, storeId }),
     status ? eq(orders.orderStatus, status) : undefined,
-    clientId ? eq(orders.clientId, clientId) : undefined,
   );
   const rows = await db
     .select()
@@ -218,7 +284,10 @@ app.get('/shipments', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
-  const where = and(eq(shipments.voided, false), shipmentScopePredicate(scope));
+  const where = and(
+    eq(shipments.voided, false),
+    shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) })
+  );
   const rows = await db
     .select()
     .from(shipments)
@@ -240,7 +309,10 @@ app.get('/inventory', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
-  const where = and(eq(inventory.active, true), inventoryScopePredicate(scope));
+  const where = and(
+    eq(inventory.active, true),
+    inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) })
+  );
   const rows = await db
     .select()
     .from(inventory)
@@ -260,7 +332,7 @@ app.get('/inventory', async (c) => {
 app.get('/analysis', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const rows = await db.select().from(inventory).where(and(eq(inventory.active, true), inventoryScopePredicate(scope))).limit(200);
+  const rows = await db.select().from(inventory).where(and(eq(inventory.active, true), inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }))).limit(200);
   await recordPortalAudit('portal.analysis.view', scope);
   return c.json({
     data: rows.map((row) => ({
@@ -288,7 +360,7 @@ app.get('/daily-shipments', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('dateFrom')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('dateTo')) ?? new Date();
-  const scopePredicate = shipmentScopePredicate(scope);
+  const scopePredicate = shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) });
   const rows = await db.execute<{ day: string; shipments: number }>(sql`
     select to_char(ship_date::date, 'YYYY-MM-DD') as day,
            count(*)::int as shipments
@@ -307,8 +379,101 @@ app.get('/daily-shipments', async (c) => {
 app.get('/reports', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  await recordPortalAudit('portal.reports.view', scope);
-  return c.json({ data: [], grandTotal: 0 });
+  if (!scope.canViewFinancials) {
+    await recordPortalAudit('portal.reports.denied', scope);
+    return c.json({ data: [], grandTotal: 0, billingVisible: false });
+  }
+  const dateFrom = c.req.query('dateFrom') ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const dateTo = c.req.query('dateTo') ?? new Date().toISOString();
+  const summary = await billingSummary({
+    clientId: requestedClientId(c) ?? undefined,
+    dateFrom,
+    dateTo,
+    scopeClientIds: scope.clientIds,
+    scopeStoreIds: scope.storeIds,
+    scopeRestricted: scope.isRestricted,
+  });
+  await recordPortalAudit('portal.reports.view', scope, { rows: summary.clients.length });
+  return c.json({ data: summary.clients, clients: summary.clients, grandTotal: summary.grandTotal, billingVisible: true });
+});
+
+app.get('/invoice', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials) return c.text('Invoice visibility required', 403);
+  const clientId = requestedClientId(c);
+  const dateFrom = c.req.query('dateFrom');
+  const dateTo = c.req.query('dateTo');
+  if (!clientId || !dateFrom || !dateTo) return c.text('clientId, dateFrom, and dateTo are required', 400);
+  const [client] = await db
+    .select({ id: clients.id, name: clients.name })
+    .from(clients)
+    .where(clientFilterPredicate(scope, clientId, requestedStoreId(c)))
+    .limit(1);
+  if (!client) return c.text('Client not found', 404);
+  const summary = await billingSummary({
+    clientId,
+    dateFrom,
+    dateTo,
+    scopeClientIds: scope.clientIds,
+    scopeStoreIds: scope.storeIds,
+    scopeRestricted: scope.isRestricted,
+  });
+  const row = summary.clients[0];
+  const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
+  return c.html(`<!doctype html><html><head><meta charset="utf-8"><title>PrepShip Invoice</title><style>body{font-family:Arial,sans-serif;margin:40px;color:#172033}table{border-collapse:collapse;width:100%;margin-top:24px}td,th{border:1px solid #d7e0ea;padding:10px;text-align:left}th{background:#eef6fc}</style></head><body><h1>PrepShip Invoice</h1><p><strong>${client.name}</strong></p><p>${dateFrom.slice(0, 10)} to ${dateTo.slice(0, 10)}</p><table><tbody><tr><th>Billable orders</th><td>${row?.orderCount ?? 0}</td></tr><tr><th>Pick/pack</th><td>${money(row?.pickPackTotal)}</td></tr><tr><th>Packages</th><td>${money(row?.packageTotal)}</td></tr><tr><th>Shipping</th><td>${money(row?.shippingTotal)}</td></tr><tr><th>Total</th><td><strong>${money(row?.grandTotal)}</strong></td></tr></tbody></table></body></html>`);
+});
+
+app.get('/clients', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const rows = await db
+    .select({ id: clients.id, name: clients.name, email: clients.email, active: clients.active, storeIds: clients.storeIds })
+    .from(clients)
+    .where(and(eq(clients.active, true), clientFilterPredicate(scope, requestedClientId(c), requestedStoreId(c))))
+    .orderBy(clients.name)
+    .limit(200);
+  await recordPortalAudit('portal.clients.list', scope, { rows: rows.length });
+  return c.json({ data: rows });
+});
+
+app.get('/settings', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    await recordPortalAudit('portal.settings.scoped_empty', scope);
+    return c.json({ data: [] });
+  }
+  const rows = await db.select().from(settings).limit(200);
+  await recordPortalAudit('portal.settings.list', scope, { rows: rows.length });
+  return c.json({ data: rows });
+});
+
+app.get('/sync-status', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const [orderStatus, shipmentStatus, worker] = await Promise.all([
+    getSyncStatus({ includeOrderCount: false }),
+    getShipmentSyncStatus({ includeShipmentCount: false }),
+    getPersistedWorkerStatus(),
+  ]);
+  return c.json({
+    status: orderStatus.lastSyncedAt ? 'done' : 'idle',
+    lastSyncAt: orderStatus.lastSyncedAt,
+    orders: orderStatus,
+    shipments: shipmentStatus,
+    worker,
+    queue: { enabled: false, started: false },
+  });
+});
+
+app.post('/backfill', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  return c.json({ error: 'Backfill is disabled on the client portal API. Use the PrepShip stable admin API.' }, 403);
 });
 
 app.get('/integrations', async (c) => {

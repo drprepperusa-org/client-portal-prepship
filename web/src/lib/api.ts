@@ -79,6 +79,14 @@ export type PortalMe = {
   id: string | null;
   email: string | null;
   isAdmin: boolean;
+  isGlobal?: boolean;
+  isRestricted?: boolean;
+  role?: string | null;
+  clientIds?: number[];
+  storeIds?: number[];
+  permissions?: string[];
+  canViewFinancials?: boolean;
+  canViewCredentials?: boolean;
 };
 
 function queryString(params: Record<string, QueryValue>) {
@@ -342,10 +350,19 @@ export function defaultRange(days = 30) {
 export const portalApi = {
   clientPortal: {
     me(token: string) {
-      return apiGet<PortalMe & { role?: string | null; clientIds?: number[]; storeIds?: number[] }>(
-        token,
-        '/api/client-portal/me',
-      );
+      return apiGet<PortalMe>(token, '/api/client-portal/me');
+    },
+    clients(token: string) {
+      return apiGet<Array<PortalClient> | { data: PortalClient[] }>(token, '/api/client-portal/clients');
+    },
+    settings(token: string) {
+      return apiGet<{ data: PortalSetting[] }>(token, '/api/client-portal/settings');
+    },
+    syncStatus(token: string) {
+      return apiGet<Record<string, unknown>>(token, '/api/client-portal/sync-status');
+    },
+    backfill(token: string, body: { target: BackfillTarget; mode: BackfillMode; pageSize?: number }) {
+      return apiSend<BackfillResponse>(token, 'POST', '/api/client-portal/backfill', body, {}, BACKFILL_TIMEOUT_MS);
     },
     dashboard(token: string, range = defaultRange()) {
       return apiGetScopedDashboard(token, '/api/client-portal/dashboard', range);
@@ -418,6 +435,9 @@ export const portalApi = {
     },
     activity(token: string) {
       return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/api/client-portal/activity');
+    },
+    invoice(token: string, params: { clientId: number; dateFrom: string; dateTo: string }) {
+      return apiText(token, '/api/client-portal/invoice', params);
     },
   },
   dashboard(token: string, range = defaultRange()) {
