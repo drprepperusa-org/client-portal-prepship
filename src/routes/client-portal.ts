@@ -39,6 +39,14 @@ function parseDate(value: string | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function asTimestamp(value: Date) {
+  return value.toISOString();
+}
+
+function intArrayLiteral(values: number[]) {
+  return sql`array[${sql.join(values.map((id) => sql`${id}`), sql`, `)}]::int[]`;
+}
+
 function clientScopePredicate(scope: ClientPortalScope): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   if (!scope.clientIds.length) return sql`false`;
@@ -62,7 +70,7 @@ function inventoryScopePredicate(scope: ClientPortalScope): SQL | undefined {
     predicates.push(sql`exists (
       select 1 from ${clients} scoped_client
       where scoped_client.id = ${inventory.clientId}
-        and scoped_client.store_ids && ${scope.storeIds}::int[]
+        and scoped_client.store_ids && ${intArrayLiteral(scope.storeIds)}
     )`);
   }
   if (!predicates.length) return sql`false`;
@@ -128,6 +136,7 @@ app.get('/daily-counts', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('from')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('to')) ?? new Date();
+  const scopePredicate = orderScopePredicate(scope);
   const rows = await db.execute<{
     day: string;
     order_status: string;
@@ -137,9 +146,9 @@ app.get('/daily-counts', async (c) => {
            order_status,
            count(*)::int as count
     from orders
-    where order_date >= ${from}
-      and order_date <= ${to}
-      ${orderScopePredicate(scope) ? sql`and ${orderScopePredicate(scope)}` : sql``}
+    where order_date >= ${asTimestamp(from)}
+      and order_date <= ${asTimestamp(to)}
+      ${scopePredicate ? sql`and ${scopePredicate}` : sql``}
     group by day, order_status
     order by day asc
   `);
@@ -279,14 +288,15 @@ app.get('/daily-shipments', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('dateFrom')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('dateTo')) ?? new Date();
+  const scopePredicate = shipmentScopePredicate(scope);
   const rows = await db.execute<{ day: string; shipments: number }>(sql`
     select to_char(ship_date::date, 'YYYY-MM-DD') as day,
            count(*)::int as shipments
     from shipments
     where coalesce(voided, false) = false
-      and ship_date >= ${from}
-      and ship_date <= ${to}
-      ${shipmentScopePredicate(scope) ? sql`and ${shipmentScopePredicate(scope)}` : sql``}
+      and ship_date >= ${asTimestamp(from)}
+      and ship_date <= ${asTimestamp(to)}
+      ${scopePredicate ? sql`and ${scopePredicate}` : sql``}
     group by day
     order by day asc
   `);
