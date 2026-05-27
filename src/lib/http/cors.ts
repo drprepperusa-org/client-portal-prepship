@@ -12,6 +12,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'https://prepshipv3.vercel.app',
   'https://prepshipv3.drprepperusa.com',
   'https://prepshipv3-dr-prepper-usas-projects.vercel.app',
+  'https://client-portal-prepship.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:5174',
