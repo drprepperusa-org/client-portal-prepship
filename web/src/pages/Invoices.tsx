@@ -90,6 +90,7 @@ export default function Invoices() {
   const [rowAdjustments, setRowAdjustments] = useState<Record<string, InvoiceRowAdjustment>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<InvoiceEditDraft | null>(null);
+  const [preEditAdjustment, setPreEditAdjustment] = useState<InvoiceRowAdjustment | null>(null);
   const detailRows = invoiceDetails.data?.data ?? [];
   const adjustedDetailRows = detailRows.map((row) => effectiveInvoiceRow(row));
   const includedRows = adjustedDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
@@ -150,32 +151,53 @@ export default function Invoices() {
     setRowAdjustments({});
     setEditingKey(null);
     setEditDraft(null);
+    setPreEditAdjustment(null);
   }
 
   function startEditRow(row: BillingInvoiceDetailRow) {
     const rowKey = invoiceRowKey(row);
     setEditingKey(rowKey);
+    setPreEditAdjustment(rowAdjustments[rowKey] ?? null);
     setEditDraft(editDraftFromRow(effectiveInvoiceRow(row)));
   }
 
   function cancelEditRow() {
+    if (editingKey) {
+      setRowAdjustments((current) => {
+        const next = { ...current };
+        if (preEditAdjustment) next[editingKey] = preEditAdjustment;
+        else delete next[editingKey];
+        return next;
+      });
+    }
     setEditingKey(null);
     setEditDraft(null);
+    setPreEditAdjustment(null);
   }
 
   function updateEditDraft(field: keyof InvoiceEditDraft, value: string) {
-    setEditDraft((current) => {
-      if (!current) return current;
-      const next = { ...current, [field]: value };
-      if (field !== 'rowTotal' && editingKey) {
-        const sourceRow = detailRows.find((row) => invoiceRowKey(row) === editingKey);
-        if (sourceRow) {
-          const preview = adjustedInvoiceRow(effectiveInvoiceRow(sourceRow), next);
-          next.rowTotal = calculatedInvoiceRowTotal(preview).toFixed(2);
-        }
+    if (!editDraft) return;
+    const next = { ...editDraft, [field]: value };
+    if (field !== 'rowTotal' && editingKey) {
+      const sourceRow = detailRows.find((row) => invoiceRowKey(row) === editingKey);
+      if (sourceRow) {
+        const preview = adjustedInvoiceRow(effectiveInvoiceRow(sourceRow), next);
+        next.rowTotal = calculatedInvoiceRowTotal(preview).toFixed(2);
       }
-      return next;
-    });
+    }
+    setEditDraft(next);
+    if (editingKey) {
+      setRowAdjustments((adjustments) => ({
+        ...adjustments,
+        [editingKey]: {
+          qty: next.qty,
+          pickpackTotal: next.pickpackTotal,
+          packageTotal: next.packageTotal,
+          shippingTotal: next.shippingTotal,
+          rowTotal: next.rowTotal,
+        },
+      }));
+    }
   }
 
   function saveEditRow(row: BillingInvoiceDetailRow) {
@@ -191,7 +213,9 @@ export default function Invoices() {
         rowTotal: editDraft.rowTotal,
       },
     }));
-    cancelEditRow();
+    setEditingKey(null);
+    setEditDraft(null);
+    setPreEditAdjustment(null);
   }
 
   function resetEditedRow(row: BillingInvoiceDetailRow) {
@@ -478,7 +502,9 @@ export default function Invoices() {
                 type="button"
                 onClick={() => {
                   setRowAdjustments({});
-                  cancelEditRow();
+                  setEditingKey(null);
+                  setEditDraft(null);
+                  setPreEditAdjustment(null);
                 }}
                 className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[11px] font-black text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand"
               >
