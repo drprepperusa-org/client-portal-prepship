@@ -27,6 +27,11 @@ function moneyValue(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
+function quantityValue(value: unknown) {
+  const numberValue = Number(value ?? 0);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
 function escapeHtml(value: unknown) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -111,6 +116,7 @@ export default function Invoices() {
     if (clientDetailRows.length === 0) {
       return {
         orderCount: fallback.orderCount,
+        qtyTotal: undefined,
         pickPackTotal: pickPackTotal(fallback),
         packageTotal: fallback.packageTotal,
         grandTotal: fallback.grandTotal,
@@ -120,6 +126,7 @@ export default function Invoices() {
     const billableRows = clientDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
     return {
       orderCount: billableRows.length,
+      qtyTotal: billableRows.reduce((total, row) => total + quantityValue(row.qty), 0),
       pickPackTotal: billableRows.reduce((total, row) => total + moneyValue(row.pickpackTotal), 0),
       packageTotal: billableRows.reduce((total, row) => total + moneyValue(row.packageTotal), 0),
       grandTotal: billableRows.reduce((total, row) => total + moneyValue(row.rowTotal), 0),
@@ -130,6 +137,7 @@ export default function Invoices() {
     const clientDetailRows = detailRows.filter((row) => row.clientId === clientId);
     const billableRows = clientDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
     const totals = {
+      qtyTotal: billableRows.reduce((total, row) => total + quantityValue(row.qty), 0),
       pickpackTotal: billableRows.reduce((total, row) => total + moneyValue(row.pickpackTotal), 0),
       additionalTotal: billableRows.reduce((total, row) => total + moneyValue(row.additionalTotal), 0),
       packageTotal: billableRows.reduce((total, row) => total + moneyValue(row.packageTotal), 0),
@@ -161,18 +169,19 @@ export default function Invoices() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PrepShip Invoice - ${escapeHtml(clientName)} - ${escapeHtml(range.from)} to ${escapeHtml(range.to)}</title>
   <style>
-    *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0 auto;max-width:1120px;padding:40px 48px;color:#111827;background:#fff;font-size:13px}.print-tip{margin-bottom:24px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 14px}.notice{margin-bottom:18px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:10px;padding:10px 14px;font-weight:700}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:22px}.brand h1{font-size:28px;line-height:1;margin:0 0 6px;font-weight:800}.muted{color:#6b7280}.client{text-align:right}.client strong{display:block;font-size:18px}.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:22px 0}.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:800}.value{margin-top:4px;font-size:17px;font-weight:800}.total{display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:14px 18px;margin-bottom:24px}.total b{font-size:24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;color:#374151;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}tbody tr:nth-child(even){background:#fafafa}.num{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2563eb}.bold{font-weight:800}tfoot td{font-weight:800;background:#f3f4f6}.footer{border-top:1px solid #e5e7eb;color:#9ca3af;margin-top:24px;padding-top:12px;text-align:center;font-size:11px}@media print{.print-tip{display:none}body{padding:18px;max-width:none}}
+    *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0 auto;max-width:1120px;padding:40px 48px;color:#111827;background:#fff;font-size:13px}.print-tip{margin-bottom:24px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 14px}.notice{margin-bottom:18px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:10px;padding:10px 14px;font-weight:700}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:22px}.brand h1{font-size:28px;line-height:1;margin:0 0 6px;font-weight:800}.muted{color:#6b7280}.client{text-align:right}.client strong{display:block;font-size:18px}.summary{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:22px 0}.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:800}.value{margin-top:4px;font-size:17px;font-weight:800}.total{display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:14px 18px;margin-bottom:24px}.total b{font-size:24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;color:#374151;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}tbody tr:nth-child(even){background:#fafafa}.num{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2563eb}.bold{font-weight:800}tfoot td{font-weight:800;background:#f3f4f6}.footer{border-top:1px solid #e5e7eb;color:#9ca3af;margin-top:24px;padding-top:12px;text-align:center;font-size:11px}@media print{.print-tip{display:none}body{padding:18px;max-width:none}}
   </style>
 </head>
 <body>
   <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong>, then choose <strong>Save as PDF</strong>.</div>
-  <div class="notice">Adjusted invoice preview: ${escapeHtml(safeNumber(excludedRowCount))} selected row(s) excluded from this portal total.</div>
+  ${excludedRowCount ? `<div class="notice">Adjusted invoice preview: ${escapeHtml(safeNumber(excludedRowCount))} selected row(s) excluded from this portal total.</div>` : ''}
   <div class="header">
     <div class="brand"><h1>PrepShip Invoice</h1><div class="muted">DR Prepper 3PL Services</div><div class="muted">Generated ${escapeHtml(generated)}</div></div>
     <div class="client"><strong>${escapeHtml(clientName)}</strong><span class="muted">${escapeHtml(range.from)} to ${escapeHtml(range.to)}</span></div>
   </div>
   <div class="summary">
-    <div class="card"><div class="label">Billable orders</div><div class="value">${escapeHtml(safeNumber(billableRows.length))}</div></div>
+    <div class="card"><div class="label">Orders</div><div class="value">${escapeHtml(safeNumber(billableRows.length))}</div></div>
+    <div class="card"><div class="label">Qty</div><div class="value">${escapeHtml(safeNumber(totals.qtyTotal))}</div></div>
     <div class="card"><div class="label">Pick/pack</div><div class="value">${escapeHtml(safeMoney(totals.pickpackTotal))}</div></div>
     <div class="card"><div class="label">Packages</div><div class="value">${escapeHtml(safeMoney(totals.packageTotal))}</div></div>
     <div class="card"><div class="label">Shipping</div><div class="value">${escapeHtml(safeMoney(totals.shippingTotal))}</div></div>
@@ -182,7 +191,7 @@ export default function Invoices() {
   <table>
     <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Packages</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="10">No billable order rows found for this adjusted period.</td></tr>'}</tbody>
-    <tfoot><tr><td colspan="5">${escapeHtml(safeNumber(billableRows.length))} orders</td><td class="num">${escapeHtml(safeMoney(totals.pickpackTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.additionalTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.packageTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.shippingTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.grandTotal))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="5">${escapeHtml(safeNumber(billableRows.length))} orders / ${escapeHtml(safeNumber(totals.qtyTotal))} qty</td><td class="num">${escapeHtml(safeMoney(totals.pickpackTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.additionalTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.packageTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.shippingTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.grandTotal))}</td></tr></tfoot>
   </table>
   <div class="footer">PrepShip adjusted invoice preview generated ${escapeHtml(generated)} for ${escapeHtml(clientName)}.</div>
 </body>
@@ -198,8 +207,9 @@ export default function Invoices() {
     try {
       const clientName = storeNameForClient(clientRows(clients.data), clientId);
       const hasClientExclusions = detailRows.some((row) => row.clientId === clientId && excludedKeys.has(invoiceRowKey(row)));
+      const hasClientDetailRows = detailRows.some((row) => row.clientId === clientId);
       const html =
-        hasClientExclusions
+        hasClientExclusions || hasClientDetailRows
           ? adjustedInvoiceHtml(clientId, clientName)
           : auth.accessToken === DEMO_TOKEN
           ? `<h1>DrPrepperUSA Invoice</h1><p>Demo invoice for client ${clientId}</p>`
@@ -305,13 +315,17 @@ export default function Invoices() {
             {(billing.data?.data ?? []).map((row, index) => {
               const adjusted = adjustedSummaryForClient(row.clientId, row);
               return (
-                <div key={row.clientId ?? index} className="grid gap-4 px-5 py-5 md:grid-cols-[1fr_repeat(3,0.7fr)_auto] md:items-center">
+                <div key={row.clientId ?? index} className="grid gap-4 px-5 py-5 md:grid-cols-[1fr_repeat(4,0.7fr)_auto] md:items-center">
                   <div>
                     <StoreBadge name={storeNameForClient(clientRows(clients.data), row.clientId, row.clientName)} />
                     <div className="mt-1 text-xs font-semibold text-ink-3">
-                      {safeNumber(adjusted.orderCount)} billable orders
+                      {safeNumber(adjusted.orderCount)} orders
                       {excludedRowCount ? <span className="ml-2 text-danger">({safeNumber(excludedRowCount)} excluded)</span> : null}
                     </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase text-ink-3">Qty</div>
+                    <div className="mt-1 text-sm font-black text-ink">{adjusted.qtyTotal === undefined ? '-' : safeNumber(adjusted.qtyTotal)}</div>
                   </div>
                   <div>
                     <div className="text-[10px] font-black uppercase text-ink-3">Pick/pack</div>
