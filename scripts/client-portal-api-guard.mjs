@@ -73,6 +73,12 @@ for (const forbidden of [
 assert(scope.includes('client_user') && scope.includes('read_only_support'), 'scope must treat external roles explicitly');
 assert(scope.includes('client portal scope required'), 'scope must deny unscoped external users');
 assert(audit.includes('password') && audit.includes('token') && audit.includes('credentials'), 'audit sanitizer must strip sensitive keys');
+assert(
+  route.includes('function activeClientPredicate') &&
+    route.includes('where coalesce(active_client.active, true) = true') &&
+    route.includes('activeClientPredicate('),
+  'client portal order/count routes must filter inactive clients the same way /clients does',
+);
 assert(api.includes('clientPortal:'), 'portalApi must expose clientPortal namespace');
 assert(
   api.includes("'/dashboard/summary'") &&

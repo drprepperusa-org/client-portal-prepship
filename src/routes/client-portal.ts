@@ -74,6 +74,26 @@ function clientFilterPredicate(scope: ClientPortalScope, clientId?: number | nul
   );
 }
 
+function activeClientPredicate(orderTable: typeof orders = orders): SQL {
+  return sql`(
+    ${orderTable.clientId} in (
+      select active_client.id
+      from ${clients} active_client
+      where coalesce(active_client.active, true) = true
+    )
+    or (
+      ${orderTable.clientId} is null
+      and ${orderTable.storeId} is not null
+      and exists (
+        select 1
+        from ${clients} active_client
+        where coalesce(active_client.active, true) = true
+          and active_client.store_ids && array[${orderTable.storeId}]::int[]
+      )
+    )
+  )`;
+}
+
 function orderScopePredicate(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null } = {}
@@ -180,6 +200,7 @@ app.get('/dashboard', async (c) => {
   const to = parseDate(c.req.query('to')) ?? new Date();
   const where = and(
     orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    activeClientPredicate(),
     gte(orders.orderDate, from),
     lte(orders.orderDate, to)
   );
@@ -215,6 +236,7 @@ app.get('/daily-counts', async (c) => {
     where order_date >= ${asTimestamp(from)}
       and order_date <= ${asTimestamp(to)}
       ${scopePredicate ? sql`and ${scopePredicate}` : sql``}
+      and ${activeClientPredicate()}
     group by day, order_status
     order by day asc
   `);
@@ -241,6 +263,7 @@ app.get('/orders', async (c) => {
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const where = and(
     orderScopePredicate(scope, { clientId, storeId }),
+    activeClientPredicate(),
     status ? eq(orders.orderStatus, status) : undefined,
   );
   const rows = await db
@@ -282,7 +305,7 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
     .select({ order: orders, clientName: clients.name })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
-    .where(and(eq(orders.id, id), orderScopePredicate(scope)))
+    .where(and(eq(orders.id, id), orderScopePredicate(scope), activeClientPredicate()))
     .limit(1);
   if (!row) return c.json({ error: 'Order not found' }, 404);
   await recordPortalAudit('portal.orders.detail.view', scope, { orderId: id });
