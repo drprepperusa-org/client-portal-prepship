@@ -174,6 +174,89 @@ function scopeOrResponse(c: Context) {
   return isClientPortalScope(scope) ? scope : scope;
 }
 
+type PortalInvoiceDetailRow = {
+  client_id: number;
+  client_name: string | null;
+  order_id: number | null;
+  order_number: string | null;
+  ship_date: string | null;
+  qty: string;
+  pickpack_total: string;
+  additional_total: string;
+  package_total: string;
+  shipping_total: string;
+  storage_total: string;
+  row_total: string;
+};
+
+function invoiceLineScopePredicate(scope: ClientPortalScope): SQL | undefined {
+  if (!scope.isRestricted) return undefined;
+  const predicates: SQL[] = [];
+  if (scope.clientIds.length) predicates.push(sql`b.client_id in (${sql.join(scope.clientIds.map((id) => sql`${id}`), sql`, `)})`);
+  if (scope.storeIds.length) {
+    predicates.push(sql`exists (
+      select 1 from ${orders} scoped_order
+      where scoped_order.id = b.order_id
+        and scoped_order.store_id in (${sql.join(scope.storeIds.map((id) => sql`${id}`), sql`, `)})
+    )`);
+  }
+  if (!predicates.length) return sql`false`;
+  return predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
+}
+
+async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?: number | null; dateFrom: string; dateTo: string }) {
+  const rows = await db.execute<PortalInvoiceDetailRow>(sql`
+    select
+      b.client_id,
+      c.name as client_name,
+      b.order_id,
+      b.order_number,
+      to_char(min(b.ship_date)::date, 'YYYY-MM-DD') as ship_date,
+      coalesce(sum(b.qty), 0)::text as qty,
+      coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
+      coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
+      coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
+      coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
+      coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      coalesce(sum(b.total_cost), 0)::text as row_total
+    from billing_line_items b
+    left join ${clients} c on c.id = b.client_id
+    where coalesce(c.active, true) = true
+      and b.ship_date >= ${input.dateFrom}::timestamptz
+      and b.ship_date <= ${input.dateTo}::timestamptz
+      ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
+      ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
+    group by b.client_id, c.name, b.order_id, b.order_number
+    order by min(b.ship_date) desc, b.order_id desc
+    limit 1000
+  `);
+
+  return rows.map((row) => ({
+    clientId: row.client_id,
+    clientName: row.client_name,
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    shipDate: row.ship_date,
+    qty: row.qty,
+    pickpackTotal: row.pickpack_total,
+    additionalTotal: row.additional_total,
+    packageTotal: row.package_total,
+    shippingTotal: row.shipping_total,
+    storageTotal: row.storage_total,
+    rowTotal: row.row_total,
+  }));
+}
+
+function escHtml(value: string | number | null | undefined): string {
+  return value === null || value === undefined
+    ? ''
+    : String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 app.get('/me', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -441,6 +524,22 @@ app.get('/reports', async (c) => {
   return c.json({ data: summary.clients, clients: summary.clients, grandTotal: summary.grandTotal, billingVisible: true });
 });
 
+app.get('/invoice-details', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials) {
+    await recordPortalAudit('portal.invoice_details.denied', scope);
+    return c.json({ data: [], billingVisible: false }, 403);
+  }
+  const dateFrom = c.req.query('dateFrom');
+  const dateTo = c.req.query('dateTo');
+  if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const clientId = requestedClientId(c);
+  const rows = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
+  await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length });
+  return c.json({ data: rows, billingVisible: true });
+});
+
 app.get('/invoice', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -465,7 +564,55 @@ app.get('/invoice', async (c) => {
   });
   const row = summary.clients[0];
   const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
-  return c.html(`<!doctype html><html><head><meta charset="utf-8"><title>PrepShip Invoice</title><style>body{font-family:Arial,sans-serif;margin:40px;color:#172033}table{border-collapse:collapse;width:100%;margin-top:24px}td,th{border:1px solid #d7e0ea;padding:10px;text-align:left}th{background:#eef6fc}</style></head><body><h1>PrepShip Invoice</h1><p><strong>${client.name}</strong></p><p>${dateFrom.slice(0, 10)} to ${dateTo.slice(0, 10)}</p><table><tbody><tr><th>Billable orders</th><td>${row?.orderCount ?? 0}</td></tr><tr><th>Pick/pack</th><td>${money(row?.pickPackTotal)}</td></tr><tr><th>Packages</th><td>${money(row?.packageTotal)}</td></tr><tr><th>Shipping</th><td>${money(row?.shippingTotal)}</td></tr><tr><th>Total</th><td><strong>${money(row?.grandTotal)}</strong></td></tr></tbody></table></body></html>`);
+  const details = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
+  const fromDisplay = dateFrom.slice(0, 10);
+  const toDisplay = dateTo.slice(0, 10);
+  const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const detailRows = details
+    .map((detail) => `
+      <tr>
+        <td>${escHtml(detail.shipDate)}</td>
+        <td class="mono">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
+        <td class="num">${Number(detail.qty ?? 0)}</td>
+        <td class="num">${money(detail.pickpackTotal)}</td>
+        <td class="num">${Number(detail.additionalTotal ?? 0) > 0 ? money(detail.additionalTotal) : '-'}</td>
+        <td class="num">${Number(detail.packageTotal ?? 0) > 0 ? money(detail.packageTotal) : '-'}</td>
+        <td class="num">${Number(detail.shippingTotal ?? 0) > 0 ? money(detail.shippingTotal) : '-'}</td>
+        <td class="num bold">${money(detail.rowTotal)}</td>
+      </tr>`)
+    .join('');
+  return c.html(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrepShip Invoice - ${escHtml(client.name)} - ${fromDisplay} to ${toDisplay}</title>
+  <style>
+    *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0 auto;max-width:1120px;padding:40px 48px;color:#111827;background:#fff;font-size:13px}.print-tip{margin-bottom:24px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 14px}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:22px}.brand h1{font-size:28px;line-height:1;margin:0 0 6px;font-weight:800}.muted{color:#6b7280}.client{text-align:right}.client strong{display:block;font-size:18px}.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:22px 0}.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:800}.value{margin-top:4px;font-size:17px;font-weight:800}.total{display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:14px 18px;margin-bottom:24px}.total b{font-size:24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;color:#374151;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}tbody tr:nth-child(even){background:#fafafa}.num{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2563eb}.bold{font-weight:800}tfoot td{font-weight:800;background:#f3f4f6}.footer{border-top:1px solid #e5e7eb;color:#9ca3af;margin-top:24px;padding-top:12px;text-align:center;font-size:11px}@media print{.print-tip{display:none}body{padding:18px;max-width:none}}
+  </style>
+</head>
+<body>
+  <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong>, then choose <strong>Save as PDF</strong>.</div>
+  <div class="header">
+    <div class="brand"><h1>PrepShip Invoice</h1><div class="muted">DR Prepper 3PL Services</div><div class="muted">Generated ${escHtml(generated)}</div></div>
+    <div class="client"><strong>${escHtml(client.name)}</strong><span class="muted">${fromDisplay} to ${toDisplay}</span></div>
+  </div>
+  <div class="summary">
+    <div class="card"><div class="label">Billable orders</div><div class="value">${row?.orderCount ?? 0}</div></div>
+    <div class="card"><div class="label">Pick/pack</div><div class="value">${money(row?.pickPackTotal)}</div></div>
+    <div class="card"><div class="label">Packages</div><div class="value">${money(row?.packageTotal)}</div></div>
+    <div class="card"><div class="label">Shipping</div><div class="value">${money(row?.shippingTotal)}</div></div>
+    <div class="card"><div class="label">Storage</div><div class="value">${money(row?.storageTotal)}</div></div>
+  </div>
+  <div class="total"><span>Total amount due</span><b>${money(row?.grandTotal)}</b></div>
+  <table>
+    <thead><tr><th>Ship date</th><th>Order</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Packages</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
+    <tbody>${detailRows || '<tr><td colspan="8">No billable order rows found for this period.</td></tr>'}</tbody>
+    <tfoot><tr><td colspan="3">${row?.orderCount ?? 0} orders</td><td class="num">${money(row?.pickPackTotal)}</td><td class="num">${money(row?.additionalTotal)}</td><td class="num">${money(row?.packageTotal)}</td><td class="num">${money(row?.shippingTotal)}</td><td class="num">${money(row?.grandTotal)}</td></tr></tfoot>
+  </table>
+  <div class="footer">PrepShip invoice generated ${escHtml(generated)} for ${escHtml(client.name)}.</div>
+</body>
+</html>`);
 });
 
 app.get('/clients', async (c) => {

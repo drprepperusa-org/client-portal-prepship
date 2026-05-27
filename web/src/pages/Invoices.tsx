@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
-import { EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
+import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
-import { defaultRange, portalApi, safeMoney, safeNumber } from '../lib/api';
+import { defaultRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { DEMO_TOKEN } from '../lib/demo-data';
-import { useBillingQuery, useClientsQuery, useMeQuery } from '../lib/portalQueries';
-import type { PortalClient } from '../types/portal';
+import { useBillingQuery, useClientsQuery, useInvoiceDetailsQuery, useMeQuery } from '../lib/portalQueries';
+import type { BillingInvoiceDetailRow, PortalClient } from '../types/portal';
 
 function clientRows(value: unknown): PortalClient[] {
   if (Array.isArray(value)) return value as PortalClient[];
@@ -19,6 +19,7 @@ export default function Invoices() {
   const me = useMeQuery(auth.accessToken);
   const clients = useClientsQuery(auth.accessToken);
   const billing = useBillingQuery(auth.accessToken);
+  const invoiceDetails = useInvoiceDetailsQuery(auth.accessToken);
   const range = defaultRange();
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [busyClient, setBusyClient] = useState<number | null>(null);
@@ -54,7 +55,7 @@ export default function Invoices() {
       <PageHeader
         title="Invoices"
         subtitle="Billing summaries are visible only for admin accounts or portal users explicitly granted billing visibility."
-        action={<RefreshButton loading={billing.isFetching || me.isFetching} onClick={() => { void billing.refetch(); void me.refetch(); }} />}
+        action={<RefreshButton loading={billing.isFetching || me.isFetching || invoiceDetails.isFetching} onClick={() => { void billing.refetch(); void me.refetch(); void invoiceDetails.refetch(); }} />}
       />
       {billing.error ? (
         <div className="mb-5">
@@ -66,6 +67,15 @@ export default function Invoices() {
         </div>
       ) : null}
       {downloadError ? <div className="mb-5"><ErrorNotice message={downloadError} /></div> : null}
+      {invoiceDetails.error ? (
+        <div className="mb-5">
+          <ErrorPanel
+            message={invoiceDetails.error instanceof Error ? invoiceDetails.error.message : String(invoiceDetails.error)}
+            loading={invoiceDetails.isFetching}
+            onRetry={() => void invoiceDetails.refetch()}
+          />
+        </div>
+      ) : null}
       <Panel
         title="Assigned invoice scope"
         right={<span className="text-xs font-bold text-ink-3">{auth.user?.email ?? me.data?.email ?? 'Portal account'}</span>}
@@ -120,6 +130,82 @@ export default function Invoices() {
                 ? 'No billable invoice rows were found for your current scoped stores in this billing window.'
                 : 'This store-level account does not have billing visibility. An admin can grant financials:read when needed.'
             }
+          />
+        ) : null}
+      </Panel>
+      <div className="h-5" />
+      <Panel
+        title="Billable order details"
+        right={<span className="text-xs font-bold text-ink-3">{safeNumber(invoiceDetails.data?.data.length ?? 0)} order row(s)</span>}
+      >
+        {invoiceDetails.isLoading && !invoiceDetails.data ? (
+          <TableSkeleton rows={6} columns={8} />
+        ) : (
+          <DataTable<BillingInvoiceDetailRow>
+            tableId="invoice-order-details"
+            rows={invoiceDetails.data?.data ?? []}
+            getRowKey={(row) => `${row.clientId ?? 'client'}-${row.orderId ?? row.orderNumber ?? row.shipDate ?? 'row'}`}
+            columns={[
+              {
+                key: 'client',
+                header: 'Client',
+                width: '190px',
+                render: (row) => <StoreBadge name={storeNameForClient(clientRows(clients.data), row.clientId, row.clientName ?? undefined)} />,
+              },
+              {
+                key: 'order',
+                header: 'Order',
+                width: '145px',
+                render: (row) => <span className="font-black text-ink">{row.orderNumber ?? row.orderId ?? 'Unassigned'}</span>,
+              },
+              {
+                key: 'shipDate',
+                header: 'Ship date',
+                width: '130px',
+                render: (row) => <span className="font-semibold text-ink-2">{safeDate(row.shipDate)}</span>,
+              },
+              {
+                key: 'qty',
+                header: 'Qty',
+                className: 'right',
+                width: '90px',
+                render: (row) => <span className="font-black tabular-nums text-ink">{safeNumber(row.qty)}</span>,
+              },
+              {
+                key: 'pickpack',
+                header: 'Pick/pack',
+                className: 'right',
+                width: '120px',
+                render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.pickpackTotal)}</span>,
+              },
+              {
+                key: 'packages',
+                header: 'Packages',
+                className: 'right',
+                width: '120px',
+                render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.packageTotal)}</span>,
+              },
+              {
+                key: 'shipping',
+                header: 'Shipping',
+                className: 'right',
+                width: '120px',
+                render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.shippingTotal)}</span>,
+              },
+              {
+                key: 'total',
+                header: 'Total',
+                className: 'right',
+                width: '120px',
+                render: (row) => <span className="font-black tabular-nums text-ink">{safeMoney(row.rowTotal)}</span>,
+              },
+            ]}
+          />
+        )}
+        {!invoiceDetails.isLoading && (invoiceDetails.data?.data.length ?? 0) === 0 ? (
+          <EmptyState
+            title="No billable order details"
+            body="Billable order rows will appear here when invoice line items exist for the current billing window."
           />
         ) : null}
       </Panel>

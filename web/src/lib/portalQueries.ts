@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { portalApi, type BackfillMode, type BackfillResponse, type BackfillTarget } from './api';
+import { defaultRange, portalApi, type BackfillMode, type BackfillResponse, type BackfillTarget } from './api';
 import {
   DEMO_TOKEN,
   demoBilling,
@@ -22,6 +22,7 @@ export const portalQueryKeys = {
   shipments: (token?: string | null) => ['portal', portalSessionKey(token), 'shipments'] as const,
   inventory: (token?: string | null) => ['portal', portalSessionKey(token), 'inventory'] as const,
   billing: (token?: string | null) => ['portal', portalSessionKey(token), 'billing'] as const,
+  invoiceDetails: (token?: string | null) => ['portal', portalSessionKey(token), 'invoice-details'] as const,
   clients: (token?: string | null) => ['portal', portalSessionKey(token), 'clients'] as const,
   settings: (token?: string | null) => ['portal', portalSessionKey(token), 'settings'] as const,
   me: (token?: string | null) => ['portal', portalSessionKey(token), 'me'] as const,
@@ -149,6 +150,26 @@ function demoOrdersForStatus(status: OrderStatus | 'all') {
   };
 }
 
+function demoInvoiceDetails() {
+  const firstClient = demoBilling.data[0];
+  return {
+    data: demoOrders.data.map((order, index) => ({
+      clientId: firstClient?.clientId ?? order.clientId ?? 1,
+      clientName: firstClient?.clientName ?? order.clientName ?? 'DrPrepperUSA',
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      shipDate: order.orderDate,
+      qty: order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 1,
+      pickpackTotal: index === 0 ? '4.00' : '3.50',
+      additionalTotal: '0.00',
+      packageTotal: index === 0 ? '1.25' : '0.00',
+      shippingTotal: index === 0 ? '7.80' : '6.40',
+      storageTotal: '0.00',
+      rowTotal: index === 0 ? '13.05' : '9.90',
+    })),
+  };
+}
+
 export function useOrdersQuery(token: string | null, status: OrderStatus | 'all' = 'all') {
   return useQuery({
     queryKey: portalQueryKeys.orders(token, status),
@@ -180,6 +201,23 @@ export function useBillingQuery(token: string | null) {
     queryKey: portalQueryKeys.billing(token),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoBilling) : portalApi.clientPortal.billingSummary(token!)),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useInvoiceDetailsQuery(token: string | null) {
+  return useQuery({
+    queryKey: portalQueryKeys.invoiceDetails(token),
+    enabled: enabled(token),
+    queryFn: () => {
+      const range = defaultRange();
+      return demoAllowed(token!)
+        ? Promise.resolve(demoInvoiceDetails())
+        : portalApi.clientPortal.invoiceDetails(token!, {
+            dateFrom: `${range.from}T00:00:00.000Z`,
+            dateTo: `${range.to}T23:59:59.999Z`,
+          });
+    },
     placeholderData: keepPreviousData,
   });
 }

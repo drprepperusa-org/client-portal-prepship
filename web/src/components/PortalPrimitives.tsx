@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Inbox, RefreshCw } from 'lucide-react';
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   DEFAULT_TABLE_PAGE_SIZE_OPTIONS,
@@ -18,10 +18,14 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-      <div>
-        <h1 className="text-2xl font-black text-ink md:text-3xl">{title}</h1>
-        <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-ink-2">{subtitle}</p>
+    <div className="portal-section-header mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+      <div className="min-w-0">
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-[11px] font-black uppercase text-brand ring-1 ring-brand/15">
+          <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
+          Client operations
+        </div>
+        <h1 className="text-2xl font-black text-ink md:text-[32px] md:leading-tight">{title}</h1>
+        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-ink-2">{subtitle}</p>
       </div>
       {action}
     </div>
@@ -34,7 +38,7 @@ export function RefreshButton({ loading, onClick }: { loading: boolean; onClick:
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface px-3 text-[12px] font-extrabold text-ink ring-1 ring-line transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 hover:shadow-sm active:translate-y-0 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none"
+      className="inline-flex h-11 items-center justify-center gap-2 rounded-card bg-surface px-4 text-[12px] font-extrabold text-ink ring-1 ring-line transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 hover:shadow-sm active:translate-y-0 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none"
     >
       <RefreshCw size={14} className={loading ? 'animate-spinSlow text-brand' : ''} />
       Refresh
@@ -80,9 +84,9 @@ export function StatCard({
 
 export function Panel({ children, title, right }: { children: ReactNode; title: string; right?: ReactNode }) {
   return (
-    <section className="rounded-card bg-surface ring-1 ring-line transition-shadow duration-200 ease-out hover:shadow-sm motion-reduce:transition-none">
-      <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-4">
-        <h2 className="text-sm font-black text-ink">{title}</h2>
+    <section className="portal-panel rounded-card bg-surface ring-1 ring-line transition-shadow duration-200 ease-out hover:shadow-sm motion-reduce:transition-none">
+      <div className="flex min-h-[58px] items-center justify-between gap-4 border-b border-line px-5 py-4">
+        <h2 className="text-sm font-black text-ink md:text-[15px]">{title}</h2>
         {right}
       </div>
       {children}
@@ -227,7 +231,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="overflow-hidden rounded-b-card bg-surface">
+    <div className="portal-data-table overflow-hidden rounded-b-card bg-surface">
       <div className="overflow-x-auto">
         <table className="min-w-full border-collapse text-left text-xs">
           <thead className="bg-surface-2">
@@ -267,7 +271,7 @@ export function DataTable<T>({
                   }}
                   onDragEnd={() => setDraggedColumn(null)}
                   style={{ width: columnWidths[column.key] ?? column.width ?? undefined }}
-                  className={`group relative whitespace-nowrap border-b border-r border-line px-3 py-2 pr-6 text-[10px] font-black uppercase tracking-[0.08em] text-ink-3 last:border-r-0 ${column.className?.includes('right') ? 'text-right' : ''} ${draggedColumn === column.key ? 'opacity-55' : ''}`}
+                  className={`group relative whitespace-nowrap border-b border-r border-line px-3 py-3 pr-6 text-[10px] font-black uppercase tracking-[0.08em] text-ink-3 last:border-r-0 ${column.className?.includes('right') ? 'text-right' : ''} ${draggedColumn === column.key ? 'opacity-55' : ''}`}
                 >
                   {column.header}
                   <button
@@ -298,7 +302,7 @@ export function DataTable<T>({
                 <tr
                   key={rowKey}
                   onClick={() => onRowClick?.(row)}
-                  className={`border-b border-line transition-colors duration-200 ease-out last:border-b-0 hover:bg-brand-bg/50 focus-within:bg-brand-bg/50 motion-reduce:transition-none ${
+                  className={`border-b border-line transition-colors duration-200 ease-out last:border-b-0 hover:bg-brand-bg/45 focus-within:bg-brand-bg/45 motion-reduce:transition-none ${
                     selected ? 'bg-brand-bg/55' : ''
                   } ${onRowClick ? 'cursor-pointer' : ''}`}
                 >
@@ -318,7 +322,7 @@ export function DataTable<T>({
                     <td
                       key={column.key}
                       style={{ width: columnWidths[column.key] ?? column.width ?? undefined }}
-                      className={`border-r border-line px-3 py-2 align-middle text-ink-2 last:border-r-0 ${column.className?.includes('right') ? 'text-right' : ''}`}
+                      className={`border-r border-line px-3 py-3 align-middle text-ink-2 last:border-r-0 ${column.className?.includes('right') ? 'text-right' : ''}`}
                     >
                       {column.render(row)}
                     </td>
@@ -336,7 +340,7 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
-      <div className="flex flex-col gap-3 border-t border-line bg-surface px-4 py-3 text-xs font-bold text-ink-2 sm:flex-row sm:items-center sm:justify-end">
+      <div className="flex flex-col gap-3 border-t border-line bg-surface-2 px-4 py-3 text-xs font-bold text-ink-2 sm:flex-row sm:items-center sm:justify-end">
         <label className="flex items-center gap-2">
           Rows per page:
           <select
@@ -380,9 +384,12 @@ export function DataTable<T>({
 
 export function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="px-5 py-12 text-center">
+    <div className="mx-auto flex max-w-lg flex-col items-center px-5 py-14 text-center">
+      <div className="mb-4 grid h-12 w-12 place-items-center rounded-card bg-surface-2 text-brand ring-1 ring-line">
+        <Inbox size={20} />
+      </div>
       <div className="text-sm font-black text-ink">{title}</div>
-      <div className="mt-1 text-sm text-ink-3">{body}</div>
+      <div className="mt-2 text-sm leading-6 text-ink-3">{body}</div>
     </div>
   );
 }
@@ -490,5 +497,10 @@ export function StatusBadge({ value }: { value: string | null | undefined }) {
       : status === 'cancelled'
         ? 'bg-danger-bg text-danger'
         : 'bg-brand-bg text-brand';
-  return <span className={`rounded-full px-2.5 py-1 text-[11px] font-black capitalize ${cls}`}>{label}</span>;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black capitalize ${cls}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" aria-hidden="true" />
+      {label}
+    </span>
+  );
 }

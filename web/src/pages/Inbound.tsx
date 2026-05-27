@@ -2,12 +2,11 @@ import { Download, PackageCheck } from 'lucide-react';
 import { DataTable, EmptyState, ErrorPanel, KpiSkeletonGrid, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useInventoryQuery, useProductsQuery } from '../lib/portalQueries';
+import { useInventoryQuery } from '../lib/portalQueries';
 
 export default function Inbound() {
   const auth = useAuth();
   const inventory = useInventoryQuery(auth.accessToken);
-  const products = useProductsQuery(auth.accessToken);
 
   const rows = inventory.data?.data ?? [];
   const totalUnits = rows.reduce((sum, item) => sum + Number(item.effectiveStock ?? item.stockQty ?? 0), 0);
@@ -22,16 +21,11 @@ export default function Inbound() {
       <PageHeader
         title="Inbound"
         subtitle="Receiving visibility for SKUs in your assigned client/store scope."
-        action={<RefreshButton loading={inventory.isFetching || products.isFetching} onClick={() => { void inventory.refetch(); void products.refetch(); }} />}
+        action={<RefreshButton loading={inventory.isFetching} onClick={() => { void inventory.refetch(); }} />}
       />
       {inventory.error ? (
         <div className="mb-5">
           <ErrorPanel message={inventory.error instanceof Error ? inventory.error.message : String(inventory.error)} loading={inventory.isFetching} onRetry={() => void inventory.refetch()} />
-        </div>
-      ) : null}
-      {products.error ? (
-        <div className="mb-5">
-          <ErrorPanel message={products.error instanceof Error ? products.error.message : String(products.error)} loading={products.isFetching} onRetry={() => void products.refetch()} />
         </div>
       ) : null}
 
@@ -63,9 +57,9 @@ export default function Inbound() {
         <div className="portal-kpi portal-kpi-red">
           <div className="portal-kpi-icon"><Download size={18} /></div>
           <div className="portal-kpi-body">
-            <div className="portal-kpi-label">Product Records</div>
-            <div className="portal-kpi-value">{safeNumber(products.data?.pagination?.total ?? products.data?.data?.length ?? 0)}</div>
-            <div className="portal-kpi-hint">Catalog visibility</div>
+            <div className="portal-kpi-label">Receiving Watch</div>
+            <div className="portal-kpi-value">{safeNumber(lowStock.length)}</div>
+            <div className="portal-kpi-hint">Visible from scoped inventory</div>
           </div>
         </div>
       </div>}

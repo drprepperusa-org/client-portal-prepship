@@ -108,7 +108,7 @@ export default function ClientPortalSidebar({
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-[70] flex h-screen flex-col border-r border-[#dbe6ef] bg-white/95 shadow-[14px_0_40px_rgba(18,40,63,.08)] backdrop-blur-xl transition-[width,transform,box-shadow] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${mobileOpen ? 'translate-x-0 w-[min(86vw,320px)]' : '-translate-x-full w-[min(86vw,320px)] lg:translate-x-0'
+      className={`fixed inset-y-0 left-0 z-[70] flex h-screen flex-col border-r border-line bg-surface/95 shadow-lg backdrop-blur-xl transition-[width,transform,box-shadow] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${mobileOpen ? 'translate-x-0 w-[min(86vw,320px)]' : '-translate-x-full w-[min(86vw,320px)] lg:translate-x-0'
         } ${showText ? 'lg:w-[284px]' : 'lg:w-[78px] lg:hover:shadow-[18px_0_50px_rgba(18,40,63,.12)]'}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -119,18 +119,18 @@ export default function ClientPortalSidebar({
           <Link
             to="/dashboard"
             onClick={onNavigate}
-            className={`group flex h-14 items-center rounded-xl transition-colors duration-200 hover:bg-[#eef8fe] ${showText ? 'gap-3 px-3 pr-10' : 'justify-center px-0'
+            className={`group flex h-14 items-center rounded-card transition-colors duration-200 hover:bg-brand-bg ${showText ? 'gap-3 px-3 pr-10' : 'justify-center px-0'
               }`}
             aria-label="DR PREPPERUSA Dashboard"
           >
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#03b0f7] font-black text-white shadow-[0_14px_28px_rgba(3,176,247,.22)]">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-brand font-black text-white shadow-sm shadow-brand/20">
               P
             </div>
             <div className={`min-w-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(.2,.8,.2,1)] ${showText ? 'max-w-[176px] translate-x-0 opacity-100' : 'max-w-0 -translate-x-1 opacity-0'}`}>
-              <div className="whitespace-nowrap text-[15px] font-black tracking-[-0.04em] text-[#142033]">
-                DR PREPPER<span className="text-[#03b0f7]">USA</span>
+              <div className="whitespace-nowrap text-[15px] font-black text-ink">
+                DR PREPPER<span className="text-brand">USA</span>
               </div>
-              <div className="whitespace-nowrap text-[10px] font-black uppercase tracking-[0.14em] text-[#7a889a]">
+              <div className="whitespace-nowrap text-[10px] font-black uppercase text-ink-3">
                 Client Portal
               </div>
             </div>
@@ -138,7 +138,7 @@ export default function ClientPortalSidebar({
           <button
             type="button"
             onClick={togglePinned}
-            className={`absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg border border-[#dbe6ef] bg-white text-[#63758c] shadow-sm transition-all duration-300 hover:-translate-y-[52%] hover:bg-[#e7f7ff] hover:text-[#0a5f86] active:translate-y-[-48%] motion-reduce:transform-none ${showText ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+            className={`absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg border border-line bg-surface text-ink-2 shadow-sm transition-all duration-300 hover:-translate-y-[52%] hover:bg-brand-bg hover:text-brand active:translate-y-[-48%] motion-reduce:transform-none ${showText ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
             aria-label={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
             aria-pressed={pinned}
             title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
@@ -157,7 +157,7 @@ export default function ClientPortalSidebar({
         >
           {navGroups.map((group) => (
             <div key={group} className="mb-2 last:mb-1">
-              <div className={`mb-1.5 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#7a889a] transition-all duration-200 ${showText ? 'h-4 opacity-100' : 'h-0 opacity-0'}`}>
+              <div className={`mb-1.5 px-3 text-[10px] font-black uppercase text-ink-3 transition-all duration-200 ${showText ? 'h-4 opacity-100' : 'h-0 opacity-0'}`}>
                 {group}
               </div>
               <div className="space-y-1">
@@ -176,15 +176,15 @@ export default function ClientPortalSidebar({
                             if (!showText) onExpandedChange(true);
                           }}
                           title={showText ? undefined : item.label}
-                          className={`group relative flex h-[38px] w-full items-center rounded-xl text-left text-sm font-black transition-all duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#03b0f7]/35 ${showText ? 'justify-start gap-3 px-3' : 'justify-center px-0'
+                          className={`group relative flex h-10 w-full items-center rounded-card text-left text-sm font-black transition-all duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 ${showText ? 'justify-start gap-3 px-3' : 'justify-center px-0'
                           } ${childActive || childOpen
-                            ? 'bg-[#e7f7ff] text-[#0a5f86] ring-1 ring-[#03b0f7]/25'
-                            : 'text-[#34445a] hover:-translate-y-0.5 hover:bg-[#f0f9ff] hover:text-[#0a5f86] motion-reduce:transform-none'
+                            ? 'bg-brand-bg text-brand ring-1 ring-brand/25'
+                            : 'text-ink-2 hover:-translate-y-0.5 hover:bg-brand-bg hover:text-brand motion-reduce:transform-none'
                           }`}
                         >
                           <>
                             <span
-                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${childActive || childOpen ? 'bg-white text-[#03b0f7] shadow-sm' : 'text-[#63758c] group-hover:bg-white group-hover:text-[#03b0f7]'
+                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${childActive || childOpen ? 'bg-surface text-brand shadow-sm' : 'text-ink-3 group-hover:bg-surface group-hover:text-brand'
                                 }`}
                             >
                               <Icon size={18} strokeWidth={2} />
@@ -194,7 +194,7 @@ export default function ClientPortalSidebar({
                             </span>
                             <ChevronRight
                               size={15}
-                              className={`shrink-0 text-[#93a1b2] transition-all duration-300 ${showText ? 'opacity-100' : 'w-0 opacity-0'} ${childOpen ? 'rotate-90' : ''}`}
+                              className={`shrink-0 text-ink-3 transition-all duration-300 ${showText ? 'opacity-100' : 'w-0 opacity-0'} ${childOpen ? 'rotate-90' : ''}`}
                             />
                           </>
                         </button>
@@ -205,17 +205,17 @@ export default function ClientPortalSidebar({
                           onClick={onNavigate}
                           title={showText ? undefined : item.label}
                           className={({ isActive }) =>
-                            `group relative flex h-[38px] items-center rounded-xl text-sm font-black transition-all duration-200 ease-out ${showText ? 'gap-3 px-3' : 'justify-center px-0'
+                            `group relative flex h-10 items-center rounded-card text-sm font-black transition-all duration-200 ease-out ${showText ? 'gap-3 px-3' : 'justify-center px-0'
                             } ${isActive
-                              ? 'bg-[#e7f7ff] text-[#0a5f86] ring-1 ring-[#03b0f7]/25'
-                              : 'text-[#34445a] hover:-translate-y-0.5 hover:bg-[#f0f9ff] hover:text-[#0a5f86] motion-reduce:transform-none'
+                              ? 'bg-brand-bg text-brand ring-1 ring-brand/25'
+                              : 'text-ink-2 hover:-translate-y-0.5 hover:bg-brand-bg hover:text-brand motion-reduce:transform-none'
                             }`
                           }
                         >
                           {({ isActive }) => (
                             <>
                               <span
-                                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${isActive ? 'bg-white text-[#03b0f7] shadow-sm' : 'text-[#63758c] group-hover:bg-white group-hover:text-[#03b0f7]'
+                                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${isActive ? 'bg-surface text-brand shadow-sm' : 'text-ink-3 group-hover:bg-surface group-hover:text-brand'
                                   }`}
                               >
                                 <Icon size={18} strokeWidth={2} />
@@ -229,7 +229,7 @@ export default function ClientPortalSidebar({
                       )}
                       {item.children && showText ? (
                         <div
-                          className={`ml-6 overflow-hidden border-l border-[#dbe6ef] pl-4 transition-all duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${
+                          className={`ml-6 overflow-hidden border-l border-line pl-4 transition-all duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${
                             childOpen ? 'mt-1 max-h-[280px] opacity-100' : 'mt-0 max-h-0 opacity-0'
                           }`}
                         >
@@ -244,8 +244,8 @@ export default function ClientPortalSidebar({
                                   tabIndex={childOpen ? 0 : -1}
                                   className={({ isActive }) =>
                                     `flex h-8 items-center justify-start gap-2 rounded-lg px-2 text-left text-xs font-black transition-colors ${isActive
-                                      ? 'bg-[#e7f7ff] text-[#0a5f86]'
-                                      : 'text-[#63758c] hover:bg-[#f6fbff] hover:text-[#0a5f86]'
+                                      ? 'bg-brand-bg text-brand'
+                                      : 'text-ink-3 hover:bg-brand-bg hover:text-brand'
                                     }`
                                   }
                                 >
@@ -265,20 +265,20 @@ export default function ClientPortalSidebar({
           ))}
         </nav>
 
-        <div className="mt-auto border-t border-[#dbe6ef] pt-3">
-          <div className={`mb-2 flex items-center gap-3 rounded-xl bg-[#f6fbff] p-2 ${showText ? 'justify-start' : 'justify-center'}`}>
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#03b0f7] text-sm font-black text-white shadow-[0_10px_22px_rgba(3,176,247,.22)]">
+        <div className="mt-auto border-t border-line pt-3">
+          <div className={`mb-2 flex items-center gap-3 rounded-card bg-surface-2 p-2 ${showText ? 'justify-start' : 'justify-center'}`}>
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-sm font-black text-white shadow-sm shadow-brand/20">
               {initial}
             </div>
             <div className={`min-w-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(.2,.8,.2,1)] ${showText ? 'max-w-[176px] opacity-100' : 'max-w-0 opacity-0'}`}>
-              <div className="truncate text-sm font-black text-[#142033]">Drprepper</div>
-              <div className="truncate text-xs font-semibold text-[#738399]">{email}</div>
+              <div className="truncate text-sm font-black text-ink">Drprepper</div>
+              <div className="truncate text-xs font-semibold text-ink-3">{email}</div>
             </div>
           </div>
           <button
             type="button"
             onClick={() => void auth.signOut().then(() => navigate('/login'))}
-            className={`flex h-10 w-full items-center rounded-xl border border-[#dbe6ef] bg-white text-sm font-black text-[#34445a] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#e7f7ff] hover:text-[#0a5f86] active:translate-y-0 motion-reduce:transform-none ${showText ? 'justify-start gap-2 px-3' : 'justify-center px-0'
+            className={`flex h-10 w-full items-center rounded-card border border-line bg-surface text-sm font-black text-ink-2 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-bg hover:text-brand active:translate-y-0 motion-reduce:transform-none ${showText ? 'justify-start gap-2 px-3' : 'justify-center px-0'
               }`}
             title={showText ? undefined : 'Sign out'}
           >

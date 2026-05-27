@@ -1,4 +1,5 @@
 import type {
+  BillingInvoiceDetailRow,
   BillingSummaryRow,
   AnalysisSkuBreakdown,
   AnalysisSkuOrdersResponse,
@@ -438,6 +439,13 @@ export const portalApi = {
     },
     invoice(token: string, params: { clientId: number; dateFrom: string; dateTo: string }) {
       return apiText(token, '/api/client-portal/invoice', params);
+    },
+    invoiceDetails(token: string, params: { dateFrom: string; dateTo: string; clientId?: number }) {
+      return apiGet<{ data: BillingInvoiceDetailRow[] }>(
+        token,
+        '/api/client-portal/invoice-details',
+        params,
+      );
     },
   },
   dashboard(token: string, range = defaultRange()) {

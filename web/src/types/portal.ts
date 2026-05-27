@@ -171,6 +171,21 @@ export type BillingSummaryRow = {
   grandTotal?: number | string;
 };
 
+export type BillingInvoiceDetailRow = {
+  clientId?: number;
+  clientName?: string | null;
+  orderId?: number | null;
+  orderNumber?: string | null;
+  shipDate?: string | null;
+  qty?: number | string | null;
+  pickpackTotal?: number | string | null;
+  additionalTotal?: number | string | null;
+  packageTotal?: number | string | null;
+  shippingTotal?: number | string | null;
+  storageTotal?: number | string | null;
+  rowTotal?: number | string | null;
+};
+
 export type PortalClient = {
   id?: number;
   name?: string | null;
