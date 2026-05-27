@@ -113,40 +113,44 @@ app.use(
   })
 );
 
+const clientPortalOnly = env.CLIENT_PORTAL_ONLY_API;
+
 app.route('/health', health);
-app.route('/cron', cronRoute);
+if (!clientPortalOnly) app.route('/cron', cronRoute);
 
 // Everything below requires a valid Supabase JWT.
-const protectedPrefixes = [
-  '/orders',
-  '/shipments',
-  '/packages',
-  '/clients',
-  '/rates',
-  '/labels',
-  '/sync',
-  '/inventory',
-  '/locations',
-  '/settings',
-  '/billing',
-  '/manifests',
-  '/analysis',
-  '/dashboard',
-  '/print-queue',
-  '/parent-skus',
-  '/products',
-  '/init',
-  '/admin',
-  '/carrier-accounts',
-  '/carriers',
-  '/users',
-  '/api/client-portal',
-  '/worker',
-  '/observability',
-  '/workflows',
-  '/workflow-runs',
-  '/workflow-step-runs',
-];
+const protectedPrefixes = clientPortalOnly
+  ? ['/api/client-portal']
+  : [
+      '/orders',
+      '/shipments',
+      '/packages',
+      '/clients',
+      '/rates',
+      '/labels',
+      '/sync',
+      '/inventory',
+      '/locations',
+      '/settings',
+      '/billing',
+      '/manifests',
+      '/analysis',
+      '/dashboard',
+      '/print-queue',
+      '/parent-skus',
+      '/products',
+      '/init',
+      '/admin',
+      '/carrier-accounts',
+      '/carriers',
+      '/users',
+      '/api/client-portal',
+      '/worker',
+      '/observability',
+      '/workflows',
+      '/workflow-runs',
+      '/workflow-step-runs',
+    ];
 
 for (const prefix of protectedPrefixes) {
   app.use(prefix, requireAuth);
@@ -158,34 +162,36 @@ app.use('/admin/*', requireAdmin);
 app.use('/observability', requireAdmin);
 app.use('/observability/*', requireAdmin);
 
-app.route('/orders', ordersRoute);
-app.route('/shipments', shipmentsRoute);
-app.route('/packages', packagesRoute);
-app.route('/clients', clientsRoute);
-app.route('/rates', ratesRoute);
-app.route('/labels', labelsRoute);
-app.route('/sync', syncRoute);
-app.route('/inventory', inventoryRoute);
-app.route('/locations', locationsRoute);
-app.route('/settings', settingsRoute);
-app.route('/billing', billingRoute);
-app.route('/manifests', manifestsRoute);
-app.route('/analysis', analysisRoute);
-app.route('/dashboard', dashboardRoute);
-app.route('/print-queue', printQueueRoute);
-app.route('/parent-skus', parentSkusRoute);
-app.route('/products', productsRoute);
-app.route('/init', initRoute);
-app.route('/admin', adminRoute);
-app.route('/carrier-accounts', carrierAccountsRoute);
-app.route('/carriers', carriersRoute);
-app.route('/users', usersRoute);
 app.route('/api/client-portal', clientPortalRoute);
-app.route('/worker', workerRoute);
-app.route('/observability', observabilityRoute);
-app.route('/workflows', workflowsRoute);
-app.route('/workflow-runs', workflowRunsRoute);
-app.route('/workflow-step-runs', workflowStepRunsRoute);
+if (!clientPortalOnly) {
+  app.route('/orders', ordersRoute);
+  app.route('/shipments', shipmentsRoute);
+  app.route('/packages', packagesRoute);
+  app.route('/clients', clientsRoute);
+  app.route('/rates', ratesRoute);
+  app.route('/labels', labelsRoute);
+  app.route('/sync', syncRoute);
+  app.route('/inventory', inventoryRoute);
+  app.route('/locations', locationsRoute);
+  app.route('/settings', settingsRoute);
+  app.route('/billing', billingRoute);
+  app.route('/manifests', manifestsRoute);
+  app.route('/analysis', analysisRoute);
+  app.route('/dashboard', dashboardRoute);
+  app.route('/print-queue', printQueueRoute);
+  app.route('/parent-skus', parentSkusRoute);
+  app.route('/products', productsRoute);
+  app.route('/init', initRoute);
+  app.route('/admin', adminRoute);
+  app.route('/carrier-accounts', carrierAccountsRoute);
+  app.route('/carriers', carriersRoute);
+  app.route('/users', usersRoute);
+  app.route('/worker', workerRoute);
+  app.route('/observability', observabilityRoute);
+  app.route('/workflows', workflowsRoute);
+  app.route('/workflow-runs', workflowRunsRoute);
+  app.route('/workflow-step-runs', workflowStepRunsRoute);
+}
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 
@@ -239,7 +245,9 @@ serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`API listening on http://localhost:${info.port}`);
   // Runtime split: the Web API should serve user traffic, while the Render
   // Worker owns sync/reporting jobs once RUN_SYNC_SCHEDULER is disabled here.
-  if (env.RUN_SYNC_SCHEDULER) {
+  if (clientPortalOnly) {
+    console.log('[runtime] CLIENT_PORTAL_ONLY_API=true; operational routes and schedulers disabled');
+  } else if (env.RUN_SYNC_SCHEDULER) {
     console.log('[runtime] RUN_SYNC_SCHEDULER=true; starting API scheduler');
     void import('./services/sync-scheduler').then(({ startSyncScheduler }) =>
       startSyncScheduler({ mode: 'api-scheduler' })
@@ -248,7 +256,7 @@ serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log('[runtime] RUN_SYNC_SCHEDULER=false; API scheduler disabled');
   }
 
-  const runMaintenance = env.RUN_ORDERS_PERFORMANCE_MAINTENANCE === true;
+  const runMaintenance = !clientPortalOnly && env.RUN_ORDERS_PERFORMANCE_MAINTENANCE === true;
   if (runMaintenance) {
     console.log(
       '[runtime] RUN_ORDERS_PERFORMANCE_MAINTENANCE=true; starting orders performance maintenance'
