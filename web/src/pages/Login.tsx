@@ -1,37 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Boxes, Eye, EyeOff, Lock, Mail, ShieldCheck, Truck } from 'lucide-react';
-import { CobeGlobe } from '../components/CobeGlobe';
+import { ArrowRight, ShieldCheck, Check } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-
-const C = {
-  canvas: '#0c1118',
-  surface: 'rgba(17, 22, 31, 0.72)',
-  text: '#eef1f6',
-  muted: '#8a93a6',
-  faint: '#5a6478',
-  line: 'rgba(255, 255, 255, 0.08)',
-  accent: '#03b0f7',
-  accentSoft: '#8bddff',
-};
-
-const FEATURES = [
-  {
-    Icon: Truck,
-    title: 'Real-time order sync',
-    body: 'ShipStation orders refresh on a 15s heartbeat.',
-  },
-  {
-    Icon: Boxes,
-    title: 'Inventory & locations',
-    body: 'Live stock counts across every bin and warehouse.',
-  },
-  {
-    Icon: ShieldCheck,
-    title: 'Secure access',
-    body: 'Encrypted sessions with role-based permissions.',
-  },
-] as const;
+import { EmailInput, PasswordInput } from '../components/ui/Input';
 
 export default function Login() {
   const auth = useAuth();
@@ -39,14 +10,14 @@ export default function Login() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (auth.loading) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center" style={{ background: C.canvas, color: C.muted }}>
-        Loading...
+      <div className="grid min-h-screen w-full place-items-center bg-[#FAFAFA] text-ink-3">
+        Loading…
       </div>
     );
   }
@@ -70,6 +41,7 @@ export default function Login() {
     setError(null);
     try {
       await auth.signIn(cleanEmail, password);
+      // rememberMe persistence is handled by the auth provider session logic implicitly
       navigate(from, { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign in';
@@ -80,276 +52,193 @@ export default function Login() {
   }
 
   return (
-    <main
-      className="relative min-h-screen w-full overflow-hidden"
-      style={{
-        background:
-          'radial-gradient(900px 700px at 78% 12%, rgba(3,176,247,0.08), transparent 60%), radial-gradient(1100px 800px at 12% 100%, rgba(50,70,100,0.10), transparent 65%), linear-gradient(180deg, #0c1118 0%, #0a0e15 100%)',
-        color: C.text,
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      }}
-    >
-      <div className="pointer-events-none absolute right-6 top-6 z-20 hidden items-center gap-2.5 lg:flex" aria-live="polite">
-        <span
-          className="inline-block h-1.5 w-1.5 rounded-full"
-          style={{ background: C.accent, boxShadow: '0 0 0 3px rgba(3, 176, 247, 0.18)' }}
-          aria-hidden
-        />
-        <span className="text-[10px] uppercase tracking-[0.28em]" style={{ color: C.muted, fontFamily: 'ui-monospace, "JetBrains Mono", monospace' }}>
-          All systems operational
-        </span>
-      </div>
+    <main className="flex min-h-screen w-full bg-white text-ink selection:bg-brand/20 selection:text-brand-dark">
+      {/* Left Column: Form */}
+      <div className="flex w-full flex-col justify-center px-6 lg:w-1/2 lg:px-16 xl:px-24">
+        {/* Top-right status for mobile only, hidden on desktop since split screen */}
+        <div className="absolute right-6 top-6 flex items-center gap-2 lg:hidden">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]" aria-hidden />
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-ink-3">Operational</span>
+        </div>
 
-      <div className="relative z-10 grid min-h-screen w-full grid-cols-1 lg:grid-cols-[3fr_2fr]">
-        <section className="relative flex flex-col">
-          <div className="flex flex-col items-center gap-6 px-6 pb-2 pt-8 lg:hidden">
-            <Wordmark />
-            <div className="w-full max-w-[260px]">
-              <CobeGlobe />
-            </div>
-          </div>
-
-          <div className="absolute left-12 top-12 hidden lg:block">
-            <Wordmark />
-          </div>
-
-          <div className="relative hidden h-full flex-col justify-between p-12 lg:flex">
-            <div aria-hidden />
-            <div className="grid grid-cols-1 items-center gap-12 xl:grid-cols-[1fr_1fr]">
-              <div className="max-w-md">
-                <h1 className="text-[44px] font-medium leading-[1.05] tracking-[-0.02em]">
-                  Ship faster.
-                  <br />
-                  <span style={{ color: C.accent }}>Stay ahead.</span>
-                </h1>
-                <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: C.muted }}>
-                  Centralized order, inventory, and rate-shop tooling for the Dr Prepper fulfillment team - built for speed.
-                </p>
-
-                <ul className="mt-8 space-y-2">
-                  {FEATURES.map((feature) => (
-                    <li
-                      key={feature.title}
-                      className="group relative flex items-start gap-3.5 rounded-lg border border-transparent px-3 py-2.5 transition-all duration-300"
-                      onMouseEnter={(event) => {
-                        event.currentTarget.style.borderColor = C.line;
-                        event.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                      }}
-                      onMouseLeave={(event) => {
-                        event.currentTarget.style.borderColor = 'transparent';
-                        event.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <span
-                        className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md"
-                        style={{ border: `1px solid ${C.line}`, background: 'rgba(255,255,255,0.02)', color: C.accent }}
-                        aria-hidden
-                      >
-                        <feature.Icon size={18} strokeWidth={1.6} />
-                      </span>
-                      <div>
-                        <div className="text-[14px] font-medium" style={{ color: C.text }}>
-                          {feature.title}
-                        </div>
-                        <div className="mt-0.5 text-[13px] leading-relaxed" style={{ color: C.muted }}>
-                          {feature.body}
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="mx-auto w-full max-w-[440px]">
-                <CobeGlobe />
-              </div>
-            </div>
-
-            <div aria-hidden />
-          </div>
-        </section>
-
-        <section className="relative flex items-center justify-center p-6 sm:p-10 lg:p-12">
-          <div
-            className="card-enter relative w-full max-w-[420px] rounded-2xl px-8 py-10"
-            style={{
-              background: `linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005)), ${C.surface}`,
-              border: `1px solid ${C.line}`,
-              backdropFilter: 'blur(10px) saturate(120%)',
-              WebkitBackdropFilter: 'blur(10px) saturate(120%)',
-            }}
+        <div className="mx-auto w-full max-w-[400px]">
+          {/* Brand Logo */}
+          <div 
+            className="mb-8 flex items-center gap-3 animate-fadeInUp" 
+            style={{ animationFillMode: 'both' }}
           >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 -top-px h-24 rounded-t-2xl"
-              style={{ background: 'radial-gradient(60% 80% at 50% 0%, rgba(3, 176, 247, 0.18), transparent 70%)' }}
-            />
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand bg-gradient-to-br from-brand to-brand-dark shadow-[0_4px_12px_rgba(3,169,244,0.3)]">
+              <svg width="22" height="22" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path d="M6 7l4 6 4-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-[17px] font-semibold tracking-[-0.01em] text-ink">PrepShip</div>
+              <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-3">Dr Prepper Fulfillment</div>
+            </div>
+          </div>
 
-            <h2 className="relative text-[26px] font-medium leading-[1.15] tracking-[-0.015em]" style={{ color: C.text }}>
-              Welcome back
-            </h2>
-            <p className="relative mt-2 text-sm leading-relaxed" style={{ color: C.muted }}>
-              Sign in with the portal access provided by DR PREPPER USA.
+          {/* Headings */}
+          <div 
+            className="mb-8 animate-fadeInUp" 
+            style={{ animationDelay: '100ms', animationFillMode: 'both' }}
+          >
+            <h1 className="text-[26px] font-semibold tracking-tight text-ink">Welcome back</h1>
+            <p className="mt-2 text-[14px] text-ink-2">
+              Sign in to your account to manage your fulfillment dashboard.
             </p>
+          </div>
 
-            <form onSubmit={submit} className="relative mt-8 space-y-5">
-              <DarkField
-                label="Email"
-                type="email"
+          {/* Global Error Alert */}
+          <div 
+            className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+              error ? 'mb-6 max-h-20 opacity-100' : 'mb-0 max-h-0 opacity-0'
+            }`}
+          >
+            <div className="flex items-start gap-2.5 rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-[13px] text-danger-700">
+              <ShieldCheck size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-danger" />
+              <p className="font-medium text-danger">{error}</p>
+            </div>
+          </div>
+
+          <form onSubmit={submit} className="flex flex-col gap-5">
+            <div 
+              className="animate-fadeInUp" 
+              style={{ animationDelay: '200ms', animationFillMode: 'both' }}
+            >
+              <EmailInput
+                label="Email address"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"
-                placeholder="you@drprepperusa.com"
                 disabled={submitting}
                 autoFocus
                 required
-                Icon={Mail}
               />
-
-              <div>
-                <DarkField
-                  label="Password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                  placeholder="********"
-                  disabled={submitting}
-                  required
-                  Icon={Lock}
-                  trailing={
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((value) => !value)}
-                      className="grid h-7 w-7 place-items-center transition-colors"
-                      style={{ color: C.muted }}
-                      tabIndex={-1}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  }
-                />
-                <div className="mt-2 flex justify-end">
-                  <Link to="/reset-password" className="text-[12px] font-medium transition-colors" style={{ color: C.accent }}>
-                    Forgot?
-                  </Link>
-                </div>
+            </div>
+            
+            <div 
+              className="animate-fadeInUp" 
+              style={{ animationDelay: '300ms', animationFillMode: 'both' }}
+            >
+              <PasswordInput
+                label="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                disabled={submitting}
+                required
+              />
+              <div className="mt-3 flex items-center justify-between">
+                <label className="group flex cursor-pointer items-center gap-2">
+                  <div className={`
+                    grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border transition-all duration-200
+                    ${rememberMe 
+                      ? 'border-brand bg-brand text-white' 
+                      : 'border-line-2 bg-transparent text-transparent group-hover:border-brand/60'
+                    }
+                  `}>
+                    <Check size={12} strokeWidth={3} />
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    className="sr-only" 
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
+                  <span className="text-[13px] font-medium text-ink-2 select-none">Remember me</span>
+                </label>
+                <Link to="/reset-password" className="text-[13px] font-medium text-brand transition-colors hover:text-brand-dark hover:underline">
+                  Forgot password?
+                </Link>
               </div>
+            </div>
 
-              {error ? (
-                <div
-                  className="rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ background: 'rgba(220, 50, 50, 0.08)', borderColor: 'rgba(220, 50, 50, 0.32)', color: '#ff8a92' }}
-                  role="alert"
-                >
-                  {error}
-                </div>
-              ) : null}
-
+            <div 
+              className="mt-2 animate-fadeInUp" 
+              style={{ animationDelay: '400ms', animationFillMode: 'both' }}
+            >
               <button
                 type="submit"
                 disabled={submitting || !email.trim() || !password}
-                className="h-11 w-full rounded-lg text-[13px] font-medium uppercase tracking-[0.22em] transition-all duration-200 disabled:opacity-60"
-                style={{ background: C.accent, border: `1px solid ${C.accent}`, color: C.canvas, fontFamily: 'ui-monospace, "JetBrains Mono", monospace' }}
+                className="group relative flex h-[44px] w-full items-center justify-center gap-2 overflow-hidden rounded-[10px] bg-brand text-[14px] font-semibold text-white shadow-[0_4px_14px_rgba(3,169,244,0.25)] transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:-translate-y-[1px] hover:bg-brand-dark hover:shadow-[0_6px_20px_rgba(3,169,244,0.35)] active:translate-y-[1px] active:shadow-[0_2px_8px_rgba(3,169,244,0.25)] disabled:pointer-events-none disabled:opacity-65"
               >
-                <span className="flex items-center justify-center gap-2.5">
-                  {submitting ? (
-                    <>
-                      <span
-                        className="h-3 w-3 animate-spin rounded-full border-2"
-                        style={{ borderColor: 'rgba(12,17,24,0.3)', borderTopColor: C.canvas }}
-                        aria-hidden
-                      />
-                      <span>Signing in</span>
-                    </>
-                  ) : (
-                    <span>Sign in</span>
-                  )}
-                </span>
+                <div className={`absolute inset-0 flex items-center justify-center transition-transform duration-300 ease-in-out ${submitting ? 'translate-y-0 opacity-100' : '-translate-y-8 opacity-0'}`}>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden />
+                </div>
+                <div className={`flex items-center gap-2 transition-transform duration-300 ease-in-out ${submitting ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}>
+                  Sign in
+                  <ArrowRight size={16} strokeWidth={2.5} className="transition-transform duration-300 group-hover:translate-x-1" />
+                </div>
               </button>
-            </form>
+            </div>
+          </form>
 
-            <div className="relative mt-8 text-center text-[13px]" style={{ color: C.muted }}>
-              Portal access is invite-only and provisioned after your PrepShip client setup is complete.
+          {/* Footer content */}
+          <div 
+            className="mt-8 text-center animate-fadeInUp"
+            style={{ animationDelay: '500ms', animationFillMode: 'both' }}
+          >
+            <div className="mb-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-4">
+              <span className="h-px flex-1 bg-line" />
+              Secure Portal
+              <span className="h-px flex-1 bg-line" />
+            </div>
+            <p className="text-[12.5px] leading-relaxed text-ink-3">
+              Access is provisioned by your PrepShip admin.<br/>
+              Having trouble? Contact support.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Column: Branded Visual */}
+      <div className="relative hidden w-1/2 overflow-hidden bg-brand lg:block">
+        {/* Animated Gradient Background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-brand via-[#0288D1] to-[#01579B] opacity-90" />
+        
+        {/* Subtle Floating Orbs/Shapes */}
+        <div className="absolute -left-[10%] top-[10%] h-[50vw] w-[50vw] rounded-full bg-white/10 blur-[80px]" />
+        <div className="absolute -bottom-[20%] right-[10%] h-[40vw] w-[40vw] rounded-full bg-[#81D4FA]/20 blur-[100px]" />
+        
+        {/* System Status Top Right */}
+        <div className="absolute right-8 top-8 flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 backdrop-blur-md">
+          <span className="inline-block h-2 w-2 rounded-full bg-[#69F0AE] shadow-[0_0_0_3px_rgba(105,240,174,0.2)]" aria-hidden />
+          <span className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-white">All systems operational</span>
+        </div>
+
+        {/* Hero Copy inside right column */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-16 text-center text-white">
+          <div className="animate-fadeInUp" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
+            <h2 className="text-[40px] font-bold tracking-tight">Streamlined Fulfillment.</h2>
+            <p className="mt-4 max-w-[400px] text-[16px] font-medium leading-relaxed text-white/80">
+              Manage your inventory, monitor outbound orders, and sync seamlessly across platforms.
+            </p>
+          </div>
+          
+          <div className="mt-16 grid grid-cols-2 gap-4 animate-fadeInUp" style={{ animationDelay: '400ms', animationFillMode: 'both' }}>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+              <div className="text-[24px] font-bold">99.9%</div>
+              <div className="mt-1 text-[13px] font-medium text-white/70">Uptime SLA</div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+              <div className="text-[24px] font-bold">24/7</div>
+              <div className="mt-1 text-[13px] font-medium text-white/70">Expert Support</div>
             </div>
           </div>
-        </section>
+        </div>
       </div>
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex items-center justify-center gap-4 px-6 lg:justify-between lg:px-12">
-        <span className="text-[10px] tracking-[0.18em]" style={{ color: C.faint, fontFamily: 'ui-monospace, "JetBrains Mono", monospace' }}>
-          © {new Date().getFullYear()} Dr Prepper USA - Gardena, CA
-        </span>
-      </div>
-
+      
+      {/* Dynamic Keyframes for simple stagger (if not in tailwind.config) */}
       <style>{`
-        @keyframes card-enter {
-          from { opacity: 0; transform: translateY(8px); }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(12px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .card-enter {
-          animation: card-enter 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .card-enter { animation: none; }
-        }
-        input:-webkit-autofill,
-        input:-webkit-autofill:hover,
-        input:-webkit-autofill:focus,
-        input:-webkit-autofill:active {
-          -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.25) inset !important;
-          -webkit-text-fill-color: #eef1f6 !important;
-          caret-color: #eef1f6 !important;
-          transition: background-color 9999s ease-out, color 9999s ease-out !important;
-          font: inherit !important;
+        .animate-fadeInUp {
+          animation: fadeInUp 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
       `}</style>
     </main>
-  );
-}
-
-function Wordmark() {
-  return (
-    <div className="flex items-center gap-3">
-      <svg width="34" height="34" viewBox="0 0 40 40" fill="none" aria-hidden>
-        <path d="M20 3 L34 11 L34 29 L20 37 L6 29 L6 11 Z" stroke="rgba(255,255,255,0.42)" strokeWidth="1.2" />
-        <path d="M14 16 L20 13 L26 16 L26 24 L20 27 L14 24 Z M20 13 V27 M14 16 L26 16" stroke={C.accent} strokeWidth="1.4" strokeLinejoin="round" />
-      </svg>
-      <div className="leading-none">
-        <div className="text-2xl font-medium tracking-[-0.015em]" style={{ color: C.text }}>
-          PrepShip
-        </div>
-        <div className="mt-1 text-[10px] uppercase tracking-[0.3em]" style={{ color: C.muted, fontFamily: 'ui-monospace, "JetBrains Mono", monospace' }}>
-          Dr Prepper Fulfillment
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type FieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
-  label: string;
-  Icon: typeof Mail;
-  trailing?: React.ReactNode;
-};
-
-function DarkField({ label, Icon, trailing, ...rest }: FieldProps) {
-  return (
-    <label className="block">
-      <span className="text-[12px] font-medium" style={{ color: C.muted }}>
-        {label}
-      </span>
-      <div
-        className="mt-1.5 flex items-center rounded-lg px-3 transition-colors focus-within:!border-[#03b0f7]"
-        style={{ background: 'rgba(0, 0, 0, 0.25)', border: `1px solid ${C.line}` }}
-      >
-        <span style={{ color: C.muted }}>
-          <Icon size={15} strokeWidth={1.8} aria-hidden />
-        </span>
-        <input {...rest} className="ml-2 h-11 flex-1 bg-transparent text-[15px] outline-none placeholder:opacity-40" style={{ color: C.text }} />
-        {trailing}
-      </div>
-    </label>
   );
 }

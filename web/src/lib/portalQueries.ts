@@ -291,7 +291,7 @@ export function useMeQuery(token: string | null) {
     enabled: enabled(token),
     queryFn: () =>
       demoAllowed(token!)
-        ? Promise.resolve({ id: 'demo-client-user', email: 'client@drprepperusa.org', isAdmin: true })
+        ? Promise.resolve({ id: 'demo-client-user', email: 'client@drprepperusa.org', isAdmin: false })
         : portalApi.clientPortal.me(token!),
     placeholderData: keepPreviousData,
   });

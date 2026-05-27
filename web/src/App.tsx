@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import PortalLayout from './components/PortalLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import { isPrepShipAdminEmail } from './lib/adminAccess';
 import { useAuth } from './lib/auth';
 import Analysis from './pages/Analysis';
 import Inbound from './pages/Inbound';
@@ -20,6 +21,14 @@ function Logout() {
   const auth = useAuth();
   void auth.signOut();
   return <Navigate to="/login" replace />;
+}
+
+function AdminOnlyRoute({ children }: { children: JSX.Element }) {
+  const auth = useAuth();
+  if (!isPrepShipAdminEmail(auth.user?.email)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
 }
 
 export default function App() {
@@ -45,9 +54,9 @@ export default function App() {
         <Route path="reports" element={<Reports />} />
         <Route path="invoices" element={<Invoices />} />
         <Route path="invoices/rate-sheet" element={<InvoiceRateSheet />} />
-        <Route path="connections" element={<Connections />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="settings/:section" element={<Settings />} />
+        <Route path="connections" element={<AdminOnlyRoute><Connections /></AdminOnlyRoute>} />
+        <Route path="settings" element={<AdminOnlyRoute><Settings /></AdminOnlyRoute>} />
+        <Route path="settings/:section" element={<AdminOnlyRoute><Settings /></AdminOnlyRoute>} />
       </Route>
       <Route path="/portal/*" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

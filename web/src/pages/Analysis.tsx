@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Columns3, Search, SlidersHorizontal, X } from 'lucide-react';
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Columns3, PackageSearch, RefreshCw, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
+import SearchBar from '../components/ui/search-bar';
 import { safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAnalysisSkuBreakdownQuery, useAnalysisSkuOrdersQuery } from '../lib/portalQueries';
@@ -27,7 +28,6 @@ type AnalysisColumn = {
 const analysisColumns: AnalysisColumn[] = [
   { key: 'item', header: 'Item name', width: 190 },
   { key: 'sku', header: 'SKU', width: 140 },
-  { key: 'client', header: 'Client', width: 130 },
   { key: 'orders', header: 'Orders', className: 'right', width: 76 },
   { key: 'pending', header: 'Pending', className: 'center', width: 90 },
   { key: 'ext', header: 'Ext. shipped', className: 'center', width: 110 },
@@ -149,49 +149,117 @@ function TrendChart({
   }));
   const max = Math.max(1, ...series.flatMap((item) => item.values));
   const width = 920;
-  const height = 156;
-  const pad = { top: 16, right: 18, bottom: 28, left: 36 };
+  const height = 140;
+  const pad = { top: 12, right: 14, bottom: 22, left: 32 };
   const innerWidth = width - pad.left - pad.right;
   const innerHeight = height - pad.top - pad.bottom;
   const labels = dateBuckets.filter((_, index) => index % 4 === 0 || index === dateBuckets.length - 1);
 
+  function smoothPath(values: number[]) {
+    if (values.length === 0) return '';
+    const points = values.map((value, index) => ({
+      x: pad.left + (index / Math.max(1, values.length - 1)) * innerWidth,
+      y: pad.top + innerHeight - (value / max) * innerHeight,
+    }));
+    if (points.length === 1) return `M${points[0]!.x},${points[0]!.y}`;
+    let d = `M${points[0]!.x.toFixed(1)},${points[0]!.y.toFixed(1)}`;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const p0 = points[i]!;
+      const p1 = points[i + 1]!;
+      const cpx = (p0.x + p1.x) / 2;
+      d += ` C${cpx.toFixed(1)},${p0.y.toFixed(1)} ${cpx.toFixed(1)},${p1.y.toFixed(1)} ${p1.x.toFixed(1)},${p1.y.toFixed(1)}`;
+    }
+    return d;
+  }
+
+  function areaPath(values: number[]) {
+    const line = smoothPath(values);
+    if (!line) return '';
+    const last = pad.left + innerWidth;
+    return `${line} L${last.toFixed(1)},${(height - pad.bottom).toFixed(1)} L${pad.left.toFixed(1)},${(height - pad.bottom).toFixed(1)} Z`;
+  }
+
   return (
-    <div className="portal-analysis-chart-card">
+    <div className="portal-analysis-chart-card portal-analysis-chart-modern">
       <div className="portal-analysis-chart-head">
-        <strong>Daily units sold - top SKUs</strong>
-        <span>drag to zoom - click a line to focus</span>
+        <div>
+          <strong>Daily units sold</strong>
+          <span className="portal-analysis-chart-sub">Top {series.length} SKUs · click a series in the legend to focus</span>
+        </div>
+        <div className="portal-analysis-legend">
+          {series.map((item) => (
+            <span key={item.name}>
+              <i style={{ background: item.color }} />
+              {item.name.length > 38 ? `${item.name.slice(0, 38)}…` : item.name}
+            </span>
+          ))}
+        </div>
       </div>
-      <div className="portal-analysis-legend">
-        {series.map((item) => (
-          <span key={item.name}>
-            <i style={{ background: item.color }} />
-            {item.name}
-          </span>
-        ))}
-      </div>
-      <svg className="portal-analysis-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Daily units sold by top SKUs">
+      <svg className="portal-analysis-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Daily units sold by top SKUs">
+        <defs>
+          {series.map((item, index) => (
+            <linearGradient key={`grad-${index}`} id={`area-grad-${index}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={item.color} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={item.color} stopOpacity="0" />
+            </linearGradient>
+          ))}
+        </defs>
+
         {[0, 0.25, 0.5, 0.75, 1].map((step) => {
           const y = pad.top + innerHeight - step * innerHeight;
           return (
             <g key={step}>
-              <line x1={pad.left} y1={y} x2={width - pad.right} y2={y} stroke="#dbe6ef" strokeDasharray="4 6" />
-              <text x={pad.left - 8} y={y + 4} textAnchor="end">{Math.round(step * max)}</text>
+              <line x1={pad.left} y1={y} x2={width - pad.right} y2={y} stroke="rgb(226 232 240)" strokeDasharray="2 5" strokeWidth="1" />
+              <text x={pad.left - 6} y={y + 3} textAnchor="end" fontSize="9" fill="rgb(148 163 184)" fontFamily="Geist Mono, monospace">
+                {Math.round(step * max)}
+              </text>
             </g>
           );
         })}
+
         {labels.map((label) => {
           const index = Math.max(0, dateBuckets.indexOf(label));
           const x = pad.left + (index / Math.max(1, dateBuckets.length - 1)) * innerWidth;
-          return <text key={label} x={x} y={height - 6} textAnchor="middle">{shortDate(label)}</text>;
+          return (
+            <text key={label} x={x} y={height - 4} textAnchor="middle" fontSize="9" fill="rgb(148 163 184)" fontFamily="Geist Mono, monospace">
+              {shortDate(label)}
+            </text>
+          );
         })}
-        {series.map((item) => {
-          const points = item.values.map((value, index) => {
+
+        {series.map((item, index) => (
+          <path key={`area-${item.name}`} d={areaPath(item.values)} fill={`url(#area-grad-${index})`} />
+        ))}
+
+        {series.map((item) => (
+          <path
+            key={`line-${item.name}`}
+            d={smoothPath(item.values)}
+            fill="none"
+            stroke={item.color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+
+        {series.map((item) =>
+          item.values.map((value, index) => {
             const x = pad.left + (index / Math.max(1, item.values.length - 1)) * innerWidth;
             const y = pad.top + innerHeight - (value / max) * innerHeight;
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-          }).join(' ');
-          return <polyline key={item.name} points={points} fill="none" stroke={item.color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />;
-        })}
+            return (
+              <circle
+                key={`${item.name}-${index}`}
+                cx={x}
+                cy={y}
+                r="2.5"
+                fill="white"
+                stroke={item.color}
+                strokeWidth="1.5"
+              />
+            );
+          }),
+        )}
       </svg>
     </div>
   );
@@ -439,6 +507,64 @@ function SkuDetailDrawer({
   );
 }
 
+function AnalysisEmptyState({
+  query,
+  rangeLabel,
+  onReset,
+}: {
+  query: string;
+  rangeLabel: string;
+  onReset: () => void;
+}) {
+  const cards = [
+    {
+      icon: <PackageSearch size={18} />,
+      title: query ? 'Search is filtering every SKU out' : 'No SKU movement in this scope',
+      body: query
+        ? 'Clear the keyword or broaden the filter to bring matching SKUs back into view.'
+        : 'Synced order activity for the selected client and date window will populate this analysis.',
+    },
+    {
+      icon: <CalendarDays size={18} />,
+      title: 'Current date window',
+      body: rangeLabel,
+    },
+    {
+      icon: <TrendingUp size={18} />,
+      title: 'Analysis will show',
+      body: 'Daily unit trends, revenue, shipping cost, order count, and SKU-level performance.',
+    },
+  ];
+
+  return (
+    <section className="portal-analysis-empty-shell" aria-label="Empty SKU analysis">
+      <div className="portal-analysis-empty-hero">
+        <span className="portal-analysis-empty-icon"><PackageSearch size={24} /></span>
+        <div>
+          <p>Analysis workspace</p>
+          <h2>No SKU analysis rows found</h2>
+          <span>Try a wider date range, clear the search, or confirm the selected client has synced order activity.</span>
+        </div>
+        <button type="button" onClick={onReset}>
+          <RefreshCw size={15} />
+          Reset view
+        </button>
+      </div>
+      <div className="portal-analysis-empty-grid">
+        {cards.map((card) => (
+          <article key={card.title}>
+            <span>{card.icon}</span>
+            <div>
+              <h3>{card.title}</h3>
+              <p>{card.body}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function Analysis() {
   const auth = useAuth();
   const [range, setRange] = useState(() => rangeFromPreset('30d'));
@@ -469,6 +595,7 @@ export default function Analysis() {
   const visibleRows = filteredRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
   const firstRow = filteredRows.length === 0 ? 0 : safePage * pageSize + 1;
   const lastRow = Math.min((safePage + 1) * pageSize, filteredRows.length);
+  const isEmptyAnalysis = !analysis.isLoading && filteredRows.length === 0;
   const orderedColumns = useMemo(() => {
     const map = new Map(analysisColumns.map((column) => [column.key, column]));
     return columnOrder
@@ -578,17 +705,26 @@ export default function Analysis() {
     });
   }
 
+  function resetAnalysisView() {
+    setQuery('');
+    setActiveRange('30d');
+    setRange(rangeFromPreset('30d'));
+    setPage(0);
+  }
+
   return (
     <div className="portal-analysis-page">
-      <div className="portal-analysis-head">
+      <div className="portal-analysis-head portal-analysis-head-modern">
         <div className="portal-analysis-title">
-          <span><BarChart3 size={20} /></span>
           <div>
             <h1>SKU Analysis</h1>
-            <p>{safeNumber(totalSkus)} SKUs - {safeNumber(totalOrders)} orders</p>
+            <p>{safeNumber(totalSkus)} SKUs · {safeNumber(totalOrders)} orders in window</p>
           </div>
         </div>
-        <div className="portal-analysis-tools">
+      </div>
+
+      <div className="portal-analysis-toolbar">
+        <div className="portal-analysis-toolbar-row">
           <div className="portal-analysis-ranges" role="group" aria-label="Date range">
             {rangeLabels.map((label) => (
               <button key={label} type="button" onClick={() => applyPreset(label)} className={activeRange === label ? 'active' : ''}>
@@ -596,131 +732,144 @@ export default function Analysis() {
               </button>
             ))}
           </div>
-          <AnalysisDatePicker label="Date from" value={range.from} max={todayIso()} onChange={(value) => updateRange({ from: value })} />
-          <AnalysisDatePicker label="Date to" value={range.to} max={todayIso()} onChange={(value) => updateRange({ to: value })} />
-          <label className="portal-analysis-search">
-            <Search size={15} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search SKU or item..." />
-          </label>
-          <select aria-label="Client filter" defaultValue="all">
-            <option value="all">All Clients</option>
-            <option value="walmart">Walmart - DJC</option>
-            <option value="heritage">Heritage Kids Press</option>
-          </select>
-          <div className="portal-analysis-count">{safeNumber(totalSkus)} SKUs</div>
-          <button type="button" className="portal-analysis-nav" aria-label="Previous range" onClick={() => shiftRange(-1)}><ChevronLeft size={15} /></button>
-          <button type="button" className="portal-analysis-nav" aria-label="Next range" onClick={() => shiftRange(1)} disabled={range.to >= todayIso()}><ChevronRight size={15} /></button>
-        </div>
-      </div>
-
-      <div className="portal-analysis-subtools">
-        <div className="portal-analysis-column-tool">
-          <button type="button" onClick={() => setColumnsOpen((current) => !current)}><Columns3 size={14} /> Columns ({visibleColumnCount}/{analysisColumns.length})</button>
-          {columnsOpen ? (
-            <div className="portal-analysis-columns-menu">
-              <div>
-                <strong>Table columns</strong>
-                <button type="button" onClick={() => setColumnsOpen(false)} aria-label="Close columns"><X size={14} /></button>
-              </div>
-              {analysisColumns.map((column) => (
-                <label key={column.key}>
-                  <input type="checkbox" checked={!hiddenColumns.has(column.key)} onChange={() => toggleColumn(column.key)} />
-                  {column.header}
-                </label>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        <button type="button" className={narrow ? 'active' : ''} onClick={() => setNarrow((current) => !current)}><SlidersHorizontal size={14} /> {narrow ? 'Wide' : 'Narrow'}</button>
-      </div>
-
-      <TrendChart rows={filteredRows} dateBuckets={dateBuckets} />
-
-      <section className="portal-analysis-table-card">
-        <div className="portal-analysis-table-wrap">
-          <table className={`portal-analysis-table ${narrow ? 'is-narrow' : ''}`} style={{ width: tableWidth, minWidth: tableWidth }}>
-            <colgroup>
-              {orderedColumns.map((column) => <col key={column.key} style={{ width: tableWidths[column.key] }} />)}
-            </colgroup>
-            <thead>
-              <tr>
-                {orderedColumns.map((column) => (
-                  <th
-                    key={column.key}
-                    draggable
-                    onDragStart={(event) => {
-                      setDraggedColumn(column.key);
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData('text/plain', column.key);
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const dragged = draggedColumn ?? event.dataTransfer.getData('text/plain');
-                      if (!dragged) return;
-                      setColumnOrder((previous) => reorderTableColumns(previous, dragged, column.key));
-                      setDraggedColumn(null);
-                    }}
-                    onDragEnd={() => setDraggedColumn(null)}
-                    className={`${column.className ?? ''} ${draggedColumn === column.key ? 'dragging' : ''}`}
-                    style={{ width: tableWidths[column.key] }}
-                  >
-                    {column.header}
-                    <button
-                      type="button"
-                      aria-label={`Resize ${column.header} column`}
-                      className="portal-table-resize-handle"
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        resizeRef.current = {
-                          key: column.key,
-                          startX: event.clientX,
-                          startWidth: tableWidths[column.key] ?? event.currentTarget.parentElement?.getBoundingClientRect().width ?? MIN_TABLE_COLUMN_WIDTH,
-                        };
-                        document.body.style.cursor = 'col-resize';
-                        document.body.style.userSelect = 'none';
-                      }}
-                    />
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((row, index) => (
-                <tr key={`${row.sku}-${safePage}-${index}`} onClick={() => setSelectedSku(row)} className="is-clickable">
-                  {orderedColumns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={column.className ?? ''}
-                      style={{ width: tableWidths[column.key] }}
-                    >
-                      <AnalysisCell row={row} column={column} index={safePage * pageSize + index} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {filteredRows.length === 0 ? (
-                <tr><td colSpan={orderedColumns.length} className="portal-empty">No SKU analysis rows found.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-        <div className="portal-analysis-foot">
-          <span>{analysis.isLoading ? 'Loading analysis...' : `Showing ${firstRow}-${lastRow} of ${safeNumber(filteredRows.length)} SKUs`}</span>
-          <div>
-            <label>Rows <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{DEFAULT_TABLE_PAGE_SIZE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
-            <button disabled={safePage <= 0} onClick={() => setPage(0)}>First</button>
-            <button disabled={safePage <= 0} onClick={() => setPage((value) => Math.max(value - 1, 0))}>Prev</button>
-            <button className="active">{safePage + 1}</button>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage((value) => Math.min(value + 1, totalPages - 1))}>Next</button>
-            <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>Last</button>
+          <div className="portal-analysis-date-group">
+            <AnalysisDatePicker label="Date from" value={range.from} max={todayIso()} onChange={(value) => updateRange({ from: value })} />
+            <span className="portal-analysis-date-sep">→</span>
+            <AnalysisDatePicker label="Date to" value={range.to} max={todayIso()} onChange={(value) => updateRange({ to: value })} />
           </div>
+          <div className="portal-analysis-nav-group">
+            <button type="button" className="portal-analysis-nav" aria-label="Previous range" onClick={() => shiftRange(-1)}><ChevronLeft size={15} /></button>
+            <button type="button" className="portal-analysis-nav" aria-label="Next range" onClick={() => shiftRange(1)} disabled={range.to >= todayIso()}><ChevronRight size={15} /></button>
+          </div>
+          <div className="portal-analysis-count">{safeNumber(totalSkus)} SKUs</div>
         </div>
-      </section>
+
+        <div className="portal-analysis-toolbar-row">
+          <SearchBar
+            containerClassName="w-full max-w-[280px]"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search SKU or item…"
+          />
+          <select aria-label="Client filter" defaultValue="all" className="portal-analysis-select">
+            <option value="all">All stores</option>
+          </select>
+          <div className="portal-analysis-toolbar-spacer" />
+          <div className="portal-analysis-column-tool">
+            <button type="button" onClick={() => setColumnsOpen((current) => !current)}><Columns3 size={14} /> Columns <span className="portal-analysis-tool-count">{visibleColumnCount}/{analysisColumns.length}</span></button>
+            {columnsOpen ? (
+              <div className="portal-analysis-columns-menu">
+                <div>
+                  <strong>Table columns</strong>
+                  <button type="button" onClick={() => setColumnsOpen(false)} aria-label="Close columns"><X size={14} /></button>
+                </div>
+                {analysisColumns.map((column) => (
+                  <label key={column.key}>
+                    <input type="checkbox" checked={!hiddenColumns.has(column.key)} onChange={() => toggleColumn(column.key)} />
+                    {column.header}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className={`portal-analysis-toggle ${narrow ? 'active' : ''}`} onClick={() => setNarrow((current) => !current)}><SlidersHorizontal size={14} /> {narrow ? 'Wide' : 'Narrow'}</button>
+        </div>
+      </div>
+
+      {isEmptyAnalysis ? (
+        <AnalysisEmptyState
+          query={query}
+          rangeLabel={`${displayDate(range.from)} - ${displayDate(range.to)}`}
+          onReset={resetAnalysisView}
+        />
+      ) : (
+        <>
+          <TrendChart rows={filteredRows} dateBuckets={dateBuckets} />
+
+          <section className="portal-analysis-table-card">
+            <div className="portal-analysis-table-wrap">
+              <table className={`portal-analysis-table ${narrow ? 'is-narrow' : ''}`} style={{ width: tableWidth, minWidth: tableWidth }}>
+                <colgroup>
+                  {orderedColumns.map((column) => <col key={column.key} style={{ width: tableWidths[column.key] }} />)}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {orderedColumns.map((column) => (
+                      <th
+                        key={column.key}
+                        draggable
+                        onDragStart={(event) => {
+                          setDraggedColumn(column.key);
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', column.key);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const dragged = draggedColumn ?? event.dataTransfer.getData('text/plain');
+                          if (!dragged) return;
+                          setColumnOrder((previous) => reorderTableColumns(previous, dragged, column.key));
+                          setDraggedColumn(null);
+                        }}
+                        onDragEnd={() => setDraggedColumn(null)}
+                        className={`${column.className ?? ''} ${draggedColumn === column.key ? 'dragging' : ''}`}
+                        style={{ width: tableWidths[column.key] }}
+                      >
+                        {column.header}
+                        <button
+                          type="button"
+                          aria-label={`Resize ${column.header} column`}
+                          className="portal-table-resize-handle"
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            resizeRef.current = {
+                              key: column.key,
+                              startX: event.clientX,
+                              startWidth: tableWidths[column.key] ?? event.currentTarget.parentElement?.getBoundingClientRect().width ?? MIN_TABLE_COLUMN_WIDTH,
+                            };
+                            document.body.style.cursor = 'col-resize';
+                            document.body.style.userSelect = 'none';
+                          }}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row, index) => (
+                    <tr key={`${row.sku}-${safePage}-${index}`} onClick={() => setSelectedSku(row)} className="is-clickable">
+                      {orderedColumns.map((column) => (
+                        <td
+                          key={column.key}
+                          className={column.className ?? ''}
+                          style={{ width: tableWidths[column.key] }}
+                        >
+                          <AnalysisCell row={row} column={column} index={safePage * pageSize + index} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="portal-analysis-foot">
+              <span>{analysis.isLoading ? 'Loading analysis...' : `Showing ${firstRow}-${lastRow} of ${safeNumber(filteredRows.length)} SKUs`}</span>
+              <div>
+                <label>Rows <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{DEFAULT_TABLE_PAGE_SIZE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
+                <button disabled={safePage <= 0} onClick={() => setPage(0)}>First</button>
+                <button disabled={safePage <= 0} onClick={() => setPage((value) => Math.max(value - 1, 0))}>Prev</button>
+                <button className="active">{safePage + 1}</button>
+                <button disabled={safePage >= totalPages - 1} onClick={() => setPage((value) => Math.min(value + 1, totalPages - 1))}>Next</button>
+                <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>Last</button>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
       <SkuDetailDrawer row={selectedSku} range={range} onClose={() => setSelectedSku(null)} />
     </div>
   );

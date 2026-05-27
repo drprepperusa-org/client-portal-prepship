@@ -46,7 +46,7 @@ export default function Shipments() {
     <>
       <PageHeader
         title="Shipments"
-        subtitle="Safe shipment history and tracking links for labels already created in PrepShip."
+        subtitle="Review shipment history, tracking numbers, carrier service, and label links."
         action={<RefreshButton loading={shipments.isFetching} onClick={() => void shipments.refetch()} />}
       />
       {shipments.error ? (
@@ -71,7 +71,6 @@ export default function Shipments() {
                 header: 'Order',
                 render: (shipment) => (
                   <div className="min-w-0 space-y-1">
-                    <StoreBadge name={storeNameForClient(stores, clientIdOf(shipment), shipment.storeName ?? shipment.clientName)} compact />
                     <div className="truncate font-black text-ink">{shipment.orderNumber ?? `Order ${shipment.orderId ?? '-'}`}</div>
                     <div className="text-xs font-semibold text-ink-3">{safeDate(shipment.shipDate)}</div>
                   </div>

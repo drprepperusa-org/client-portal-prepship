@@ -1,5 +1,6 @@
-import { Search, Store } from 'lucide-react';
+import { Store } from 'lucide-react';
 import type { PortalClient } from '../types/portal';
+import SearchBar from './ui/search-bar';
 
 export type StoreFilterValue = number | 'all';
 
@@ -65,9 +66,9 @@ export function StoreFilterBar({
       </div>
       <div className="portal-scope-chips" role="group" aria-label="Store filter">
         <button type="button" className={value === 'all' ? 'active' : ''} onClick={() => onChange('all')}>
-          All assigned
+          {clients.length > 1 ? 'All assigned' : 'Assigned scope'}
         </button>
-        {clients.map((client) => (
+        {clients.length > 1 ? clients.map((client) => (
           <button
             key={client.id ?? client.name}
             type="button"
@@ -76,12 +77,14 @@ export function StoreFilterBar({
           >
             <StoreBadge name={client.name} compact />
           </button>
-        ))}
+        )) : null}
       </div>
-      <label className="portal-scope-search">
-        <Search size={14} />
-        <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search store, SKU, order..." />
-      </label>
+      <SearchBar
+        containerClassName="ml-auto w-full max-w-[260px]"
+        value={search}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Search store, SKU, order..."
+      />
     </div>
   );
 }

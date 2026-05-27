@@ -25,9 +25,9 @@ export type ChannelMixPoint = {
   color: string;
 };
 
-const axisColor = '#738399';
-const gridColor = '#dbe6ef';
-const brandBlue = '#03b0f7';
+const axisColor = '#627287';
+const gridColor = '#d8e3ec';
+const brandBlue = '#03a9f4';
 
 function shortDay(day: string) {
   const date = new Date(`${day}T00:00:00`);
@@ -87,7 +87,7 @@ export function ChannelMixChart({ data }: { data: ChannelMixPoint[] }) {
             tickLine={false}
             axisLine={false}
           />
-          <Tooltip cursor={{ fill: 'rgba(3, 176, 247, .08)' }} contentStyle={{ border: `1px solid ${gridColor}`, borderRadius: 8 }} />
+          <Tooltip cursor={{ fill: 'rgba(3, 169, 244, .08)' }} contentStyle={{ border: `1px solid ${gridColor}`, borderRadius: 8 }} />
           <Bar dataKey="count" name="Orders" radius={[0, 8, 8, 0]} barSize={22}>
             {data.map((entry) => (
               <Cell key={entry.name} fill={entry.color} />
