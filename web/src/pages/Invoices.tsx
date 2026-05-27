@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarDays, Download, RotateCcw } from 'lucide-react';
+import { Download, RotateCcw } from 'lucide-react';
 import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
 import { defaultRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
@@ -18,9 +18,35 @@ function pickPackTotal(row: { pickPackTotal?: number | string; pickpackTotal?: n
   return row.pickPackTotal ?? row.pickpackTotal ?? 0;
 }
 
+function displayDate(isoDate: string) {
+  const [year, month, day] = isoDate.split('-');
+  return year && month && day ? `${month}/${day}/${year}` : isoDate;
+}
+
+function parseDisplayDate(value: string) {
+  const trimmed = value.trim();
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+  if (slash) {
+    const month = slash[1]!;
+    const day = slash[2]!;
+    const year = slash[3]!;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  if (iso) {
+    const year = iso[1]!;
+    const month = iso[2]!;
+    const day = iso[3]!;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  return null;
+}
+
 export default function Invoices() {
   const initialRange = defaultRange();
   const [range, setRange] = useState(initialRange);
+  const [fromInput, setFromInput] = useState(displayDate(initialRange.from));
+  const [toInput, setToInput] = useState(displayDate(initialRange.to));
   const auth = useAuth();
   const me = useMeQuery(auth.accessToken);
   const clients = useClientsQuery(auth.accessToken);
@@ -29,22 +55,39 @@ export default function Invoices() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [busyClient, setBusyClient] = useState<number | null>(null);
 
-  function updateFrom(nextFrom: string) {
+  function commitFrom(value = fromInput) {
+    const nextFrom = parseDisplayDate(value);
+    if (!nextFrom) {
+      setFromInput(displayDate(range.from));
+      return;
+    }
     setRange((current) => ({
       from: nextFrom,
       to: nextFrom > current.to ? nextFrom : current.to,
     }));
+    setFromInput(displayDate(nextFrom));
+    if (nextFrom > range.to) setToInput(displayDate(nextFrom));
   }
 
-  function updateTo(nextTo: string) {
+  function commitTo(value = toInput) {
+    const nextTo = parseDisplayDate(value);
+    if (!nextTo) {
+      setToInput(displayDate(range.to));
+      return;
+    }
     setRange((current) => ({
       from: nextTo < current.from ? nextTo : current.from,
       to: nextTo,
     }));
+    setToInput(displayDate(nextTo));
+    if (nextTo < range.from) setFromInput(displayDate(nextTo));
   }
 
   function resetRange() {
-    setRange(defaultRange());
+    const nextRange = defaultRange();
+    setRange(nextRange);
+    setFromInput(displayDate(nextRange.from));
+    setToInput(displayDate(nextRange.to));
   }
 
   async function downloadInvoice(clientId: number | undefined) {
@@ -103,35 +146,41 @@ export default function Invoices() {
         title="Invoice date range"
         right={<span className="text-xs font-bold text-ink-3">{range.from} to {range.to}</span>}
       >
-        <div className="grid gap-4 p-5 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+        <div className="grid gap-3 p-4 md:grid-cols-[minmax(150px,190px)_minmax(150px,190px)_auto] md:items-end">
           <label className="block">
-            <span className="flex items-center gap-2 text-xs font-black uppercase text-ink-3">
-              <CalendarDays size={14} /> Start date
-            </span>
+            <span className="text-[11px] font-black uppercase text-ink-3">Start date</span>
             <input
-              type="date"
-              value={range.from}
-              max={range.to}
-              onChange={(event) => updateFrom(event.target.value)}
-              className="mt-2 h-11 w-full rounded-card border border-line bg-surface px-3 text-sm font-bold text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+              type="text"
+              value={fromInput}
+              placeholder="MM/DD/YYYY"
+              inputMode="numeric"
+              onChange={(event) => setFromInput(event.target.value)}
+              onBlur={() => commitFrom()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-black text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/15"
             />
           </label>
           <label className="block">
-            <span className="flex items-center gap-2 text-xs font-black uppercase text-ink-3">
-              <CalendarDays size={14} /> End date
-            </span>
+            <span className="text-[11px] font-black uppercase text-ink-3">End date</span>
             <input
-              type="date"
-              value={range.to}
-              min={range.from}
-              onChange={(event) => updateTo(event.target.value)}
-              className="mt-2 h-11 w-full rounded-card border border-line bg-surface px-3 text-sm font-bold text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+              type="text"
+              value={toInput}
+              placeholder="MM/DD/YYYY"
+              inputMode="numeric"
+              onChange={(event) => setToInput(event.target.value)}
+              onBlur={() => commitTo()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-black text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/15"
             />
           </label>
           <button
             type="button"
             onClick={resetRange}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-card border border-line bg-surface px-4 text-sm font-black text-ink-2 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-bg hover:text-brand active:translate-y-0 motion-reduce:transform-none"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-black text-ink-2 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-bg hover:text-brand active:translate-y-0 motion-reduce:transform-none"
           >
             <RotateCcw size={15} /> Last 30 days
           </button>
@@ -204,7 +253,7 @@ export default function Invoices() {
           <TableSkeleton rows={6} columns={8} />
         ) : (
           <DataTable<BillingInvoiceDetailRow>
-            tableId="invoice-order-details"
+            tableId="invoice-order-details-v2"
             rows={invoiceDetails.data?.data ?? []}
             getRowKey={(row) => `${row.clientId ?? 'client'}-${row.orderId ?? row.orderNumber ?? row.shipDate ?? 'row'}`}
             columns={[
@@ -219,6 +268,12 @@ export default function Invoices() {
                 header: 'Order',
                 width: '145px',
                 render: (row) => <span className="font-black text-ink">{row.orderNumber ?? row.orderId ?? 'Unassigned'}</span>,
+              },
+              {
+                key: 'recipient',
+                header: 'Recipient',
+                width: '190px',
+                render: (row) => <span className="font-semibold text-ink-2">{row.recipientName ?? '-'}</span>,
               },
               {
                 key: 'itemNames',

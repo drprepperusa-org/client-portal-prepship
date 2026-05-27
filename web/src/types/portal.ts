@@ -177,6 +177,7 @@ export type BillingInvoiceDetailRow = {
   clientName?: string | null;
   orderId?: number | null;
   orderNumber?: string | null;
+  recipientName?: string | null;
   itemNames?: string | null;
   shipDate?: string | null;
   qty?: number | string | null;
