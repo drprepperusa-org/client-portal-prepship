@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { CalendarDays, Download, RotateCcw } from 'lucide-react';
 import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
 import { defaultRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
@@ -15,14 +15,33 @@ function clientRows(value: unknown): PortalClient[] {
 }
 
 export default function Invoices() {
+  const initialRange = defaultRange();
+  const [range, setRange] = useState(initialRange);
   const auth = useAuth();
   const me = useMeQuery(auth.accessToken);
   const clients = useClientsQuery(auth.accessToken);
-  const billing = useBillingQuery(auth.accessToken);
-  const invoiceDetails = useInvoiceDetailsQuery(auth.accessToken);
-  const range = defaultRange();
+  const billing = useBillingQuery(auth.accessToken, range);
+  const invoiceDetails = useInvoiceDetailsQuery(auth.accessToken, range);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [busyClient, setBusyClient] = useState<number | null>(null);
+
+  function updateFrom(nextFrom: string) {
+    setRange((current) => ({
+      from: nextFrom,
+      to: nextFrom > current.to ? nextFrom : current.to,
+    }));
+  }
+
+  function updateTo(nextTo: string) {
+    setRange((current) => ({
+      from: nextTo < current.from ? nextTo : current.from,
+      to: nextTo,
+    }));
+  }
+
+  function resetRange() {
+    setRange(defaultRange());
+  }
 
   async function downloadInvoice(clientId: number | undefined) {
     if (!clientId || !auth.accessToken) return;
@@ -76,6 +95,45 @@ export default function Invoices() {
           />
         </div>
       ) : null}
+      <Panel
+        title="Invoice date range"
+        right={<span className="text-xs font-bold text-ink-3">{range.from} to {range.to}</span>}
+      >
+        <div className="grid gap-4 p-5 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+          <label className="block">
+            <span className="flex items-center gap-2 text-xs font-black uppercase text-ink-3">
+              <CalendarDays size={14} /> Start date
+            </span>
+            <input
+              type="date"
+              value={range.from}
+              max={range.to}
+              onChange={(event) => updateFrom(event.target.value)}
+              className="mt-2 h-11 w-full rounded-card border border-line bg-surface px-3 text-sm font-bold text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          </label>
+          <label className="block">
+            <span className="flex items-center gap-2 text-xs font-black uppercase text-ink-3">
+              <CalendarDays size={14} /> End date
+            </span>
+            <input
+              type="date"
+              value={range.to}
+              min={range.from}
+              onChange={(event) => updateTo(event.target.value)}
+              className="mt-2 h-11 w-full rounded-card border border-line bg-surface px-3 text-sm font-bold text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={resetRange}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-card border border-line bg-surface px-4 text-sm font-black text-ink-2 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-bg hover:text-brand active:translate-y-0 motion-reduce:transform-none"
+          >
+            <RotateCcw size={15} /> Last 30 days
+          </button>
+        </div>
+      </Panel>
+      <div className="h-5" />
       <Panel
         title="Assigned invoice scope"
         right={<span className="text-xs font-bold text-ink-3">{auth.user?.email ?? me.data?.email ?? 'Portal account'}</span>}

@@ -21,8 +21,10 @@ export const portalQueryKeys = {
   orders: (token?: string | null, status?: OrderStatus | 'all') => ['portal', portalSessionKey(token), 'orders', status ?? 'all'] as const,
   shipments: (token?: string | null) => ['portal', portalSessionKey(token), 'shipments'] as const,
   inventory: (token?: string | null) => ['portal', portalSessionKey(token), 'inventory'] as const,
-  billing: (token?: string | null) => ['portal', portalSessionKey(token), 'billing'] as const,
-  invoiceDetails: (token?: string | null) => ['portal', portalSessionKey(token), 'invoice-details'] as const,
+  billing: (token?: string | null, range?: { from: string; to: string }) =>
+    ['portal', portalSessionKey(token), 'billing', range?.from ?? 'default', range?.to ?? 'default'] as const,
+  invoiceDetails: (token?: string | null, range?: { from: string; to: string }) =>
+    ['portal', portalSessionKey(token), 'invoice-details', range?.from ?? 'default', range?.to ?? 'default'] as const,
   clients: (token?: string | null) => ['portal', portalSessionKey(token), 'clients'] as const,
   settings: (token?: string | null) => ['portal', portalSessionKey(token), 'settings'] as const,
   me: (token?: string | null) => ['portal', portalSessionKey(token), 'me'] as const,
@@ -196,28 +198,26 @@ export function useInventoryQuery(token: string | null) {
   });
 }
 
-export function useBillingQuery(token: string | null) {
+export function useBillingQuery(token: string | null, range = defaultRange()) {
   return useQuery({
-    queryKey: portalQueryKeys.billing(token),
+    queryKey: portalQueryKeys.billing(token, range),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoBilling) : portalApi.clientPortal.billingSummary(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoBilling) : portalApi.clientPortal.billingSummary(token!, range)),
     placeholderData: keepPreviousData,
   });
 }
 
-export function useInvoiceDetailsQuery(token: string | null) {
+export function useInvoiceDetailsQuery(token: string | null, range = defaultRange()) {
   return useQuery({
-    queryKey: portalQueryKeys.invoiceDetails(token),
+    queryKey: portalQueryKeys.invoiceDetails(token, range),
     enabled: enabled(token),
-    queryFn: () => {
-      const range = defaultRange();
-      return demoAllowed(token!)
+    queryFn: () =>
+      demoAllowed(token!)
         ? Promise.resolve(demoInvoiceDetails())
         : portalApi.clientPortal.invoiceDetails(token!, {
-            dateFrom: `${range.from}T00:00:00.000Z`,
-            dateTo: `${range.to}T23:59:59.999Z`,
-          });
-    },
+          dateFrom: `${range.from}T00:00:00.000Z`,
+          dateTo: `${range.to}T23:59:59.999Z`,
+        }),
     placeholderData: keepPreviousData,
   });
 }
