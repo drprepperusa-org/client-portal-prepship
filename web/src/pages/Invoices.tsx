@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Download, Pencil, RotateCcw, X } from 'lucide-react';
 import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
@@ -8,8 +8,10 @@ import { DEMO_TOKEN } from '../lib/demo-data';
 import {
   adjustedInvoiceRow,
   calculatedInvoiceRowTotal,
+  loadInvoiceRowAdjustments,
   invoiceNumber,
   invoiceTotalsForRows,
+  saveInvoiceRowAdjustments,
   type InvoiceRowAdjustment,
 } from '../lib/invoiceAdjustments';
 import { useBillingQuery, useClientsQuery, useInvoiceDetailsQuery, useMeQuery } from '../lib/portalQueries';
@@ -87,7 +89,10 @@ export default function Invoices() {
   const [busyClient, setBusyClient] = useState<number | null>(null);
   const [selectedExcludeKeys, setSelectedExcludeKeys] = useState<Set<string>>(new Set());
   const [excludedKeys, setExcludedKeys] = useState<Set<string>>(new Set());
-  const [rowAdjustments, setRowAdjustments] = useState<Record<string, InvoiceRowAdjustment>>({});
+  const [rowAdjustments, setRowAdjustments] = useState<Record<string, InvoiceRowAdjustment>>(() => {
+    if (typeof window === 'undefined') return {};
+    return loadInvoiceRowAdjustments(window.localStorage);
+  });
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<InvoiceEditDraft | null>(null);
   const [preEditAdjustment, setPreEditAdjustment] = useState<InvoiceRowAdjustment | null>(null);
@@ -96,14 +101,19 @@ export default function Invoices() {
   const includedRows = adjustedDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
   const excludedRowCount = detailRows.length - includedRows.length;
   const selectedExcludeCount = selectedExcludeKeys.size;
-  const adjustedRowCount = Object.keys(rowAdjustments).length;
+  const visibleRowKeys = new Set(detailRows.map((row) => invoiceRowKey(row)));
+  const adjustedRowCount = Object.keys(rowAdjustments).filter((key) => visibleRowKeys.has(key)).length;
+
+  useEffect(() => {
+    saveInvoiceRowAdjustments(window.localStorage, rowAdjustments);
+  }, [rowAdjustments]);
 
   function updateFrom(nextFrom: string) {
     setRange((current) => ({
       from: nextFrom,
       to: nextFrom > current.to ? nextFrom : current.to,
     }));
-    resetInvoicePreview();
+    resetInvoiceSelection();
   }
 
   function updateTo(nextTo: string) {
@@ -111,12 +121,12 @@ export default function Invoices() {
       from: nextTo < current.from ? nextTo : current.from,
       to: nextTo,
     }));
-    resetInvoicePreview();
+    resetInvoiceSelection();
   }
 
   function resetRange() {
     setRange(defaultRange());
-    resetInvoicePreview();
+    resetInvoiceSelection();
   }
 
   function effectiveInvoiceRow(row: BillingInvoiceDetailRow) {
@@ -146,9 +156,21 @@ export default function Invoices() {
     setSelectedExcludeKeys(new Set());
   }
 
-  function resetInvoicePreview() {
+  function resetInvoiceSelection() {
     includeAllRows();
-    setRowAdjustments({});
+    setEditingKey(null);
+    setEditDraft(null);
+    setPreEditAdjustment(null);
+  }
+
+  function clearSavedInvoiceEdits() {
+    setRowAdjustments((current) => {
+      const next = { ...current };
+      visibleRowKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
     setEditingKey(null);
     setEditDraft(null);
     setPreEditAdjustment(null);
@@ -500,12 +522,7 @@ export default function Invoices() {
             {adjustedRowCount ? (
               <button
                 type="button"
-                onClick={() => {
-                  setRowAdjustments({});
-                  setEditingKey(null);
-                  setEditDraft(null);
-                  setPreEditAdjustment(null);
-                }}
+                onClick={clearSavedInvoiceEdits}
                 className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[11px] font-black text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand"
               >
                 <RotateCcw size={13} /> Reset edits

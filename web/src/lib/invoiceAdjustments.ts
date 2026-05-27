@@ -18,6 +18,72 @@ export type InvoiceTotals = {
   grandTotal: number;
 };
 
+type InvoiceAdjustmentStorage = {
+  version: 1;
+  adjustments: Record<string, InvoiceRowAdjustment>;
+};
+
+type InvoiceAdjustmentStorageApi = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+};
+
+export const INVOICE_ADJUSTMENTS_STORAGE_KEY = 'clientPortal.invoiceRowAdjustments.v1';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cleanInvoiceAdjustment(value: unknown): InvoiceRowAdjustment | null {
+  if (!isRecord(value)) return null;
+  const adjustment: InvoiceRowAdjustment = {};
+  for (const key of ['qty', 'pickpackTotal', 'packageTotal', 'shippingTotal', 'rowTotal'] as const) {
+    const field = value[key];
+    if (typeof field === 'string' || typeof field === 'number' || field === null) {
+      adjustment[key] = field;
+    }
+  }
+  return Object.keys(adjustment).length > 0 ? adjustment : null;
+}
+
+export function loadInvoiceRowAdjustments(storage: Pick<InvoiceAdjustmentStorageApi, 'getItem'>, key = INVOICE_ADJUSTMENTS_STORAGE_KEY) {
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Partial<InvoiceAdjustmentStorage>;
+    if (parsed.version !== 1 || !isRecord(parsed.adjustments)) return {};
+    return Object.entries(parsed.adjustments).reduce<Record<string, InvoiceRowAdjustment>>((acc, [rowKey, value]) => {
+      const adjustment = cleanInvoiceAdjustment(value);
+      if (adjustment) acc[rowKey] = adjustment;
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+export function saveInvoiceRowAdjustments(
+  storage: Pick<InvoiceAdjustmentStorageApi, 'setItem' | 'removeItem'>,
+  adjustments: Record<string, InvoiceRowAdjustment>,
+  key = INVOICE_ADJUSTMENTS_STORAGE_KEY,
+) {
+  try {
+    const cleanAdjustments = Object.entries(adjustments).reduce<Record<string, InvoiceRowAdjustment>>((acc, [rowKey, value]) => {
+      const adjustment = cleanInvoiceAdjustment(value);
+      if (adjustment) acc[rowKey] = adjustment;
+      return acc;
+    }, {});
+    if (Object.keys(cleanAdjustments).length === 0) {
+      storage.removeItem(key);
+      return;
+    }
+    storage.setItem(key, JSON.stringify({ version: 1, adjustments: cleanAdjustments } satisfies InvoiceAdjustmentStorage));
+  } catch {
+    // Ignore storage failures so invoice editing still works for the current page session.
+  }
+}
+
 export function invoiceNumber(value: unknown) {
   const numberValue = Number(value ?? 0);
   return Number.isFinite(numberValue) ? numberValue : 0;
