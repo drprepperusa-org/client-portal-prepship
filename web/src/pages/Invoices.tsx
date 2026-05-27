@@ -183,13 +183,13 @@ export default function Invoices() {
     <div class="card"><div class="label">Orders</div><div class="value">${escapeHtml(safeNumber(billableRows.length))}</div></div>
     <div class="card"><div class="label">Qty</div><div class="value">${escapeHtml(safeNumber(totals.qtyTotal))}</div></div>
     <div class="card"><div class="label">Pick/pack</div><div class="value">${escapeHtml(safeMoney(totals.pickpackTotal))}</div></div>
-    <div class="card"><div class="label">Packages</div><div class="value">${escapeHtml(safeMoney(totals.packageTotal))}</div></div>
+    <div class="card"><div class="label">Box fee</div><div class="value">${escapeHtml(safeMoney(totals.packageTotal))}</div></div>
     <div class="card"><div class="label">Shipping</div><div class="value">${escapeHtml(safeMoney(totals.shippingTotal))}</div></div>
     <div class="card"><div class="label">Storage</div><div class="value">${escapeHtml(safeMoney(totals.storageTotal))}</div></div>
   </div>
   <div class="total"><span>Total amount due</span><b>${escapeHtml(safeMoney(totals.grandTotal))}</b></div>
   <table>
-    <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Packages</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
+    <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="10">No billable order rows found for this adjusted period.</td></tr>'}</tbody>
     <tfoot><tr><td colspan="5">${escapeHtml(safeNumber(billableRows.length))} orders / ${escapeHtml(safeNumber(totals.qtyTotal))} qty</td><td class="num">${escapeHtml(safeMoney(totals.pickpackTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.additionalTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.packageTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.shippingTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.grandTotal))}</td></tr></tfoot>
   </table>
@@ -332,7 +332,7 @@ export default function Invoices() {
                     <div className="mt-1 text-sm font-black text-ink">{safeMoney(adjusted.pickPackTotal)}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] font-black uppercase text-ink-3">Packages</div>
+                    <div className="text-[10px] font-black uppercase text-ink-3">Box fee</div>
                     <div className="mt-1 text-sm font-black text-ink">{safeMoney(adjusted.packageTotal)}</div>
                   </div>
                   <div>
@@ -464,7 +464,7 @@ export default function Invoices() {
               },
               {
                 key: 'packages',
-                header: 'Packages',
+                header: 'Box fee',
                 className: 'right',
                 width: '120px',
                 render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.packageTotal)}</span>,

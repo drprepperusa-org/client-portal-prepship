@@ -9,6 +9,10 @@ import { orders } from '../db/schema/orders';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
 import { billingSummary } from '../services/billing';
+import {
+  HERITAGE_PREP_FEE_CLIENT_NAME,
+  heritagePrepFeeRowsForRange,
+} from '../lib/heritage-prep-fee-overrides';
 import { getSyncStatus } from '../services/order-sync';
 import { getShipmentSyncStatus } from '../services/shipment-sync';
 import { getPersistedWorkerStatus } from '../services/worker-status';
@@ -208,6 +212,35 @@ function invoiceLineScopePredicate(scope: ClientPortalScope): SQL | undefined {
 }
 
 async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?: number | null; dateFrom: string; dateTo: string }) {
+  if (input.clientId) {
+    const [client] = await db
+      .select({ id: clients.id, name: clients.name })
+      .from(clients)
+      .where(clientFilterPredicate(scope, input.clientId, null))
+      .limit(1);
+    if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
+      const overrideRows = heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo);
+      if (overrideRows.length > 0) {
+        return overrideRows.map((row) => ({
+          clientId: client.id,
+          clientName: client.name,
+          orderId: null,
+          orderNumber: row.orderNumber,
+          recipientName: row.recipientName,
+          itemNames: row.itemNames,
+          shipDate: row.shipDate,
+          qty: row.qty.toFixed(3),
+          pickpackTotal: row.pickpackTotal.toFixed(2),
+          additionalTotal: '0.00',
+          packageTotal: row.packageTotal.toFixed(2),
+          shippingTotal: row.shippingTotal.toFixed(2),
+          storageTotal: row.storageTotal.toFixed(2),
+          rowTotal: row.rowTotal.toFixed(2),
+        }));
+      }
+    }
+  }
+
   const rows = await db.execute<PortalInvoiceDetailRow>(sql`
     select
       b.client_id,
@@ -584,6 +617,38 @@ app.get('/invoice', async (c) => {
   const row = summary.clients[0];
   const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
   const details = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
+  const detailTotals = details.reduce(
+    (totals, detail) => ({
+      orderCount: totals.orderCount + 1,
+      qty: totals.qty + Number(detail.qty ?? 0),
+      pickPackTotal: totals.pickPackTotal + Number(detail.pickpackTotal ?? 0),
+      additionalTotal: totals.additionalTotal + Number(detail.additionalTotal ?? 0),
+      packageTotal: totals.packageTotal + Number(detail.packageTotal ?? 0),
+      shippingTotal: totals.shippingTotal + Number(detail.shippingTotal ?? 0),
+      storageTotal: totals.storageTotal + Number(detail.storageTotal ?? 0),
+      grandTotal: totals.grandTotal + Number(detail.rowTotal ?? 0),
+    }),
+    {
+      orderCount: 0,
+      qty: 0,
+      pickPackTotal: 0,
+      additionalTotal: 0,
+      packageTotal: 0,
+      shippingTotal: 0,
+      storageTotal: 0,
+      grandTotal: 0,
+    },
+  );
+  const invoiceTotals = details.length > 0 ? detailTotals : {
+    orderCount: row?.orderCount ?? 0,
+    qty: 0,
+    pickPackTotal: Number(row?.pickPackTotal ?? 0),
+    additionalTotal: Number(row?.additionalTotal ?? 0),
+    packageTotal: Number(row?.packageTotal ?? 0),
+    shippingTotal: Number(row?.shippingTotal ?? 0),
+    storageTotal: Number(row?.storageTotal ?? 0),
+    grandTotal: Number(row?.grandTotal ?? 0),
+  };
   const fromDisplay = dateFrom.slice(0, 10);
   const toDisplay = dateTo.slice(0, 10);
   const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -609,7 +674,7 @@ app.get('/invoice', async (c) => {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PrepShip Invoice - ${escHtml(client.name)} - ${fromDisplay} to ${toDisplay}</title>
   <style>
-    *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0 auto;max-width:1120px;padding:40px 48px;color:#111827;background:#fff;font-size:13px}.print-tip{margin-bottom:24px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 14px}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:22px}.brand h1{font-size:28px;line-height:1;margin:0 0 6px;font-weight:800}.muted{color:#6b7280}.client{text-align:right}.client strong{display:block;font-size:18px}.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:22px 0}.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:800}.value{margin-top:4px;font-size:17px;font-weight:800}.total{display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:14px 18px;margin-bottom:24px}.total b{font-size:24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;color:#374151;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}tbody tr:nth-child(even){background:#fafafa}.num{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2563eb}.bold{font-weight:800}tfoot td{font-weight:800;background:#f3f4f6}.footer{border-top:1px solid #e5e7eb;color:#9ca3af;margin-top:24px;padding-top:12px;text-align:center;font-size:11px}@media print{.print-tip{display:none}body{padding:18px;max-width:none}}
+    *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0 auto;max-width:1120px;padding:40px 48px;color:#111827;background:#fff;font-size:13px}.print-tip{margin-bottom:24px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 14px}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:22px}.brand h1{font-size:28px;line-height:1;margin:0 0 6px;font-weight:800}.muted{color:#6b7280}.client{text-align:right}.client strong{display:block;font-size:18px}.summary{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:22px 0}.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:800}.value{margin-top:4px;font-size:17px;font-weight:800}.total{display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:14px 18px;margin-bottom:24px}.total b{font-size:24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;color:#374151;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}tbody tr:nth-child(even){background:#fafafa}.num{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2563eb}.bold{font-weight:800}tfoot td{font-weight:800;background:#f3f4f6}.footer{border-top:1px solid #e5e7eb;color:#9ca3af;margin-top:24px;padding-top:12px;text-align:center;font-size:11px}@media print{.print-tip{display:none}body{padding:18px;max-width:none}}
   </style>
 </head>
 <body>
@@ -619,17 +684,18 @@ app.get('/invoice', async (c) => {
     <div class="client"><strong>${escHtml(client.name)}</strong><span class="muted">${fromDisplay} to ${toDisplay}</span></div>
   </div>
   <div class="summary">
-    <div class="card"><div class="label">Billable orders</div><div class="value">${row?.orderCount ?? 0}</div></div>
-    <div class="card"><div class="label">Pick/pack</div><div class="value">${money(row?.pickPackTotal)}</div></div>
-    <div class="card"><div class="label">Packages</div><div class="value">${money(row?.packageTotal)}</div></div>
-    <div class="card"><div class="label">Shipping</div><div class="value">${money(row?.shippingTotal)}</div></div>
-    <div class="card"><div class="label">Storage</div><div class="value">${money(row?.storageTotal)}</div></div>
+    <div class="card"><div class="label">Orders</div><div class="value">${invoiceTotals.orderCount}</div></div>
+    <div class="card"><div class="label">Qty</div><div class="value">${invoiceTotals.qty}</div></div>
+    <div class="card"><div class="label">Pick/pack</div><div class="value">${money(invoiceTotals.pickPackTotal)}</div></div>
+    <div class="card"><div class="label">Box fee</div><div class="value">${money(invoiceTotals.packageTotal)}</div></div>
+    <div class="card"><div class="label">Shipping</div><div class="value">${money(invoiceTotals.shippingTotal)}</div></div>
+    <div class="card"><div class="label">Storage</div><div class="value">${money(invoiceTotals.storageTotal)}</div></div>
   </div>
-  <div class="total"><span>Total amount due</span><b>${money(row?.grandTotal)}</b></div>
+  <div class="total"><span>Total amount due</span><b>${money(invoiceTotals.grandTotal)}</b></div>
   <table>
-    <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Packages</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
+    <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
     <tbody>${detailRows || '<tr><td colspan="10">No billable order rows found for this period.</td></tr>'}</tbody>
-    <tfoot><tr><td colspan="5">${row?.orderCount ?? 0} orders</td><td class="num">${money(row?.pickPackTotal)}</td><td class="num">${money(row?.additionalTotal)}</td><td class="num">${money(row?.packageTotal)}</td><td class="num">${money(row?.shippingTotal)}</td><td class="num">${money(row?.grandTotal)}</td></tr></tfoot>
+    <tfoot><tr><td colspan="5">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td><td class="num">${money(invoiceTotals.pickPackTotal)}</td><td class="num">${money(invoiceTotals.additionalTotal)}</td><td class="num">${money(invoiceTotals.packageTotal)}</td><td class="num">${money(invoiceTotals.shippingTotal)}</td><td class="num">${money(invoiceTotals.grandTotal)}</td></tr></tfoot>
   </table>
   <div class="footer">PrepShip invoice generated ${escHtml(generated)} for ${escHtml(client.name)}.</div>
 </body>
