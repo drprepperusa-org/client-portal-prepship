@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, RotateCcw } from 'lucide-react';
+import { CalendarDays, Download, RotateCcw } from 'lucide-react';
 import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
 import { defaultRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
@@ -18,35 +18,9 @@ function pickPackTotal(row: { pickPackTotal?: number | string; pickpackTotal?: n
   return row.pickPackTotal ?? row.pickpackTotal ?? 0;
 }
 
-function displayDate(isoDate: string) {
-  const [year, month, day] = isoDate.split('-');
-  return year && month && day ? `${month}/${day}/${year}` : isoDate;
-}
-
-function parseDisplayDate(value: string) {
-  const trimmed = value.trim();
-  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
-  if (slash) {
-    const month = slash[1]!;
-    const day = slash[2]!;
-    const year = slash[3]!;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
-  if (iso) {
-    const year = iso[1]!;
-    const month = iso[2]!;
-    const day = iso[3]!;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  return null;
-}
-
 export default function Invoices() {
   const initialRange = defaultRange();
   const [range, setRange] = useState(initialRange);
-  const [fromInput, setFromInput] = useState(displayDate(initialRange.from));
-  const [toInput, setToInput] = useState(displayDate(initialRange.to));
   const auth = useAuth();
   const me = useMeQuery(auth.accessToken);
   const clients = useClientsQuery(auth.accessToken);
@@ -55,39 +29,22 @@ export default function Invoices() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [busyClient, setBusyClient] = useState<number | null>(null);
 
-  function commitFrom(value = fromInput) {
-    const nextFrom = parseDisplayDate(value);
-    if (!nextFrom) {
-      setFromInput(displayDate(range.from));
-      return;
-    }
+  function updateFrom(nextFrom: string) {
     setRange((current) => ({
       from: nextFrom,
       to: nextFrom > current.to ? nextFrom : current.to,
     }));
-    setFromInput(displayDate(nextFrom));
-    if (nextFrom > range.to) setToInput(displayDate(nextFrom));
   }
 
-  function commitTo(value = toInput) {
-    const nextTo = parseDisplayDate(value);
-    if (!nextTo) {
-      setToInput(displayDate(range.to));
-      return;
-    }
+  function updateTo(nextTo: string) {
     setRange((current) => ({
       from: nextTo < current.from ? nextTo : current.from,
       to: nextTo,
     }));
-    setToInput(displayDate(nextTo));
-    if (nextTo < range.from) setFromInput(displayDate(nextTo));
   }
 
   function resetRange() {
-    const nextRange = defaultRange();
-    setRange(nextRange);
-    setFromInput(displayDate(nextRange.from));
-    setToInput(displayDate(nextRange.to));
+    setRange(defaultRange());
   }
 
   async function downloadInvoice(clientId: number | undefined) {
@@ -146,36 +103,36 @@ export default function Invoices() {
         title="Invoice date range"
         right={<span className="text-xs font-bold text-ink-3">{range.from} to {range.to}</span>}
       >
-        <div className="grid gap-3 p-4 md:grid-cols-[minmax(150px,190px)_minmax(150px,190px)_auto] md:items-end">
+        <div className="grid gap-3 p-4 md:grid-cols-[minmax(180px,220px)_minmax(180px,220px)_auto] md:items-end">
           <label className="block">
-            <span className="text-[11px] font-black uppercase text-ink-3">Start date</span>
-            <input
-              type="text"
-              value={fromInput}
-              placeholder="MM/DD/YYYY"
-              inputMode="numeric"
-              onChange={(event) => setFromInput(event.target.value)}
-              onBlur={() => commitFrom()}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur();
-              }}
-              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-black text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/15"
-            />
+            <span className="flex items-center gap-2 text-[11px] font-black uppercase text-ink-3">
+              <CalendarDays size={14} /> Start date
+            </span>
+            <div className="relative mt-1.5">
+              <input
+                type="date"
+                value={range.from}
+                max={range.to}
+                onChange={(event) => updateFrom(event.target.value)}
+                className="invoice-date-picker h-10 w-full rounded-lg border border-line bg-surface px-3 pr-9 text-sm font-black text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+              />
+              <CalendarDays className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-3" size={15} />
+            </div>
           </label>
           <label className="block">
-            <span className="text-[11px] font-black uppercase text-ink-3">End date</span>
-            <input
-              type="text"
-              value={toInput}
-              placeholder="MM/DD/YYYY"
-              inputMode="numeric"
-              onChange={(event) => setToInput(event.target.value)}
-              onBlur={() => commitTo()}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur();
-              }}
-              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-black text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/15"
-            />
+            <span className="flex items-center gap-2 text-[11px] font-black uppercase text-ink-3">
+              <CalendarDays size={14} /> End date
+            </span>
+            <div className="relative mt-1.5">
+              <input
+                type="date"
+                value={range.to}
+                min={range.from}
+                onChange={(event) => updateTo(event.target.value)}
+                className="invoice-date-picker h-10 w-full rounded-lg border border-line bg-surface px-3 pr-9 text-sm font-black text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+              />
+              <CalendarDays className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-3" size={15} />
+            </div>
           </label>
           <button
             type="button"

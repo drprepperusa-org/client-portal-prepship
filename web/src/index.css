@@ -4274,6 +4274,11 @@ summary:focus-visible {
   max-width: 100%;
 }
 
+.invoice-date-picker::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0;
+}
+
 .portal-data-table thead th {
   position: sticky;
   top: 0;
