@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { CalendarDays, Download, RotateCcw } from 'lucide-react';
+import { CalendarDays, Check, Download, Pencil, RotateCcw, X } from 'lucide-react';
 import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
 import { defaultRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { DEMO_TOKEN } from '../lib/demo-data';
+import {
+  adjustedInvoiceRow,
+  calculatedInvoiceRowTotal,
+  invoiceNumber,
+  invoiceTotalsForRows,
+  type InvoiceRowAdjustment,
+} from '../lib/invoiceAdjustments';
 import { useBillingQuery, useClientsQuery, useInvoiceDetailsQuery, useMeQuery } from '../lib/portalQueries';
 import type { BillingInvoiceDetailRow, PortalClient } from '../types/portal';
 
@@ -19,17 +26,17 @@ function pickPackTotal(row: { pickPackTotal?: number | string; pickpackTotal?: n
 }
 
 function invoiceRowKey(row: BillingInvoiceDetailRow) {
-  return `${row.clientId ?? 'client'}-${row.orderId ?? row.orderNumber ?? row.shipDate ?? 'row'}`;
+  return [
+    row.clientId ?? 'client',
+    row.orderId ?? row.orderNumber ?? 'row',
+    row.shipDate ?? 'date',
+    row.recipientName ?? 'recipient',
+    row.itemNames ?? 'items',
+  ].join('-');
 }
 
 function moneyValue(value: unknown) {
-  const numberValue = Number(value ?? 0);
-  return Number.isFinite(numberValue) ? numberValue : 0;
-}
-
-function quantityValue(value: unknown) {
-  const numberValue = Number(value ?? 0);
-  return Number.isFinite(numberValue) ? numberValue : 0;
+  return invoiceNumber(value);
 }
 
 function escapeHtml(value: unknown) {
@@ -50,6 +57,24 @@ function openDatePicker(input: HTMLInputElement) {
   }
 }
 
+type InvoiceEditDraft = {
+  qty: string;
+  pickpackTotal: string;
+  packageTotal: string;
+  shippingTotal: string;
+  rowTotal: string;
+};
+
+function editDraftFromRow(row: BillingInvoiceDetailRow): InvoiceEditDraft {
+  return {
+    qty: String(invoiceNumber(row.qty)),
+    pickpackTotal: invoiceNumber(row.pickpackTotal).toFixed(2),
+    packageTotal: invoiceNumber(row.packageTotal).toFixed(2),
+    shippingTotal: invoiceNumber(row.shippingTotal).toFixed(2),
+    rowTotal: invoiceNumber(row.rowTotal).toFixed(2),
+  };
+}
+
 export default function Invoices() {
   const initialRange = defaultRange();
   const [range, setRange] = useState(initialRange);
@@ -62,17 +87,22 @@ export default function Invoices() {
   const [busyClient, setBusyClient] = useState<number | null>(null);
   const [selectedExcludeKeys, setSelectedExcludeKeys] = useState<Set<string>>(new Set());
   const [excludedKeys, setExcludedKeys] = useState<Set<string>>(new Set());
+  const [rowAdjustments, setRowAdjustments] = useState<Record<string, InvoiceRowAdjustment>>({});
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<InvoiceEditDraft | null>(null);
   const detailRows = invoiceDetails.data?.data ?? [];
-  const includedRows = detailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
+  const adjustedDetailRows = detailRows.map((row) => effectiveInvoiceRow(row));
+  const includedRows = adjustedDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
   const excludedRowCount = detailRows.length - includedRows.length;
   const selectedExcludeCount = selectedExcludeKeys.size;
+  const adjustedRowCount = Object.keys(rowAdjustments).length;
 
   function updateFrom(nextFrom: string) {
     setRange((current) => ({
       from: nextFrom,
       to: nextFrom > current.to ? nextFrom : current.to,
     }));
-    includeAllRows();
+    resetInvoicePreview();
   }
 
   function updateTo(nextTo: string) {
@@ -80,12 +110,16 @@ export default function Invoices() {
       from: nextTo < current.from ? nextTo : current.from,
       to: nextTo,
     }));
-    includeAllRows();
+    resetInvoicePreview();
   }
 
   function resetRange() {
     setRange(defaultRange());
-    includeAllRows();
+    resetInvoicePreview();
+  }
+
+  function effectiveInvoiceRow(row: BillingInvoiceDetailRow) {
+    return adjustedInvoiceRow(row, rowAdjustments[invoiceRowKey(row)]);
   }
 
   function toggleExcludeCandidate(rowKey: string, checked: boolean) {
@@ -111,8 +145,67 @@ export default function Invoices() {
     setSelectedExcludeKeys(new Set());
   }
 
+  function resetInvoicePreview() {
+    includeAllRows();
+    setRowAdjustments({});
+    setEditingKey(null);
+    setEditDraft(null);
+  }
+
+  function startEditRow(row: BillingInvoiceDetailRow) {
+    const rowKey = invoiceRowKey(row);
+    setEditingKey(rowKey);
+    setEditDraft(editDraftFromRow(effectiveInvoiceRow(row)));
+  }
+
+  function cancelEditRow() {
+    setEditingKey(null);
+    setEditDraft(null);
+  }
+
+  function updateEditDraft(field: keyof InvoiceEditDraft, value: string) {
+    setEditDraft((current) => {
+      if (!current) return current;
+      const next = { ...current, [field]: value };
+      if (field !== 'rowTotal' && editingKey) {
+        const sourceRow = detailRows.find((row) => invoiceRowKey(row) === editingKey);
+        if (sourceRow) {
+          const preview = adjustedInvoiceRow(effectiveInvoiceRow(sourceRow), next);
+          next.rowTotal = calculatedInvoiceRowTotal(preview).toFixed(2);
+        }
+      }
+      return next;
+    });
+  }
+
+  function saveEditRow(row: BillingInvoiceDetailRow) {
+    if (!editDraft) return;
+    const rowKey = invoiceRowKey(row);
+    setRowAdjustments((current) => ({
+      ...current,
+      [rowKey]: {
+        qty: editDraft.qty,
+        pickpackTotal: editDraft.pickpackTotal,
+        packageTotal: editDraft.packageTotal,
+        shippingTotal: editDraft.shippingTotal,
+        rowTotal: editDraft.rowTotal,
+      },
+    }));
+    cancelEditRow();
+  }
+
+  function resetEditedRow(row: BillingInvoiceDetailRow) {
+    const rowKey = invoiceRowKey(row);
+    setRowAdjustments((current) => {
+      const next = { ...current };
+      delete next[rowKey];
+      return next;
+    });
+    if (editingKey === rowKey) cancelEditRow();
+  }
+
   function adjustedSummaryForClient(clientId: number | undefined, fallback: { orderCount?: number; pickPackTotal?: number | string; pickpackTotal?: number | string; packageTotal?: number | string; grandTotal?: number | string }) {
-    const clientDetailRows = clientId ? detailRows.filter((row) => row.clientId === clientId) : detailRows;
+    const clientDetailRows = clientId ? adjustedDetailRows.filter((row) => row.clientId === clientId) : adjustedDetailRows;
     if (clientDetailRows.length === 0) {
       return {
         orderCount: fallback.orderCount,
@@ -124,27 +217,20 @@ export default function Invoices() {
     }
 
     const billableRows = clientDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
+    const totals = invoiceTotalsForRows(billableRows);
     return {
       orderCount: billableRows.length,
-      qtyTotal: billableRows.reduce((total, row) => total + quantityValue(row.qty), 0),
-      pickPackTotal: billableRows.reduce((total, row) => total + moneyValue(row.pickpackTotal), 0),
-      packageTotal: billableRows.reduce((total, row) => total + moneyValue(row.packageTotal), 0),
-      grandTotal: billableRows.reduce((total, row) => total + moneyValue(row.rowTotal), 0),
+      qtyTotal: totals.qtyTotal,
+      pickPackTotal: totals.pickpackTotal,
+      packageTotal: totals.packageTotal,
+      grandTotal: totals.grandTotal,
     };
   }
 
   function adjustedInvoiceHtml(clientId: number, clientName: string) {
-    const clientDetailRows = detailRows.filter((row) => row.clientId === clientId);
+    const clientDetailRows = adjustedDetailRows.filter((row) => row.clientId === clientId);
     const billableRows = clientDetailRows.filter((row) => !excludedKeys.has(invoiceRowKey(row)));
-    const totals = {
-      qtyTotal: billableRows.reduce((total, row) => total + quantityValue(row.qty), 0),
-      pickpackTotal: billableRows.reduce((total, row) => total + moneyValue(row.pickpackTotal), 0),
-      additionalTotal: billableRows.reduce((total, row) => total + moneyValue(row.additionalTotal), 0),
-      packageTotal: billableRows.reduce((total, row) => total + moneyValue(row.packageTotal), 0),
-      shippingTotal: billableRows.reduce((total, row) => total + moneyValue(row.shippingTotal), 0),
-      storageTotal: billableRows.reduce((total, row) => total + moneyValue(row.storageTotal), 0),
-      grandTotal: billableRows.reduce((total, row) => total + moneyValue(row.rowTotal), 0),
-    };
+    const totals = invoiceTotalsForRows(billableRows);
     const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const rows = billableRows
       .map((row) => `
@@ -174,7 +260,7 @@ export default function Invoices() {
 </head>
 <body>
   <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong>, then choose <strong>Save as PDF</strong>.</div>
-  ${excludedRowCount ? `<div class="notice">Adjusted invoice preview: ${escapeHtml(safeNumber(excludedRowCount))} selected row(s) excluded from this portal total.</div>` : ''}
+  ${excludedRowCount || adjustedRowCount ? `<div class="notice">Adjusted invoice preview: ${escapeHtml(safeNumber(excludedRowCount))} row(s) excluded and ${escapeHtml(safeNumber(adjustedRowCount))} row(s) edited from this portal total.</div>` : ''}
   <div class="header">
     <div class="brand"><h1>PrepShip Invoice</h1><div class="muted">DR Prepper 3PL Services</div><div class="muted">Generated ${escapeHtml(generated)}</div></div>
     <div class="client"><strong>${escapeHtml(clientName)}</strong><span class="muted">${escapeHtml(range.from)} to ${escapeHtml(range.to)}</span></div>
@@ -207,9 +293,10 @@ export default function Invoices() {
     try {
       const clientName = storeNameForClient(clientRows(clients.data), clientId);
       const hasClientExclusions = detailRows.some((row) => row.clientId === clientId && excludedKeys.has(invoiceRowKey(row)));
+      const hasClientAdjustments = detailRows.some((row) => row.clientId === clientId && rowAdjustments[invoiceRowKey(row)]);
       const hasClientDetailRows = detailRows.some((row) => row.clientId === clientId);
       const html =
-        hasClientExclusions || hasClientDetailRows
+        hasClientExclusions || hasClientAdjustments || hasClientDetailRows
           ? adjustedInvoiceHtml(clientId, clientName)
           : auth.accessToken === DEMO_TOKEN
           ? `<h1>DrPrepperUSA Invoice</h1><p>Demo invoice for client ${clientId}</p>`
@@ -321,6 +408,7 @@ export default function Invoices() {
                     <div className="mt-1 text-xs font-semibold text-ink-3">
                       {safeNumber(adjusted.orderCount)} orders
                       {excludedRowCount ? <span className="ml-2 text-danger">({safeNumber(excludedRowCount)} excluded)</span> : null}
+                      {adjustedRowCount ? <span className="ml-2 text-brand">({safeNumber(adjustedRowCount)} edited)</span> : null}
                     </div>
                   </div>
                   <div>
@@ -385,6 +473,18 @@ export default function Invoices() {
                 Include all
               </button>
             ) : null}
+            {adjustedRowCount ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setRowAdjustments({});
+                  cancelEditRow();
+                }}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[11px] font-black text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand"
+              >
+                <RotateCcw size={13} /> Reset edits
+              </button>
+            ) : null}
           </div>
         }
       >
@@ -392,10 +492,63 @@ export default function Invoices() {
           <TableSkeleton rows={6} columns={8} />
         ) : (
           <DataTable<BillingInvoiceDetailRow>
-            tableId="invoice-order-details-v3"
+            tableId="invoice-order-details-v4"
             rows={detailRows}
             getRowKey={invoiceRowKey}
             columns={[
+              {
+                key: 'actions',
+                header: 'Actions',
+                width: '150px',
+                render: (row) => {
+                  const rowKey = invoiceRowKey(row);
+                  const isEditing = editingKey === rowKey;
+                  const hasEdit = Boolean(rowAdjustments[rowKey]);
+                  return isEditing ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => saveEditRow(row)}
+                        className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white transition-colors hover:bg-brand/90"
+                        aria-label={`Save invoice row ${row.orderNumber ?? rowKey}`}
+                        title="Save"
+                      >
+                        <Check size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditRow}
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:bg-surface-2"
+                        aria-label={`Cancel invoice row ${row.orderNumber ?? rowKey}`}
+                        title="Cancel"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => startEditRow(row)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[11px] font-black text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand"
+                      >
+                        <Pencil size={13} /> Edit
+                      </button>
+                      {hasEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => resetEditedRow(row)}
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+                          aria-label={`Reset invoice row ${row.orderNumber ?? rowKey}`}
+                          title="Reset row"
+                        >
+                          <RotateCcw size={13} />
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                },
+              },
               {
                 key: 'include',
                 header: 'Billable',
@@ -452,40 +605,118 @@ export default function Invoices() {
                 key: 'qty',
                 header: 'Qty',
                 className: 'right',
-                width: '90px',
-                render: (row) => <span className="font-black tabular-nums text-ink">{safeNumber(row.qty)}</span>,
+                width: '110px',
+                render: (row) => {
+                  const rowKey = invoiceRowKey(row);
+                  if (editingKey === rowKey && editDraft) {
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editDraft.qty}
+                        onChange={(event) => updateEditDraft('qty', event.target.value)}
+                        className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-right text-xs font-black tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                      />
+                    );
+                  }
+                  const effective = effectiveInvoiceRow(row);
+                  return <span className="font-black tabular-nums text-ink">{safeNumber(effective.qty)}</span>;
+                },
               },
               {
                 key: 'pickpack',
                 header: 'Pick/pack',
                 className: 'right',
-                width: '120px',
-                render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.pickpackTotal)}</span>,
+                width: '130px',
+                render: (row) => {
+                  const rowKey = invoiceRowKey(row);
+                  if (editingKey === rowKey && editDraft) {
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editDraft.pickpackTotal}
+                        onChange={(event) => updateEditDraft('pickpackTotal', event.target.value)}
+                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                      />
+                    );
+                  }
+                  const effective = effectiveInvoiceRow(row);
+                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effective.pickpackTotal)}</span>;
+                },
               },
               {
                 key: 'packages',
                 header: 'Box fee',
                 className: 'right',
-                width: '120px',
-                render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.packageTotal)}</span>,
+                width: '130px',
+                render: (row) => {
+                  const rowKey = invoiceRowKey(row);
+                  if (editingKey === rowKey && editDraft) {
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editDraft.packageTotal}
+                        onChange={(event) => updateEditDraft('packageTotal', event.target.value)}
+                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                      />
+                    );
+                  }
+                  const effective = effectiveInvoiceRow(row);
+                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effective.packageTotal)}</span>;
+                },
               },
               {
                 key: 'shipping',
                 header: 'Shipping',
                 className: 'right',
-                width: '120px',
-                render: (row) => <span className="font-semibold tabular-nums text-ink-2">{safeMoney(row.shippingTotal)}</span>,
+                width: '130px',
+                render: (row) => {
+                  const rowKey = invoiceRowKey(row);
+                  if (editingKey === rowKey && editDraft) {
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editDraft.shippingTotal}
+                        onChange={(event) => updateEditDraft('shippingTotal', event.target.value)}
+                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                      />
+                    );
+                  }
+                  const effective = effectiveInvoiceRow(row);
+                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effective.shippingTotal)}</span>;
+                },
               },
               {
                 key: 'total',
                 header: 'Total',
                 className: 'right',
-                width: '120px',
+                width: '130px',
                 render: (row) => {
-                  const excluded = excludedKeys.has(invoiceRowKey(row));
+                  const rowKey = invoiceRowKey(row);
+                  if (editingKey === rowKey && editDraft) {
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editDraft.rowTotal}
+                        onChange={(event) => updateEditDraft('rowTotal', event.target.value)}
+                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-black tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+                      />
+                    );
+                  }
+                  const excluded = excludedKeys.has(rowKey);
+                  const effective = effectiveInvoiceRow(row);
                   return (
                     <span className={`font-black tabular-nums ${excluded ? 'text-ink-3 line-through' : 'text-ink'}`}>
-                      {safeMoney(row.rowTotal)}
+                      {safeMoney(effective.rowTotal)}
                     </span>
                   );
                 },
