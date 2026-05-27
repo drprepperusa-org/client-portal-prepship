@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
   Boxes,
+  Calculator,
   ChevronRight,
   Clock3,
   Database,
@@ -46,6 +47,11 @@ const settingsSubItems: SidebarNavItem['children'] = [
   { to: '/dashboard/settings/system', label: 'System', icon: Server },
 ];
 
+const invoiceSubItems: SidebarNavItem['children'] = [
+  { to: '/dashboard/invoices', label: 'Summary', icon: Receipt },
+  { to: '/dashboard/invoices/rate-sheet', label: 'Rate Sheet', icon: Calculator },
+];
+
 export const clientPortalNavItems: SidebarNavItem[] = [
   { to: '/dashboard', label: 'Dashboard', description: 'Executive status board', group: 'Operations', icon: LayoutDashboard, end: true },
   { to: '/dashboard/orders', label: 'Orders', description: 'Client-scoped order queue', group: 'Operations', icon: ShoppingCart },
@@ -54,7 +60,7 @@ export const clientPortalNavItems: SidebarNavItem[] = [
   { to: '/dashboard/shipments', label: 'Shipments', description: 'Tracking and label history', group: 'Operations', icon: Truck },
   { to: '/dashboard/analysis', label: 'Analysis', description: 'SKU trends and profitability', group: 'Finance & Insights', icon: TrendingUp },
   { to: '/dashboard/reports', label: 'Reports', description: 'Scoped operating trends', group: 'Finance & Insights', icon: BarChart3 },
-  { to: '/dashboard/invoices', label: 'Invoices', description: 'Billing summaries', group: 'Finance & Insights', icon: Receipt },
+  { to: '/dashboard/invoices', label: 'Invoices', description: 'Billing summaries', group: 'Finance & Insights', icon: Receipt, children: invoiceSubItems },
   { to: '/dashboard/connections', label: 'Store Connections', description: 'Marketplace credentials', group: 'Admin', icon: Plug },
   { to: '/dashboard/settings/system', label: 'Settings', description: 'Account, scope, and backfill', group: 'Admin', icon: Settings, children: settingsSubItems },
 ];
@@ -85,6 +91,7 @@ export default function ClientPortalSidebar({
   const initial = email.slice(0, 1).toUpperCase() || 'D';
   const showText = expanded || pinned || mobileOpen;
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
+    invoices: location.pathname.startsWith('/dashboard/invoices'),
     settings: location.pathname.startsWith('/dashboard/settings'),
   }));
 

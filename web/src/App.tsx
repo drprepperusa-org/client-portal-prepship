@@ -6,6 +6,7 @@ import Analysis from './pages/Analysis';
 import Inbound from './pages/Inbound';
 import Inventory from './pages/Inventory';
 import Invoices from './pages/Invoices';
+import InvoiceRateSheet from './pages/InvoiceRateSheet';
 import Connections from './pages/Connections';
 import Login from './pages/Login';
 import Orders from './pages/Orders';
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="analysis" element={<Analysis />} />
         <Route path="reports" element={<Reports />} />
         <Route path="invoices" element={<Invoices />} />
+        <Route path="invoices/rate-sheet" element={<InvoiceRateSheet />} />
         <Route path="connections" element={<Connections />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/:section" element={<Settings />} />
