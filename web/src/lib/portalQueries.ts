@@ -10,7 +10,7 @@ import {
   demoOrders,
   demoShipments,
 } from './demo-data';
-import type { CarrierAccount, OrderStatus } from '../types/portal';
+import type { BillingInvoiceDetailRow, CarrierAccount, OrderStatus } from '../types/portal';
 
 const enabled = (token: string | null) => Boolean(token);
 
@@ -221,6 +221,47 @@ export function useInvoiceDetailsQuery(token: string | null, range = defaultRang
           dateTo: `${range.to}T23:59:59.999Z`,
         }),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useSaveInvoiceDetailMutation(token: string | null, range = defaultRange()) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      row: BillingInvoiceDetailRow;
+      pickpackTotal: number;
+      packageTotal: number;
+      shippingTotal: number;
+      rowTotal: number;
+    }) => {
+      if (!token) throw new Error('Missing portal session');
+      if (!input.row.orderId || !input.row.clientId) {
+        throw new Error('This invoice row cannot be saved because it is not linked to a billable order.');
+      }
+
+      const currentBasePickPack = Number(input.row.pickpackTotal ?? 0);
+      const basePickPack =
+        currentBasePickPack > 0 ? Math.min(input.pickpackTotal, currentBasePickPack) : input.pickpackTotal;
+      const additional = Math.max(0, input.pickpackTotal - basePickPack);
+
+      if (demoAllowed(token)) {
+        return { ok: true, orderId: input.row.orderId, clientId: input.row.clientId, updated: 1, inserted: 0 };
+      }
+
+      return portalApi.clientPortal.updateInvoiceDetail(token, input.row.orderId, {
+        clientId: input.row.clientId,
+        pickPack: basePickPack,
+        additional,
+        packageCost: input.packageTotal,
+        shipping: input.shippingTotal,
+        dateFrom: `${range.from}T00:00:00.000Z`,
+        dateTo: `${range.to}T23:59:59.999Z`,
+      });
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: portalQueryKeys.invoiceDetails(token, range) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.billing(token, range) });
+    },
   });
 }
 

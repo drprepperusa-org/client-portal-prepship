@@ -18,6 +18,7 @@ const auditPath = 'src/lib/client-portal/audit.ts';
 const apiPath = 'web/src/lib/api.ts';
 const queriesPath = 'web/src/lib/portalQueries.ts';
 const apiContractsPath = 'scripts/api-contracts-guard.mjs';
+const billingRoutePath = 'src/routes/billing.ts';
 
 for (const path of [routePath, dtoPath, scopePath, auditPath]) {
   assert(existsSync(path), `${path} must exist`);
@@ -30,6 +31,7 @@ const audit = existsSync(auditPath) ? read(auditPath) : '';
 const api = read(apiPath);
 const queries = read(queriesPath);
 const apiContracts = read(apiContractsPath);
+const billingRoute = read(billingRoutePath);
 
 for (const routeToken of [
   "app.get('/me'",
@@ -95,6 +97,20 @@ assert(
   /portalInvoiceDetails[\s\S]*select sum\(greatest\(0, coalesce\(oi\.quantity, 0\)\)[\s\S]*from \$\{orderItems\} oi[\s\S]*as qty/.test(route) &&
     !/portalInvoiceDetails[\s\S]*coalesce\(sum\(b\.qty\), 0\)::text as qty/.test(route),
   'client portal invoice details must use canonical order_items.quantity for Qty, not summed billing line quantities',
+);
+assert(
+  billingRoute.includes("app.patch('/details/:orderId{[0-9]+'") ||
+    billingRoute.includes("app.patch('/details/:orderId{[0-9]+}'"),
+  'billing route must expose PATCH /billing/details/:orderId for shared invoice detail edits',
+);
+assert(
+  /updateInvoiceDetail[\s\S]*apiSend[\s\S]*`\/billing\/details\/\$\{orderId\}`/.test(api),
+  'portalApi.clientPortal must expose updateInvoiceDetail using the shared /billing/details endpoint',
+);
+assert(
+  queries.includes('useSaveInvoiceDetailMutation') &&
+    queries.includes('portalApi.clientPortal.updateInvoiceDetail'),
+  'Invoices page must save row edits through the shared billing endpoint, not browser-only state',
 );
 assert(queries.includes('portalApi.clientPortal.'), 'portal queries must use portalApi.clientPortal reads');
 assert(!queries.includes('portalApi.orders(token!') && !queries.includes('portalApi.inventory(token!'), 'portal queries must not use broad order/inventory reads');

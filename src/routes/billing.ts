@@ -5,6 +5,7 @@ import { and, asc, desc, eq, notInArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
   billingConfig,
+  billingLineItems,
   billingRefRates,
   clientPackagePrices,
 } from '../db/schema/billing';
@@ -15,6 +16,7 @@ import {
   generateLineItems,
   upsertBillingConfig,
 } from '../services/billing';
+import { refreshBillingSummaryMetrics } from '../services/reporting-metrics';
 import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-scope';
 import { requirePermission } from '../middleware/auth';
 
@@ -230,6 +232,27 @@ const detailsSchema = generateRawSchema
     message: 'dateFrom/from and dateTo/to are required',
   });
 
+const detailPatchSchema = z.object({
+  clientId: z.coerce.number().int().positive(),
+  pickPack: z.coerce.number().nonnegative().optional(),
+  additional: z.coerce.number().nonnegative().optional(),
+  packageCost: z.coerce.number().nonnegative().optional(),
+  shipping: z.coerce.number().nonnegative().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+});
+
+const EDITABLE_BILLING_LINES = [
+  ['pickPack', 'pick_pack', 'Pick & Pack'],
+  ['additional', 'additional_unit', 'Additional Units'],
+  ['packageCost', 'package_cost', 'Package Cost'],
+  ['shipping', 'shipping', 'Shipping'],
+] as const;
+
+function money(value: number): string {
+  return (Number.isFinite(value) ? value : 0).toFixed(2);
+}
+
 app.post('/generate', zValidator('json', generateSchema), async (c) => {
   const body = c.req.valid('json');
   const result = await generateLineItems({
@@ -267,6 +290,91 @@ app.get('/details', zValidator('query', detailsSchema), async (c) => {
     limit: q.limit,
   }));
   return c.json({ data: rows });
+});
+
+app.patch('/details/:orderId{[0-9]+}', zValidator('json', detailPatchSchema), async (c) => {
+  const orderId = Number(c.req.param('orderId'));
+  const body = c.req.valid('json');
+  const scope = billingScopeFromContext(c);
+
+  const [base] = await db
+    .select({
+      id: billingLineItems.id,
+      clientId: billingLineItems.clientId,
+      orderId: billingLineItems.orderId,
+      orderNumber: billingLineItems.orderNumber,
+      shipmentId: billingLineItems.shipmentId,
+      shipDate: billingLineItems.shipDate,
+    })
+    .from(billingLineItems)
+    .innerJoin(clients, eq(billingLineItems.clientId, clients.id))
+    .where(
+      and(
+        eq(billingLineItems.clientId, body.clientId),
+        eq(billingLineItems.orderId, orderId),
+        eq(clients.active, true),
+        billingClientScopePredicate(scope)
+      )
+    )
+    .limit(1);
+
+  if (!base) return c.json({ error: 'Billing line item not found' }, 404);
+
+  let updated = 0;
+  let inserted = 0;
+
+  // Only generated billing_line_items are changed here. Source order,
+  // shipment, package, and marketplace fields remain read-only.
+  for (const [bodyKey, lineType, description] of EDITABLE_BILLING_LINES) {
+    const value = body[bodyKey];
+    if (value === undefined) continue;
+
+    const amount = money(value);
+    const rows = await db
+      .update(billingLineItems)
+      .set({
+        qty: '1.00',
+        unitCost: amount,
+        totalCost: amount,
+      })
+      .where(
+        and(
+          eq(billingLineItems.clientId, body.clientId),
+          eq(billingLineItems.orderId, orderId),
+          eq(billingLineItems.lineType, lineType)
+        )
+      )
+      .returning({ id: billingLineItems.id });
+
+    updated += rows.length;
+
+    if (rows.length === 0 && value > 0) {
+      await db.insert(billingLineItems).values({
+        clientId: body.clientId,
+        orderId,
+        orderNumber: base.orderNumber,
+        shipmentId: base.shipmentId,
+        shipDate: base.shipDate,
+        lineType,
+        description,
+        qty: '1.00',
+        unitCost: amount,
+        totalCost: amount,
+      });
+      inserted += 1;
+    }
+  }
+
+  if (body.dateFrom && body.dateTo) {
+    await refreshBillingSummaryMetrics(new Date(body.dateFrom), new Date(body.dateTo)).catch((err) => {
+      console.warn(
+        '[billing] saved detail but failed to refresh summary metrics:',
+        err instanceof Error ? err.message : err
+      );
+    });
+  }
+
+  return c.json({ ok: true, orderId, clientId: body.clientId, updated, inserted });
 });
 
 // ─── Invoice (HTML) ────────────────────────────────────────────────────

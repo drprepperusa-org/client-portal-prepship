@@ -14,7 +14,7 @@ import {
   saveInvoiceRowAdjustments,
   type InvoiceRowAdjustment,
 } from '../lib/invoiceAdjustments';
-import { useBillingQuery, useClientsQuery, useInvoiceDetailsQuery, useMeQuery } from '../lib/portalQueries';
+import { useBillingQuery, useClientsQuery, useInvoiceDetailsQuery, useMeQuery, useSaveInvoiceDetailMutation } from '../lib/portalQueries';
 import type { BillingInvoiceDetailRow, PortalClient } from '../types/portal';
 
 function clientRows(value: unknown): PortalClient[] {
@@ -39,6 +39,10 @@ function invoiceRowKey(row: BillingInvoiceDetailRow) {
 
 function moneyValue(value: unknown) {
   return invoiceNumber(value);
+}
+
+function formulatedPickPack(row: BillingInvoiceDetailRow) {
+  return invoiceNumber(row.pickpackTotal) + invoiceNumber(row.additionalTotal);
 }
 
 function escapeHtml(value: unknown) {
@@ -70,7 +74,7 @@ type InvoiceEditDraft = {
 function editDraftFromRow(row: BillingInvoiceDetailRow): InvoiceEditDraft {
   return {
     qty: String(invoiceNumber(row.qty)),
-    pickpackTotal: invoiceNumber(row.pickpackTotal).toFixed(2),
+    pickpackTotal: formulatedPickPack(row).toFixed(2),
     packageTotal: invoiceNumber(row.packageTotal).toFixed(2),
     shippingTotal: invoiceNumber(row.shippingTotal).toFixed(2),
     rowTotal: invoiceNumber(row.rowTotal).toFixed(2),
@@ -85,8 +89,11 @@ export default function Invoices() {
   const clients = useClientsQuery(auth.accessToken);
   const billing = useBillingQuery(auth.accessToken, range);
   const invoiceDetails = useInvoiceDetailsQuery(auth.accessToken, range);
+  const saveInvoiceDetail = useSaveInvoiceDetailMutation(auth.accessToken, range);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [busyClient, setBusyClient] = useState<number | null>(null);
+  const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
   const [selectedExcludeKeys, setSelectedExcludeKeys] = useState<Set<string>>(new Set());
   const [excludedKeys, setExcludedKeys] = useState<Set<string>>(new Set());
   const [rowAdjustments, setRowAdjustments] = useState<Record<string, InvoiceRowAdjustment>>(() => {
@@ -178,6 +185,7 @@ export default function Invoices() {
 
   function startEditRow(row: BillingInvoiceDetailRow) {
     const rowKey = invoiceRowKey(row);
+    setSaveError(null);
     setEditingKey(rowKey);
     setPreEditAdjustment(rowAdjustments[rowKey] ?? null);
     setEditDraft(editDraftFromRow(effectiveInvoiceRow(row)));
@@ -222,22 +230,35 @@ export default function Invoices() {
     }
   }
 
-  function saveEditRow(row: BillingInvoiceDetailRow) {
+  async function saveEditRow(row: BillingInvoiceDetailRow) {
     if (!editDraft) return;
     const rowKey = invoiceRowKey(row);
-    setRowAdjustments((current) => ({
-      ...current,
-      [rowKey]: {
-        qty: editDraft.qty,
-        pickpackTotal: editDraft.pickpackTotal,
-        packageTotal: editDraft.packageTotal,
-        shippingTotal: editDraft.shippingTotal,
-        rowTotal: editDraft.rowTotal,
-      },
-    }));
-    setEditingKey(null);
-    setEditDraft(null);
-    setPreEditAdjustment(null);
+    const adjustment = {
+      qty: editDraft.qty,
+      pickpackTotal: editDraft.pickpackTotal,
+      packageTotal: editDraft.packageTotal,
+      shippingTotal: editDraft.shippingTotal,
+      rowTotal: editDraft.rowTotal,
+    };
+    setSavingRowKey(rowKey);
+    setSaveError(null);
+    setRowAdjustments((current) => ({ ...current, [rowKey]: adjustment }));
+    try {
+      await saveInvoiceDetail.mutateAsync({
+        row,
+        pickpackTotal: invoiceNumber(editDraft.pickpackTotal),
+        packageTotal: invoiceNumber(editDraft.packageTotal),
+        shippingTotal: invoiceNumber(editDraft.shippingTotal),
+        rowTotal: invoiceNumber(editDraft.rowTotal),
+      });
+      setEditingKey(null);
+      setEditDraft(null);
+      setPreEditAdjustment(null);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingRowKey(null);
+    }
   }
 
   function resetEditedRow(row: BillingInvoiceDetailRow) {
@@ -250,13 +271,13 @@ export default function Invoices() {
     if (editingKey === rowKey) cancelEditRow();
   }
 
-  function adjustedSummaryForClient(clientId: number | undefined, fallback: { orderCount?: number; pickPackTotal?: number | string; pickpackTotal?: number | string; packageTotal?: number | string; grandTotal?: number | string }) {
+  function adjustedSummaryForClient(clientId: number | undefined, fallback: { orderCount?: number; pickPackTotal?: number | string; pickpackTotal?: number | string; additionalTotal?: number | string; packageTotal?: number | string; grandTotal?: number | string }) {
     const clientDetailRows = clientId ? adjustedDetailRows.filter((row) => row.clientId === clientId) : adjustedDetailRows;
     if (clientDetailRows.length === 0) {
       return {
         orderCount: fallback.orderCount,
         qtyTotal: undefined,
-        pickPackTotal: pickPackTotal(fallback),
+        pickPackTotal: invoiceNumber(pickPackTotal(fallback)) + invoiceNumber(fallback.additionalTotal),
         packageTotal: fallback.packageTotal,
         grandTotal: fallback.grandTotal,
       };
@@ -267,7 +288,7 @@ export default function Invoices() {
     return {
       orderCount: billableRows.length,
       qtyTotal: totals.qtyTotal,
-      pickPackTotal: totals.pickpackTotal,
+      pickPackTotal: totals.pickpackTotal + totals.additionalTotal,
       packageTotal: totals.packageTotal,
       grandTotal: totals.grandTotal,
     };
@@ -286,8 +307,8 @@ export default function Invoices() {
           <td>${escapeHtml(row.recipientName ?? '')}</td>
           <td>${escapeHtml(row.itemNames ?? '')}</td>
           <td class="num">${escapeHtml(safeNumber(row.qty))}</td>
-          <td class="num">${escapeHtml(safeMoney(row.pickpackTotal))}</td>
-          <td class="num">${moneyValue(row.additionalTotal) > 0 ? escapeHtml(safeMoney(row.additionalTotal)) : '-'}</td>
+          <td class="num">${escapeHtml(safeMoney(formulatedPickPack(row)))}</td>
+          <td class="num">-</td>
           <td class="num">${moneyValue(row.packageTotal) > 0 ? escapeHtml(safeMoney(row.packageTotal)) : '-'}</td>
           <td class="num">${moneyValue(row.shippingTotal) > 0 ? escapeHtml(safeMoney(row.shippingTotal)) : '-'}</td>
           <td class="num bold">${escapeHtml(safeMoney(row.rowTotal))}</td>
@@ -314,7 +335,7 @@ export default function Invoices() {
   <div class="summary">
     <div class="card"><div class="label">Orders</div><div class="value">${escapeHtml(safeNumber(billableRows.length))}</div></div>
     <div class="card"><div class="label">Qty</div><div class="value">${escapeHtml(safeNumber(totals.qtyTotal))}</div></div>
-    <div class="card"><div class="label">Pick/pack</div><div class="value">${escapeHtml(safeMoney(totals.pickpackTotal))}</div></div>
+    <div class="card"><div class="label">Pick/pack</div><div class="value">${escapeHtml(safeMoney(totals.pickpackTotal + totals.additionalTotal))}</div></div>
     <div class="card"><div class="label">Box fee</div><div class="value">${escapeHtml(safeMoney(totals.packageTotal))}</div></div>
     <div class="card"><div class="label">Shipping</div><div class="value">${escapeHtml(safeMoney(totals.shippingTotal))}</div></div>
     <div class="card"><div class="label">Storage</div><div class="value">${escapeHtml(safeMoney(totals.storageTotal))}</div></div>
@@ -323,7 +344,7 @@ export default function Invoices() {
   <table>
     <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="10">No billable order rows found for this adjusted period.</td></tr>'}</tbody>
-    <tfoot><tr><td colspan="5">${escapeHtml(safeNumber(billableRows.length))} orders / ${escapeHtml(safeNumber(totals.qtyTotal))} qty</td><td class="num">${escapeHtml(safeMoney(totals.pickpackTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.additionalTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.packageTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.shippingTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.grandTotal))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="5">${escapeHtml(safeNumber(billableRows.length))} orders / ${escapeHtml(safeNumber(totals.qtyTotal))} qty</td><td class="num">${escapeHtml(safeMoney(totals.pickpackTotal + totals.additionalTotal))}</td><td class="num">-</td><td class="num">${escapeHtml(safeMoney(totals.packageTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.shippingTotal))}</td><td class="num">${escapeHtml(safeMoney(totals.grandTotal))}</td></tr></tfoot>
   </table>
   <div class="footer">PrepShip adjusted invoice preview generated ${escapeHtml(generated)} for ${escapeHtml(clientName)}.</div>
 </body>
@@ -379,6 +400,7 @@ export default function Invoices() {
         </div>
       ) : null}
       {downloadError ? <div className="mb-5"><ErrorNotice message={downloadError} /></div> : null}
+      {saveError ? <div className="mb-5"><ErrorNotice message={saveError} /></div> : null}
       {invoiceDetails.error ? (
         <div className="mb-5">
           <ErrorPanel
@@ -547,20 +569,23 @@ export default function Invoices() {
                   const rowKey = invoiceRowKey(row);
                   const isEditing = editingKey === rowKey;
                   const hasEdit = Boolean(rowAdjustments[rowKey]);
+                  const isSaving = savingRowKey === rowKey;
                   return isEditing ? (
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => saveEditRow(row)}
+                        onClick={() => void saveEditRow(row)}
+                        disabled={isSaving}
                         className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white transition-colors hover:bg-brand/90"
                         aria-label={`Save invoice row ${row.orderNumber ?? rowKey}`}
-                        title="Save"
+                        title={isSaving ? 'Saving' : 'Save'}
                       >
                         <Check size={15} />
                       </button>
                       <button
                         type="button"
                         onClick={cancelEditRow}
+                        disabled={isSaving}
                         className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:bg-surface-2"
                         aria-label={`Cancel invoice row ${row.orderNumber ?? rowKey}`}
                         title="Cancel"
@@ -687,7 +712,7 @@ export default function Invoices() {
                     );
                   }
                   const effective = effectiveInvoiceRow(row);
-                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effective.pickpackTotal)}</span>;
+                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(formulatedPickPack(effective))}</span>;
                 },
               },
               {

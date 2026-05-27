@@ -95,10 +95,12 @@ export function roundInvoiceNumber(value: number) {
 
 export function adjustedInvoiceRow(row: BillingInvoiceDetailRow, adjustment?: InvoiceRowAdjustment): BillingInvoiceDetailRow {
   if (!adjustment) return row;
+  const hasPickPackAdjustment = adjustment.pickpackTotal !== undefined && adjustment.pickpackTotal !== null;
   return {
     ...row,
     qty: adjustment.qty ?? row.qty,
     pickpackTotal: adjustment.pickpackTotal ?? row.pickpackTotal,
+    additionalTotal: hasPickPackAdjustment ? 0 : row.additionalTotal,
     packageTotal: adjustment.packageTotal ?? row.packageTotal,
     shippingTotal: adjustment.shippingTotal ?? row.shippingTotal,
     rowTotal: adjustment.rowTotal ?? row.rowTotal,
