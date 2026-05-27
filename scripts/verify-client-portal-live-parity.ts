@@ -9,10 +9,15 @@ type AccountTarget = {
   clients: Array<{ id: number; name: string }>;
 };
 
-const apiBase = (
-  process.env.CLIENT_PORTAL_VERIFY_API_BASE ||
+const stableApiBase = (
+  process.env.CLIENT_PORTAL_VERIFY_STABLE_API_BASE ||
   process.env.API_BASE ||
   'https://prepshipv4-api-l5xc.onrender.com'
+).replace(/\/+$/, '');
+const portalApiBase = (
+  process.env.CLIENT_PORTAL_VERIFY_PORTAL_API_BASE ||
+  process.env.CLIENT_PORTAL_VERIFY_API_BASE ||
+  stableApiBase
 ).replace(/\/+$/, '');
 
 const jwtSecret = process.env.SUPABASE_JWT_SECRET;
@@ -87,8 +92,14 @@ function accountToken(account: AccountTarget) {
   });
 }
 
-async function orderTotal(token: string, clientId: number, status: string) {
-  const url = new URL('/orders', apiBase);
+async function orderTotal(
+  baseUrl: string,
+  token: string,
+  clientId: number,
+  status: string,
+  path = '/orders',
+) {
+  const url = new URL(path, baseUrl);
   url.searchParams.set('page', '1');
   url.searchParams.set('pageSize', '5');
   url.searchParams.set('includeTotal', 'true');
@@ -128,8 +139,8 @@ async function main() {
     for (const client of account.clients) {
       for (const status of statuses) {
         const [stableTotal, portalTotal] = await Promise.all([
-          orderTotal(admin, client.id, status),
-          orderTotal(portal, client.id, status),
+          orderTotal(stableApiBase, admin, client.id, status),
+          orderTotal(portalApiBase, portal, client.id, status, '/api/client-portal/orders'),
         ]);
         rows.push({
           account: account.account,
@@ -143,14 +154,14 @@ async function main() {
     }
   }
 
-  console.log(`Client portal live parity: ${apiBase}`);
+  console.log(`Client portal live parity: stable=${stableApiBase} portal=${portalApiBase}`);
   console.table(rows);
 
   const failures = rows.filter((row) => !row.match);
   if (failures.length > 0) {
     console.error(
       `FAIL: ${failures.length} portal total(s) do not match PrepShip stable/admin totals. ` +
-        'Render API is likely not deployed with the latest client-store scope fix.',
+        'Client portal API is not returning the same scoped live totals as PrepShip stable.',
     );
     process.exit(1);
   }

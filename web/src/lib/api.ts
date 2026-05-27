@@ -344,21 +344,21 @@ export const portalApi = {
     me(token: string) {
       return apiGet<PortalMe & { role?: string | null; clientIds?: number[]; storeIds?: number[] }>(
         token,
-        '/users/me',
+        '/api/client-portal/me',
       );
     },
     dashboard(token: string, range = defaultRange()) {
-      return apiGetScopedDashboard(token, '/dashboard/summary', range);
+      return apiGetScopedDashboard(token, '/api/client-portal/dashboard', range);
     },
     dailyCounts(token: string, range = defaultRange()) {
       return apiGetScopedDailyCounts(
         token,
-        '/dashboard/daily-counts',
+        '/api/client-portal/daily-counts',
         range,
       );
     },
     orders(token: string, options: { status?: OrderStatus | 'all'; search?: string; page?: number } = {}) {
-      return apiGetScopedByClient<Paginated<PortalOrder>>(token, '/orders', {
+      return apiGetScopedByClient<Paginated<PortalOrder>>(token, '/api/client-portal/orders', {
         page: options.page ?? 1,
         pageSize: 25,
         includeTotal: true,
@@ -368,14 +368,14 @@ export const portalApi = {
       });
     },
     shipments(token: string, options: { page?: number } = {}) {
-      return apiGetScopedByClient<Paginated<PortalShipment>>(token, '/shipments', {
+      return apiGetScopedByClient<Paginated<PortalShipment>>(token, '/api/client-portal/shipments', {
         page: options.page ?? 1,
         pageSize: 25,
         voided: false,
       });
     },
     inventory(token: string, options: { search?: string; lowStock?: boolean; page?: number } = {}) {
-      return apiGetScopedByClient<Paginated<PortalInventoryItem>>(token, '/inventory', {
+      return apiGetScopedByClient<Paginated<PortalInventoryItem>>(token, '/api/client-portal/inventory', {
         page: options.page ?? 1,
         pageSize: 25,
         search: options.search,
@@ -388,15 +388,15 @@ export const portalApi = {
       const dateTo = `${range.to}T23:59:59.999Z`;
       return apiGetScopedBillingSummary(
         token,
-        '/billing/summary',
+        '/api/client-portal/reports',
         { dateFrom, dateTo },
       );
     },
     analysisOverview(token: string) {
-      return apiGet<Record<string, unknown>>(token, '/analysis/sku-breakdown');
+      return apiGet<Record<string, unknown>>(token, '/api/client-portal/analysis');
     },
     skuBreakdown(token: string, range = defaultRange()) {
-      return apiGetScopedByClient<AnalysisSkuBreakdown>(token, '/analysis/sku-breakdown', {
+      return apiGetScopedByClient<AnalysisSkuBreakdown>(token, '/api/client-portal/analysis', {
         dateFrom: `${range.from}T00:00:00.000Z`,
         dateTo: `${range.to}T23:59:59.999Z`,
         limit: 200,
@@ -406,7 +406,7 @@ export const portalApi = {
     dailyShipments(token: string, range = defaultRange()) {
       return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(
         token,
-        '/analysis/daily-shipments',
+        '/api/client-portal/daily-shipments',
         {
           dateFrom: `${range.from}T00:00:00.000Z`,
           dateTo: `${range.to}T23:59:59.999Z`,
@@ -414,10 +414,10 @@ export const portalApi = {
       );
     },
     integrations(token: string) {
-      return apiGetScopedByClient<{ data: CarrierAccount[] }>(token, '/carrier-accounts', {});
+      return apiGetScopedByClient<{ data: CarrierAccount[] }>(token, '/api/client-portal/integrations', {});
     },
     activity(token: string) {
-      return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/users/me');
+      return apiGet<{ data: Array<Record<string, unknown>> }>(token, '/api/client-portal/activity');
     },
   },
   dashboard(token: string, range = defaultRange()) {

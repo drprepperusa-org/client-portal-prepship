@@ -162,9 +162,11 @@ app.get('/orders', async (c) => {
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const status = c.req.query('status');
+  const clientId = parsePositiveInt(c.req.query('clientId'));
   const where = and(
     orderScopePredicate(scope),
     status ? eq(orders.orderStatus, status) : undefined,
+    clientId ? eq(orders.clientId, clientId) : undefined,
   );
   const rows = await db
     .select()
@@ -175,7 +177,7 @@ app.get('/orders', async (c) => {
     .offset((page - 1) * pageSize);
   const countRows = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
   const count = countRows[0]?.count ?? rows.length;
-  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize });
+  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId });
   return c.json({
     data: rows.map((row) => toPortalOrderDto(row, { includeFinancials: scope.canViewFinancials })),
     pagination: {
@@ -186,6 +188,11 @@ app.get('/orders', async (c) => {
     },
   });
 });
+
+function parsePositiveInt(value: string | undefined): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 app.get('/orders/:id{[0-9]+}', async (c) => {
   const scope = scopeOrResponse(c);
@@ -265,6 +272,26 @@ app.get('/analysis', async (c) => {
     totalSkus: rows.length,
     totalOrders: 0,
   });
+});
+
+app.get('/daily-shipments', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const from = parseDate(c.req.query('dateFrom')) ?? new Date(Date.now() - 30 * 86_400_000);
+  const to = parseDate(c.req.query('dateTo')) ?? new Date();
+  const rows = await db.execute<{ day: string; shipments: number }>(sql`
+    select to_char(ship_date::date, 'YYYY-MM-DD') as day,
+           count(*)::int as shipments
+    from shipments
+    where coalesce(voided, false) = false
+      and ship_date >= ${from}
+      and ship_date <= ${to}
+      ${shipmentScopePredicate(scope) ? sql`and ${shipmentScopePredicate(scope)}` : sql``}
+    group by day
+    order by day asc
+  `);
+  await recordPortalAudit('portal.analysis.daily_shipments', scope, { from, to });
+  return c.json({ data: rows });
 });
 
 app.get('/reports', async (c) => {
