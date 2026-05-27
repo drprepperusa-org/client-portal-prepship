@@ -91,6 +91,11 @@ assert(
   /billingSummary\(token: string, range = defaultRange\(\)\)[\s\S]*dateFrom[\s\S]*dateTo[\s\S]*'\/billing\/summary'/.test(api),
   'portalApi.clientPortal.billingSummary must send dateFrom/dateTo required by /billing/summary',
 );
+assert(
+  /portalInvoiceDetails[\s\S]*select sum\(greatest\(0, coalesce\(oi\.quantity, 0\)\)[\s\S]*from \$\{orderItems\} oi[\s\S]*as qty/.test(route) &&
+    !/portalInvoiceDetails[\s\S]*coalesce\(sum\(b\.qty\), 0\)::text as qty/.test(route),
+  'client portal invoice details must use canonical order_items.quantity for Qty, not summed billing line quantities',
+);
 assert(queries.includes('portalApi.clientPortal.'), 'portal queries must use portalApi.clientPortal reads');
 assert(!queries.includes('portalApi.orders(token!') && !queries.includes('portalApi.inventory(token!'), 'portal queries must not use broad order/inventory reads');
 assert(apiContracts.includes('site-actions.spec.js'), 'api-contracts guard must target existing site actions workflow spec');

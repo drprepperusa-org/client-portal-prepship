@@ -223,7 +223,12 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
           and oi.name <> ''
       ) as item_names,
       to_char(min(b.ship_date)::date, 'YYYY-MM-DD') as ship_date,
-      coalesce(sum(b.qty), 0)::text as qty,
+      coalesce((
+        select sum(greatest(0, coalesce(oi.quantity, 0)))
+        from ${orderItems} oi
+        where oi.order_id = b.order_id
+          and oi.quantity > 0
+      ), 0)::text as qty,
       coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
       coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
