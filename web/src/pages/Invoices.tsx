@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Download, Pencil, RotateCcw, X } from 'lucide-react';
 import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
-import { defaultRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
+import { defaultRange, localDateTimeRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { DEMO_TOKEN } from '../lib/demo-data';
 import {
@@ -355,8 +355,7 @@ export default function Invoices() {
     if (!clientId || !auth.accessToken) return;
     setBusyClient(clientId);
     setDownloadError(null);
-    const dateFrom = `${range.from}T00:00:00.000Z`;
-    const dateTo = `${range.to}T23:59:59.999Z`;
+    const { dateFrom, dateTo } = localDateTimeRange(range);
     try {
       const clientName = storeNameForClient(clientRows(clients.data), clientId);
       const hasClientExclusions = detailRows.some((row) => row.clientId === clientId && excludedKeys.has(invoiceRowKey(row)));

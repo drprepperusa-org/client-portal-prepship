@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { defaultRange, portalApi, type BackfillMode, type BackfillResponse, type BackfillTarget } from './api';
+import { defaultRange, localDateTimeRange, portalApi, type BackfillMode, type BackfillResponse, type BackfillTarget } from './api';
 import {
   DEMO_TOKEN,
   demoBilling,
@@ -216,10 +216,7 @@ export function useInvoiceDetailsQuery(token: string | null, range = defaultRang
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve(demoInvoiceDetails())
-        : portalApi.clientPortal.invoiceDetails(token!, {
-          dateFrom: `${range.from}T00:00:00.000Z`,
-          dateTo: `${range.to}T23:59:59.999Z`,
-        }),
+        : portalApi.clientPortal.invoiceDetails(token!, localDateTimeRange(range)),
     placeholderData: keepPreviousData,
   });
 }
@@ -254,8 +251,7 @@ export function useSaveInvoiceDetailMutation(token: string | null, range = defau
         additional,
         packageCost: input.packageTotal,
         shipping: input.shippingTotal,
-        dateFrom: `${range.from}T00:00:00.000Z`,
-        dateTo: `${range.to}T23:59:59.999Z`,
+        ...localDateTimeRange(range),
       });
     },
     onSuccess: () => {

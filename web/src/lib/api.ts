@@ -337,15 +337,40 @@ export async function apiText(
   return response.text();
 }
 
-function isoDay(date: Date) {
-  return date.toISOString().slice(0, 10);
+function localIsoDay(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function localDateParts(day: string) {
+  const [year, month, date] = day.split('-').map(Number);
+  if (!year || !month || !date) return null;
+  return { year, month, date };
 }
 
 export function defaultRange(days = 30) {
   const to = new Date();
   const from = new Date();
   from.setDate(to.getDate() - days);
-  return { from: isoDay(from), to: isoDay(to) };
+  return { from: localIsoDay(from), to: localIsoDay(to) };
+}
+
+export function localDateTimeRange(range = defaultRange()) {
+  const from = localDateParts(range.from);
+  const to = localDateParts(range.to);
+  if (!from || !to) {
+    return {
+      dateFrom: `${range.from}T00:00:00.000Z`,
+      dateTo: `${range.to}T23:59:59.999Z`,
+    };
+  }
+
+  return {
+    dateFrom: new Date(from.year, from.month - 1, from.date, 0, 0, 0, 0).toISOString(),
+    dateTo: new Date(to.year, to.month - 1, to.date, 23, 59, 59, 999).toISOString(),
+  };
 }
 
 export const portalApi = {
@@ -402,8 +427,7 @@ export const portalApi = {
       });
     },
     billingSummary(token: string, range = defaultRange()) {
-      const dateFrom = `${range.from}T00:00:00.000Z`;
-      const dateTo = `${range.to}T23:59:59.999Z`;
+      const { dateFrom, dateTo } = localDateTimeRange(range);
       return apiGetScopedBillingSummary(
         token,
         '/api/client-portal/reports',
@@ -414,20 +438,22 @@ export const portalApi = {
       return apiGet<Record<string, unknown>>(token, '/api/client-portal/analysis');
     },
     skuBreakdown(token: string, range = defaultRange()) {
+      const { dateFrom, dateTo } = localDateTimeRange(range);
       return apiGetScopedByClient<AnalysisSkuBreakdown>(token, '/api/client-portal/analysis', {
-        dateFrom: `${range.from}T00:00:00.000Z`,
-        dateTo: `${range.to}T23:59:59.999Z`,
+        dateFrom,
+        dateTo,
         limit: 200,
         storeId: firstScopedStoreId(token),
       });
     },
     dailyShipments(token: string, range = defaultRange()) {
+      const { dateFrom, dateTo } = localDateTimeRange(range);
       return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(
         token,
         '/api/client-portal/daily-shipments',
         {
-          dateFrom: `${range.from}T00:00:00.000Z`,
-          dateTo: `${range.to}T23:59:59.999Z`,
+          dateFrom,
+          dateTo,
         },
       );
     },
@@ -504,8 +530,7 @@ export const portalApi = {
     });
   },
   billingSummary(token: string, range = defaultRange()) {
-    const dateFrom = `${range.from}T00:00:00.000Z`;
-    const dateTo = `${range.to}T23:59:59.999Z`;
+    const { dateFrom, dateTo } = localDateTimeRange(range);
     return apiGet<{ data: BillingSummaryRow[]; clients?: BillingSummaryRow[]; grandTotal?: number | string }>(
       token,
       '/billing/summary',
@@ -545,25 +570,28 @@ export const portalApi = {
     return apiGet<Record<string, unknown>>(token, '/analysis/overview');
   },
   skuBreakdown(token: string, range = defaultRange()) {
+    const { dateFrom, dateTo } = localDateTimeRange(range);
     return apiGet<AnalysisSkuBreakdown>(token, '/analysis/sku-breakdown', {
-      dateFrom: `${range.from}T00:00:00.000Z`,
-      dateTo: `${range.to}T23:59:59.999Z`,
+      dateFrom,
+      dateTo,
       limit: 200,
     });
   },
   skuOrders(token: string, inventoryId: number, range = defaultRange()) {
+    const { dateFrom, dateTo } = localDateTimeRange(range);
     return apiGet<AnalysisSkuOrdersResponse>(token, `/inventory/${inventoryId}/sku-orders`, {
-      dateFrom: `${range.from}T00:00:00.000Z`,
-      dateTo: `${range.to}T23:59:59.999Z`,
+      dateFrom,
+      dateTo,
     });
   },
   dailyShipments(token: string, range = defaultRange()) {
+    const { dateFrom, dateTo } = localDateTimeRange(range);
     return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(
       token,
       '/analysis/daily-shipments',
       {
-        dateFrom: `${range.from}T00:00:00.000Z`,
-        dateTo: `${range.to}T23:59:59.999Z`,
+        dateFrom,
+        dateTo,
       },
     );
   },
