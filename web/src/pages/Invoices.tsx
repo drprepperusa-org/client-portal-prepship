@@ -14,6 +14,10 @@ function clientRows(value: unknown): PortalClient[] {
   return [];
 }
 
+function pickPackTotal(row: { pickPackTotal?: number | string; pickpackTotal?: number | string }) {
+  return row.pickPackTotal ?? row.pickpackTotal ?? 0;
+}
+
 export default function Invoices() {
   const initialRange = defaultRange();
   const [range, setRange] = useState(initialRange);
@@ -161,7 +165,7 @@ export default function Invoices() {
                 </div>
                 <div>
                   <div className="text-[10px] font-black uppercase text-ink-3">Pick/pack</div>
-                  <div className="mt-1 text-sm font-black text-ink">{safeMoney(row.pickpackTotal)}</div>
+                  <div className="mt-1 text-sm font-black text-ink">{safeMoney(pickPackTotal(row))}</div>
                 </div>
                 <div>
                   <div className="text-[10px] font-black uppercase text-ink-3">Packages</div>
@@ -215,6 +219,12 @@ export default function Invoices() {
                 header: 'Order',
                 width: '145px',
                 render: (row) => <span className="font-black text-ink">{row.orderNumber ?? row.orderId ?? 'Unassigned'}</span>,
+              },
+              {
+                key: 'itemNames',
+                header: 'Item name',
+                width: '280px',
+                render: (row) => <span className="line-clamp-2 font-semibold text-ink-2">{row.itemNames ?? '-'}</span>,
               },
               {
                 key: 'shipDate',

@@ -4,6 +4,7 @@ import { db } from '../db/client';
 import { carrierAccountClients, carrierAccounts } from '../db/schema/carrier-accounts';
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
+import { orderItems } from '../db/schema/order-items';
 import { orders } from '../db/schema/orders';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
@@ -179,6 +180,7 @@ type PortalInvoiceDetailRow = {
   client_name: string | null;
   order_id: number | null;
   order_number: string | null;
+  item_names: string | null;
   ship_date: string | null;
   qty: string;
   pickpack_total: string;
@@ -211,6 +213,13 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
       c.name as client_name,
       b.order_id,
       b.order_number,
+      (
+        select string_agg(distinct oi.name, ' | ')
+        from ${orderItems} oi
+        where oi.order_id = b.order_id
+          and oi.name is not null
+          and oi.name <> ''
+      ) as item_names,
       to_char(min(b.ship_date)::date, 'YYYY-MM-DD') as ship_date,
       coalesce(sum(b.qty), 0)::text as qty,
       coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
@@ -236,6 +245,7 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
     clientName: row.client_name,
     orderId: row.order_id,
     orderNumber: row.order_number,
+    itemNames: row.item_names,
     shipDate: row.ship_date,
     qty: row.qty,
     pickpackTotal: row.pickpack_total,
@@ -573,6 +583,7 @@ app.get('/invoice', async (c) => {
       <tr>
         <td>${escHtml(detail.shipDate)}</td>
         <td class="mono">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
+        <td>${escHtml(detail.itemNames ?? '')}</td>
         <td class="num">${Number(detail.qty ?? 0)}</td>
         <td class="num">${money(detail.pickpackTotal)}</td>
         <td class="num">${Number(detail.additionalTotal ?? 0) > 0 ? money(detail.additionalTotal) : '-'}</td>
@@ -606,9 +617,9 @@ app.get('/invoice', async (c) => {
   </div>
   <div class="total"><span>Total amount due</span><b>${money(row?.grandTotal)}</b></div>
   <table>
-    <thead><tr><th>Ship date</th><th>Order</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Packages</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
-    <tbody>${detailRows || '<tr><td colspan="8">No billable order rows found for this period.</td></tr>'}</tbody>
-    <tfoot><tr><td colspan="3">${row?.orderCount ?? 0} orders</td><td class="num">${money(row?.pickPackTotal)}</td><td class="num">${money(row?.additionalTotal)}</td><td class="num">${money(row?.packageTotal)}</td><td class="num">${money(row?.shippingTotal)}</td><td class="num">${money(row?.grandTotal)}</td></tr></tfoot>
+    <thead><tr><th>Ship date</th><th>Order</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Packages</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
+    <tbody>${detailRows || '<tr><td colspan="9">No billable order rows found for this period.</td></tr>'}</tbody>
+    <tfoot><tr><td colspan="4">${row?.orderCount ?? 0} orders</td><td class="num">${money(row?.pickPackTotal)}</td><td class="num">${money(row?.additionalTotal)}</td><td class="num">${money(row?.packageTotal)}</td><td class="num">${money(row?.shippingTotal)}</td><td class="num">${money(row?.grandTotal)}</td></tr></tfoot>
   </table>
   <div class="footer">PrepShip invoice generated ${escHtml(generated)} for ${escHtml(client.name)}.</div>
 </body>

@@ -163,6 +163,7 @@ export type BillingSummaryRow = {
   clientId?: number;
   clientName?: string;
   orderCount?: number;
+  pickPackTotal?: number | string;
   pickpackTotal?: number | string;
   additionalTotal?: number | string;
   packageTotal?: number | string;
@@ -176,6 +177,7 @@ export type BillingInvoiceDetailRow = {
   clientName?: string | null;
   orderId?: number | null;
   orderNumber?: string | null;
+  itemNames?: string | null;
   shipDate?: string | null;
   qty?: number | string | null;
   pickpackTotal?: number | string | null;

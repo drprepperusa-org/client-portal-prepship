@@ -160,6 +160,7 @@ function demoInvoiceDetails() {
       clientName: firstClient?.clientName ?? order.clientName ?? 'DrPrepperUSA',
       orderId: order.id,
       orderNumber: order.orderNumber,
+      itemNames: order.items?.map((item) => item.name ?? item.sku).filter(Boolean).join(' | ') ?? null,
       shipDate: order.orderDate,
       qty: order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 1,
       pickpackTotal: index === 0 ? '4.00' : '3.50',
