@@ -18,6 +18,15 @@ function pickPackTotal(row: { pickPackTotal?: number | string; pickpackTotal?: n
   return row.pickPackTotal ?? row.pickpackTotal ?? 0;
 }
 
+function openDatePicker(input: HTMLInputElement) {
+  const picker = input as HTMLInputElement & { showPicker?: () => void };
+  try {
+    picker.showPicker?.();
+  } catch {
+    input.focus();
+  }
+}
+
 export default function Invoices() {
   const initialRange = defaultRange();
   const [range, setRange] = useState(initialRange);
@@ -113,6 +122,8 @@ export default function Invoices() {
                 type="date"
                 value={range.from}
                 max={range.to}
+                onClick={(event) => openDatePicker(event.currentTarget)}
+                onFocus={(event) => openDatePicker(event.currentTarget)}
                 onChange={(event) => updateFrom(event.target.value)}
                 className="invoice-date-picker h-10 w-full rounded-lg border border-line bg-surface px-3 pr-9 text-sm font-black text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
               />
@@ -128,6 +139,8 @@ export default function Invoices() {
                 type="date"
                 value={range.to}
                 min={range.from}
+                onClick={(event) => openDatePicker(event.currentTarget)}
+                onFocus={(event) => openDatePicker(event.currentTarget)}
                 onChange={(event) => updateTo(event.target.value)}
                 className="invoice-date-picker h-10 w-full rounded-lg border border-line bg-surface px-3 pr-9 text-sm font-black text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
               />
