@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { motion } from 'framer-motion';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge } from '../components/PortalPrimitives';
-import { StoreFilterBar, storeNameForClient } from '../components/StoreScopeControls';
+import { StoreSelectorDropdown, storeNameForClient } from '../components/StoreScopeControls';
 import { Table } from '../components/ui/Table';
 import { safeDate } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -27,6 +29,7 @@ export default function Orders() {
   const [activeStatus, setActiveStatus] = useState<OrderStatus>('awaiting_shipment');
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [storeSearch, setStoreSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PortalOrder | null>(null);
   const orders = useOrdersQuery(auth.accessToken, activeStatus);
   const clients = useClientsQuery(auth.accessToken);
@@ -228,7 +231,7 @@ export default function Orders() {
   }, [activeClientId, storeBuckets]);
 
   return (
-    <>
+    <div className="portal-client-indicators-page">
       <PageHeader
         title="Orders"
         subtitle="View synced orders by status, recipient, items, and carrier."
@@ -245,49 +248,57 @@ export default function Orders() {
         title="Order activity"
         right={<span className="text-xs font-bold text-ink-3">{visibleTotal} orders</span>}
       >
-        <StoreFilterBar
-          clients={clientRows(clients.data)}
-          value={activeClientId}
-          onChange={setActiveClientId}
-          search={search}
-          onSearchChange={setSearch}
-          label="Order store"
-        />
-        <div className="flex gap-2 overflow-x-auto border-b border-line px-4 pt-2" role="tablist" aria-label="Order status">
+        <div className="flex flex-col gap-4 border-b border-line bg-surface-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <StoreSelectorDropdown
+            clients={clientRows(clients.data)}
+            value={activeClientId}
+            onChange={setActiveClientId}
+            search={storeSearch}
+            onSearchChange={setStoreSearch}
+            label="Workspace"
+          />
+          <div className="flex items-center gap-6">
+            <div className="h-10 w-[120px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={[{v: 12},{v: 19},{v: 15},{v: 22},{v: 18},{v: 28},{v: 24}]}>
+                  <defs>
+                    <linearGradient id="orderTrend" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="rgb(var(--brand-rgb))" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="rgb(var(--brand-rgb))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <Area type="monotone" dataKey="v" stroke="rgb(var(--brand-rgb))" fillOpacity={1} fill="url(#orderTrend)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-black uppercase tracking-widest text-ink-3">Total Orders</div>
+              <div className="text-lg font-black text-ink">{visibleTotal}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto border-b border-line px-4 pt-4 pb-0" role="tablist" aria-label="Order status">
           {orderTabs.map((tab) => (
             <button
               key={tab.value}
               type="button"
               role="tab"
               aria-selected={activeStatus === tab.value}
-              className={`relative h-9 shrink-0 rounded-t-lg px-3 text-xs font-black transition-all duration-200 ease-out after:absolute after:inset-x-3 after:bottom-1 after:h-0.5 after:rounded-full after:bg-brand after:transition-transform after:duration-200 hover:bg-brand-bg/60 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 motion-reduce:transform-none motion-reduce:transition-none ${activeStatus === tab.value ? 'bg-brand-bg text-brand after:scale-x-100' : 'text-ink-2 after:scale-x-0'}`}
+              className={`relative h-10 px-4 text-[13px] font-black transition-colors focus-visible:outline-none ${activeStatus === tab.value ? 'text-brand' : 'text-ink-2 hover:text-ink'}`}
               onClick={() => setActiveStatus(tab.value)}
             >
-              {tab.label}
+              {activeStatus === tab.value && (
+                <motion.div
+                  layoutId="orderTabActive"
+                  className="absolute inset-0 rounded-t-lg bg-brand/10 border-b-2 border-brand"
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10">{tab.label}</span>
             </button>
           ))}
         </div>
-        {storeBuckets.length > 1 ? (
-          <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-3" aria-label="Store order filters">
-            <button
-              type="button"
-              className={`h-9 shrink-0 rounded-lg px-3 text-xs font-black ring-1 transition-colors ${activeClientId === 'all' ? 'bg-brand text-white ring-brand' : 'bg-surface text-ink-2 ring-line hover:bg-brand-bg hover:text-brand'}`}
-              onClick={() => setActiveClientId('all')}
-            >
-              All stores <span className="ml-2 tabular-nums">{orders.data?.pagination?.total ?? rows.length}</span>
-            </button>
-            {storeBuckets.map((bucket) => (
-              <button
-                key={bucket.clientId}
-                type="button"
-                className={`h-9 shrink-0 rounded-lg px-3 text-xs font-black ring-1 transition-colors ${activeClientId === bucket.clientId ? 'bg-brand text-white ring-brand' : 'bg-surface text-ink-2 ring-line hover:bg-brand-bg hover:text-brand'}`}
-                onClick={() => setActiveClientId(bucket.clientId)}
-              >
-                {bucket.name} <span className="ml-2 tabular-nums">{bucket.count}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
         <div className="p-4">
           <Table
             tableId={`orders-${activeStatus}`}
@@ -309,7 +320,7 @@ export default function Orders() {
         fallback={selectedOrder ? orderInitial(selectedOrder) : 'O'}
         onClose={() => setSelectedOrder(null)}
       />
-    </>
+    </div>
   );
 }
 

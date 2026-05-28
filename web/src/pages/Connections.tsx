@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { CardGridSkeleton, ErrorPanel, RefreshingNotice } from '../components/PortalPrimitives';
 import { StoreConnectionCard } from '../components/store-connections/StoreConnectionCard';
 import { StoreConnectionWizard } from '../components/store-connections/StoreConnectionWizard';
+import { FadeIn, SlideUp, StaggeredList, StaggeredItem } from '../components/ui/AnimatedWrappers';
 import { useAuth } from '../lib/auth';
 import {
   useCarrierAccountsQuery,
@@ -65,19 +66,21 @@ export default function Connections() {
 
   return (
     <div className="portal-connections-page">
-      <div className="portal-page-head">
-        <div>
-          <h1>Store Connections</h1>
-          <p>Paste your store's API credentials and we'll handle the rest: orders and webhooks sync automatically.</p>
+      <FadeIn delay={0.1}>
+        <div className="portal-page-head">
+          <div>
+            <h1>Store Connections</h1>
+            <p>Paste your store's API credentials and we'll handle the rest: orders and webhooks sync automatically.</p>
+          </div>
+          <button
+            type="button"
+            className="portal-ops-primary"
+            onClick={openAddWizard}
+          >
+            <Plus size={16} /> Add store
+          </button>
         </div>
-        <button
-          type="button"
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-card bg-brand px-6 text-sm font-black text-white shadow-md shadow-brand/20 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-brand-dark hover:shadow-lg hover:shadow-brand/25 active:translate-y-0 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 motion-reduce:transform-none motion-reduce:transition-none"
-          onClick={openAddWizard}
-        >
-          <Plus size={20} /> Add store
-        </button>
-      </div>
+      </FadeIn>
 
       {accounts.error ? (
         <ErrorPanel
@@ -93,30 +96,39 @@ export default function Connections() {
       ) : null}
       {message ? <div className="portal-alert portal-alert-ok">{message}</div> : null}
 
-      <section className="portal-connected-panel">
-        <div className="portal-connected-head">
-          <span>Connected ({visibleAccounts.length})</span>
-          <RefreshingNotice show={accounts.isFetching && Boolean(accounts.data)} />
-        </div>
-        {isFirstLoad ? (
-          <CardGridSkeleton count={4} />
-        ) : (
-          <div className="portal-store-grid">
-            {visibleAccounts.map((account) => (
-              <StoreConnectionCard
-                key={account.id ?? `${account.provider}-${account.accountIdentifier}`}
-                account={account}
-                busy={deleteAccount.isPending && deleteAccount.variables === account.id}
-                onEdit={() => openEditWizard(account)}
-                onDisconnect={() => void disconnect(account)}
-              />
-            ))}
-            {visibleAccounts.length === 0 ? (
-              <div className="portal-empty-card">No connected stores yet. Use Add store to save a marketplace connection.</div>
-            ) : null}
+      <SlideUp delay={0.16}>
+        <section className="portal-connected-panel glass-panel">
+          <div className="portal-connected-head">
+            <span>Connected ({visibleAccounts.length})</span>
+            <RefreshingNotice show={accounts.isFetching && Boolean(accounts.data)} />
           </div>
-        )}
-      </section>
+          {isFirstLoad ? (
+            <CardGridSkeleton count={4} />
+          ) : (
+            <StaggeredList className="portal-store-grid">
+              {visibleAccounts.map((account) => (
+                <StaggeredItem key={account.id ?? `${account.provider}-${account.accountIdentifier}`}>
+                  <StoreConnectionCard
+                    account={account}
+                    busy={deleteAccount.isPending && deleteAccount.variables === account.id}
+                    onEdit={() => openEditWizard(account)}
+                    onDisconnect={() => void disconnect(account)}
+                  />
+                </StaggeredItem>
+              ))}
+              {visibleAccounts.length === 0 ? (
+                <StaggeredItem className="portal-store-grid-empty">
+                  <SlideUp delay={0.08}>
+                    <div className="portal-empty-card glass-panel">
+                      No connected stores yet. Use Add store to save a marketplace connection.
+                    </div>
+                  </SlideUp>
+                </StaggeredItem>
+              ) : null}
+            </StaggeredList>
+          )}
+        </section>
+      </SlideUp>
 
       {wizardAccount !== undefined ? (
         <StoreConnectionWizard

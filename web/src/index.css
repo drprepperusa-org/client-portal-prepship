@@ -4379,7 +4379,6 @@ button:where([class*="open-invoice"]) {
 }
 
 /* Connections page — store cards uniform card style */
-.portal-store-card { padding: 16px !important; }
 .portal-store-card .portal-connection-name { font-size: 14px !important; font-weight: 600 !important; }
 .portal-store-card .portal-connection-store { font-size: 12px !important; color: rgb(var(--ink-3)) !important; }
 
@@ -4689,13 +4688,13 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
 /* ============================================================
    Connections — card flip polish for Linear light theme
    ============================================================ */
+
 .portal-store-card {
   min-height: 220px !important;
   perspective: 1400px !important;
   cursor: pointer !important;
   background: transparent !important;
   border: none !important;
-  padding: 0 !important;
 }
 .portal-store-card-inner {
   min-height: 220px !important;
@@ -6312,3 +6311,36 @@ label[class*="-search"]:not(.portal-login-field),
 
 /* end Wave 13 */
 
+.portal-panel:has(.portal-store-selector) {
+  overflow: visible !important;
+}
+
+@media (max-width: 1024px) {
+  .portal-main-with-drawer:has(.portal-client-indicators-page),
+  .portal-main-with-drawer-pinned:has(.portal-client-indicators-page) {
+    padding-left: 0 !important;
+  }
+
+  .portal-main-with-drawer:has(.portal-client-indicators-page) .portal-content,
+  .portal-main-with-drawer-pinned:has(.portal-client-indicators-page) .portal-content {
+    padding: 20px 16px 42px !important;
+  }
+
+  .portal-main-with-drawer:has(.portal-client-indicators-page) .portal-topbar,
+  .portal-main-with-drawer-pinned:has(.portal-client-indicators-page) .portal-topbar {
+    padding-left: 70px !important;
+    overflow: hidden !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .portal-main-with-drawer:has(.portal-client-indicators-page) .portal-topbar-actions,
+  .portal-main-with-drawer-pinned:has(.portal-client-indicators-page) .portal-topbar-actions {
+    display: none !important;
+  }
+
+  .portal-main-with-drawer:has(.portal-client-indicators-page) .portal-topbar > .flex.flex-1,
+  .portal-main-with-drawer-pinned:has(.portal-client-indicators-page) .portal-topbar > .flex.flex-1 {
+    display: none !important;
+  }
+}

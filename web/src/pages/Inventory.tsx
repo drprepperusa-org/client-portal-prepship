@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton } from '../components/PortalPrimitives';
-import { StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
+import { StoreSelectorDropdown, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
 import { Table } from '../components/ui/Table';
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -20,6 +21,7 @@ export default function Inventory() {
   const inventory = useInventoryQuery(auth.accessToken);
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [storeSearch, setStoreSearch] = useState('');
   const isFirstLoad = inventory.isLoading && !inventory.data;
   const stores = clientRows(clients.data);
   const rows = useMemo(() => {
@@ -32,6 +34,31 @@ export default function Inventory() {
       return [store, item.sku, item.name].filter(Boolean).join(' ').toLowerCase().includes(query);
     });
   }, [activeClientId, inventory.data?.data, search, stores]);
+  const inventoryHealth = useMemo(() => {
+    let low = 0;
+    let healthy = 0;
+    for (const item of rows) {
+      const stock = Number(item.effectiveStock ?? item.stockQty ?? 0);
+      const reorder = Number(item.reorderLevel ?? 0);
+      if (Number.isFinite(stock) && Number.isFinite(reorder) && reorder > 0 && stock <= reorder) {
+        low += 1;
+      } else {
+        healthy += 1;
+      }
+    }
+    const total = healthy + low;
+    const healthyPercent = total > 0 ? Math.round((healthy / total) * 100) : 0;
+    return {
+      healthy,
+      low,
+      total,
+      healthyPercent,
+      chart: [
+        { name: 'Healthy', value: healthy },
+        { name: 'Low', value: low },
+      ],
+    };
+  }, [rows]);
   const columns = useMemo<ColumnDef<PortalInventoryItem>[]>(
     () => [
       {
@@ -113,7 +140,7 @@ export default function Inventory() {
   );
 
   return (
-    <>
+    <div className="portal-client-indicators-page">
       <PageHeader
         title="Inventory"
         subtitle="Review active SKU balances, reorder levels, and recent item movement."
@@ -127,7 +154,51 @@ export default function Inventory() {
         />
       ) : null}
       <Panel title="Stock levels" right={<span className="text-xs font-bold text-ink-3">{inventory.data?.pagination?.total ?? 0} SKUs</span>}>
-        <StoreFilterBar clients={stores} value={activeClientId} onChange={setActiveClientId} search={search} onSearchChange={setSearch} label="Inventory store" />
+        <div className="border-b border-line bg-surface-2 p-4">
+          <StoreSelectorDropdown
+            clients={stores}
+            value={activeClientId}
+            onChange={setActiveClientId}
+            search={storeSearch}
+            onSearchChange={setStoreSearch}
+            label="Inventory store"
+          />
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_0.9fr_0.9fr]">
+            <div className="rounded-xl bg-white p-4 ring-1 ring-line">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-ink-3">Inventory Health</div>
+                  <div className="mt-1 text-2xl font-black text-ink">{safeNumber(inventoryHealth.healthyPercent)}%</div>
+                  <div className="mt-1 text-xs font-semibold text-ink-3">Healthy SKUs in selected scope</div>
+                </div>
+                <div className="relative h-20 w-20">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={inventoryHealth.chart}
+                        dataKey="value"
+                        innerRadius="68%"
+                        outerRadius="100%"
+                        paddingAngle={3}
+                        stroke="none"
+                        startAngle={90}
+                        endAngle={-270}
+                      >
+                        <Cell fill="rgb(var(--ok-rgb))" />
+                        <Cell fill="rgb(var(--warn-rgb))" />
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center text-[11px] font-black text-ink">
+                    {safeNumber(inventoryHealth.total)}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <InventoryMetric label="Healthy" value={safeNumber(inventoryHealth.healthy)} tone="ok" />
+            <InventoryMetric label="Low stock" value={safeNumber(inventoryHealth.low)} tone="warn" />
+          </div>
+        </div>
         <div className="p-4">
           <Table
             tableId="inventory-stock-levels"
@@ -142,7 +213,20 @@ export default function Inventory() {
         </div>
         {!inventory.isLoading && rows.length === 0 ? <EmptyState title="No inventory found" body="Active SKUs for your selected store scope will appear here." /> : null}
       </Panel>
-    </>
+    </div>
+  );
+}
+
+function InventoryMetric({ label, value, tone }: { label: string; value: string; tone: 'ok' | 'warn' }) {
+  const toneClass = tone === 'ok' ? 'bg-ok/10 text-ok ring-ok/20' : 'bg-warn/10 text-warn ring-warn/20';
+  return (
+    <div className="rounded-xl bg-white p-4 ring-1 ring-line">
+      <div className="text-[10px] font-black uppercase tracking-widest text-ink-3">{label}</div>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="text-xl font-black text-ink">{value}</div>
+        <span className={`h-2.5 w-2.5 rounded-full ring-4 ${toneClass}`} aria-hidden />
+      </div>
+    </div>
   );
 }
 
