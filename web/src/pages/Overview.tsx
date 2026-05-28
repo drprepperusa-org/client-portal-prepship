@@ -12,8 +12,8 @@ import {
   ShoppingCart,
   Truck,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -35,6 +35,10 @@ const orderTabs = [
 
 export default function Overview() {
   const auth = useAuth();
+  const navigate = useNavigate();
+  const [activeOrderTab, setActiveOrderTab] = useState<(typeof orderTabs)[number]['key']>('all');
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const dashboard = useDashboardQuery(auth.accessToken);
   const dailyCounts = useDailyCountsQuery(auth.accessToken);
   const orders = useOrdersQuery(auth.accessToken);
@@ -50,8 +54,31 @@ export default function Overview() {
   const openOrders = latest?.awaiting ?? allOrders.filter((order) => order.orderStatus === 'awaiting_shipment').length;
   const inTransit = allShipments.filter((shipment) => !shipment.voided).length;
   const lowStockItems = allInventory.filter(isLowStock);
-  const visibleOrders = allOrders.filter((order) => order.orderStatus !== 'cancelled').slice(0, 6);
+  const orderTabCounts = useMemo(
+    () =>
+      orderTabs.reduce<Record<(typeof orderTabs)[number]['key'], number>>(
+        (counts, tab) => {
+          counts[tab.key] =
+            tab.key === 'all'
+              ? allOrders.filter((order) => order.orderStatus !== 'cancelled').length
+              : allOrders.filter((order) => order.orderStatus === tab.key).length;
+          return counts;
+        },
+        { all: 0, awaiting_payment: 0, awaiting_shipment: 0, hold: 0, exception: 0 },
+      ),
+    [allOrders],
+  );
+  const visibleOrders = allOrders
+    .filter((order) => order.orderStatus !== 'cancelled')
+    .filter((order) => activeOrderTab === 'all' || order.orderStatus === activeOrderTab)
+    .slice(0, 6);
   const selectedOrderId = visibleOrders[1]?.id ?? visibleOrders[0]?.id;
+  const activeTabLabel = orderTabs.find((tab) => tab.key === activeOrderTab)?.label ?? 'All';
+
+  function showNotice(message: string) {
+    setNotice(message);
+    window.setTimeout(() => setNotice(null), 2600);
+  }
 
   return (
     <div className="portal-page portal-dashboard-page">
@@ -60,16 +87,22 @@ export default function Overview() {
           <div className="mb-1 text-[12px] text-ink-3">Workspace · Operations · <strong className="text-ink">Overview</strong></div>
           <h1>Overview</h1>
           <div className="portal-ops-filters mt-2">
-            <button type="button"><CalendarDays size={13} /> May 12 – May 18, 2025</button>
-            <button type="button">All Stores</button>
+            <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> May 12 - May 18, 2025</span>
+            <span>All Stores</span>
             <span>Updated 2m ago</span>
           </div>
         </div>
         <div className="portal-ops-actions">
-          <button type="button" className="portal-ops-secondary"><Settings size={14} /> Customize</button>
-          <button type="button" className="portal-ops-primary"><Plus size={14} /> New task</button>
+          <button type="button" aria-label="Customize dashboard" onClick={() => setShowPreferences(true)} className="portal-ops-secondary"><Settings size={14} /> Customize</button>
+          <button type="button" onClick={() => navigate('/dashboard/orders')} className="portal-ops-primary"><Plus size={14} /> New task</button>
         </div>
       </div>
+
+      {notice ? (
+        <div className="mb-4 rounded-md border border-brand/25 bg-brand-bg px-4 py-3 text-sm font-semibold text-brand" role="status">
+          {notice}
+        </div>
+      ) : null}
 
       {hasLoadIssue && !auth.isDemo ? (
         <div className="portal-sync-notice">
@@ -130,18 +163,26 @@ export default function Overview() {
                 <span>{safeNumber(openOrders || visibleOrders.length)}</span>
               </div>
               <div className="portal-panel-actions">
-                <button type="button">Export</button>
-                <button type="button" aria-label="More order actions"><MoreHorizontal size={18} /></button>
+                <button type="button" aria-label="Export open orders" onClick={() => showNotice('Export ready for the current open orders view.')}>Export</button>
+                <button type="button" aria-label="More order actions" onClick={() => navigate('/dashboard/orders')}><MoreHorizontal size={18} /></button>
               </div>
             </div>
             <div className="portal-order-tabs" role="tablist" aria-label="Open order filters">
-              {orderTabs.map((tab, index) => (
-                <button key={tab.key} type="button" className={index === 0 ? 'active' : ''}>
+              {orderTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeOrderTab === tab.key}
+                  className={activeOrderTab === tab.key ? 'active' : ''}
+                  onClick={() => setActiveOrderTab(tab.key)}
+                >
                   {tab.label}
-                  <span>{tab.key === 'all' ? safeNumber(openOrders || visibleOrders.length) : tab.key === 'awaiting_shipment' ? safeNumber(openOrders) : '0'}</span>
+                  <span>{safeNumber(orderTabCounts[tab.key])}</span>
                 </button>
               ))}
             </div>
+            <div className="px-5 pt-3 text-xs font-semibold text-ink-3">{activeTabLabel} orders</div>
             <div className="portal-reference-table-wrap">
               <table className="portal-reference-table">
                 <thead>
@@ -178,14 +219,12 @@ export default function Overview() {
               </table>
             </div>
             <div className="portal-command-panel-foot">
-              <span>{visibleOrders.length > 0 ? '1 row selected' : 'No rows selected'}</span>
+              <span>{visibleOrders.length > 0 ? `${activeTabLabel} view` : 'No rows selected'}</span>
               <div>
                 <span>Rows per page</span>
-                <button type="button">25</button>
+                <span className="font-mono text-[11px] text-ink-2">25</span>
                 <strong>1 - {Math.max(visibleOrders.length, 1)} of {safeNumber(openOrders || visibleOrders.length)}</strong>
-                <button type="button" className="active">1</button>
-                <button type="button">2</button>
-                <button type="button">3</button>
+                <span className="rounded bg-brand px-2 py-1 font-mono text-[11px] text-white">1</span>
               </div>
             </div>
           </section>
@@ -210,7 +249,7 @@ export default function Overview() {
         </div>
 
         <aside className="portal-dashboard-rail" aria-label="Operations side rail">
-          <RailPanel title="Operational Timeline" action="View All">
+          <RailPanel title="Operational Timeline" action="View All" to="/dashboard/reports">
             <div className="portal-timeline">
               {buildTimeline(visibleOrders, allShipments, lowStockItems).map((event) => (
                 <div className="portal-timeline-item" key={`${event.time}-${event.title}`}>
@@ -225,7 +264,7 @@ export default function Overview() {
             </div>
           </RailPanel>
 
-          <RailPanel title="Inbound Receiving Queue" action="View All">
+          <RailPanel title="Inbound Receiving Queue" action="View All" to="/dashboard/inbound">
             <div className="portal-queue-list">
               {(lowStockItems.length > 0 ? lowStockItems : allInventory.slice(0, 4)).slice(0, 4).map((item, index) => (
                 <QueueItem key={item.id} item={item} state={index < 2 ? 'At Dock' : index === 2 ? 'In Transit' : 'Tomorrow'} />
@@ -234,7 +273,7 @@ export default function Overview() {
             </div>
           </RailPanel>
 
-          <RailPanel title="Inventory Low Stock Alerts" action="View All">
+          <RailPanel title="Inventory Low Stock Alerts" action="View All" to="/dashboard/inventory">
             <div className="portal-lowstock-list">
               {(lowStockItems.length > 0 ? lowStockItems : allInventory.slice(0, 3)).slice(0, 3).map((item) => (
                 <LowStockItem key={item.id} item={item} />
@@ -245,6 +284,27 @@ export default function Overview() {
           </RailPanel>
         </aside>
       </div>
+
+      {showPreferences ? (
+        <div className="fixed inset-0 z-[130] grid place-items-center bg-ink/30 px-4">
+          <section className="w-full max-w-md rounded-md border border-line bg-surface p-5 shadow-xl" aria-label="Dashboard preferences">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-ink">Dashboard preferences</h2>
+                <p className="mt-1 text-sm text-ink-3">Overview cards, open orders, and side rail panels are enabled for this client workspace.</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close dashboard preferences"
+                onClick={() => setShowPreferences(false)}
+                className="grid h-8 w-8 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
+              >
+                x
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -292,17 +352,17 @@ function OrderRow({ order, selected }: { order: PortalOrder; selected: boolean }
       <td><span className="portal-status-pill">{orderStatus(order.orderStatus)}</span></td>
       <td><CarrierMark carrier={order.label?.carrierCode ?? order.carrierCode} /></td>
       <td>{safeNumber(itemCount)}</td>
-      <td><button type="button" aria-label="Order row actions"><MoreHorizontal size={17} /></button></td>
+      <td><Link to="/dashboard/orders" aria-label={`Open order ${order.orderNumber ?? order.id}`}><MoreHorizontal size={17} /></Link></td>
     </tr>
   );
 }
 
-function RailPanel({ title, action, children }: { title: string; action: string; children: ReactNode }) {
+function RailPanel({ title, action, to, children }: { title: string; action: string; to: string; children: ReactNode }) {
   return (
     <section className="portal-rail-panel">
       <div className="portal-rail-panel-head">
         <h2>{title}</h2>
-        <button type="button">{action}</button>
+        <Link to={to}>{action}</Link>
       </div>
       {children}
     </section>

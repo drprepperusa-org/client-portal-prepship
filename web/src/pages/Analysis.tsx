@@ -350,7 +350,7 @@ function AnalysisDatePicker({
             <button type="button" onClick={() => setViewDate(new Date(year, month + 1, 1))}><ChevronRight size={14} /></button>
           </div>
           <div className="portal-analysis-weekdays">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) => <span key={day}>{day}</span>)}
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
           </div>
           <div className="portal-analysis-days">
             {cells.map((day, index) => {

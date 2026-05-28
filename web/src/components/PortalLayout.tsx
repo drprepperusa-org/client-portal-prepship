@@ -14,6 +14,7 @@ export default function PortalLayout() {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'stores' | 'notifications' | 'account' | null>(null);
   const activeTitle =
     clientPortalNavItems.find((item) =>
       item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
@@ -30,6 +31,7 @@ export default function PortalLayout() {
 
   useEffect(() => {
     setMobileNavOpen(false);
+    setOpenMenu(null);
   }, [location.pathname]);
 
   // Global ⌘K / Ctrl+K opens spotlight
@@ -59,6 +61,10 @@ export default function PortalLayout() {
     },
     [navigate],
   );
+
+  function toggleMenu(menu: 'stores' | 'notifications' | 'account') {
+    setOpenMenu((current) => (current === menu ? null : menu));
+  }
 
   return (
     <div className={`portal-shell${mobileNavOpen ? ' portal-nav-open' : ''}`}>
@@ -97,23 +103,80 @@ export default function PortalLayout() {
             />
           </div>
           <div className="portal-topbar-actions">
-            <button type="button" className="portal-store-select" aria-label="Select store scope">
-              <Store size={16} />
-              <span>All Stores</span>
-              <ChevronDown size={15} />
-            </button>
-            <button type="button" className="portal-bell-button" aria-label="Notifications">
-              <Bell size={19} />
-              <span>7</span>
-            </button>
-            <button type="button" className="portal-user-menu" aria-label="Account menu">
-              <span className="portal-user-photo">{displayName.slice(0, 1)}</span>
-              <span className="portal-user-copy">
-                <strong>{displayName || 'Client'}</strong>
-                <small>{workspaceLabel}</small>
-              </span>
-              <ChevronDown size={15} />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className="portal-store-select"
+                aria-label="Select store scope"
+                aria-expanded={openMenu === 'stores'}
+                onClick={() => toggleMenu('stores')}
+              >
+                <Store size={16} />
+                <span>All Stores</span>
+                <ChevronDown size={15} />
+              </button>
+              {openMenu === 'stores' ? (
+                <div aria-label="Store scope menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-72 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                  <div className="text-[11px] font-semibold uppercase text-ink-3">Assigned scope</div>
+                  <div className="mt-2 rounded-md bg-surface-2 px-3 py-2">
+                    <div className="font-semibold">DrPrepperUSA</div>
+                    <div className="mt-0.5 text-xs text-ink-3">All stores visible to this portal session</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                className="portal-bell-button"
+                aria-label="Notifications"
+                aria-expanded={openMenu === 'notifications'}
+                onClick={() => toggleMenu('notifications')}
+              >
+                <Bell size={19} />
+                <span>7</span>
+              </button>
+              {openMenu === 'notifications' ? (
+                <div aria-label="Notification center menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-80 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                  <div className="font-semibold">Notification center</div>
+                  <div className="mt-1 text-xs text-ink-3">7 active alerts</div>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-md bg-surface-2 px-3 py-2 text-xs">Orders and shipment sync are current.</div>
+                    <div className="rounded-md bg-surface-2 px-3 py-2 text-xs">Inventory alerts are available from the Overview rail.</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                className="portal-user-menu"
+                aria-label="Account menu"
+                aria-expanded={openMenu === 'account'}
+                onClick={() => toggleMenu('account')}
+              >
+                <span className="portal-user-photo">{displayName.slice(0, 1)}</span>
+                <span className="portal-user-copy">
+                  <strong>{displayName || 'Client'}</strong>
+                  <small>{workspaceLabel}</small>
+                </span>
+                <ChevronDown size={15} />
+              </button>
+              {openMenu === 'account' ? (
+                <div aria-label="Account details menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-72 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                  <div className="font-semibold">{displayName || 'Client'}</div>
+                  <div className="mt-1 text-xs text-ink-3">{userEmail}</div>
+                  <div className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-xs">{workspaceLabel}</div>
+                  <button
+                    type="button"
+                    onClick={() => void auth.signOut().then(() => navigate('/login'))}
+                    className="mt-3 h-8 w-full rounded-md border border-line bg-surface text-xs font-semibold text-ink-2 hover:bg-surface-2"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
             {auth.isDemo ? <div className="portal-demo-pill">Demo data</div> : null}
           </div>
         </header>

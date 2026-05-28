@@ -8,7 +8,7 @@ const clientName = process.env.UI_AUDIT_CLIENT_NAME ?? 'Heritage Kids Press';
 const screenshotDir = process.env.UI_AUDIT_SCREENSHOT_DIR ?? '';
 
 const routes = [
-  ['/dashboard', 'Dashboard'],
+  ['/dashboard', 'Overview'],
   ['/dashboard/orders', 'Orders'],
   ['/dashboard/inbound', 'Inbound'],
   ['/dashboard/inventory', 'Inventory'],
@@ -38,7 +38,6 @@ const forbiddenSidebarCopy = [
   'Store Connections',
   'Settings',
   'Integrations',
-  'Billing',
 ];
 
 function countOccurrences(text, needle) {
@@ -67,13 +66,13 @@ async function main() {
     const result = await page.evaluate(({ expectedTitle, clientName: scopedClientName }) => {
       const text = document.body.innerText;
       const sidebarText = document.querySelector('aside[aria-label="Client portal navigation"]')?.textContent ?? '';
-      const logo = document.querySelector('.portal-logo-image');
-      const hasLoadedLogo = logo instanceof HTMLImageElement && logo.complete && logo.naturalWidth > 0;
+      const brandLink = document.querySelector('aside[aria-label="Client portal navigation"] a[href="/dashboard"]');
+      const hasBrand = Boolean(brandLink?.textContent?.includes('PrepShip'));
       const missingExpectedTitle = !text.includes(expectedTitle);
       const isLoginGate = /sign in|portal access/i.test(text) && !text.includes(expectedTitle);
       const hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
       const sidebarHasRequiredItems = [
-        'Dashboard',
+        'Overview',
         'Orders',
         'Inbound',
         'Inventory',
@@ -81,11 +80,12 @@ async function main() {
         'Analysis',
         'Reports',
         'Invoices',
+        'Rate Sheet',
       ].every((item) => sidebarText.includes(item));
       return {
         text,
         sidebarText,
-        hasLoadedLogo,
+        hasBrand,
         missingExpectedTitle,
         isLoginGate,
         hasHorizontalOverflow,
@@ -100,7 +100,7 @@ async function main() {
 
     if (result.isLoginGate) findings.push({ route, issue: 'Page is blocked by login instead of rendering the portal route.' });
     if (result.missingExpectedTitle) findings.push({ route, issue: `Expected visible page title "${label}" was not found.` });
-    if (!result.hasLoadedLogo) findings.push({ route, issue: 'PrepShip sidebar logo asset is missing or did not load.' });
+    if (!result.hasBrand) findings.push({ route, issue: 'PrepShip sidebar brand is missing.' });
     if (result.hasHorizontalOverflow) findings.push({ route, issue: 'Page has document-level horizontal overflow.' });
     if (!result.sidebarHasRequiredItems) findings.push({ route, issue: 'Sidebar does not match the required PrepShip v4 navigation labels.' });
 
