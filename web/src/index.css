@@ -52,7 +52,7 @@ body {
   overflow-x: hidden;
   background: rgb(var(--page-rgb));
   color: rgb(var(--ink-rgb));
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
   font-feature-settings: "cv11", "ss01", "tnum";
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -60,7 +60,7 @@ body {
 }
 
 code, kbd, pre, .mono, [class*="mono"] {
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 button,
@@ -3193,7 +3193,7 @@ aside[aria-label="Client portal navigation"] > div {
   background: rgb(var(--surface-rgb)) !important;
   border: 1px solid rgb(var(--line-rgb));
   border-radius: 4px;
-  font-family: 'Geist Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   color: rgb(var(--ink-2));
 }
@@ -3449,7 +3449,7 @@ button.portal-ops-secondary {
   color: rgb(var(--ink)) !important;
 }
 .portal-order-tabs button > span:last-child {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11px !important;
   background: rgb(var(--surface-rgb)) !important;
   padding: 0 5px !important;
@@ -3748,7 +3748,7 @@ button.portal-ops-secondary {
 .portal-analysis-page { padding: 0 !important; background: transparent !important; }
 .portal-analysis-head { padding: 0 0 16px 0 !important; border-bottom: 1px solid rgb(var(--line-rgb)) !important; margin-bottom: 16px !important; }
 .portal-analysis-tools { gap: 8px !important; }
-.portal-analysis-count { font-family: 'Geist Mono', monospace !important; font-size: 11px !important; color: rgb(var(--ink-3)) !important; }
+.portal-analysis-count { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; font-size: 11px !important; color: rgb(var(--ink-3)) !important; }
 .portal-analysis-spark { color: rgb(var(--brand-rgb)) !important; }
 .portal-analysis-pill {
   font-size: 11.5px !important;
@@ -3836,7 +3836,7 @@ button.portal-ops-secondary {
 .portal-readable-raw {
   background: rgb(var(--surface-soft-rgb)) !important;
   border: 1px solid rgb(var(--line-rgb)) !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11.5px !important;
   border-radius: 6px !important;
   padding: 10px !important;
@@ -3972,7 +3972,7 @@ button.portal-ops-secondary {
 
 /* Timeline (Overview rail) */
 .portal-timeline-item { padding: 10px 16px !important; border-bottom: 1px solid rgb(var(--line-rgb)) !important; }
-.portal-timeline-item time { font-family: 'Geist Mono', monospace !important; font-size: 11px !important; color: rgb(var(--ink-3)) !important; }
+.portal-timeline-item time { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; font-size: 11px !important; color: rgb(var(--ink-3)) !important; }
 .portal-timeline-dot {
   border-radius: 7px !important;
   width: 24px !important;
@@ -4044,7 +4044,7 @@ button.portal-ops-secondary {
 .portal-queue-item small, .portal-lowstock-item small {
   font-size: 11px !important;
   color: rgb(var(--ink-3)) !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
 }
 .portal-rail-footer-link {
   display: flex !important;
@@ -4120,7 +4120,7 @@ button.portal-ops-secondary {
   color: rgb(var(--ink)) !important;
 }
 .portal-heading-inline > span {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11px !important;
   color: rgb(var(--ink-3)) !important;
   background: rgb(var(--surface-3-rgb)) !important;
@@ -4523,7 +4523,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
   border-radius: 6px !important;
   padding: 2px 6px !important;
 }
-.portal-analysis-date-sep { color: rgb(var(--ink-3)) !important; font-size: 11px !important; font-family: 'Geist Mono', monospace !important; }
+.portal-analysis-date-sep { color: rgb(var(--ink-3)) !important; font-size: 11px !important; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; }
 .portal-analysis-date-button {
   height: 24px !important;
   padding: 0 8px !important;
@@ -4560,7 +4560,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
 .portal-analysis-nav:disabled { opacity: .35 !important; cursor: not-allowed !important; }
 
 .portal-analysis-count {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11.5px !important;
   color: rgb(var(--ink-3)) !important;
   padding: 4px 10px !important;
@@ -4638,7 +4638,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
   color: rgb(var(--ink)) !important;
 }
 .portal-analysis-tool-count {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 10.5px !important;
   background: rgb(var(--surface-soft-rgb)) !important;
   padding: 1px 5px !important;
@@ -4849,7 +4849,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
 }
 .portal-store-detail-wide { grid-column: 1 / 3 !important; }
 .portal-store-detail-code {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 12px !important;
   word-break: break-all !important;
   background: rgb(var(--surface-soft-rgb)) !important;
@@ -4955,7 +4955,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
 
 /* SKU link cell */
 .portal-analysis-table tbody td a {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11.5px !important;
   color: rgb(var(--brand-rgb)) !important;
   font-weight: 500 !important;
@@ -5101,7 +5101,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
   -webkit-box-orient: vertical !important;
 }
 .portal-analysis-drawer-head p {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 12px !important;
   color: rgb(var(--brand-rgb)) !important;
   margin-top: 4px !important;
@@ -5209,7 +5209,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
 }
 .portal-analysis-drawer-bar:hover > span { background: rgb(var(--brand-2-rgb)) !important; }
 .portal-analysis-drawer-bar small {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 9px !important;
   color: rgb(var(--ink-3)) !important;
   white-space: nowrap !important;
@@ -5264,7 +5264,7 @@ select[name="rowsPerPage"], select[aria-label*="ows per page"] {
 }
 .portal-analysis-recent-table tbody tr:hover { background: rgb(var(--surface-soft-rgb)) !important; }
 .portal-analysis-recent-table a {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11.5px !important;
   color: rgb(var(--brand-rgb)) !important;
   font-weight: 500 !important;
@@ -5335,7 +5335,7 @@ label[class*="-search"],
   border-radius: var(--search-radius) !important;
   color: rgb(var(--search-icon)) !important;
   font-size: 13px !important;
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif !important;
   transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease !important;
   position: relative !important;
   cursor: text !important;
@@ -5449,7 +5449,7 @@ input[type="search"]::-webkit-search-results-decoration {
   background: rgb(var(--surface-rgb)) !important;
   border: 1px solid rgb(var(--search-border)) !important;
   border-radius: 5px !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11px !important;
   font-weight: 500 !important;
   color: rgb(var(--ink-2)) !important;
@@ -5637,7 +5637,7 @@ input[type="search"]:-webkit-autofill {
   padding: 0 !important;
   position: relative !important;
   transition: background .15s !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
 }
 /* Empty bars get a faint placeholder */
 .portal-analysis-drawer-bar > span:empty {
@@ -5661,7 +5661,7 @@ input[type="search"]:-webkit-autofill {
   font-size: 10px !important;
   color: rgb(var(--ink-2)) !important;
   font-weight: 600 !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
 }
 /* Date label below bar */
 .portal-analysis-drawer-bar small {
@@ -5672,7 +5672,7 @@ input[type="search"]:-webkit-autofill {
   top: auto !important;
   font-size: 9px !important;
   color: rgb(var(--ink-3)) !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   white-space: nowrap !important;
   font-weight: 500 !important;
 }
@@ -5731,7 +5731,7 @@ input[type="search"]:-webkit-autofill {
 }
 .portal-analysis-recent-table tbody tr:last-child td { border-bottom: none !important; }
 .portal-analysis-recent-table a {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11.5px !important;
   color: rgb(var(--brand-rgb)) !important;
   font-weight: 500 !important;
@@ -5769,7 +5769,7 @@ input[type="search"]:-webkit-autofill {
   -webkit-line-clamp: 2 !important;
 }
 .portal-analysis-drawer-head p {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 12.5px !important;
   color: rgb(var(--brand-rgb)) !important;
   margin-top: 4px !important;
@@ -5866,7 +5866,7 @@ button.portal-topbar-search:hover {
   text-overflow: ellipsis !important;
 }
 .spotlight-trigger .kbd {
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 11px !important;
   background: rgb(var(--surface-rgb)) !important;
   border: 1px solid rgb(var(--search-border)) !important;
@@ -5928,7 +5928,7 @@ label[class*="-search"],
   border-radius: var(--neu-radius) !important;
   color: var(--neu-ink) !important;
   font-size: 13.5px !important;
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif !important;
 
   /* Neumorphic dual shadow */
   box-shadow:
@@ -6068,7 +6068,7 @@ input[type="search"]::placeholder {
   background: var(--neu-bg) !important;
   border: none !important;
   border-radius: 6px !important;
-  font-family: 'Geist Mono', monospace !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
   font-size: 10.5px !important;
   font-weight: 600 !important;
   color: rgb(var(--ink-2)) !important;
@@ -6339,3 +6339,4 @@ label[class*="-search"]:not(.portal-login-field),
 .portal-login-field { all: revert !important; }
 
 /* end Wave 13 */
+
