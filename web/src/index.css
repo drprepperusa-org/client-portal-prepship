@@ -220,57 +220,7 @@ aside[aria-label="Client portal navigation"] nav::-webkit-scrollbar,
   -ms-overflow-style: none;
 }
 
-aside[aria-label="Client portal navigation"] nav > div {
-  margin-bottom: 22px !important;
-}
 
-aside[aria-label="Client portal navigation"] nav > div > div:first-child {
-  height: auto !important;
-  margin: 0 0 8px !important;
-  padding: 0 12px !important;
-  color: rgb(var(--ink-3-rgb)) !important;
-  font-size: 11px !important;
-  font-weight: 800 !important;
-  letter-spacing: .06em !important;
-}
-
-aside[aria-label="Client portal navigation"] nav a,
-aside[aria-label="Client portal navigation"] nav button {
-  min-height: 42px;
-  border-radius: var(--radius) !important;
-  color: rgb(var(--ink-2-rgb)) !important;
-  font-size: 14px !important;
-  font-weight: 750 !important;
-  letter-spacing: 0 !important;
-}
-
-aside[aria-label="Client portal navigation"] nav a span:first-child,
-aside[aria-label="Client portal navigation"] nav button span:first-child {
-  color: rgb(var(--ink-3-rgb)) !important;
-}
-
-aside[aria-label="Client portal navigation"] nav a:hover,
-aside[aria-label="Client portal navigation"] nav button:hover {
-  transform: none !important;
-  background: rgb(var(--brand-soft-rgb)) !important;
-  color: rgb(var(--brand-dark-rgb)) !important;
-}
-
-aside[aria-label="Client portal navigation"] nav a[aria-current="page"] {
-  background: linear-gradient(135deg, rgb(var(--brand-rgb)), rgb(var(--brand-dark-rgb))) !important;
-  color: white !important;
-  box-shadow: 0 12px 26px rgb(var(--brand-rgb) / .22) !important;
-}
-
-aside[aria-label="Client portal navigation"] nav a[aria-current="page"] span:first-child {
-  background: rgb(255 255 255 / .16) !important;
-  color: white !important;
-  box-shadow: none !important;
-}
-
-aside[aria-label="Client portal navigation"] nav .border-l {
-  border-color: rgb(var(--line-rgb)) !important;
-}
 
 .portal-nav-section {
   margin-bottom: 14px;
@@ -393,17 +343,6 @@ aside[aria-label="Client portal navigation"] nav .border-l {
   background: rgb(var(--brand-soft-rgb));
 }
 
-aside[aria-label="Client portal navigation"] nav a.portal-nav-link-modern[aria-current="page"],
-aside[aria-label="Client portal navigation"] nav a.portal-nav-child-link[aria-current="page"] {
-  background: rgb(var(--brand-soft-rgb)) !important;
-  color: rgb(var(--brand-dark-rgb)) !important;
-  box-shadow: none !important;
-}
-
-aside[aria-label="Client portal navigation"] nav a.portal-nav-link-modern[aria-current="page"] span {
-  background: white !important;
-  color: rgb(var(--brand-dark-rgb)) !important;
-}
 
 .portal-sidebar-signout {
   display: inline-flex;

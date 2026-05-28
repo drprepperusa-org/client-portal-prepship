@@ -159,7 +159,7 @@ function SidebarGroup({ group, idx, onNavigate }: { group: { label: string, item
                 className={({ isActive }) =>
                   `group flex h-[30px] items-center gap-2 rounded-md px-2 text-[13px] font-medium transition-colors ${
                     isActive
-                      ? 'bg-surface-3 text-ink'
+                      ? 'bg-brand/10 text-brand font-semibold'
                       : 'text-ink-2 hover:bg-surface-3 hover:text-ink'
                   }`
                 }
