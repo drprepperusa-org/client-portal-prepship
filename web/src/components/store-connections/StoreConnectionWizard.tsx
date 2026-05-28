@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Plus, Save, Search, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Plus, Save, X } from 'lucide-react';
 import type {
   CarrierAccount,
   StoreConnectionDraft,
@@ -37,17 +37,32 @@ export function StoreConnectionWizard({
 }) {
   const initialPlatform = findPlatform(account?.provider ?? 'walmart');
   const [step, setStep] = useState<StoreConnectionWizardStep>(account ? 'setup' : 'platforms');
-  const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [draft, setDraft] = useState<StoreConnectionDraft>(() => blankDraft(initialPlatform, account ?? undefined));
   const selectedPlatform = findPlatform(draft.platformId);
 
   useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPaddingRight = document.body.style.paddingRight;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose();
     }
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.paddingRight = previousBodyPaddingRight;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
   }, [onClose]);
 
   const connectionCounts = useMemo(() => {
@@ -60,17 +75,12 @@ export function StoreConnectionWizard({
   }, [accounts]);
 
   const filteredPlatforms = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
     return storePlatforms.filter((platform) => {
       const categoryMatch = activeCategory === 'All' || platform.category === activeCategory;
       if (!categoryMatch) return false;
-      if (!normalized) return true;
-      return [platform.name, platform.description, platform.provider, platform.category]
-        .join(' ')
-        .toLowerCase()
-        .includes(normalized);
+      return true;
     });
-  }, [activeCategory, query]);
+  }, [activeCategory]);
 
   const categoryFilters = useMemo(
     () => [
@@ -106,36 +116,14 @@ export function StoreConnectionWizard({
   }
 
   return (
-    <div className="portal-store-wizard-backdrop" role="dialog" aria-modal="true" aria-labelledby="store-wizard-title">
-      <div className="portal-store-wizard">
+    <div className="portal-store-wizard-backdrop" role="dialog" aria-modal="true" aria-label="Store connection catalog">
+      <div className={`portal-store-wizard portal-store-wizard-${step}`} onWheel={(event) => event.stopPropagation()}>
         <button type="button" className="portal-store-wizard-close" aria-label="Close" onClick={onClose}>
           <X size={20} />
         </button>
 
         {step === 'platforms' ? (
           <>
-            <div className="portal-store-wizard-head">
-              <div className="portal-wizard-title-row">
-                <div>
-                  <div className="portal-wizard-eyebrow">Connect a store</div>
-                  <h2 id="store-wizard-title">Where do your orders come from?</h2>
-                  <p>Select a platform and we'll walk you through connecting it in 2-5 minutes.</p>
-                </div>
-                <div className="portal-wizard-metrics" aria-label="Store connection summary">
-                  <span>{storePlatforms.length} platforms</span>
-                  <span>{accounts.length} connected</span>
-                </div>
-              </div>
-              <label className="portal-platform-search">
-                <Search size={19} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={`Search ${storePlatforms.length} supported platforms...`}
-                  autoFocus
-                />
-              </label>
-            </div>
             <div className="portal-platform-browser">
               <aside className="portal-platform-rail" aria-label="Store platform categories">
                 {categoryFilters.map((category) => (
@@ -287,6 +275,7 @@ function PlatformCard({
       <div className="portal-platform-copy">
         <strong>{platform.name}{count > 0 ? <small> - {count} already connected</small> : null}</strong>
         <span>{platform.description}</span>
+        <em>{platform.credentialFields.length} required field{platform.credentialFields.length === 1 ? '' : 's'}</em>
       </div>
       <span className="portal-platform-kind">{platform.category}</span>
       <span className="portal-platform-add"><Plus size={17} /> Connect</span>

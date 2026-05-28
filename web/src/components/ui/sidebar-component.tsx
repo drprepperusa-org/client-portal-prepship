@@ -93,10 +93,8 @@ export default function ClientPortalSidebar({
           className="mb-3 flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-3"
           aria-label="PrepShip"
         >
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-[7px] bg-ink">
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <path d="M6 7l4 6 4-6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <div className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-[7px] bg-white shadow-sm ring-1 ring-line">
+            <img src="/prepship-v4-logo.svg" alt="" className="h-5 w-5 object-contain" aria-hidden />
           </div>
           <div className="min-w-0 leading-tight">
             <div className="truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">PrepShip</div>

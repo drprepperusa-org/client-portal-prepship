@@ -106,11 +106,12 @@ export default function Connections() {
             <CardGridSkeleton count={4} />
           ) : (
             <StaggeredList className="portal-store-grid">
-              {visibleAccounts.map((account) => (
+              {visibleAccounts.map((account, index) => (
                 <StaggeredItem key={account.id ?? `${account.provider}-${account.accountIdentifier}`}>
                   <StoreConnectionCard
                     account={account}
                     busy={deleteAccount.isPending && deleteAccount.variables === account.id}
+                    index={index}
                     onEdit={() => openEditWizard(account)}
                     onDisconnect={() => void disconnect(account)}
                   />

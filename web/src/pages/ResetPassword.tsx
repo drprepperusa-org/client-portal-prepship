@@ -42,10 +42,8 @@ export default function ResetPassword() {
         </Link>
 
         <div className="mb-6 flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-[9px] bg-ink">
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <path d="M6 7l4 6 4-6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <div className="grid h-8 w-8 place-items-center overflow-hidden rounded-[9px] bg-white p-1.5 shadow-sm ring-1 ring-line">
+            <img src="/prepship-v4-logo.svg" alt="" className="h-full w-full object-contain" aria-hidden />
           </div>
           <div className="leading-none">
             <div className="text-[16px] font-semibold tracking-[-0.015em] text-ink">PrepShip</div>
@@ -96,7 +94,7 @@ export default function ResetPassword() {
           <button
             type="submit"
             disabled={submitting || !email.trim()}
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-ink text-[13px] font-medium text-white transition-colors hover:bg-ink-2 disabled:opacity-60"
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-brand text-[13px] font-medium text-white shadow-sm shadow-brand/20 transition-colors hover:bg-brand-dark disabled:opacity-60"
           >
             {submitting ? (
               <>

@@ -9,11 +9,13 @@ import { findConnectionPlatform } from './storePlatforms';
 export function StoreConnectionCard({
   account,
   busy,
+  index = 0,
   onEdit,
   onDisconnect,
 }: {
   account: CarrierAccount;
   busy: boolean;
+  index?: number;
   onEdit: () => void;
   onDisconnect: () => void;
 }) {
@@ -24,6 +26,9 @@ export function StoreConnectionCard({
   const identifier = account.accountIdentifier ?? account.account_identifier ?? 'Connected account';
   const providerLabel = platform.name;
   const connectedDate = safeDate(account.createdAt);
+  const floatDelay = (index % 6) * 0.28;
+  const floatDuration = 4.8 + (index % 4) * 0.38;
+  const floatOffset = index % 2 === 0 ? -5 : -7;
 
   function toggleCard() {
     setFlipped((value) => !value);
@@ -54,8 +59,25 @@ export function StoreConnectionCard({
       aria-label={`${name} connection card`}
       onClick={toggleCard}
       onKeyDown={onKeyDown}
-      whileHover={prefersReducedMotion ? undefined : { y: -4, scale: 1.01 }}
-      transition={{ type: 'spring', stiffness: 350, damping: 25, mass: 0.7 }}
+      animate={
+        prefersReducedMotion
+          ? undefined
+          : {
+              y: [0, floatOffset, 0],
+              rotateZ: [0, index % 2 === 0 ? 0.25 : -0.25, 0],
+            }
+      }
+      whileHover={prefersReducedMotion ? undefined : { y: -10, scale: 1.025, rotateZ: 0 }}
+      whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+      transition={
+        prefersReducedMotion
+          ? undefined
+          : {
+              y: { duration: floatDuration, repeat: Infinity, ease: 'easeInOut', delay: floatDelay },
+              rotateZ: { duration: floatDuration, repeat: Infinity, ease: 'easeInOut', delay: floatDelay },
+              scale: { type: 'spring', stiffness: 360, damping: 24, mass: 0.7 },
+            }
+      }
       style={{ perspective: 1200 }}
     >
       <motion.div

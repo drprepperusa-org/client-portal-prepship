@@ -67,10 +67,8 @@ export default function Login() {
             className="mb-8 flex items-center gap-3 animate-fadeInUp" 
             style={{ animationFillMode: 'both' }}
           >
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand bg-gradient-to-br from-brand to-brand-dark shadow-[0_4px_12px_rgba(3,169,244,0.3)]">
-              <svg width="22" height="22" viewBox="0 0 20 20" fill="none" aria-hidden>
-                <path d="M6 7l4 6 4-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white p-1.5 shadow-[0_4px_12px_rgba(3,169,244,0.18)] ring-1 ring-line">
+              <img src="/prepship-v4-logo.svg" alt="" className="h-full w-full object-contain" aria-hidden />
             </div>
             <div>
               <div className="text-[17px] font-semibold tracking-[-0.01em] text-ink">PrepShip</div>

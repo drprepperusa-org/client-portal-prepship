@@ -530,7 +530,7 @@ export default function Overview() {
               <Link
                 to="/dashboard/settings"
                 onClick={() => setShowPreferences(false)}
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-surface no-underline hover:opacity-90"
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white no-underline shadow-sm shadow-brand/20 hover:bg-brand-dark"
               >
                 <Settings size={15} /> Open settings
               </Link>
