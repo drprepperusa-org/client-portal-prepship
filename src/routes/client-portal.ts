@@ -5,7 +5,7 @@ import { carrierAccountClients, carrierAccounts } from '../db/schema/carrier-acc
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
 import { orderItems } from '../db/schema/order-items';
-import { orders } from '../db/schema/orders';
+import { orderOverrides, orders } from '../db/schema/orders';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
 import { billingSummary } from '../services/billing';
@@ -404,11 +404,13 @@ app.get('/orders', async (c) => {
   const rows = await db
     .select({
       order: orders,
+      override: orderOverrides,
       clientName: clients.name,
       storeIds: clients.storeIds,
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
+    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
     .where(where)
     .orderBy(desc(orders.orderDate), desc(orders.id))
     .limit(pageSize)
@@ -417,7 +419,12 @@ app.get('/orders', async (c) => {
   const count = countRows[0]?.count ?? rows.length;
   await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId });
   return c.json({
-    data: rows.map((row) => toPortalOrderDto({ ...row.order, clientName: row.clientName, storeName: row.clientName }, { includeFinancials: scope.canViewFinancials })),
+    data: rows.map((row) =>
+      toPortalOrderDto(
+        { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override },
+        { includeFinancials: scope.canViewFinancials },
+      )
+    ),
     pagination: {
       page,
       pageSize,
@@ -437,14 +444,20 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const id = Number(c.req.param('id'));
   const [row] = await db
-    .select({ order: orders, clientName: clients.name })
+    .select({ order: orders, override: orderOverrides, clientName: clients.name })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
+    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
     .where(and(eq(orders.id, id), orderScopePredicate(scope), activeClientPredicate()))
     .limit(1);
   if (!row) return c.json({ error: 'Order not found' }, 404);
   await recordPortalAudit('portal.orders.detail.view', scope, { orderId: id });
-  return c.json({ data: toPortalOrderDto({ ...row.order, clientName: row.clientName, storeName: row.clientName }, { includeFinancials: scope.canViewFinancials }) });
+  return c.json({
+    data: toPortalOrderDto(
+      { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override },
+      { includeFinancials: scope.canViewFinancials },
+    ),
+  });
 });
 
 app.get('/shipments', async (c) => {

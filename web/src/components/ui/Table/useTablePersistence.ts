@@ -53,6 +53,7 @@ export function resetTablePreferences(tableId: string) {
     const keysToRemove = [
       `table:${tableId}:columnSizing`,
       `table:${tableId}:columnOrder`,
+      `table:${tableId}:columnVisibility`,
       `table:${tableId}:pageSize`,
     ];
     keysToRemove.forEach((key) => window.localStorage.removeItem(key));

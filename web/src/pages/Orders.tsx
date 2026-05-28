@@ -2,19 +2,67 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
-import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, StatusBadge } from '../components/PortalPrimitives';
+import { SiFedex, SiUps, SiUsps } from 'react-icons/si';
+import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton } from '../components/PortalPrimitives';
 import { StoreSelectorDropdown, storeNameForClient } from '../components/StoreScopeControls';
 import { Table } from '../components/ui/Table';
-import { safeDate } from '../lib/api';
+import { safeDate, safeMoney } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useClientsQuery, useInventoryQuery, useOrdersQuery } from '../lib/portalQueries';
-import type { OrderItem, OrderStatus, PortalClient, PortalInventoryItem, PortalOrder } from '../types/portal';
+import { useClientsQuery, useInventoryQuery, useOrdersQuery, useShipmentsQuery } from '../lib/portalQueries';
+import type { OrderItem, OrderStatus, PortalClient, PortalInventoryItem, PortalOrder, PortalShipment } from '../types/portal';
 
 const orderTabs: Array<{ value: OrderStatus; label: string; empty: string }> = [
   { value: 'awaiting_shipment', label: 'Awaiting shipment', empty: 'Awaiting shipment orders will appear here after they sync into PrepShip.' },
   { value: 'shipped', label: 'Shipped', empty: 'Shipped orders will appear here after fulfillment.' },
   { value: 'cancelled', label: 'Cancelled', empty: 'Cancelled orders will appear here when available in your scoped account.' },
 ];
+
+const CARRIER_NAMES: Record<string, string> = {
+  stamps_com: 'USPS',
+  usps: 'USPS',
+  ups: 'UPS',
+  ups_walleted: 'UPS',
+  fedex: 'FedEx',
+  fedex_walleted: 'FedEx',
+  dhl_express: 'DHL',
+  asendia_us: 'Asendia',
+  ontrac: 'OnTrac',
+  lasership: 'LaserShip',
+  amazon_swa: 'Amazon',
+  globegistics: 'Globegistics',
+};
+
+const SERVICE_NAMES: Record<string, string> = {
+  usps_priority_mail: 'Priority Mail',
+  usps_priority_mail_express: 'Priority Express',
+  usps_first_class_mail: 'First Class',
+  usps_ground_advantage: 'Ground Advantage',
+  ground_advantage: 'Ground Advantage',
+  usps_media_mail: 'Media Mail',
+  media_mail: 'Media Mail',
+  usps_library_mail: 'Library Mail',
+  usps_parcel_select: 'Parcel Select',
+  ups_ground: 'UPS Ground',
+  ups_ground_saver: 'UPS Ground Saver',
+  ups_surepost: 'UPS Ground Saver',
+  ups_surepost_1_lb_or_greater: 'UPS Ground Saver (1 lb+)',
+  ups_surepost_less_than_1_lb: 'UPS Ground Saver (<1 lb)',
+  ups_3_day_select: 'UPS 3 Day Select',
+  ups_2nd_day_air: 'UPS 2nd Day Air',
+  ups_2nd_day_air_am: 'UPS 2nd Day Air AM',
+  ups_next_day_air_saver: 'UPS Next Day Air Saver',
+  ups_next_day_air: 'UPS Next Day Air',
+  ups_next_day_air_early_am: 'UPS Next Day Air Early AM',
+  fedex_ground: 'FedEx Ground',
+  fedex_home_delivery: 'FedEx Home Delivery',
+  fedex_2day: 'FedEx 2Day',
+  fedex_2_day: 'FedEx 2Day',
+  fedex_2day_am: 'FedEx 2Day AM',
+  fedex_express_saver: 'FedEx Express Saver',
+  fedex_priority_overnight: 'FedEx Priority Overnight',
+  fedex_standard_overnight: 'FedEx Standard Overnight',
+  fedex_first_overnight: 'FedEx First Overnight',
+};
 
 function clientRows(value: unknown): PortalClient[] {
   if (Array.isArray(value)) return value as PortalClient[];
@@ -34,6 +82,7 @@ export default function Orders() {
   const orders = useOrdersQuery(auth.accessToken, activeStatus);
   const clients = useClientsQuery(auth.accessToken);
   const inventory = useInventoryQuery(auth.accessToken);
+  const shipments = useShipmentsQuery(auth.accessToken);
   const isFirstLoad = orders.isLoading && !orders.data;
   const activeTab = useMemo(() => orderTabs.find((tab) => tab.value === activeStatus) ?? orderTabs[0]!, [activeStatus]);
   const rows = orders.data?.data ?? [];
@@ -88,6 +137,10 @@ export default function Orders() {
     }
     return map;
   }, [inventory.data]);
+  const selectedShipment = useMemo(
+    () => (selectedOrder ? shipmentForOrder(selectedOrder, shipments.data?.data ?? []) : null),
+    [selectedOrder, shipments.data],
+  );
 
   function itemImage(item: OrderItem | null | undefined) {
     if (!item) return null;
@@ -106,6 +159,13 @@ export default function Orders() {
     return sku ? inventoryImages.get(sku)?.imageUrl ?? null : null;
   }
 
+  function lineItemImage(item: OrderItem) {
+    const direct = itemImage(item);
+    if (direct) return direct;
+    const sku = item.sku?.toLowerCase();
+    return sku ? inventoryImages.get(sku)?.imageUrl ?? null : null;
+  }
+
   function orderInitial(order: PortalOrder) {
     const item = primaryItem(order);
     return (item?.sku ?? item?.name ?? order.orderNumber ?? 'O').slice(0, 2).toUpperCase();
@@ -118,110 +178,143 @@ export default function Orders() {
   const orderColumns = useMemo<ColumnDef<PortalOrder>[]>(
     () => [
       {
-        id: 'image',
-        header: 'Image',
-        size: 92,
-        minSize: 76,
+        id: 'select',
+        header: '',
+        size: 42,
+        minSize: 42,
         enableSorting: false,
+        enableHiding: false,
         cell: ({ row }) => (
-          <OrderThumb
-            order={row.original}
-            imageUrl={orderImageUrl(row.original)}
-            fallback={orderInitial(row.original)}
+          <input
+            type="checkbox"
+            aria-label={`Select order ${orderNumber(row.original)}`}
+            className="h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
+            onClick={(event) => event.stopPropagation()}
           />
         ),
       },
       {
-        id: 'order',
-        header: 'Order',
-        size: 190,
-        minSize: 150,
+        id: 'orderDate',
+        header: 'Order date',
+        size: 116,
+        minSize: 104,
+        accessorFn: (order) => order.orderDate ?? '',
+        cell: ({ row }) => <span className="portal-order-date-cell">{formatOrderDateTime(row.original.orderDate)}</span>,
+      },
+      {
+        id: 'client',
+        header: 'Client',
+        size: 126,
+        minSize: 112,
+        accessorFn: (order) => storeNameForClient(clientRows(clients.data), orderClientId(order), orderClientName(order)),
+        cell: ({ row }) => (
+          <ClientPill label={storeNameForClient(clientRows(clients.data), orderClientId(row.original), orderClientName(row.original))} />
+        ),
+      },
+      {
+        id: 'orderNumber',
+        header: 'Order #',
+        size: 128,
+        minSize: 116,
         accessorFn: (order) => order.orderNumber ?? order.externalOrderId ?? String(order.id),
         cell: ({ row }) => {
           const order = row.original;
           return (
-            <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openOrder(order);
-                }}
-                className="block text-left text-xs font-black text-ink transition-colors hover:text-brand"
-              >
-                {order.orderNumber ?? order.externalOrderId ?? order.id}
-                <span className="mt-0.5 block text-[11px] font-bold text-ink-3">Click for full details</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                openOrder(order);
+              }}
+              className="portal-order-link"
+            >
+              {orderNumber(order)}
+            </button>
           );
         },
       },
       {
-        id: 'status',
-        header: 'Status',
+        id: 'itemName',
+        header: 'Item name',
+        size: 258,
+        minSize: 220,
+        accessorFn: (order) => order.items?.map((item) => item.name ?? item.sku).filter(Boolean).join(' ') ?? '',
+        cell: ({ row }) => {
+          const order = row.original;
+          const items = orderLineItems(order);
+          return <OrderItemStack items={items} imageForItem={lineItemImage} />;
+        },
+      },
+      {
+        id: 'sku',
+        header: 'SKU',
         size: 150,
-        minSize: 132,
-        accessorFn: (order) => order.orderStatus ?? '',
-        cell: ({ row }) => <StatusBadge value={row.original.orderStatus} />,
+        minSize: 128,
+        accessorFn: (order) => order.items?.map((item) => item.sku).filter(Boolean).join(' ') ?? '',
+        cell: ({ row }) => <SkuStack items={orderLineItems(row.original)} />,
       },
       {
-        id: 'recipient',
-        header: 'Recipient',
-        size: 210,
-        minSize: 170,
-        accessorFn: (order) => order.shipToName ?? '',
+        id: 'qty',
+        header: 'Qty',
+        size: 76,
+        minSize: 70,
+        accessorFn: (order) => orderQty(order),
         cell: ({ row }) => {
-          const order = row.original;
-          return (
-            <div className="min-w-0">
-              <div className="truncate text-xs font-semibold text-ink-2">{order.shipToName ?? 'Not available'}</div>
-              <div className="truncate text-[11px] text-ink-3">{[order.shipToCity, order.shipToState].filter(Boolean).join(', ') || 'No city/state'}</div>
-            </div>
-          );
+          const qty = orderQty(row.original);
+          return <span className={qty > 1 ? 'portal-order-qty is-multi' : 'portal-order-qty'}>{qty}</span>;
         },
       },
       {
-        id: 'items',
-        header: 'Items',
-        size: 190,
-        minSize: 150,
-        accessorFn: (order) => order.items?.[0]?.sku ?? order.items?.[0]?.name ?? '',
+        id: 'orderTotal',
+        header: 'Order total',
+        size: 122,
+        minSize: 112,
+        accessorFn: (order) => orderTotalValue(order) ?? 0,
         cell: ({ row }) => {
-          const order = row.original;
-          return (
-            <div className="min-w-0">
-              <div className="truncate text-xs font-semibold text-ink-2">{order.items?.[0]?.sku ?? 'Mixed items'}</div>
-              <div className="text-[11px] text-ink-3">{order.items?.length ?? 0} line(s)</div>
-            </div>
-          );
+          const total = orderTotalValue(row.original);
+          return <span className="portal-order-money">{total == null ? '-' : safeMoney(total)}</span>;
         },
+      },
+      {
+        id: 'weight',
+        header: 'Weight',
+        size: 106,
+        minSize: 96,
+        accessorFn: (order) => orderWeightOz(order) ?? 0,
+        cell: ({ row }) => {
+          const weight = orderWeightOz(row.original);
+          return weight == null ? <MutedAction label="add dims" /> : <span className="portal-order-muted-value">{formatWeight(weight)}</span>;
+        },
+      },
+      {
+        id: 'shippingAccount',
+        header: 'Shipping account',
+        size: 164,
+        minSize: 142,
+        accessorFn: (order) => shippingAccountName(order),
+        cell: ({ row }) => <ShippingAccountCell order={row.original} />,
       },
       {
         id: 'carrier',
         header: 'Carrier',
-        size: 170,
-        minSize: 140,
-        accessorFn: (order) => order.label?.carrierCode ?? order.carrierCode ?? '',
-        cell: ({ row }) => {
-          const order = row.original;
-          return (
-            <div className="min-w-0">
-              <div className="truncate text-xs font-semibold text-ink-2">{order.label?.carrierCode ?? order.carrierCode ?? '-'}</div>
-              <div className="truncate text-[11px] text-ink-3">{order.label?.serviceCode ?? order.serviceCode ?? ''}</div>
-            </div>
-          );
-        },
+        size: 84,
+        minSize: 76,
+        accessorFn: (order) => carrierCode(order),
+        cell: ({ row }) => <CarrierLogo carrier={carrierCode(row.original)} />,
       },
       {
-        id: 'date',
-        header: 'Date',
-        size: 140,
-        minSize: 124,
-        accessorFn: (order) => order.orderDate ?? '',
-        cell: ({ row }) => <span className="text-xs font-semibold text-ink-2">{safeDate(row.original.orderDate)}</span>,
+        id: 'bestRate',
+        header: 'Best rate',
+        size: 104,
+        minSize: 92,
+        accessorFn: (order) => bestRateAmount(order) ?? 0,
+        cell: ({ row }) => {
+          const rate = bestRateAmount(row.original);
+          return rate == null ? <MutedAction label="add dims" /> : <span className="portal-order-rate">{safeMoney(rate)}</span>;
+        },
       },
     ],
-    [inventoryImages],
+    [clients.data, inventoryImages],
   );
 
   useEffect(() => {
@@ -234,7 +327,7 @@ export default function Orders() {
     <div className="portal-client-indicators-page">
       <PageHeader
         title="Orders"
-        subtitle="View synced orders by status, recipient, items, and carrier."
+        subtitle="View synced orders by date, client, items, shipping account, carrier, and best rate."
         action={<RefreshButton loading={orders.isFetching} onClick={() => void orders.refetch()} />}
       />
       {orders.error ? (
@@ -301,7 +394,7 @@ export default function Orders() {
         </div>
         <div className="p-4">
           <Table
-            tableId={`orders-${activeStatus}`}
+            tableId={`orders-ledger-${activeStatus}`}
             data={filteredRows}
             columns={orderColumns}
             loading={isFirstLoad}
@@ -310,6 +403,8 @@ export default function Orders() {
             pageSizeOptions={[10, 25, 50, 100]}
             onRowClick={openOrder}
             emptyMessage={`No ${activeTab.label.toLowerCase()} orders found`}
+            className="portal-orders-ledger-table"
+            showColumnControls
           />
         </div>
         {!orders.isLoading && filteredRows.length === 0 ? <EmptyState title={`No ${activeTab.label.toLowerCase()} orders found`} body={activeTab.empty} /> : null}
@@ -318,6 +413,8 @@ export default function Orders() {
         order={selectedOrder}
         imageUrl={selectedOrder ? orderImageUrl(selectedOrder) : null}
         fallback={selectedOrder ? orderInitial(selectedOrder) : 'O'}
+        imageForItem={lineItemImage}
+        shipment={selectedShipment}
         onClose={() => setSelectedOrder(null)}
       />
     </div>
@@ -330,7 +427,243 @@ function orderClientId(order: PortalOrder) {
 }
 
 function orderClientName(order: PortalOrder) {
-  return order.clientName ?? order.client_name ?? 'Client';
+  return order.clientName ?? order.client_name ?? order.storeName ?? 'Client';
+}
+
+function shipmentForOrder(order: PortalOrder, shipments: PortalShipment[]) {
+  const orderKeys = [orderNumber(order), order.externalOrderId]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  return shipments.find((shipment) => {
+    if (shipment.orderId != null && Number(shipment.orderId) === Number(order.id)) return true;
+    const shipmentOrderNumber = String(shipment.orderNumber ?? '').trim().toLowerCase();
+    return orderKeys.includes(shipmentOrderNumber);
+  }) ?? null;
+}
+
+function orderNumber(order: PortalOrder) {
+  return order.orderNumber ?? order.externalOrderId ?? String(order.id);
+}
+
+function orderLineItems(order: PortalOrder) {
+  return (order.items ?? []).filter((item) => item && (item.name || item.sku));
+}
+
+function orderQty(order: PortalOrder) {
+  const qty = orderLineItems(order).reduce((sum, item) => sum + (readNumber(item.quantity, 0) ?? 0), 0);
+  return qty > 0 ? qty : 1;
+}
+
+function readNumber(value: unknown, fallback: number | null = null) {
+  const amount = typeof value === 'number' ? value : Number(value ?? NaN);
+  return Number.isFinite(amount) ? amount : fallback;
+}
+
+function orderTotalValue(order: PortalOrder) {
+  const direct = readNumber(order.orderTotal ?? order.order_total ?? order.totalAmount ?? order.total_amount);
+  if (direct != null) return direct;
+  const itemTotal = orderLineItems(order).reduce((sum, item) => {
+    const unit = readNumber(item.unitPrice ?? item.unit_price, null);
+    const qty = readNumber(item.quantity, 1) ?? 1;
+    return unit == null ? sum : sum + unit * qty;
+  }, 0);
+  return itemTotal > 0 ? itemTotal : null;
+}
+
+function orderWeightOz(order: PortalOrder) {
+  const direct = readNumber(order.weightOz ?? order.weight_oz ?? order.rateWeightOz ?? order.rate_weight_oz ?? order.label?.weightOz);
+  if (direct != null && direct > 0) return direct;
+  const itemWeight = orderLineItems(order).reduce((sum, item) => {
+    const weight = readNumber(item.weightOz ?? item.weight_oz, 0) ?? 0;
+    const qty = readNumber(item.quantity, 1) ?? 1;
+    return sum + weight * qty;
+  }, 0);
+  return itemWeight > 0 ? itemWeight : null;
+}
+
+function formatWeight(ounces: number) {
+  const pounds = Math.floor(ounces / 16);
+  const oz = Number((ounces % 16).toFixed(1));
+  if (pounds <= 0) return `${oz} oz`;
+  if (oz <= 0) return `${pounds} lb`;
+  return `${pounds} lb ${oz} oz`;
+}
+
+function rateRecord(order: PortalOrder) {
+  return order.selectedRateJson ?? order.selected_rate_json ?? order.bestRateJson ?? order.best_rate_json ?? null;
+}
+
+function stringFromRecord(record: Record<string, unknown> | null, keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function numberFromRecord(record: Record<string, unknown> | null, keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const amount = readNumber(record[key]);
+    if (amount != null) return amount;
+  }
+  return null;
+}
+
+function normalizeShippingAccountName(value: unknown) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const label = String(value).trim();
+  return label ? label : null;
+}
+
+function formatCarrierCode(value: string | null | undefined) {
+  if (!value) return '';
+  const key = value.trim().toLowerCase();
+  return CARRIER_NAMES[key] ?? value.replace(/^custom_?/i, '').replace(/_/g, ' ').toUpperCase();
+}
+
+function formatServiceCode(value: string | null | undefined) {
+  if (!value) return '';
+  const clean = value.trim().replace(/®/g, '');
+  if (!clean) return '';
+  const key = clean.toLowerCase().replace(/\s+/g, '_');
+  const mapped = SERVICE_NAMES[key];
+  if (mapped) return mapped;
+  return clean
+    .replace(/^USPS\s+/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function shippingAccountName(order: PortalOrder) {
+  const record = rateRecord(order);
+  return (
+    normalizeShippingAccountName(stringFromRecord(record, ['providerAccountNickname', 'carrierNickname', 'carrier_nickname', 'accountNickname'])) ??
+    normalizeShippingAccountName(order.shippingAccount) ??
+    normalizeShippingAccountName(order.shipping_account) ??
+    normalizeShippingAccountName(stringFromRecord(record, ['shippingAccount', 'accountName'])) ??
+    formatCarrierCode(carrierCode(order))
+  );
+}
+
+function serviceName(order: PortalOrder) {
+  const record = rateRecord(order);
+  return formatServiceCode(
+    stringFromRecord(record, ['serviceCode', 'service_code']) ??
+    order.label?.serviceCode ??
+    order.serviceCode ??
+    stringFromRecord(record, ['serviceName', 'service_name']) ??
+    '',
+  );
+}
+
+function carrierCode(order: PortalOrder) {
+  const record = rateRecord(order);
+  return (
+    stringFromRecord(record, ['carrierCode', 'carrier_code', 'carrier']) ??
+    order.label?.carrierCode ??
+    order.carrierCode ??
+    ''
+  );
+}
+
+function bestRateAmount(order: PortalOrder) {
+  const record = rateRecord(order);
+  const rate = numberFromRecord(record, ['cost', 'rate', 'amount', 'shipmentCost', 'shipment_cost']);
+  if (rate != null) return rate;
+  return readNumber(order.label?.cost);
+}
+
+function formatOrderDateTime(value: string | null | undefined) {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function clientTone(label: string) {
+  const tones = ['blue', 'green', 'amber', 'violet', 'slate'];
+  const index = Math.abs([...label].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % tones.length;
+  return tones[index]!;
+}
+
+function ClientPill({ label }: { label: string }) {
+  return <span className={`portal-order-client-pill is-${clientTone(label)}`}>{label}</span>;
+}
+
+function OrderItemStack({ items, imageForItem }: { items: OrderItem[]; imageForItem: (item: OrderItem) => string | null }) {
+  const visible = items.slice(0, 3);
+  if (visible.length === 0) return <span className="portal-order-muted-value">No items</span>;
+  return (
+    <div className="portal-order-item-stack">
+      {visible.map((item, index) => {
+        const image = imageForItem(item);
+        const label = item.name ?? item.sku ?? 'Unnamed item';
+        return (
+          <div key={`${item.sku ?? item.name ?? index}-${index}`} className="portal-order-item-line">
+            <span className="portal-order-item-thumb">
+              {image ? <img src={image} alt="" loading="lazy" /> : <span>{label.slice(0, 1).toUpperCase()}</span>}
+            </span>
+            <span className="portal-order-item-name">{label}</span>
+            {readNumber(item.quantity, 1)! > 1 ? <span className="portal-order-line-count">x{readNumber(item.quantity, 1)}</span> : null}
+          </div>
+        );
+      })}
+      {items.length > visible.length ? <span className="portal-order-more-lines">+{items.length - visible.length} more</span> : null}
+    </div>
+  );
+}
+
+function SkuStack({ items }: { items: OrderItem[] }) {
+  const visible = items.slice(0, 3);
+  if (visible.length === 0) return <span className="portal-order-muted-value">-</span>;
+  return (
+    <div className="portal-order-sku-stack">
+      {visible.map((item, index) => (
+        <span key={`${item.sku ?? item.name ?? index}-${index}`}>{item.sku ?? '-'}</span>
+      ))}
+    </div>
+  );
+}
+
+function MutedAction({ label }: { label: string }) {
+  return <span className="portal-order-muted-action">- {label}</span>;
+}
+
+function ShippingAccountCell({ order }: { order: PortalOrder }) {
+  const account = shippingAccountName(order);
+  const service = serviceName(order);
+  if (!account && !service) return <MutedAction label="add dims" />;
+  return (
+    <div className="portal-order-shipping-account">
+      <strong>{account || carrierCode(order) || 'Carrier account'}</strong>
+      {service ? <span>{service}</span> : null}
+    </div>
+  );
+}
+
+function CarrierLogo({ carrier }: { carrier: string }) {
+  if (!carrier) return <MutedAction label="add dims" />;
+  const normalized = carrier.toLowerCase();
+  if (normalized.includes('ups')) {
+    return <span className="portal-order-carrier-logo is-ups" aria-label="UPS"><SiUps aria-hidden="true" /></span>;
+  }
+  if (normalized.includes('fedex') || normalized.includes('fed_ex')) {
+    return <span className="portal-order-carrier-logo is-fedex" aria-label="FedEx"><SiFedex aria-hidden="true" /></span>;
+  }
+  if (normalized.includes('usps') || normalized.includes('postal') || normalized.includes('stamps')) {
+    return <span className="portal-order-carrier-logo is-usps" aria-label="USPS"><SiUsps aria-hidden="true" /></span>;
+  }
+  return <span className="portal-order-carrier-logo is-generic" aria-label={carrier}>{carrier.slice(0, 4).toUpperCase()}</span>;
 }
 
 function OrderThumb({ order, imageUrl, fallback }: { order: PortalOrder; imageUrl: string | null; fallback: string }) {
@@ -356,18 +689,35 @@ function OrderDetailDrawer({
   order,
   imageUrl,
   fallback,
+  imageForItem,
+  shipment,
   onClose,
 }: {
   order: PortalOrder | null;
   imageUrl: string | null;
   fallback: string;
+  imageForItem: (item: OrderItem) => string | null;
+  shipment: PortalShipment | null;
   onClose: () => void;
 }) {
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [order?.id]);
+
   if (!order) return null;
   const items = order.items ?? [];
-  const tracking = order.label?.trackingNumber ?? order.trackingNumber ?? order.labelTracking ?? 'Not available';
-  const carrier = order.label?.carrierCode ?? order.carrierCode ?? 'Not assigned';
-  const service = order.label?.serviceCode ?? order.serviceCode ?? 'Not assigned';
+  const galleryItems = items.map((item, index) => ({
+    key: `${item.sku ?? item.name ?? index}-${index}`,
+    src: imageForItem(item),
+    label: item.name ?? item.sku ?? `Item ${index + 1}`,
+    fallback: (item.sku ?? item.name ?? 'IT').slice(0, 2).toUpperCase(),
+  }));
+  const gallery = galleryItems.length > 0 ? galleryItems : [{ key: 'order', src: imageUrl, label: primaryAlt(order), fallback }];
+  const activeGalleryItem = gallery[Math.min(activeImageIndex, gallery.length - 1)] ?? gallery[0]!;
+  const tracking = order.label?.trackingNumber ?? order.trackingNumber ?? order.labelTracking ?? shipment?.trackingNumber ?? shipment?.labelTracking ?? 'Not available';
+  const carrier = order.label?.carrierCode ?? order.carrierCode ?? shipment?.carrierCode ?? 'Not assigned';
+  const service = order.label?.serviceCode ?? order.serviceCode ?? shipment?.serviceCode ?? 'Not assigned';
 
   return (
     <div className="fixed inset-0 z-[90]">
@@ -386,14 +736,30 @@ function OrderDetailDrawer({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <div className="mb-5 overflow-hidden rounded-2xl bg-white ring-1 ring-line">
-            <div className="relative grid h-56 place-items-center bg-white">
-              {imageUrl ? (
-                <img src={imageUrl} alt={primaryAlt(order)} className="absolute inset-3 h-[calc(100%-1.5rem)] w-[calc(100%-1.5rem)] object-contain" />
+          <div className="portal-order-detail-gallery mb-5">
+            <div className="portal-order-detail-image-stage">
+              {activeGalleryItem.src ? (
+                <img src={activeGalleryItem.src} alt={activeGalleryItem.label} />
               ) : (
-                <div className="grid h-24 w-24 place-items-center rounded-2xl bg-surface text-2xl font-black text-brand shadow-sm ring-1 ring-line">{fallback}</div>
+                <div className="portal-order-detail-image-fallback">{activeGalleryItem.fallback}</div>
               )}
             </div>
+            {gallery.length > 1 ? (
+              <div className="portal-order-detail-thumbs" aria-label="Order item images">
+                {gallery.map((item, index) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={index === activeImageIndex ? 'is-active' : ''}
+                    aria-label={`View ${item.label}`}
+                    aria-pressed={index === activeImageIndex}
+                    onClick={() => setActiveImageIndex(index)}
+                  >
+                    {item.src ? <img src={item.src} alt="" /> : <span>{item.fallback}</span>}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -411,8 +777,8 @@ function OrderDetailDrawer({
               {items.map((item, index) => (
                 <div key={`${item.sku ?? item.name ?? index}-${index}`} className="flex items-center gap-3 p-4">
                   <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-white p-1 text-[11px] font-black text-brand ring-1 ring-line">
-                    {item.imageUrl ?? item.image_url ?? item.thumbnailUrl ?? item.productImageUrl ? (
-                      <img src={item.imageUrl ?? item.image_url ?? item.thumbnailUrl ?? item.productImageUrl ?? ''} alt={item.name ?? item.sku ?? 'Order item'} className="absolute inset-1 h-[calc(100%-0.5rem)] w-[calc(100%-0.5rem)] object-contain" loading="lazy" />
+                    {imageForItem(item) ? (
+                      <img src={imageForItem(item) ?? ''} alt={item.name ?? item.sku ?? 'Order item'} className="absolute inset-1 h-[calc(100%-0.5rem)] w-[calc(100%-0.5rem)] object-contain" loading="lazy" />
                     ) : (
                       <span>{(item.sku ?? item.name ?? 'IT').slice(0, 2).toUpperCase()}</span>
                     )}

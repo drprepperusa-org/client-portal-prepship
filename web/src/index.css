@@ -7138,6 +7138,337 @@ label[class*="-search"]:not(.portal-login-field),
   color: rgb(var(--ink-3-rgb));
 }
 
+/* ============================================================
+   Orders ledger table
+   ============================================================ */
+
+[data-portal-table^="orders-ledger"] {
+  border-radius: 12px !important;
+  box-shadow: 0 10px 34px rgb(15 23 42 / .05) !important;
+}
+
+[data-portal-table^="orders-ledger"] table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-portal-table^="orders-ledger"] th {
+  background: rgb(var(--brand-rgb) / .08) !important;
+  padding: 9px 10px !important;
+  color: rgb(var(--ink-3-rgb)) !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+}
+
+[data-portal-table^="orders-ledger"] th > div {
+  gap: 4px;
+}
+
+[data-portal-table^="orders-ledger"] th button[aria-label="Drag to reorder column"] {
+  display: none;
+}
+
+[data-portal-table^="orders-ledger"] td {
+  overflow: visible !important;
+  padding: 7px 10px !important;
+  vertical-align: middle;
+  white-space: normal !important;
+  text-overflow: clip !important;
+}
+
+[data-portal-table^="orders-ledger"] tbody tr {
+  background: rgb(var(--surface-rgb));
+}
+
+[data-portal-table^="orders-ledger"] tbody tr:nth-child(even) {
+  background: rgb(var(--surface-soft-rgb));
+}
+
+.portal-order-date-cell,
+.portal-order-muted-value {
+  color: rgb(var(--ink-2-rgb));
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.portal-order-link {
+  color: rgb(var(--brand-rgb));
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.portal-order-client-pill {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 22px;
+  align-items: center;
+  border: 1px solid rgb(var(--line-rgb));
+  border-radius: 5px;
+  padding: 0 8px;
+  color: rgb(var(--ink-rgb));
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portal-order-client-pill.is-blue { border-color: rgb(var(--brand-rgb) / .32); background: rgb(var(--brand-rgb) / .08); }
+.portal-order-client-pill.is-green { border-color: rgb(var(--ok-rgb) / .34); background: rgb(var(--ok-rgb) / .10); }
+.portal-order-client-pill.is-amber { border-color: rgb(var(--warn-rgb) / .36); background: rgb(var(--warn-rgb) / .10); }
+.portal-order-client-pill.is-violet { border-color: rgb(124 58 237 / .30); background: rgb(124 58 237 / .08); }
+.portal-order-client-pill.is-slate { border-color: rgb(var(--ink-3-rgb) / .28); background: rgb(var(--surface-soft-rgb)); }
+
+.portal-order-item-stack,
+.portal-order-sku-stack {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.portal-order-item-line {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.portal-order-item-thumb {
+  position: relative;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgb(var(--surface-soft-rgb));
+  color: rgb(var(--brand-rgb));
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgb(var(--line-rgb));
+}
+
+.portal-order-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portal-order-item-name,
+.portal-order-sku-stack span {
+  overflow: hidden;
+  color: rgb(var(--ink-rgb));
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-order-sku-stack span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.portal-order-line-count,
+.portal-order-qty.is-multi {
+  border: 1px solid rgb(var(--danger-rgb));
+  border-radius: 5px;
+  color: rgb(var(--danger-rgb));
+}
+
+.portal-order-line-count {
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.portal-order-more-lines {
+  color: rgb(var(--brand-rgb));
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.portal-order-qty {
+  display: inline-flex;
+  min-width: 22px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--ink-rgb));
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portal-order-money {
+  color: rgb(var(--ink-rgb));
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.portal-order-muted-action {
+  color: rgb(var(--ink-3-rgb));
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.portal-order-shipping-account {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-order-shipping-account strong {
+  overflow: hidden;
+  color: rgb(var(--ink-2-rgb));
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-order-shipping-account span {
+  overflow: hidden;
+  color: rgb(var(--ink-3-rgb));
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-order-carrier-logo {
+  display: inline-grid;
+  width: 48px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid rgb(var(--line-rgb));
+  border-radius: 6px;
+  background: rgb(var(--surface-soft-rgb));
+  color: rgb(var(--ink-rgb));
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.portal-order-carrier-logo svg {
+  width: 34px;
+  height: 18px;
+}
+
+.portal-order-carrier-logo.is-ups {
+  border-color: rgb(245 158 11 / .45);
+  background: rgb(255 247 237);
+  color: rgb(17 24 39);
+}
+
+.portal-order-carrier-logo.is-ups svg {
+  width: 24px;
+  height: 24px;
+}
+
+.portal-order-carrier-logo.is-fedex {
+  border-color: rgb(124 58 237 / .30);
+  background: rgb(250 245 255);
+  color: rgb(124 58 237);
+}
+
+.portal-order-carrier-logo.is-fedex svg {
+  width: 38px;
+  height: 20px;
+}
+
+.portal-order-carrier-logo.is-usps {
+  border-color: rgb(var(--brand-rgb) / .32);
+  background: rgb(var(--brand-rgb) / .08);
+  color: rgb(var(--brand-rgb));
+}
+
+.portal-order-carrier-logo.is-usps svg {
+  width: 36px;
+  height: 18px;
+}
+
+.portal-order-rate {
+  color: rgb(var(--brand-rgb));
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.portal-order-detail-gallery {
+  display: grid;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--line-rgb));
+  border-radius: 16px;
+  background: rgb(var(--surface-rgb));
+  padding: 12px;
+}
+
+.portal-order-detail-image-stage {
+  position: relative;
+  display: grid;
+  min-height: 190px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 13px;
+  background: rgb(var(--surface-soft-rgb));
+}
+
+.portal-order-detail-image-stage img {
+  width: 100%;
+  height: 190px;
+  object-fit: contain;
+  padding: 8px;
+}
+
+.portal-order-detail-image-fallback {
+  display: grid;
+  width: 88px;
+  height: 88px;
+  place-items: center;
+  border-radius: 18px;
+  background: rgb(var(--brand-rgb) / .10);
+  color: rgb(var(--brand-rgb));
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.portal-order-detail-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  gap: 8px;
+}
+
+.portal-order-detail-thumbs button {
+  display: grid;
+  height: 58px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(var(--line-rgb));
+  border-radius: 11px;
+  background: rgb(var(--surface-rgb));
+  color: rgb(var(--brand-rgb));
+  font-size: 11px;
+  font-weight: 950;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.portal-order-detail-thumbs button:hover,
+.portal-order-detail-thumbs button.is-active {
+  border-color: rgb(var(--brand-rgb) / .55);
+  box-shadow: 0 8px 20px rgb(var(--brand-rgb) / .12);
+}
+
+.portal-order-detail-thumbs button.is-active {
+  transform: translateY(-1px);
+}
+
+.portal-order-detail-thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 5px;
+}
+
 @media (max-width: 1180px) {
   .portal-command-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;

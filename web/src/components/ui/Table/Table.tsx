@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,9 +8,11 @@ import {
   SortingState,
   ColumnSizingState,
   ColumnOrderState,
+  VisibilityState,
   OnChangeFn,
   PaginationState,
 } from '@tanstack/react-table';
+import { Check, Columns3, RotateCcw } from 'lucide-react';
 import {
   DndContext,
   KeyboardSensor,
@@ -48,6 +50,7 @@ export interface TableProps<TData, TValue = any> {
   onRowClick?: (row: TData) => void;
   emptyMessage?: React.ReactNode;
   className?: string;
+  showColumnControls?: boolean;
 }
 
 export function Table<TData>({
@@ -67,9 +70,12 @@ export function Table<TData>({
   onRowClick,
   emptyMessage,
   className = '',
+  showColumnControls = false,
 }: TableProps<TData>) {
   // --- Local State ---
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const columnMenuRef = useRef<HTMLDivElement | null>(null);
   
   // Non-persisted pagination pageIndex (only size is persisted)
   const [pageIndex, setPageIndex] = useState(0);
@@ -84,6 +90,12 @@ export function Table<TData>({
   const [columnSizing, setColumnSizing] = useTablePersistence<ColumnSizingState>(
     tableId,
     'columnSizing',
+    {}
+  );
+
+  const [columnVisibility, setColumnVisibility] = useTablePersistence<VisibilityState>(
+    tableId,
+    'columnVisibility',
     {}
   );
 
@@ -102,6 +114,32 @@ export function Table<TData>({
     const missing = initialColumnIds.filter((id) => !validPersisted.includes(id));
     return [...validPersisted, ...missing];
   }, [persistedColumnOrder, initialColumnIds]);
+
+  useEffect(() => {
+    setColumnVisibility((current) => {
+      const validEntries = Object.entries(current).filter(([id]) => initialColumnIds.includes(id));
+      if (validEntries.length === Object.keys(current).length) return current;
+      return Object.fromEntries(validEntries);
+    });
+  }, [initialColumnIds, setColumnVisibility]);
+
+  useEffect(() => {
+    if (!columnMenuOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!columnMenuRef.current?.contains(event.target as Node)) {
+        setColumnMenuOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setColumnMenuOpen(false);
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [columnMenuOpen]);
 
   // --- Handlers ---
   const handleDragEnd = (event: DragEndEvent) => {
@@ -129,6 +167,7 @@ export function Table<TData>({
       sorting,
       columnOrder,
       columnSizing,
+      columnVisibility,
       pagination: {
         pageIndex,
         pageSize: persistedPageSize,
@@ -153,6 +192,10 @@ export function Table<TData>({
       setColumnSizing(newSizing);
       onColumnResize?.(newSizing);
     },
+    onColumnVisibilityChange: (updater) => {
+      const newVisibility = typeof updater === 'function' ? updater(columnVisibility) : updater;
+      setColumnVisibility(newVisibility);
+    },
     onPaginationChange: (updater) => {
       const current = { pageIndex, pageSize: persistedPageSize };
       const next = typeof updater === 'function' ? updater(current) : updater;
@@ -162,8 +205,83 @@ export function Table<TData>({
     },
   });
 
+  const hideableColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
+  const visibleColumns = table.getVisibleLeafColumns().length;
+  const totalColumns = table.getAllLeafColumns().length;
+  const visibleHideableColumns = hideableColumns.filter((column) => column.getIsVisible()).length;
+
   return (
     <div data-portal-table={tableId} className={`flex flex-col rounded-lg border border-line bg-white shadow-sm ${className}`}>
+      {showColumnControls ? (
+        <div className="flex items-center justify-end border-b border-line bg-surface px-4 py-3">
+          <div ref={columnMenuRef} className="relative">
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-white px-3 text-xs font-black text-ink shadow-sm transition-colors hover:bg-brand-bg hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/35"
+              aria-haspopup="menu"
+              aria-expanded={columnMenuOpen}
+              onClick={() => setColumnMenuOpen((open) => !open)}
+            >
+              <Columns3 size={15} />
+              Columns
+              <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-black text-ink-3">
+                {visibleColumns}/{totalColumns}
+              </span>
+            </button>
+            {columnMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-[calc(100%+8px)] z-30 w-64 overflow-hidden rounded-xl border border-line bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,.18)]"
+              >
+                <div className="flex items-center justify-between border-b border-line px-2 pb-2">
+                  <div>
+                    <div className="text-xs font-black text-ink">Visible columns</div>
+                    <div className="text-[11px] font-semibold text-ink-3">Choose what appears in this table.</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+                    aria-label="Reset visible columns"
+                    onClick={() => table.resetColumnVisibility()}
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+                <div className="mt-2 max-h-80 overflow-y-auto pr-1">
+                  {hideableColumns.map((column) => {
+                    const isVisible = column.getIsVisible();
+                    const disableLastVisible = isVisible && visibleHideableColumns <= 1;
+                    return (
+                      <label
+                        key={column.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs font-bold text-ink transition-colors hover:bg-surface-2 ${
+                          disableLastVisible ? 'cursor-not-allowed opacity-55' : ''
+                        }`}
+                      >
+                        <span
+                          className={`grid h-4 w-4 place-items-center rounded border ${
+                            isVisible ? 'border-brand bg-brand text-white' : 'border-line bg-white text-transparent'
+                          }`}
+                        >
+                          <Check size={12} strokeWidth={3} />
+                        </span>
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={isVisible}
+                          disabled={disableLastVisible}
+                          onChange={column.getToggleVisibilityHandler()}
+                        />
+                        <span className="truncate">{columnLabel(column.columnDef.header, column.id)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -198,4 +316,10 @@ export function Table<TData>({
       <TablePagination table={table} pageSizeOptions={pageSizeOptions} />
     </div>
   );
+}
+
+function columnLabel(header: unknown, fallback: string) {
+  if (typeof header === 'string') return header || fallback;
+  if (typeof header === 'number') return String(header);
+  return fallback.replace(/[_-]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

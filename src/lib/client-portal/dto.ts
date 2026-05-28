@@ -1,5 +1,5 @@
 import type { Inventory } from '../../db/schema/inventory';
-import type { Order } from '../../db/schema/orders';
+import type { Order, OrderOverrides } from '../../db/schema/orders';
 import type { Shipment } from '../../db/schema/shipments';
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -8,7 +8,7 @@ function iso(value: Date | string | null | undefined): string | null {
   return value;
 }
 
-function safeItems(value: unknown): Array<Record<string, unknown>> {
+function safeItems(value: unknown, includeFinancials = false): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 30).map((item) => {
     const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
@@ -16,6 +16,8 @@ function safeItems(value: unknown): Array<Record<string, unknown>> {
       sku: typeof row.sku === 'string' ? row.sku : null,
       name: typeof row.name === 'string' ? row.name : null,
       quantity: row.quantity ?? row.qty ?? null,
+      ...(includeFinancials ? { unitPrice: row.unitPrice ?? row.unit_price ?? row.price ?? null } : {}),
+      weightOz: row.weightOz ?? row.weight_oz ?? null,
       imageUrl:
         typeof row.imageUrl === 'string'
           ? row.imageUrl
@@ -29,9 +31,14 @@ function safeItems(value: unknown): Array<Record<string, unknown>> {
 }
 
 export function toPortalOrderDto(
-  row: Order & { clientName?: string | null; storeName?: string | null },
+  row: Order & {
+    clientName?: string | null;
+    storeName?: string | null;
+    override?: OrderOverrides | null;
+  },
   options: { includeFinancials?: boolean } = {}
 ) {
+  const bestRateJson = row.override?.bestRateJson ?? null;
   return {
     id: row.id,
     clientId: row.clientId,
@@ -49,11 +56,16 @@ export function toPortalOrderDto(
     shipToState: row.shipToState,
     carrierCode: row.carrierCode,
     serviceCode: row.serviceCode,
-    items: safeItems(row.items),
+    trackingNumber: row.override?.trackingNumber ?? null,
+    weightOz: row.weightOz,
+    rateWeightOz: row.override?.rateWeightOz ?? null,
+    shippingAccount: row.override?.shippingAccount ?? null,
+    items: safeItems(row.items, options.includeFinancials),
     ...(options.includeFinancials
       ? {
           orderTotal: row.orderTotal,
           shippingAmount: row.shippingAmount,
+          bestRateJson,
         }
       : {}),
   };

@@ -21,10 +21,13 @@ export type OrderItem = {
   name?: string | null;
   quantity?: number | string | null;
   unitPrice?: number | string | null;
+  unit_price?: number | string | null;
   imageUrl?: string | null;
   image_url?: string | null;
   thumbnailUrl?: string | null;
   productImageUrl?: string | null;
+  weightOz?: number | string | null;
+  weight_oz?: number | string | null;
 };
 
 export type PortalOrder = {
@@ -48,6 +51,23 @@ export type PortalOrder = {
   serviceCode?: string | null;
   trackingNumber?: string | null;
   labelTracking?: string | null;
+  storeName?: string | null;
+  orderTotal?: number | string | null;
+  order_total?: number | string | null;
+  totalAmount?: number | string | null;
+  total_amount?: number | string | null;
+  shippingAmount?: number | string | null;
+  shipping_amount?: number | string | null;
+  weightOz?: number | string | null;
+  weight_oz?: number | string | null;
+  rateWeightOz?: number | string | null;
+  rate_weight_oz?: number | string | null;
+  shippingAccount?: string | null;
+  shipping_account?: string | null;
+  bestRateJson?: Record<string, unknown> | null;
+  best_rate_json?: Record<string, unknown> | null;
+  selectedRateJson?: Record<string, unknown> | null;
+  selected_rate_json?: Record<string, unknown> | null;
   items?: OrderItem[] | null;
   label?: {
     trackingNumber?: string | null;
@@ -55,6 +75,8 @@ export type PortalOrder = {
     labelUrl?: string | null;
     carrierCode?: string | null;
     serviceCode?: string | null;
+    weightOz?: number | string | null;
+    cost?: number | string | null;
   } | null;
 };
 
