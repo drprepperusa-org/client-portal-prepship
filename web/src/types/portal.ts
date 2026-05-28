@@ -128,6 +128,8 @@ export type AnalysisSkuRow = {
   invSkuId?: number | string | null;
   image_url?: string | null;
   imageUrl?: string | null;
+  client_id?: number | string | null;
+  clientId?: number | string | null;
   client_name?: string | null;
   clientName?: string | null;
   orders?: number | string | null;

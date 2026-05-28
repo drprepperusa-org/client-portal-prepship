@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Columns3, PackageSearch, RefreshCw, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, PackageSearch, RefreshCw, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import SearchBar from '../components/ui/search-bar';
 import { Table } from '../components/ui/Table';
+import { StoreSelectorDropdown, clientIdOf, type StoreFilterValue } from '../components/StoreScopeControls';
 import { safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useAnalysisSkuBreakdownQuery, useAnalysisSkuOrdersQuery } from '../lib/portalQueries';
+import { useAnalysisSkuBreakdownQuery, useAnalysisSkuOrdersQuery, useClientsQuery } from '../lib/portalQueries';
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   DEFAULT_TABLE_PAGE_SIZE_OPTIONS,
@@ -24,15 +35,16 @@ type AnalysisColumn = {
 };
 
 const analysisColumns: AnalysisColumn[] = [
-  { key: 'item', header: 'Item name', width: 190 },
+  { key: 'item', header: 'Item Name', width: 210 },
   { key: 'sku', header: 'SKU', width: 140 },
+  { key: 'client', header: 'Client', width: 130 },
   { key: 'orders', header: 'Orders', className: 'right', width: 76 },
   { key: 'pending', header: 'Pending', className: 'center', width: 90 },
   { key: 'ext', header: 'Ext. shipped', className: 'center', width: 110 },
-  { key: 'qty', header: 'Total qty', className: 'right', width: 92 },
-  { key: 'trend', header: 'Units trend', width: 128 },
-  { key: 'avg', header: 'Avg sell', className: 'right', width: 92 },
-  { key: 'revenue', header: 'Total revenue', className: 'right', width: 128 },
+  { key: 'qty', header: 'Total Qty', className: 'right', width: 92 },
+  { key: 'trend', header: 'Units Trend', width: 128 },
+  { key: 'avg', header: 'Avg Sell Price', className: 'right', width: 112 },
+  { key: 'revenue', header: 'Total Revenue', className: 'right', width: 128 },
   { key: 'std', header: 'Std', className: 'right', width: 82 },
   { key: 'exp', header: 'Exp', className: 'right', width: 72 },
   { key: 'shipping', header: 'Total shipping', className: 'right', width: 136 },
@@ -98,6 +110,10 @@ function rowClient(row: AnalysisSkuRow) {
   return row.clientName ?? row.client_name ?? 'Client';
 }
 
+function rowClientId(row: AnalysisSkuRow) {
+  return clientIdOf(row);
+}
+
 function rowInventoryId(row: AnalysisSkuRow) {
   const value = row.invSkuId ?? row.inv_sku_id ?? null;
   const parsed = Number(value);
@@ -143,7 +159,7 @@ function TrendChart({
   const series = rows.slice(0, 5).map((row, index) => ({
     name: rowName(row),
     values: trendFor(row),
-    color: palette[index % palette.length],
+    color: chartColor(index),
   }));
   const max = Math.max(1, ...series.flatMap((item) => item.values));
   const width = 920;
@@ -259,6 +275,107 @@ function TrendChart({
           }),
         )}
       </svg>
+    </div>
+  );
+}
+
+function chartColor(index: number) {
+  return palette[index % palette.length] ?? '#2563eb';
+}
+
+function ModernTrendChart({
+  rows,
+  dateBuckets,
+}: {
+  rows: AnalysisSkuRow[];
+  dateBuckets: string[];
+}) {
+  const series = rows.slice(0, 5).map((row, index) => ({
+    name: rowName(row),
+    values: trendFor(row),
+    color: chartColor(index),
+  }));
+  const chartRows = dateBuckets.map((day, dayIndex) => {
+    const point: Record<string, number | string> = { day, label: shortDate(day) };
+    series.forEach((item, index) => {
+      point[`sku${index}`] = item.values[dayIndex] ?? 0;
+    });
+    return point;
+  });
+  const activeSeries = series[0];
+
+  return (
+    <div className="portal-analysis-chart-card portal-analysis-chart-modern">
+      <div className="portal-analysis-chart-head">
+        <div>
+          <strong>Daily units sold</strong>
+          <span className="portal-analysis-chart-sub">Top {series.length} SKUs by unit movement in the selected window</span>
+        </div>
+        <div className="portal-analysis-legend">
+          {series.map((item) => (
+            <span key={item.name}>
+              <i style={{ background: item.color }} />
+              {item.name.length > 38 ? `${item.name.slice(0, 38)}...` : item.name}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="portal-analysis-chart" role="img" aria-label="Daily units sold by top SKUs">
+        {chartRows.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartRows} margin={{ top: 14, right: 18, bottom: 0, left: -12 }}>
+              <defs>
+                <linearGradient id="analysisPrimaryFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={activeSeries?.color ?? palette[0]} stopOpacity={0.2} />
+                  <stop offset="100%" stopColor={activeSeries?.color ?? palette[0]} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="rgb(var(--line-rgb) / .72)" strokeDasharray="4 8" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={22} tick={{ fill: 'rgb(var(--ink-3-rgb))', fontSize: 11, fontWeight: 700 }} />
+              <YAxis tickLine={false} axisLine={false} allowDecimals={false} width={36} tick={{ fill: 'rgb(var(--ink-3-rgb))', fontSize: 11, fontWeight: 700 }} />
+              <Tooltip content={<AnalysisChartTooltip series={series} />} />
+              {activeSeries ? (
+                <Area type="monotone" dataKey="sku0" name={activeSeries.name} stroke={activeSeries.color} strokeWidth={3} fill="url(#analysisPrimaryFill)" dot={false} activeDot={{ r: 5, strokeWidth: 2 }} />
+              ) : null}
+              {series.slice(1).map((item, index) => (
+                <Line key={item.name} type="monotone" dataKey={`sku${index + 1}`} name={item.name} stroke={item.color} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 2 }} />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="portal-analysis-chart-empty">No daily movement data in this window.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AnalysisChartTooltip({
+  active,
+  payload,
+  label,
+  series,
+}: {
+  active?: boolean;
+  payload?: Array<{ dataKey?: string | number; name?: string; value?: number; color?: string }>;
+  label?: string;
+  series: Array<{ name: string; color: string }>;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="portal-analysis-chart-tooltip">
+      <strong>{label}</strong>
+      {payload.map((item) => {
+        const key = String(item.dataKey ?? '');
+        const seriesIndex = Number(key.replace('sku', ''));
+        const match = series[seriesIndex];
+        return (
+          <span key={key}>
+            <i style={{ background: item.color ?? match?.color ?? palette[0] }} />
+            {(match?.name ?? item.name ?? key).slice(0, 34)}: {safeNumber(item.value ?? 0)}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -593,27 +710,47 @@ export default function Analysis() {
   const [range, setRange] = useState(() => rangeFromPreset('30d'));
   const [activeRange, setActiveRange] = useState('30d');
   const analysis = useAnalysisSkuBreakdownQuery(auth.accessToken, range);
+  const clients = useClientsQuery(auth.accessToken);
   const [query, setQuery] = useState('');
-  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
-  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [activeClientId, setActiveClientId] = useState<StoreFilterValue>('all');
+  const [storeSearch, setStoreSearch] = useState('');
   const [narrow, setNarrow] = useState(false);
   const [selectedSku, setSelectedSku] = useState<AnalysisSkuRow | null>(null);
   const rows = analysis.data?.data ?? [];
+  const clientRows = clients.data
+    ? Array.isArray(clients.data)
+      ? clients.data
+      : clients.data.data
+    : [];
   const dateBuckets = analysis.data?.dateBuckets ?? [];
   const filteredRows = useMemo(() => {
     const value = query.trim().toLowerCase();
-    if (!value) return rows;
-    return rows.filter((row) => [rowName(row), row.sku, rowClient(row)].join(' ').toLowerCase().includes(value));
-  }, [query, rows]);
+    const activeClientName = activeClientId === 'all'
+      ? null
+      : clientRows.find((client) => Number(client.id) === activeClientId)?.name?.toLowerCase() ?? null;
+    const matchesActiveClient = (row: AnalysisSkuRow) => {
+      if (activeClientId === 'all') return true;
+      const explicitClientName = row.clientName ?? row.client_name ?? null;
+      const explicitClientId = rowClientId(row);
+      return explicitClientId === activeClientId
+        || (activeClientName && explicitClientName ? explicitClientName.toLowerCase() === activeClientName : false)
+        || (!explicitClientId && !explicitClientName);
+    };
+    const shouldApplyClientFilter = activeClientId === 'all' || rows.some(matchesActiveClient);
+    return rows.filter((row) => {
+      const matchesClient = !shouldApplyClientFilter || matchesActiveClient(row);
+      const matchesSearch = !value || [rowName(row), row.sku, rowClient(row)].join(' ').toLowerCase().includes(value);
+      return matchesClient && matchesSearch;
+    });
+  }, [activeClientId, clientRows, query, rows]);
   const totalOrders = analysis.data?.totalOrders ?? filteredRows.reduce((sum, row) => sum + toNumber(row.orders), 0);
   const totalSkus = analysis.data?.totalSkus ?? filteredRows.length;
   const isEmptyAnalysis = !analysis.isLoading && filteredRows.length === 0;
-  const visibleColumnCount = analysisColumns.length - hiddenColumns.size;
   const tableColumns = useMemo<ColumnDef<AnalysisSkuRow>[]>(() => analysisColumns
-    .filter((column) => !hiddenColumns.has(column.key))
     .map((column) => ({
       id: column.key,
       header: column.header,
+      enableHiding: column.key !== 'item',
       size: Math.round((column.width ?? 120) * (narrow ? 0.78 : 1)),
       minSize: narrow ? 54 : 80,
       accessorFn: (row) => {
@@ -628,7 +765,7 @@ export default function Analysis() {
         return typeof value === 'number' || typeof value === 'string' ? value : '';
       },
       cell: ({ row }) => <AnalysisCell row={row.original} column={column} index={row.index} />,
-    })), [hiddenColumns, narrow]);
+    })), [narrow]);
 
   function applyPreset(label: string) {
     setActiveRange(label);
@@ -653,17 +790,10 @@ export default function Analysis() {
     });
   }
 
-  function toggleColumn(key: string) {
-    setHiddenColumns((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else if (analysisColumns.length - next.size > 1) next.add(key);
-      return next;
-    });
-  }
-
   function resetAnalysisView() {
     setQuery('');
+    setActiveClientId('all');
+    setStoreSearch('');
     setActiveRange('30d');
     setRange(rangeFromPreset('30d'));
   }
@@ -672,6 +802,7 @@ export default function Analysis() {
     <div className="portal-analysis-page">
       <div className="portal-analysis-head portal-analysis-head-modern">
         <div className="portal-analysis-title">
+          <span><TrendingUp size={18} /></span>
           <div>
             <h1>SKU Analysis</h1>
             <p>{safeNumber(totalSkus)} SKUs · {safeNumber(totalOrders)} orders in window</p>
@@ -707,27 +838,15 @@ export default function Analysis() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search SKU or item…"
           />
-          <select aria-label="Client filter" defaultValue="all" className="portal-analysis-select">
-            <option value="all">All stores</option>
-          </select>
+          <StoreSelectorDropdown
+            clients={clientRows}
+            value={activeClientId}
+            onChange={setActiveClientId}
+            search={storeSearch}
+            onSearchChange={setStoreSearch}
+            label="Store filter"
+          />
           <div className="portal-analysis-toolbar-spacer" />
-          <div className="portal-analysis-column-tool">
-            <button type="button" onClick={() => setColumnsOpen((current) => !current)}><Columns3 size={14} /> Columns <span className="portal-analysis-tool-count">{visibleColumnCount}/{analysisColumns.length}</span></button>
-            {columnsOpen ? (
-              <div className="portal-analysis-columns-menu">
-                <div>
-                  <strong>Table columns</strong>
-                  <button type="button" onClick={() => setColumnsOpen(false)} aria-label="Close columns"><X size={14} /></button>
-                </div>
-                {analysisColumns.map((column) => (
-                  <label key={column.key}>
-                    <input type="checkbox" checked={!hiddenColumns.has(column.key)} onChange={() => toggleColumn(column.key)} />
-                    {column.header}
-                  </label>
-                ))}
-              </div>
-            ) : null}
-          </div>
           <button type="button" className={`portal-analysis-toggle ${narrow ? 'active' : ''}`} onClick={() => setNarrow((current) => !current)}><SlidersHorizontal size={14} /> {narrow ? 'Wide' : 'Narrow'}</button>
         </div>
       </div>
@@ -740,7 +859,7 @@ export default function Analysis() {
         />
       ) : (
         <>
-          <TrendChart rows={filteredRows} dateBuckets={dateBuckets} />
+          <ModernTrendChart rows={filteredRows} dateBuckets={dateBuckets} />
 
           <section className="portal-analysis-table-card">
             <div className="p-4">
@@ -754,7 +873,8 @@ export default function Analysis() {
                 pageSizeOptions={[...DEFAULT_TABLE_PAGE_SIZE_OPTIONS]}
                 emptyMessage="No SKU analysis rows found"
                 onRowClick={setSelectedSku}
-                className={narrow ? 'text-[12px]' : ''}
+                className={`portal-analysis-table ${narrow ? 'is-narrow text-[12px]' : ''}`}
+                showColumnControls
               />
             </div>
           </section>

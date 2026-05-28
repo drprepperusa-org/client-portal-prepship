@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { isPrepShipAdminEmail } from '../../lib/adminAccess';
+import { useOrdersQuery } from '../../lib/portalQueries';
 
 export type SidebarNavItem = {
   to: string;
@@ -65,6 +66,8 @@ export default function ClientPortalSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const canSeeAdmin = isPrepShipAdminEmail(auth.user?.email);
+  const awaitingOrders = useOrdersQuery(auth.accessToken, 'awaiting_shipment');
+  const awaitingShipmentCount = awaitingOrders.data?.pagination?.total ?? awaitingOrders.data?.data?.length ?? 0;
 
   const groups = NAV_GROUP_ORDER
     .filter((group) => canSeeAdmin || !ADMIN_GROUPS.has(group))
@@ -104,7 +107,13 @@ export default function ClientPortalSidebar({
         {/* NAV */}
         <nav className="portal-sidebar-scrollbarless min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-label="Main navigation">
           {groups.map((group, idx) => (
-            <SidebarGroup key={group.label} group={group} idx={idx} onNavigate={onNavigate} />
+            <SidebarGroup
+              key={group.label}
+              group={group}
+              idx={idx}
+              onNavigate={onNavigate}
+              awaitingShipmentCount={awaitingShipmentCount}
+            />
           ))}
         </nav>
 
@@ -123,7 +132,17 @@ export default function ClientPortalSidebar({
   );
 }
 
-function SidebarGroup({ group, idx, onNavigate }: { group: { label: string, items: SidebarNavItem[] }, idx: number, onNavigate?: () => void }) {
+function SidebarGroup({
+  group,
+  idx,
+  onNavigate,
+  awaitingShipmentCount,
+}: {
+  group: { label: string, items: SidebarNavItem[] };
+  idx: number;
+  onNavigate?: () => void;
+  awaitingShipmentCount: number;
+}) {
   const [isOpen, setIsOpen] = useState(true);
 
   return (
@@ -172,7 +191,16 @@ function SidebarGroup({ group, idx, onNavigate }: { group: { label: string, item
                       className={isActive ? 'text-brand' : 'text-ink-3 group-hover:text-ink-2'}
                     />
                     <span className="truncate">{item.label}</span>
-                    {item.shortcut ? (
+                    {item.to === '/dashboard/orders' ? (
+                      <span
+                        className={`ml-auto rounded-full px-1.5 py-0.5 font-mono text-[10.5px] font-black ${
+                          isActive ? 'bg-brand text-white' : 'bg-brand/10 text-brand'
+                        }`}
+                        aria-label={`${awaitingShipmentCount} awaiting shipment orders`}
+                      >
+                        {awaitingShipmentCount}
+                      </span>
+                    ) : item.shortcut ? (
                       <span className="ml-auto font-mono text-[10.5px] text-ink-3">{item.shortcut}</span>
                     ) : item.count ? (
                       <span className="ml-auto font-mono text-[10.5px] text-ink-3">{item.count}</span>

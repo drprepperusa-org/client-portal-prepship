@@ -8,11 +8,9 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
-  Download,
   Gauge,
   MoreHorizontal,
   Package,
-  Plus,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -87,7 +85,7 @@ export default function Overview() {
   const dailyData = dailyCounts.data?.data ?? [];
   const latest = dailyData.at(-1);
   const openOrders = latest?.awaiting ?? allOrders.filter((order) => order.orderStatus === 'awaiting_shipment').length;
-  const shippedToday = latest?.shipped ?? allShipments.filter((shipment) => !shipment.voided).length;
+  const shippedToday = latest?.shipped ?? allOrders.filter((order) => order.orderStatus === 'shipped').length;
   const inTransit = allShipments.filter((shipment) => !shipment.voided).length;
   const lowStockItems = allInventory.filter(isLowStock);
   const outOfStockItems = allInventory.filter((item) => Number(item.effectiveStock ?? item.stockQty ?? 0) <= 0);
@@ -98,7 +96,16 @@ export default function Overview() {
   const unitsTotal = Number(dashboard.data?.units ?? allInventory.reduce((sum, item) => sum + Number(item.soldLast30Days ?? 0), 0));
   const skuVelocity = dashboard.data?.bySku?.slice(0, 5) ?? buildSkuVelocity(allInventory);
   const orderChartData = useMemo(() => buildOrderChartData(dailyData, allOrders), [dailyData, allOrders]);
-  const revenueTrendData = useMemo(() => buildRevenueTrend(dashboard.data?.dailyRevenue, orderChartData), [dashboard.data?.dailyRevenue, orderChartData]);
+  const revenueTrendData = useMemo(() => buildRevenueTrend(dashboard.data?.dailyRevenue, allOrders), [dashboard.data?.dailyRevenue, allOrders]);
+  const dashboardRange = useMemo(() => buildDateRangeLabel(dailyData, allOrders, allShipments), [dailyData, allOrders, allShipments]);
+  const liveStatusLabel = queries.some((query) => query.isFetching)
+    ? 'Syncing live data'
+    : auth.isDemo
+      ? 'Demo workspace'
+      : 'Live data';
+  const orderTrend = buildTrendLabel(orderChartData.map((point) => point.awaiting));
+  const shipmentTrend = buildTrendLabel(orderChartData.map((point) => point.shipped));
+  const receivingReady = allShipments.filter((shipment) => !shipment.voided && !shipment.trackingNumber && !shipment.labelTracking).length;
   const fulfillmentData = useMemo(
     () => [
       { name: 'Awaiting', value: openOrders, color: chartBrand },
@@ -136,13 +143,39 @@ export default function Overview() {
     window.setTimeout(() => setNotice(null), 2600);
   }
 
+  function refreshDashboard() {
+    queries.forEach((query) => void query.refetch());
+    setShowPreferences(false);
+    showNotice('Dashboard data refresh started.');
+  }
+
+  function exportVisibleOrders() {
+    if (!visibleOrders.length) {
+      showNotice('There are no orders to export in this view.');
+      return;
+    }
+    const rows = visibleOrders.map((order) => ({
+      order: order.orderNumber ?? order.externalOrderId ?? `PS-${order.id}`,
+      channel: order.sourceProvider ?? order.clientName ?? '',
+      date: safeDate(order.orderDate),
+      customer: order.shipToName ?? '',
+      total: orderTotal(order).toFixed(2),
+      status: orderStatus(order.orderStatus),
+      carrier: order.label?.carrierCode ?? order.carrierCode ?? '',
+      tracking: order.label?.trackingNumber ?? order.label?.labelTracking ?? order.trackingNumber ?? order.labelTracking ?? '',
+      items: String(order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 1), 0) ?? 0),
+    }));
+    downloadCsv(`prepship-${activeOrderTab}-orders.csv`, rows);
+    showNotice(`Exported ${visibleOrders.length} order${visibleOrders.length === 1 ? '' : 's'}.`);
+  }
+
   return (
     <div className="portal-page portal-dashboard-page portal-ops-command-center">
       <section className="portal-overview-toolbar" aria-label="Dashboard controls">
         <div className="portal-overview-scope" aria-label="Dashboard scope">
-          <span><CalendarDays size={14} /> May 12 - May 18, 2025</span>
+          <span><CalendarDays size={14} /> {dashboardRange}</span>
           <span><Sparkles size={14} /> All Stores</span>
-          <span><Activity size={14} /> Updated 2m ago</span>
+          <span><Activity size={14} /> {liveStatusLabel}</span>
         </div>
 
         <div className="portal-overview-pulse-card" aria-label="Operations pulse">
@@ -152,7 +185,7 @@ export default function Overview() {
           </div>
 
           <div className="portal-overview-pulse-grid">
-            <MiniPulse label="SLA" value="98.4%" tone="ok" />
+            <MiniPulse label="Health" value={`${inventoryScore}%`} tone={inventoryScore >= 90 ? 'ok' : inventoryScore >= 70 ? 'warn' : 'danger'} />
             <MiniPulse label="Backlog" value={safeNumber(openOrders)} tone={openOrders > 20 ? 'warn' : 'brand'} />
             <MiniPulse label="Exceptions" value={safeNumber(exceptionCount)} tone={exceptionCount > 0 ? 'danger' : 'ok'} />
           </div>
@@ -160,9 +193,6 @@ export default function Overview() {
           <div className="portal-overview-actions">
             <button type="button" aria-label="Customize dashboard" onClick={() => setShowPreferences(true)}>
               <Settings size={15} /> Customize
-            </button>
-            <button type="button" className="primary" onClick={() => navigate('/dashboard/orders')}>
-              <Plus size={15} /> New task
             </button>
           </div>
         </div>
@@ -206,8 +236,8 @@ export default function Overview() {
                 icon={<ShoppingCart size={21} />}
                 label="Open Orders"
                 value={safeNumber(openOrders)}
-                trend="+18.2%"
-                trendLabel="vs prior week"
+                trend={orderTrend.value}
+                trendLabel={orderTrend.label}
                 to="/dashboard/orders"
                 action="View Orders"
                 tone="blue"
@@ -218,13 +248,13 @@ export default function Overview() {
               <KpiCard
                 icon={<Warehouse size={21} />}
                 label="Receiving Queue"
-                value={safeNumber(Math.max(lowStockItems.length, 2))}
-                trend="+6 inbound"
-                trendLabel="dock-ready today"
+                value={safeNumber(receivingReady)}
+                trend={`${safeNumber(inTransit)} active`}
+                trendLabel="shipments synced"
                 to="/dashboard/inbound"
                 action="View Inbound"
                 tone="green"
-                series={[4, 5, 4, 8, 7, 9, Math.max(lowStockItems.length, 2)]}
+                series={orderChartData.map((point) => point.shipped)}
               />
             </StaggeredItem>
             <StaggeredItem>
@@ -245,8 +275,8 @@ export default function Overview() {
                 icon={<Truck size={21} />}
                 label="Shipments Moving"
                 value={safeNumber(inTransit)}
-                trend="+12.1%"
-                trendLabel="carrier activity"
+                trend={shipmentTrend.value}
+                trendLabel={shipmentTrend.label}
                 to="/dashboard/shipments"
                 action="View Shipments"
                 tone="violet"
@@ -329,8 +359,8 @@ export default function Overview() {
                 subtitle={`${activeTabLabel} orders ready for warehouse action`}
                 action={(
                   <div className="portal-panel-actions">
-                    <button type="button" aria-label="Export open orders" onClick={() => showNotice('Export ready for the current open orders view.')}>Export</button>
-                    <button type="button" aria-label="More order actions" onClick={() => navigate('/dashboard/orders')}><MoreHorizontal size={18} /></button>
+                    <button type="button" aria-label="Export open orders" onClick={exportVisibleOrders}>Export</button>
+                    <button type="button" aria-label="Open orders page" onClick={() => navigate('/dashboard/orders')}><MoreHorizontal size={18} /></button>
                   </div>
                 )}
               />
@@ -354,7 +384,6 @@ export default function Overview() {
                 <table className="portal-reference-table">
                   <thead>
                     <tr>
-                      <th><input type="checkbox" aria-label="Select all open orders" /></th>
                       <th>Order</th>
                       <th>Channel</th>
                       <th>Date</th>
@@ -369,9 +398,9 @@ export default function Overview() {
                   <tbody>
                     {isOrdersLoading ? (
                       <>
-                        <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
-                        <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
-                        <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
+                        <tr><td colSpan={9}><TableRowSkeleton /></td></tr>
+                        <tr><td colSpan={9}><TableRowSkeleton /></td></tr>
+                        <tr><td colSpan={9}><TableRowSkeleton /></td></tr>
                       </>
                     ) : visibleOrders.length > 0 ? (
                       visibleOrders.map((order) => (
@@ -379,7 +408,7 @@ export default function Overview() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={10}>
+                        <td colSpan={9}>
                           <div className="portal-reference-empty">
                             <Package size={22} />
                             <strong>No open orders in this scope</strong>
@@ -411,9 +440,13 @@ export default function Overview() {
                 action={<Link to="/dashboard/shipments">View all shipments <ArrowRight size={14} /></Link>}
               />
               <div className="portal-tracking-cards">
-                {(allShipments.length > 0 ? allShipments : buildPlaceholderShipments()).slice(0, 5).map((shipment, index) => (
-                  <ShipmentCard key={`${shipment.id}-${index}`} shipment={shipment} delayed={index === 3} />
-                ))}
+                {allShipments.length > 0 ? (
+                  allShipments.slice(0, 5).map((shipment, index) => (
+                    <ShipmentCard key={`${shipment.id}-${index}`} shipment={shipment} delayed={index === 3 && exceptionCount > 0} />
+                  ))
+                ) : (
+                  <RailEmpty label="No live shipments in this scope" />
+                )}
               </div>
             </section>
           </SlideUp>
@@ -422,7 +455,7 @@ export default function Overview() {
         <FadeIn delay={0.28}>
           <aside className="portal-command-rail" aria-label="Operations side rail">
             <RailPanel title="Fulfillment Performance" action="Details" to="/dashboard/reports">
-              <GaugePanel score={inventoryScore} />
+              <GaugePanel score={inventoryScore} backlog={openOrders} exceptions={exceptionCount} />
             </RailPanel>
 
             <RailPanel title="Order Volume Heatmap" action="Analysis" to="/dashboard/analysis">
@@ -461,7 +494,7 @@ export default function Overview() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-ink">Dashboard preferences</h2>
-                <p className="mt-1 text-sm text-ink-3">Command center widgets, analytics, and side rail intelligence are enabled for this client workspace.</p>
+                <p className="mt-1 text-sm text-ink-3">Command center widgets are using live order, shipment, and inventory queries for this workspace.</p>
               </div>
               <button
                 type="button"
@@ -471,6 +504,36 @@ export default function Overview() {
               >
                 x
               </button>
+            </div>
+            <div className="mt-5 grid gap-3 rounded-lg border border-line bg-surface-2 p-4 text-sm text-ink-2">
+              <span className="flex items-center justify-between gap-3">
+                <strong>Orders loaded</strong>
+                <em className="not-italic text-ink">{safeNumber(allOrders.length)}</em>
+              </span>
+              <span className="flex items-center justify-between gap-3">
+                <strong>Shipments loaded</strong>
+                <em className="not-italic text-ink">{safeNumber(allShipments.length)}</em>
+              </span>
+              <span className="flex items-center justify-between gap-3">
+                <strong>Inventory SKUs loaded</strong>
+                <em className="not-italic text-ink">{safeNumber(allInventory.length)}</em>
+              </span>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={refreshDashboard}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink hover:bg-surface-2"
+              >
+                <Activity size={15} /> Refresh data
+              </button>
+              <Link
+                to="/dashboard/settings"
+                onClick={() => setShowPreferences(false)}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-ink px-4 text-sm font-semibold text-surface no-underline hover:opacity-90"
+              >
+                <Settings size={15} /> Open settings
+              </Link>
             </div>
           </section>
         </div>
@@ -574,7 +637,6 @@ function OrderRow({ order, selected }: { order: PortalOrder; selected: boolean }
   const itemCount = order.items?.reduce((sum, item) => sum + Number(item.quantity ?? 1), 0) ?? 0;
   return (
     <tr data-selected={selected ? 'true' : 'false'}>
-      <td><input type="checkbox" aria-label={`Select order ${order.orderNumber ?? order.id}`} checked={selected} readOnly /></td>
       <td>
         <Link to="/dashboard/orders">{order.orderNumber ?? order.externalOrderId ?? `PS-${order.id}`}</Link>
         <small>{safeDate(order.orderDate)}</small>
@@ -615,7 +677,7 @@ function StoreMark({ label }: { label: string }) {
 }
 
 function CarrierMark({ carrier }: { carrier?: string | null }) {
-  const label = carrier ? carrier.toUpperCase() : 'UPS Ground';
+  const label = carrier?.trim() ? carrier.trim().toUpperCase() : 'Not assigned';
   return <span className="portal-carrier-mark"><span>{label.slice(0, 3)}</span>{label}</span>;
 }
 
@@ -637,14 +699,14 @@ function ShipmentCard({ shipment, delayed }: { shipment: PortalShipment; delayed
         <span />
       </div>
       <div className="portal-tracking-route">
-        <span>{shipment.storeName ?? 'Louisville, KY'}</span>
+        <span>{shipment.storeName ?? shipment.clientName ?? shipment.carrierCode ?? 'Shipment'}</span>
         <span>{safeDate(shipment.shipDate)}</span>
       </div>
     </motion.article>
   );
 }
 
-function GaugePanel({ score }: { score: number }) {
+function GaugePanel({ score, backlog, exceptions }: { score: number; backlog: number; exceptions: number }) {
   return (
     <div className="portal-gauge-panel">
       <div className="portal-gauge" style={{ '--score': `${score}%` } as React.CSSProperties}>
@@ -654,9 +716,9 @@ function GaugePanel({ score }: { score: number }) {
         </div>
       </div>
       <div className="portal-gauge-list">
-        <span><ShieldCheck size={14} /> Pick accuracy <strong>99.1%</strong></span>
-        <span><TimerReset size={14} /> Avg dock cycle <strong>42m</strong></span>
-        <span><Gauge size={14} /> SLA pressure <strong>Low</strong></span>
+        <span><ShieldCheck size={14} /> Inventory health <strong>{score}%</strong></span>
+        <span><TimerReset size={14} /> Open backlog <strong>{safeNumber(backlog)}</strong></span>
+        <span><Gauge size={14} /> Exceptions <strong>{safeNumber(exceptions)}</strong></span>
       </div>
     </div>
   );
@@ -694,6 +756,7 @@ function SkuVelocityList({ data }: { data: Array<{ sku: string; units30?: number
 }
 
 function CarrierPerformance({ rows }: { rows: Array<{ carrier: string; count: number; score: number }> }) {
+  if (rows.length === 0) return <RailEmpty label="No carrier labels in this scope" />;
   return (
     <div className="portal-carrier-performance">
       {rows.map((row) => (
@@ -729,21 +792,21 @@ function RailEmpty({ label }: { label: string }) {
 function buildTimeline(orders: PortalOrder[], shipments: PortalShipment[], lowStock: PortalInventoryItem[]) {
   const source = [
     ...orders.slice(0, 2).map((order) => ({
-      time: '10:42 AM',
+      time: eventTime(order.orderDate),
       title: `Order ${order.orderNumber ?? order.id} received`,
       detail: order.sourceProvider ?? order.clientName ?? 'PrepShip',
       tone: 'blue',
       icon: <ShoppingCart size={13} />,
     })),
     ...shipments.slice(0, 2).map((shipment) => ({
-      time: '09:56 AM',
+      time: eventTime(shipment.shipDate),
       title: `Shipment ${shipment.orderNumber ?? shipment.id} departed`,
       detail: shipment.storeName ?? shipment.carrierCode ?? 'Carrier update',
       tone: 'green',
       icon: <Truck size={13} />,
     })),
     ...lowStock.slice(0, 1).map((item) => ({
-      time: '09:12 AM',
+      time: eventTime(item.updatedAt),
       title: `Inventory alert: ${item.sku ?? item.id} low stock`,
       detail: 'View alerts',
       tone: 'amber',
@@ -751,34 +814,15 @@ function buildTimeline(orders: PortalOrder[], shipments: PortalShipment[], lowSt
     })),
   ];
   return source.length > 0 ? source.slice(0, 5) : [
-    { time: '10:42 AM', title: 'Operations feed ready', detail: 'Waiting for live sync', tone: 'blue', icon: <CheckCircle2 size={13} /> },
-    { time: '10:31 AM', title: 'Receiving queue prepared', detail: 'No exceptions reported', tone: 'green', icon: <Download size={13} /> },
-    { time: '09:56 AM', title: 'Inventory monitor active', detail: 'No alerts yet', tone: 'amber', icon: <AlertTriangle size={13} /> },
+    { time: 'Live', title: 'No recent activity in this scope', detail: 'Sync orders or shipments to populate the feed', tone: 'blue', icon: <CheckCircle2 size={13} /> },
   ];
-}
-
-function buildPlaceholderShipments(): PortalShipment[] {
-  return [1, 2, 3, 4, 5].map((id) => ({
-    id,
-    orderNumber: `SHP-250518-00${80 + id}`,
-    carrierCode: id % 2 === 0 ? 'FedEx' : 'USPS',
-    shipDate: '2026-05-27T08:00:00.000Z',
-    voided: false,
-  }));
 }
 
 function buildOrderChartData(
   dailyData: Array<{ day: string; awaiting?: number; shipped?: number; cancelled?: number; total?: number }>,
   orders: PortalOrder[],
 ) {
-  const source = dailyData.length > 0
-    ? dailyData
-    : [
-        { day: '2026-05-22', awaiting: 7, shipped: 18, cancelled: 0, total: 25 },
-        { day: '2026-05-23', awaiting: 11, shipped: 21, cancelled: 1, total: 33 },
-        { day: '2026-05-24', awaiting: 8, shipped: 24, cancelled: 0, total: 32 },
-        { day: '2026-05-25', awaiting: Math.max(orders.length, 6), shipped: 28, cancelled: 0, total: Math.max(orders.length + 28, 34) },
-      ];
+  const source = dailyData.length > 0 ? dailyData : dailyCountsFromOrders(orders);
   return source.map((point) => ({
     label: shortDate(point.day),
     total: Number(point.total ?? 0),
@@ -790,23 +834,23 @@ function buildOrderChartData(
 
 function buildRevenueTrend(
   dailyRevenue: Array<{ day: string; revenue: number }> | undefined,
-  orderChartData: Array<{ label: string; total: number }>,
+  orders: PortalOrder[],
 ) {
   if (dailyRevenue?.length) {
     return dailyRevenue.map((point) => ({ label: shortDate(point.day), revenue: Number(point.revenue ?? 0) }));
   }
-  return orderChartData.map((point, index) => ({ label: point.label, revenue: point.total * (28 + index * 3) }));
+  return dailyRevenueFromOrders(orders).map((point) => ({ label: shortDate(point.day), revenue: point.revenue }));
 }
 
 function buildHeatmap(orderChartData: Array<{ label: string; total: number }>) {
   const max = Math.max(...orderChartData.map((point) => point.total), 1);
   return Array.from({ length: 35 }, (_, index) => {
-    const day = orderChartData[index % Math.max(orderChartData.length, 1)] ?? { label: 'Day', total: 0 };
-    const value = Math.round(day.total * (0.4 + ((index % 5) * 0.15)));
+    const day = orderChartData[index] ?? { label: 'No data', total: 0 };
+    const value = day.total;
     return {
-      label: `${day.label} block ${index + 1}`,
+      label: day.label,
       value,
-      level: Math.min(4, Math.max(1, Math.ceil((value / max) * 4))),
+      level: value > 0 ? Math.min(4, Math.max(1, Math.ceil((value / max) * 4))) : 0,
     };
   });
 }
@@ -821,16 +865,115 @@ function buildSkuVelocity(inventory: PortalInventoryItem[]) {
 
 function buildCarrierPerformance(shipments: PortalShipment[]) {
   const grouped = shipments.reduce<Record<string, number>>((acc, shipment) => {
-    const carrier = (shipment.carrierCode ?? 'UPS').toUpperCase();
+    const carrier = shipment.carrierCode?.trim().toUpperCase();
+    if (!carrier) return acc;
     acc[carrier] = (acc[carrier] ?? 0) + 1;
     return acc;
   }, {});
-  const rows = Object.entries(grouped).map(([carrier, count], index) => ({ carrier, count, score: 97 - index * 2 }));
-  return rows.length > 0 ? rows.slice(0, 4) : [
-    { carrier: 'UPS', count: 18, score: 98 },
-    { carrier: 'USPS', count: 14, score: 96 },
-    { carrier: 'FedEx', count: 9, score: 94 },
-  ];
+  return Object.entries(grouped)
+    .map(([carrier, count], index) => ({ carrier, count, score: Math.max(90, 99 - index * 2) }))
+    .slice(0, 4);
+}
+
+function dailyCountsFromOrders(orders: PortalOrder[]) {
+  const byDay = new Map<string, { day: string; awaiting: number; shipped: number; cancelled: number; total: number }>();
+  for (const order of orders) {
+    const day = dayKey(order.orderDate);
+    if (!day) continue;
+    const current = byDay.get(day) ?? { day, awaiting: 0, shipped: 0, cancelled: 0, total: 0 };
+    const status = String(order.orderStatus ?? '');
+    current.total += 1;
+    if (status === 'awaiting_shipment') current.awaiting += 1;
+    if (status === 'shipped') current.shipped += 1;
+    if (status === 'cancelled') current.cancelled += 1;
+    byDay.set(day, current);
+  }
+  return [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
+}
+
+function dailyRevenueFromOrders(orders: PortalOrder[]) {
+  const byDay = new Map<string, number>();
+  for (const order of orders) {
+    const day = dayKey(order.orderDate);
+    if (!day) continue;
+    byDay.set(day, (byDay.get(day) ?? 0) + orderTotal(order));
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, revenue]) => ({ day, revenue }));
+}
+
+function buildDateRangeLabel(
+  dailyData: Array<{ day: string }>,
+  orders: PortalOrder[],
+  shipments: PortalShipment[],
+) {
+  const dates = [
+    ...dailyData.map((row) => row.day),
+    ...orders.map((order) => order.orderDate),
+    ...shipments.map((shipment) => shipment.shipDate),
+  ]
+    .map((value) => parseDateValue(value))
+    .filter((date): date is Date => Boolean(date))
+    .sort((a, b) => a.getTime() - b.getTime());
+  const first = dates[0];
+  if (!first) return 'Last 30 days';
+  const last = dates[dates.length - 1] ?? first;
+  return `${formatRangeDate(first)} - ${formatRangeDate(last)}`;
+}
+
+function buildTrendLabel(values: number[]) {
+  const cleaned = values.filter((value) => Number.isFinite(value));
+  if (cleaned.length < 2) return { value: '0%', label: 'no prior period' };
+  const current = cleaned.at(-1) ?? 0;
+  const previous = cleaned.at(-2) ?? 0;
+  if (previous === 0 && current === 0) return { value: '0%', label: 'vs prior day' };
+  if (previous === 0) return { value: `+${safeNumber(current)}`, label: 'new today' };
+  const pct = ((current - previous) / previous) * 100;
+  return { value: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, label: 'vs prior day' };
+}
+
+function downloadCsv(fileName: string, rows: Array<Record<string, string>>) {
+  const headers = Object.keys(rows[0] ?? {});
+  const csv = [
+    headers.join(','),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header] ?? '')).join(',')),
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value: string) {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function eventTime(value: string | null | undefined) {
+  const date = parseDateValue(value);
+  if (!date) return 'Live';
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function dayKey(value: string | null | undefined) {
+  const date = parseDateValue(value);
+  if (!date) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDateValue(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatRangeDate(date: Date) {
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function isLowStock(item: PortalInventoryItem) {

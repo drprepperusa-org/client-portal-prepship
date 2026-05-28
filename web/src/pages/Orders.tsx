@@ -178,22 +178,6 @@ export default function Orders() {
   const orderColumns = useMemo<ColumnDef<PortalOrder>[]>(
     () => [
       {
-        id: 'select',
-        header: '',
-        size: 42,
-        minSize: 42,
-        enableSorting: false,
-        enableHiding: false,
-        cell: ({ row }) => (
-          <input
-            type="checkbox"
-            aria-label={`Select order ${orderNumber(row.original)}`}
-            className="h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
-            onClick={(event) => event.stopPropagation()}
-          />
-        ),
-      },
-      {
         id: 'orderDate',
         header: 'Order date',
         size: 116,
@@ -707,12 +691,16 @@ function OrderDetailDrawer({
 
   if (!order) return null;
   const items = order.items ?? [];
-  const galleryItems = items.map((item, index) => ({
-    key: `${item.sku ?? item.name ?? index}-${index}`,
-    src: imageForItem(item),
-    label: item.name ?? item.sku ?? `Item ${index + 1}`,
-    fallback: (item.sku ?? item.name ?? 'IT').slice(0, 2).toUpperCase(),
-  }));
+  const galleryItems = items.flatMap((item, index) => {
+    const src = imageForItem(item);
+    if (!src) return [];
+    return [{
+      key: `${item.sku ?? item.name ?? index}-${index}`,
+      src,
+      label: item.name ?? item.sku ?? `Item ${index + 1}`,
+      fallback: (item.sku ?? item.name ?? 'IT').slice(0, 2).toUpperCase(),
+    }];
+  });
   const gallery = galleryItems.length > 0 ? galleryItems : [{ key: 'order', src: imageUrl, label: primaryAlt(order), fallback }];
   const activeGalleryItem = gallery[Math.min(activeImageIndex, gallery.length - 1)] ?? gallery[0]!;
   const tracking = order.label?.trackingNumber ?? order.trackingNumber ?? order.labelTracking ?? shipment?.trackingNumber ?? shipment?.labelTracking ?? 'Not available';

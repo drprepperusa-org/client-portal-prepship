@@ -9,6 +9,7 @@ import { orderOverrides, orders } from '../db/schema/orders';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
 import { billingSummary } from '../services/billing';
+import { getSkuBreakdownFromOrderItems } from './analysis';
 import {
   HERITAGE_PREP_FEE_CLIENT_NAME,
   heritagePrepFeeRowsForRange,
@@ -348,8 +349,8 @@ app.get('/dashboard', async (c) => {
   return c.json({
     revenue,
     units,
-    bySku: topSkuRows(rows),
-    dailyRevenue: [],
+    bySku: topSkuRows(rows, scope.canViewFinancials),
+    dailyRevenue: scope.canViewFinancials ? dailyRevenueRows(rows) : [],
   });
 });
 
@@ -524,26 +525,28 @@ app.get('/inventory', async (c) => {
 app.get('/analysis', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const rows = await db.select().from(inventory).where(and(eq(inventory.active, true), inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }))).limit(200);
+  const to = parseDate(c.req.query('dateTo')) ?? new Date();
+  const from = parseDate(c.req.query('dateFrom')) ?? new Date(to.getTime() - 29 * 86_400_000);
+  const limit = parsePageSize(c.req.query('limit'), 200, 2000);
+  const result = await getSkuBreakdownFromOrderItems({
+    dateFrom: asTimestamp(from),
+    dateTo: asTimestamp(to),
+    limit,
+    clientId: requestedClientId(c) ?? undefined,
+    storeId: requestedStoreId(c) ?? undefined,
+    clientIds: scope.clientIds,
+    storeIds: scope.storeIds,
+    scopeRestricted: scope.isRestricted,
+    canViewFinancials: scope.canViewFinancials,
+    hideTestOrders: false,
+    includeCancelled: false,
+  });
   await recordPortalAudit('portal.analysis.view', scope);
   return c.json({
-    data: rows.map((row) => ({
-      sku: row.sku,
-      name: row.name,
-      inv_sku_id: row.id,
-      invSkuId: row.id,
-      imageUrl: row.imageUrl,
-      orders: 0,
-      pending: 0,
-      ext_shipped: 0,
-      total_qty: 0,
-      total_revenue: null,
-      total_shipping: null,
-      daily_qty: [],
-    })),
-    dateBuckets: [],
-    totalSkus: rows.length,
-    totalOrders: 0,
+    data: result.rows,
+    dateBuckets: result.dateBuckets,
+    totalSkus: result.totalSkus,
+    totalOrders: result.totalOrders,
   });
 });
 
@@ -864,7 +867,7 @@ function safeItemQty(value: unknown): number {
   }, 0);
 }
 
-function topSkuRows(rows: Array<typeof orders.$inferSelect>) {
+function topSkuRows(rows: Array<typeof orders.$inferSelect>, canViewFinancials = false) {
   const bySku = new Map<string, { sku: string; units30: number; units7: number; revenue: number }>();
   for (const row of rows) {
     if (!Array.isArray(row.items)) continue;
@@ -875,10 +878,33 @@ function topSkuRows(rows: Array<typeof orders.$inferSelect>) {
       const qty = Number(record.quantity ?? record.qty ?? 0);
       const current = bySku.get(sku) ?? { sku, units30: 0, units7: 0, revenue: 0 };
       current.units30 += Number.isFinite(qty) ? qty : 0;
+      if (canViewFinancials) {
+        const unitPrice = Number(record.unitPrice ?? record.unit_price ?? 0);
+        current.revenue += (Number.isFinite(unitPrice) ? unitPrice : 0) * (Number.isFinite(qty) ? qty : 0);
+      }
       bySku.set(sku, current);
     }
   }
   return [...bySku.values()].sort((a, b) => b.units30 - a.units30).slice(0, 10);
+}
+
+function dailyRevenueRows(rows: Array<typeof orders.$inferSelect>) {
+  const byDay = new Map<string, number>();
+  for (const row of rows) {
+    const key = dayKey(row.orderDate);
+    if (!key) continue;
+    byDay.set(key, (byDay.get(key) ?? 0) + Number(row.orderTotal ?? 0));
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, revenue]) => ({ day, revenue }));
+}
+
+function dayKey(value: unknown) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
 }
 
 export default app;

@@ -115,7 +115,10 @@ export function StoreSelectorDropdown({
   }
 
   return (
-    <div className="portal-store-selector relative z-50 flex items-center justify-between" ref={dropdownRef}>
+    <div
+      className={`portal-store-selector relative flex items-center justify-between ${isOpen ? 'is-open z-50' : 'z-10'}`}
+      ref={dropdownRef}
+    >
       <div className="flex items-center gap-3">
         <button
           type="button"

@@ -12,7 +12,7 @@ import {
   OnChangeFn,
   PaginationState,
 } from '@tanstack/react-table';
-import { Check, Columns3, RotateCcw } from 'lucide-react';
+import { Check, Columns3 } from 'lucide-react';
 import {
   DndContext,
   KeyboardSensor,
@@ -231,23 +231,20 @@ export function Table<TData>({
             {columnMenuOpen ? (
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+8px)] z-30 w-64 overflow-hidden rounded-xl border border-line bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,.18)]"
+                className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 overflow-hidden rounded-xl border border-line bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,.18)]"
               >
-                <div className="flex items-center justify-between border-b border-line px-2 pb-2">
-                  <div>
-                    <div className="text-xs font-black text-ink">Visible columns</div>
-                    <div className="text-[11px] font-semibold text-ink-3">Choose what appears in this table.</div>
-                  </div>
+                <div className="flex items-center justify-between border-b border-line px-3 py-2">
+                  <div className="text-[11px] font-black uppercase text-ink-3">Visible columns</div>
                   <button
                     type="button"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+                    className="rounded-md px-2 py-1 text-[11px] font-black text-brand transition-colors hover:bg-brand/10"
                     aria-label="Reset visible columns"
                     onClick={() => table.resetColumnVisibility()}
                   >
-                    <RotateCcw size={14} />
+                    Reset
                   </button>
                 </div>
-                <div className="mt-2 max-h-80 overflow-y-auto pr-1">
+                <div className="max-h-80 overflow-y-auto px-3 py-2">
                   {hideableColumns.map((column) => {
                     const isVisible = column.getIsVisible();
                     const disableLastVisible = isVisible && visibleHideableColumns <= 1;
@@ -276,6 +273,9 @@ export function Table<TData>({
                       </label>
                     );
                   })}
+                </div>
+                <div className="border-t border-line px-3 py-2 text-[11px] font-semibold text-ink-3">
+                  Drag a column header to reorder. {totalColumns} columns
                 </div>
               </div>
             ) : null}

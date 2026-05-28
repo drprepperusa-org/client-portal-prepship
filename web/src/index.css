@@ -2355,7 +2355,7 @@ input[type="radio"]:checked::before {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 30;
+  z-index: 90;
   width: 290px;
   border: 1px solid rgb(var(--line-rgb));
   border-radius: var(--radius);
@@ -6060,6 +6060,129 @@ input[type="search"]::placeholder {
 .portal-scope-search { min-width: 280px !important; margin-left: auto !important; }
 .portal-analysis-search { min-width: 300px !important; }
 
+/* Analysis refresh: tighter controls, Recharts canvas, shared table column menu */
+.portal-analysis-head-modern {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.portal-analysis-head-modern .portal-analysis-title {
+  min-width: 0 !important;
+  align-items: center !important;
+}
+
+.portal-analysis-head-modern .portal-analysis-title > span {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 10px !important;
+  background: rgb(var(--brand-rgb) / .10) !important;
+  color: rgb(var(--brand-rgb)) !important;
+  box-shadow: none !important;
+}
+
+.portal-analysis-head-modern .portal-analysis-title h1 {
+  font-size: 22px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0 !important;
+}
+
+.portal-analysis-head-modern .portal-analysis-title p {
+  color: rgb(var(--ink-3-rgb)) !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+}
+
+.portal-analysis-toolbar {
+  border-radius: 14px !important;
+  box-shadow: 0 12px 34px rgb(15 23 42 / .045), inset 0 1px 0 rgb(255 255 255 / .84) !important;
+}
+
+.portal-analysis-toolbar .portal-store-selector {
+  z-index: 10 !important;
+}
+
+.portal-analysis-toolbar .portal-store-selector.is-open {
+  z-index: 80 !important;
+}
+
+.portal-analysis-toolbar .portal-analysis-calendar {
+  top: calc(100% + 66px) !important;
+}
+
+.portal-analysis-toolbar .portal-store-selector > div:first-child,
+.portal-analysis-toolbar .portal-store-selector > div:first-child > button {
+  min-width: 190px !important;
+}
+
+.portal-analysis-toolbar .portal-store-selector > div:first-child > button {
+  min-height: 36px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.portal-analysis-chart-modern {
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  box-shadow: 0 14px 38px rgb(15 23 42 / .055), inset 0 1px 0 rgb(255 255 255 / .82) !important;
+}
+
+.portal-analysis-chart-modern .portal-analysis-chart {
+  height: 230px !important;
+  padding: 10px 16px 14px !important;
+}
+
+.portal-analysis-chart-tooltip {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgb(var(--line-rgb));
+  border-radius: 12px;
+  background: rgb(var(--surface-rgb) / .96);
+  padding: 10px 12px;
+  box-shadow: 0 18px 40px rgb(15 23 42 / .12);
+  backdrop-filter: blur(12px);
+}
+
+.portal-analysis-chart-tooltip strong {
+  color: rgb(var(--ink-rgb));
+  font-size: 12px;
+}
+
+.portal-analysis-chart-tooltip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgb(var(--ink-2-rgb));
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.portal-analysis-chart-tooltip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.portal-analysis-chart-empty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: rgb(var(--ink-3-rgb));
+  font-size: 13px;
+  font-weight: 800;
+}
+
+[data-portal-table="analysis-sku-breakdown"] > div:first-child {
+  background: rgb(var(--surface-rgb)) !important;
+}
+
 /* The page background — soft neutral so the pill shadows pop */
 body, .portal-shell, .portal-main, .portal-content {
   background: var(--neu-bg) !important;
@@ -6942,6 +7065,23 @@ label[class*="-search"]:not(.portal-login-field),
   overflow: auto;
 }
 
+.portal-ops-command-center .portal-reference-table {
+  table-layout: fixed;
+  min-width: 980px;
+}
+
+.portal-ops-command-center .portal-reference-table th:first-child,
+.portal-ops-command-center .portal-reference-table td:first-child {
+  width: auto;
+  padding-right: 14px;
+}
+
+.portal-ops-command-center .portal-reference-table th,
+.portal-ops-command-center .portal-reference-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .portal-reference-table th {
   position: sticky;
   top: 0;
@@ -6997,6 +7137,10 @@ label[class*="-search"]:not(.portal-login-field),
   background:
     linear-gradient(180deg, rgb(var(--surface-rgb)), rgb(var(--surface-soft-rgb)));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / .78);
+}
+
+.portal-ops-command-center .portal-tracking-cards .portal-rail-empty {
+  grid-column: 1 / -1;
 }
 
 .portal-gauge-panel {
@@ -7071,6 +7215,7 @@ label[class*="-search"]:not(.portal-login-field),
   background: rgb(var(--brand-rgb) / .10);
 }
 
+.portal-heatmap span[data-level="0"] { background: rgb(var(--line-rgb) / .62); }
 .portal-heatmap span[data-level="2"] { background: rgb(var(--brand-rgb) / .22); }
 .portal-heatmap span[data-level="3"] { background: rgb(var(--brand-rgb) / .42); }
 .portal-heatmap span[data-level="4"] { background: rgb(var(--brand-rgb) / .72); }
@@ -7165,16 +7310,26 @@ label[class*="-search"]:not(.portal-login-field),
   gap: 4px;
 }
 
-[data-portal-table^="orders-ledger"] th button[aria-label="Drag to reorder column"] {
-  display: none;
-}
-
 [data-portal-table^="orders-ledger"] td {
-  overflow: visible !important;
+  overflow: hidden !important;
   padding: 7px 10px !important;
   vertical-align: middle;
   white-space: normal !important;
-  text-overflow: clip !important;
+  text-overflow: ellipsis !important;
+}
+
+[data-portal-table^="orders-ledger"] th button[aria-label="Drag to reorder column"] {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 6px;
+  color: rgb(var(--ink-3-rgb) / .72);
+}
+
+[data-portal-table^="orders-ledger"] th button[aria-label="Drag to reorder column"]:hover {
+  background: rgb(var(--brand-rgb) / .10);
+  color: rgb(var(--brand-rgb));
 }
 
 [data-portal-table^="orders-ledger"] tbody tr {
@@ -7193,11 +7348,18 @@ label[class*="-search"]:not(.portal-login-field),
 }
 
 .portal-order-link {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
   color: rgb(var(--brand-rgb));
   font-size: 12px;
   font-weight: 900;
+  line-height: 1.28;
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .portal-order-client-pill {
@@ -7406,7 +7568,7 @@ label[class*="-search"]:not(.portal-login-field),
 .portal-order-detail-image-stage {
   position: relative;
   display: grid;
-  min-height: 190px;
+  min-height: 172px;
   place-items: center;
   overflow: hidden;
   border-radius: 13px;
@@ -7415,7 +7577,7 @@ label[class*="-search"]:not(.portal-login-field),
 
 .portal-order-detail-image-stage img {
   width: 100%;
-  height: 190px;
+  height: 172px;
   object-fit: contain;
   padding: 8px;
 }
@@ -7433,14 +7595,19 @@ label[class*="-search"]:not(.portal-login-field),
 }
 
 .portal-order-detail-thumbs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  display: flex;
   gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
+  scrollbar-width: thin;
 }
 
 .portal-order-detail-thumbs button {
+  flex: 0 0 48px;
   display: grid;
-  height: 58px;
+  width: 48px;
+  height: 44px;
   place-items: center;
   overflow: hidden;
   border: 1px solid rgb(var(--line-rgb));
@@ -7466,7 +7633,7 @@ label[class*="-search"]:not(.portal-login-field),
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 5px;
+  padding: 3px;
 }
 
 @media (max-width: 1180px) {
