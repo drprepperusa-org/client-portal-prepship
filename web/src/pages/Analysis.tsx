@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Columns3, PackageSearch, RefreshCw, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import SearchBar from '../components/ui/search-bar';
@@ -319,6 +319,7 @@ function AnalysisDatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => new Date(`${value}T00:00:00`));
+  const pickerRef = useRef<HTMLDivElement>(null);
   const selected = new Date(`${value}T00:00:00`);
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -334,8 +335,32 @@ function AnalysisDatePicker({
     setViewDate(new Date(`${value}T00:00:00`));
   }, [value]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && !pickerRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div className="portal-analysis-date">
+    <div className="portal-analysis-date" ref={pickerRef}>
       <button type="button" className="portal-analysis-date-button" onClick={() => setOpen((current) => !current)} aria-label={label}>
         <CalendarDays size={14} />
         {displayDate(value)}

@@ -191,7 +191,6 @@ export default function PortalLayout() {
               <span>{activeTitle.group}</span>
               <strong>{activeTitle.label}</strong>
             </div>
-            <p>{activeTitle.description}</p>
           </div>
           <AnimatePresence mode="wait">
             <motion.div

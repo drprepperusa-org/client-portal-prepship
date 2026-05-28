@@ -78,7 +78,8 @@ export default function Overview() {
   const shipments = useShipmentsQuery(auth.accessToken);
   const queries = [dashboard, dailyCounts, orders, inventory, shipments];
   const hasLoadIssue = queries.some((query) => query.error);
-  const isLoading = queries.some((query) => query.isLoading);
+  const isKpiLoading = queries.every((query) => query.isLoading && !query.data);
+  const isOrdersLoading = orders.isLoading && !orders.data;
 
   const allOrders = orders.data?.data ?? [];
   const allInventory = inventory.data?.data ?? [];
@@ -137,28 +138,26 @@ export default function Overview() {
 
   return (
     <div className="portal-page portal-dashboard-page portal-ops-command-center">
-      <section className="portal-command-hero">
-        <div className="portal-command-hero-copy">
-          <div className="portal-command-crumb">Workspace / Operations / <strong>Overview</strong></div>
-          <h1>Operations command center</h1>
-          <p>Live order flow, warehouse health, shipment movement, and replenishment risk in one fast 3PL cockpit.</p>
-          <div className="portal-command-hero-meta">
-            <span><CalendarDays size={14} /> May 12 - May 18, 2025</span>
-            <span><Sparkles size={14} /> All Stores</span>
-            <span><Activity size={14} /> Updated 2m ago</span>
-          </div>
+      <section className="portal-overview-toolbar" aria-label="Dashboard controls">
+        <div className="portal-overview-scope" aria-label="Dashboard scope">
+          <span><CalendarDays size={14} /> May 12 - May 18, 2025</span>
+          <span><Sparkles size={14} /> All Stores</span>
+          <span><Activity size={14} /> Updated 2m ago</span>
         </div>
-        <div className="portal-command-hero-card" aria-label="Operations pulse">
-          <div className="portal-pulse-head">
-            <span>Warehouse Pulse</span>
+
+        <div className="portal-overview-pulse-card" aria-label="Operations pulse">
+          <div className="portal-overview-pulse-head">
+            <span>Warehouse pulse</span>
             <strong>{inventoryScore}%</strong>
           </div>
-          <div className="portal-pulse-grid">
+
+          <div className="portal-overview-pulse-grid">
             <MiniPulse label="SLA" value="98.4%" tone="ok" />
             <MiniPulse label="Backlog" value={safeNumber(openOrders)} tone={openOrders > 20 ? 'warn' : 'brand'} />
             <MiniPulse label="Exceptions" value={safeNumber(exceptionCount)} tone={exceptionCount > 0 ? 'danger' : 'ok'} />
           </div>
-          <div className="portal-command-hero-actions">
+
+          <div className="portal-overview-actions">
             <button type="button" aria-label="Customize dashboard" onClick={() => setShowPreferences(true)}>
               <Settings size={15} /> Customize
             </button>
@@ -193,7 +192,7 @@ export default function Overview() {
       ) : null}
 
       <StaggeredList className="portal-command-kpi-grid">
-        {isLoading ? (
+        {isKpiLoading ? (
           <>
             <KpiSkeleton />
             <KpiSkeleton />
@@ -368,7 +367,7 @@ export default function Overview() {
                     </tr>
                   </thead>
                   <tbody>
-                    {isLoading ? (
+                    {isOrdersLoading ? (
                       <>
                         <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
                         <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
