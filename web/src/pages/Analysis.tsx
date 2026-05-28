@@ -210,7 +210,7 @@ function TrendChart({
           return (
             <g key={step}>
               <line x1={pad.left} y1={y} x2={width - pad.right} y2={y} stroke="rgb(226 232 240)" strokeDasharray="2 5" strokeWidth="1" />
-              <text x={pad.left - 6} y={y + 3} textAnchor="end" fontSize="9" fill="rgb(148 163 184)" fontFamily="Geist Mono, monospace">
+              <text x={pad.left - 6} y={y + 3} textAnchor="end" fontSize="9" fill="rgb(148 163 184)" fontFamily="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
                 {Math.round(step * max)}
               </text>
             </g>
@@ -221,7 +221,7 @@ function TrendChart({
           const index = Math.max(0, dateBuckets.indexOf(label));
           const x = pad.left + (index / Math.max(1, dateBuckets.length - 1)) * innerWidth;
           return (
-            <text key={label} x={x} y={height - 4} textAnchor="middle" fontSize="9" fill="rgb(148 163 184)" fontFamily="Geist Mono, monospace">
+            <text key={label} x={x} y={height - 4} textAnchor="middle" fontSize="9" fill="rgb(148 163 184)" fontFamily="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
               {shortDate(label)}
             </text>
           );
