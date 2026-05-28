@@ -68,6 +68,7 @@ export function TableBody<TData>({
           {row.getVisibleCells().map((cell) => (
             <td
               key={cell.id}
+              data-cell-label={columnLabel(cell.column.columnDef.header, cell.column.id)}
               className="truncate px-4 py-3 text-[13.5px] text-ink transition-all group-hover:text-ink"
               style={{
                 width: cell.column.getSize(),
@@ -83,4 +84,10 @@ export function TableBody<TData>({
       ))}
     </tbody>
   );
+}
+
+function columnLabel(header: unknown, fallback: string) {
+  if (typeof header === 'string') return header;
+  if (typeof header === 'number') return String(header);
+  return fallback.replace(/[_-]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

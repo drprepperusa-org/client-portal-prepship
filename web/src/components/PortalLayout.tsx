@@ -95,6 +95,10 @@ export default function PortalLayout() {
 
       <div className={`portal-main portal-main-with-drawer${sidebarPinned ? ' portal-main-with-drawer-pinned' : ''}`}>
         <header className="portal-topbar">
+          <div className="portal-mobile-topbar-title" aria-hidden="true">
+            <span>{activeTitle.group}</span>
+            <strong>{activeTitle.label}</strong>
+          </div>
           <div className="flex flex-1 items-center justify-center px-4">
             <SearchBarButton
               containerClassName="max-w-[560px]"
