@@ -1,9 +1,12 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
   Boxes,
   Calculator,
+  ChevronDown,
   LayoutDashboard,
   LogOut,
   PackagePlus,
@@ -101,42 +104,7 @@ export default function ClientPortalSidebar({
         {/* NAV */}
         <nav className="portal-sidebar-scrollbarless min-h-0 flex-1 overflow-y-auto overflow-x-hidden" aria-label="Main navigation">
           {groups.map((group, idx) => (
-            <div key={group.label} className={idx === 0 ? '' : 'mt-3'}>
-              <div className="px-2 pb-1 pt-1 text-[11px] font-medium text-ink-3">{group.label}</div>
-              <div className="flex flex-col gap-[1px]">
-                {group.items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    onClick={onNavigate}
-                    className={({ isActive }) =>
-                      `group flex h-[30px] items-center gap-2 rounded-md px-2 text-[13px] font-medium transition-colors ${
-                        isActive
-                          ? 'bg-surface-3 text-ink'
-                          : 'text-ink-2 hover:bg-surface-3 hover:text-ink'
-                      }`
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <item.icon
-                          size={15}
-                          strokeWidth={1.75}
-                          className={isActive ? 'text-brand' : 'text-ink-3 group-hover:text-ink-2'}
-                        />
-                        <span className="truncate">{item.label}</span>
-                        {item.shortcut ? (
-                          <span className="ml-auto font-mono text-[10.5px] text-ink-3">{item.shortcut}</span>
-                        ) : item.count ? (
-                          <span className="ml-auto font-mono text-[10.5px] text-ink-3">{item.count}</span>
-                        ) : null}
-                      </>
-                    )}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
+            <SidebarGroup key={group.label} group={group} idx={idx} onNavigate={onNavigate} />
           ))}
         </nav>
 
@@ -152,5 +120,70 @@ export default function ClientPortalSidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+function SidebarGroup({ group, idx, onNavigate }: { group: { label: string, items: SidebarNavItem[] }, idx: number, onNavigate?: () => void }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className={idx === 0 ? '' : 'mt-3'}>
+      <button 
+        type="button" 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-2 pb-1 pt-1 text-[11px] font-medium text-ink-3 hover:text-ink transition-colors"
+      >
+        <span>{group.label}</span>
+        <motion.div
+          animate={{ rotate: isOpen ? 0 : -90 }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown size={14} />
+        </motion.div>
+      </button>
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col gap-[1px] overflow-hidden"
+          >
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  `group flex h-[30px] items-center gap-2 rounded-md px-2 text-[13px] font-medium transition-colors ${
+                    isActive
+                      ? 'bg-surface-3 text-ink'
+                      : 'text-ink-2 hover:bg-surface-3 hover:text-ink'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <item.icon
+                      size={15}
+                      strokeWidth={1.75}
+                      className={isActive ? 'text-brand' : 'text-ink-3 group-hover:text-ink-2'}
+                    />
+                    <span className="truncate">{item.label}</span>
+                    {item.shortcut ? (
+                      <span className="ml-auto font-mono text-[10.5px] text-ink-3">{item.shortcut}</span>
+                    ) : item.count ? (
+                      <span className="ml-auto font-mono text-[10.5px] text-ink-3">{item.count}</span>
+                    ) : null}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

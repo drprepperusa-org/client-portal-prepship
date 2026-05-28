@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { FadeIn, SlideUp, StaggeredList, StaggeredItem } from '../components/ui/AnimatedWrappers';
+import { KpiSkeleton, TableRowSkeleton } from '../components/ui/SkeletonLoaders';
 import { safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
@@ -46,6 +48,7 @@ export default function Overview() {
   const shipments = useShipmentsQuery(auth.accessToken);
   const queries = [dashboard, dailyCounts, orders, inventory, shipments];
   const hasLoadIssue = queries.some((query) => query.error);
+  const isLoading = queries.some((query) => query.isLoading);
 
   const allOrders = orders.data?.data ?? [];
   const allInventory = inventory.data?.data ?? [];
@@ -117,47 +120,67 @@ export default function Overview() {
 
       <div className="portal-dashboard-grid">
         <div className="portal-dashboard-main">
-          <section className="portal-kpis portal-dashboard-kpis">
-            <KpiCard
-              icon={<ShoppingCart size={24} />}
-              label="Open Orders"
-              value={safeNumber(openOrders)}
-              meta="+18% vs May 5 - May 11"
-              to="/dashboard/orders"
-              action="View Orders"
-              tone="blue"
-            />
-            <KpiCard
-              icon={<Download size={24} />}
-              label="Inbound Receiving"
-              value={safeNumber(lowStockItems.length)}
-              meta={`${safeNumber(Math.min(lowStockItems.length, 3))} In Transit  -  ${safeNumber(Math.max(lowStockItems.length - 3, 0))} At Dock`}
-              to="/dashboard/inbound"
-              action="View Inbound"
-              tone="green"
-            />
-            <KpiCard
-              icon={<AlertTriangle size={24} />}
-              label="Inventory Alerts"
-              value={safeNumber(lowStockItems.length)}
-              meta={`${safeNumber(lowStockItems.length)} Low Stock  -  0 Out of Stock`}
-              to="/dashboard/inventory"
-              action="View Inventory"
-              tone="amber"
-            />
-            <KpiCard
-              icon={<Truck size={24} />}
-              label="Shipments In Transit"
-              value={safeNumber(inTransit)}
-              meta="+12% vs May 5 - May 11"
-              to="/dashboard/shipments"
-              action="View Shipments"
-              tone="blue"
-            />
-          </section>
+          <StaggeredList className="portal-kpis portal-dashboard-kpis">
+            {isLoading ? (
+              <>
+                <KpiSkeleton />
+                <KpiSkeleton />
+                <KpiSkeleton />
+                <KpiSkeleton />
+              </>
+            ) : (
+              <>
+                <StaggeredItem>
+                  <KpiCard
+                    icon={<ShoppingCart size={24} />}
+                    label="Open Orders"
+                    value={safeNumber(openOrders)}
+                    meta="+18% vs May 5 - May 11"
+                    to="/dashboard/orders"
+                    action="View Orders"
+                    tone="blue"
+                  />
+                </StaggeredItem>
+                <StaggeredItem>
+                  <KpiCard
+                    icon={<Download size={24} />}
+                    label="Inbound Receiving"
+                    value={safeNumber(lowStockItems.length)}
+                    meta={`${safeNumber(Math.min(lowStockItems.length, 3))} In Transit  -  ${safeNumber(Math.max(lowStockItems.length - 3, 0))} At Dock`}
+                    to="/dashboard/inbound"
+                    action="View Inbound"
+                    tone="green"
+                  />
+                </StaggeredItem>
+                <StaggeredItem>
+                  <KpiCard
+                    icon={<AlertTriangle size={24} />}
+                    label="Inventory Alerts"
+                    value={safeNumber(lowStockItems.length)}
+                    meta={`${safeNumber(lowStockItems.length)} Low Stock  -  0 Out of Stock`}
+                    to="/dashboard/inventory"
+                    action="View Inventory"
+                    tone="amber"
+                  />
+                </StaggeredItem>
+                <StaggeredItem>
+                  <KpiCard
+                    icon={<Truck size={24} />}
+                    label="Shipments In Transit"
+                    value={safeNumber(inTransit)}
+                    meta="+12% vs May 5 - May 11"
+                    to="/dashboard/shipments"
+                    action="View Shipments"
+                    tone="blue"
+                  />
+                </StaggeredItem>
+              </>
+            )}
+          </StaggeredList>
 
-          <section className="portal-command-panel portal-open-orders-panel">
-            <div className="portal-command-panel-head">
+          <SlideUp delay={0.2}>
+            <section className="portal-command-panel portal-open-orders-panel mt-6">
+              <div className="portal-command-panel-head">
               <div className="portal-heading-inline">
                 <h2>Open Orders</h2>
                 <span>{safeNumber(openOrders || visibleOrders.length)}</span>
@@ -200,7 +223,13 @@ export default function Overview() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleOrders.length > 0 ? (
+                  {isLoading ? (
+                    <>
+                      <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
+                      <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
+                      <tr><td colSpan={10}><TableRowSkeleton /></td></tr>
+                    </>
+                  ) : visibleOrders.length > 0 ? (
                     visibleOrders.map((order) => (
                       <OrderRow key={order.id} order={order} selected={order.id === selectedOrderId} />
                     ))
@@ -228,9 +257,11 @@ export default function Overview() {
               </div>
             </div>
           </section>
+        </SlideUp>
 
-          <section className="portal-command-panel portal-shipment-strip">
-            <div className="portal-command-panel-head">
+          <SlideUp delay={0.3}>
+            <section className="portal-command-panel portal-shipment-strip mt-6">
+              <div className="portal-command-panel-head">
               <div className="portal-heading-inline">
                 <h2>Shipment Tracking Overview</h2>
                 <span>{safeNumber(inTransit)} In Transit</span>
@@ -246,10 +277,12 @@ export default function Overview() {
               ))}
             </div>
           </section>
+        </SlideUp>
         </div>
 
-        <aside className="portal-dashboard-rail" aria-label="Operations side rail">
-          <RailPanel title="Operational Timeline" action="View All" to="/dashboard/reports">
+        <FadeIn delay={0.4}>
+          <aside className="portal-dashboard-rail" aria-label="Operations side rail">
+            <RailPanel title="Operational Timeline" action="View All" to="/dashboard/reports">
             <div className="portal-timeline">
               {buildTimeline(visibleOrders, allShipments, lowStockItems).map((event) => (
                 <div className="portal-timeline-item" key={`${event.time}-${event.title}`}>
@@ -278,11 +311,12 @@ export default function Overview() {
               {(lowStockItems.length > 0 ? lowStockItems : allInventory.slice(0, 3)).slice(0, 3).map((item) => (
                 <LowStockItem key={item.id} item={item} />
               ))}
-              {allInventory.length === 0 ? <RailEmpty label="No low stock alerts" /> : null}
+              {allInventory.length === 0 && !isLoading ? <RailEmpty label="No low stock alerts" /> : null}
             </div>
             <Link to="/dashboard/inventory" className="portal-rail-footer-link">See all {safeNumber(lowStockItems.length)} alerts <ArrowRight size={14} /></Link>
           </RailPanel>
         </aside>
+        </FadeIn>
       </div>
 
       {showPreferences ? (
