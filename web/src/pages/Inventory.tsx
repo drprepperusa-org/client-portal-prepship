@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
-import { DataTable, EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
-import { StoreBadge, StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
+import type { ColumnDef } from '@tanstack/react-table';
+import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton } from '../components/PortalPrimitives';
+import { StoreFilterBar, clientIdOf, storeNameForClient } from '../components/StoreScopeControls';
+import { Table } from '../components/ui/Table';
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useClientsQuery, useInventoryQuery } from '../lib/portalQueries';
@@ -30,6 +32,85 @@ export default function Inventory() {
       return [store, item.sku, item.name].filter(Boolean).join(' ').toLowerCase().includes(query);
     });
   }, [activeClientId, inventory.data?.data, search, stores]);
+  const columns = useMemo<ColumnDef<PortalInventoryItem>[]>(
+    () => [
+      {
+        id: 'image',
+        header: 'Image',
+        size: 76,
+        minSize: 68,
+        enableSorting: false,
+        cell: ({ row }) => <InventoryThumb item={row.original} />,
+      },
+      {
+        id: 'sku',
+        header: 'SKU',
+        size: 240,
+        minSize: 170,
+        accessorFn: (item) => item.sku ?? `SKU ${item.id}`,
+        cell: ({ row }) => (
+          <div className="min-w-0 space-y-1">
+            <div className="truncate font-black text-ink">{row.original.sku ?? `SKU ${row.original.id}`}</div>
+            <div className="truncate text-xs font-semibold text-ink-3">{row.original.name ?? 'Unnamed item'}</div>
+          </div>
+        ),
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        size: 130,
+        minSize: 110,
+        accessorFn: (item) => {
+          const stock = Number(item.effectiveStock ?? item.stockQty ?? 0);
+          const reorder = Number(item.reorderLevel ?? 0);
+          return Number.isFinite(stock) && Number.isFinite(reorder) && reorder > 0 && stock <= reorder ? 'Low' : 'Healthy';
+        },
+        cell: ({ row }) => {
+          const stock = Number(row.original.effectiveStock ?? row.original.stockQty ?? 0);
+          const reorder = Number(row.original.reorderLevel ?? 0);
+          const low = Number.isFinite(stock) && Number.isFinite(reorder) && reorder > 0 && stock <= reorder;
+          return (
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${low ? 'bg-warn-bg text-warn' : 'bg-ok-bg text-ok'}`}>
+              {low ? 'Low' : 'Healthy'}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'stock',
+        header: 'Stock',
+        size: 110,
+        minSize: 90,
+        accessorFn: (item) => Number(item.effectiveStock ?? item.stockQty ?? 0),
+        cell: ({ row }) => <span className="font-black tabular-nums text-ink">{safeNumber(row.original.effectiveStock ?? row.original.stockQty)}</span>,
+      },
+      {
+        id: 'reorder',
+        header: 'Reorder',
+        size: 120,
+        minSize: 100,
+        accessorFn: (item) => Number(item.reorderLevel ?? 0),
+        cell: ({ row }) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(row.original.reorderLevel)}</span>,
+      },
+      {
+        id: 'sold',
+        header: 'Sold 30d',
+        size: 120,
+        minSize: 100,
+        accessorFn: (item) => Number(item.soldLast30Days ?? 0),
+        cell: ({ row }) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(row.original.soldLast30Days)}</span>,
+      },
+      {
+        id: 'updated',
+        header: 'Updated',
+        size: 150,
+        minSize: 120,
+        accessorFn: (item) => item.updatedAt ?? '',
+        cell: ({ row }) => <span className="font-semibold text-ink-2">{safeDate(row.original.updatedAt)}</span>,
+      },
+    ],
+    [],
+  );
 
   return (
     <>
@@ -47,70 +128,18 @@ export default function Inventory() {
       ) : null}
       <Panel title="Stock levels" right={<span className="text-xs font-bold text-ink-3">{inventory.data?.pagination?.total ?? 0} SKUs</span>}>
         <StoreFilterBar clients={stores} value={activeClientId} onChange={setActiveClientId} search={search} onSearchChange={setSearch} label="Inventory store" />
-        {isFirstLoad ? (
-          <TableSkeleton rows={7} columns={7} />
-        ) : (
-          <DataTable
+        <div className="p-4">
+          <Table
             tableId="inventory-stock-levels"
-            rows={rows}
-            getRowKey={(item) => item.id}
-            columns={[
-              {
-                key: 'image',
-                header: 'Image',
-                width: '76px',
-                render: (item) => <InventoryThumb item={item} />,
-              },
-              {
-                key: 'sku',
-                header: 'SKU',
-                render: (item) => (
-                  <div className="min-w-0 space-y-1">
-                    <div className="truncate font-black text-ink">{item.sku ?? `SKU ${item.id}`}</div>
-                    <div className="truncate text-xs font-semibold text-ink-3">{item.name ?? 'Unnamed item'}</div>
-                  </div>
-                ),
-              },
-              {
-                key: 'status',
-                header: 'Status',
-                render: (item) => {
-                  const stock = Number(item.effectiveStock ?? item.stockQty ?? 0);
-                  const reorder = Number(item.reorderLevel ?? 0);
-                  const low = Number.isFinite(stock) && Number.isFinite(reorder) && reorder > 0 && stock <= reorder;
-                  return (
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${low ? 'bg-warn-bg text-warn' : 'bg-ok-bg text-ok'}`}>
-                      {low ? 'Low' : 'Healthy'}
-                    </span>
-                  );
-                },
-              },
-              {
-                key: 'stock',
-                header: 'Stock',
-                className: 'right',
-                render: (item) => <span className="font-black tabular-nums text-ink">{safeNumber(item.effectiveStock ?? item.stockQty)}</span>,
-              },
-              {
-                key: 'reorder',
-                header: 'Reorder',
-                className: 'right',
-                render: (item) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(item.reorderLevel)}</span>,
-              },
-              {
-                key: 'sold',
-                header: 'Sold 30d',
-                className: 'right',
-                render: (item) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(item.soldLast30Days)}</span>,
-              },
-              {
-                key: 'updated',
-                header: 'Updated',
-                render: (item) => <span className="font-semibold text-ink-2">{safeDate(item.updatedAt)}</span>,
-              },
-            ]}
+            data={rows}
+            columns={columns}
+            loading={isFirstLoad}
+            skeletonRows={7}
+            defaultPageSize={25}
+            pageSizeOptions={[10, 25, 50, 100]}
+            emptyMessage="No inventory found"
           />
-        )}
+        </div>
         {!inventory.isLoading && rows.length === 0 ? <EmptyState title="No inventory found" body="Active SKUs for your selected store scope will appear here." /> : null}
       </Panel>
     </>

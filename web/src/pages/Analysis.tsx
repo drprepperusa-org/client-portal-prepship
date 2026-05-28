@@ -1,21 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Columns3, PackageSearch, RefreshCw, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, Columns3, PackageSearch, RefreshCw, SlidersHorizontal, TrendingUp, X } from 'lucide-react';
+import type { ColumnDef } from '@tanstack/react-table';
 import SearchBar from '../components/ui/search-bar';
+import { Table } from '../components/ui/Table';
 import { safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAnalysisSkuBreakdownQuery, useAnalysisSkuOrdersQuery } from '../lib/portalQueries';
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   DEFAULT_TABLE_PAGE_SIZE_OPTIONS,
-  MIN_TABLE_COLUMN_WIDTH,
-  reorderTableColumns,
-  resizeTableColumn,
 } from '../lib/tablePreferences';
 import type { AnalysisSkuOrder, AnalysisSkuRow } from '../types/portal';
 
 const palette = ['#2563eb', '#16a34a', '#f59e0b', '#ef4444', '#7c3aed'];
 const rangeLabels = ['30d', '90d', '180d', '1yr', 'All'];
-const ANALYSIS_STORAGE_KEY = 'portal.table.analysis-sku';
 const dayMs = 86_400_000;
 
 type AnalysisColumn = {
@@ -571,16 +569,10 @@ export default function Analysis() {
   const [activeRange, setActiveRange] = useState('30d');
   const analysis = useAnalysisSkuBreakdownQuery(auth.accessToken, range);
   const [query, setQuery] = useState('');
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE);
-  const [columnOrder, setColumnOrder] = useState<string[]>(analysisColumns.map((column) => column.key));
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [selectedSku, setSelectedSku] = useState<AnalysisSkuRow | null>(null);
-  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
-  const resizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const rows = analysis.data?.data ?? [];
   const dateBuckets = analysis.data?.dateBuckets ?? [];
   const filteredRows = useMemo(() => {
@@ -590,88 +582,28 @@ export default function Analysis() {
   }, [query, rows]);
   const totalOrders = analysis.data?.totalOrders ?? filteredRows.reduce((sum, row) => sum + toNumber(row.orders), 0);
   const totalSkus = analysis.data?.totalSkus ?? filteredRows.length;
-  const totalPages = Math.max(Math.ceil(filteredRows.length / pageSize), 1);
-  const safePage = Math.min(page, totalPages - 1);
-  const visibleRows = filteredRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
-  const firstRow = filteredRows.length === 0 ? 0 : safePage * pageSize + 1;
-  const lastRow = Math.min((safePage + 1) * pageSize, filteredRows.length);
   const isEmptyAnalysis = !analysis.isLoading && filteredRows.length === 0;
-  const orderedColumns = useMemo(() => {
-    const map = new Map(analysisColumns.map((column) => [column.key, column]));
-    return columnOrder
-      .map((key) => map.get(key))
-      .filter((column): column is AnalysisColumn => column !== undefined)
-      .filter((column) => !hiddenColumns.has(column.key));
-  }, [columnOrder, hiddenColumns]);
-  const tableWidths = useMemo(() => {
-    const widths: Record<string, number> = {};
-    for (const column of orderedColumns) {
-      const base = columnWidths[column.key] ?? Math.round((column.width ?? MIN_TABLE_COLUMN_WIDTH) * (narrow ? 0.78 : 1));
-      widths[column.key] = Math.max(narrow ? 54 : MIN_TABLE_COLUMN_WIDTH, base);
-    }
-    return widths;
-  }, [columnWidths, narrow, orderedColumns]);
-  const tableWidth = useMemo(() => orderedColumns.reduce((sum, column) => sum + (tableWidths[column.key] ?? column.width ?? MIN_TABLE_COLUMN_WIDTH), 0), [orderedColumns, tableWidths]);
   const visibleColumnCount = analysisColumns.length - hiddenColumns.size;
-
-  useEffect(() => {
-    setPage(0);
-  }, [query, pageSize, range.from, range.to]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const saved = window.localStorage.getItem(ANALYSIS_STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as { order?: unknown; widths?: unknown; hidden?: unknown; pageSize?: unknown; narrow?: unknown };
-      const defaultOrder = analysisColumns.map((column) => column.key);
-      if (Array.isArray(parsed.order)) {
-        const savedOrder = parsed.order.filter((value): value is string => typeof value === 'string');
-        const known = savedOrder.filter((key) => defaultOrder.includes(key));
-        const missing = defaultOrder.filter((key) => !known.includes(key));
-        setColumnOrder([...known, ...missing]);
-      }
-      if (parsed.widths && typeof parsed.widths === 'object') setColumnWidths(parsed.widths as Record<string, number>);
-      if (Array.isArray(parsed.hidden)) {
-        setHiddenColumns(new Set(parsed.hidden.filter((value): value is string => typeof value === 'string' && defaultOrder.includes(value))));
-      }
-      if (typeof parsed.narrow === 'boolean') setNarrow(parsed.narrow);
-      if (typeof parsed.pageSize === 'number' && DEFAULT_TABLE_PAGE_SIZE_OPTIONS.includes(parsed.pageSize as 50 | 100 | 200)) {
-        setPageSize(parsed.pageSize);
-      }
-    } catch {
-      // Ignore invalid saved table preferences.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(ANALYSIS_STORAGE_KEY, JSON.stringify({ order: columnOrder, widths: columnWidths, hidden: [...hiddenColumns], pageSize, narrow }));
-  }, [columnOrder, columnWidths, hiddenColumns, pageSize, narrow]);
-
-  useEffect(() => {
-    function onPointerMove(event: PointerEvent) {
-      const state = resizeRef.current;
-      if (!state) return;
-      setColumnWidths((previous) => ({
-        ...previous,
-        [state.key]: resizeTableColumn(state.startWidth, event.clientX - state.startX),
-      }));
-    }
-
-    function onPointerUp() {
-      resizeRef.current = null;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    }
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    };
-  }, []);
+  const tableColumns = useMemo<ColumnDef<AnalysisSkuRow>[]>(() => analysisColumns
+    .filter((column) => !hiddenColumns.has(column.key))
+    .map((column) => ({
+      id: column.key,
+      header: column.header,
+      size: Math.round((column.width ?? 120) * (narrow ? 0.78 : 1)),
+      minSize: narrow ? 54 : 80,
+      accessorFn: (row) => {
+        if (column.key === 'item') return rowName(row);
+        if (column.key === 'sku') return row.sku;
+        if (column.key === 'avg') {
+          const qty = toNumber(row.total_qty);
+          return qty > 0 ? toNumber(row.total_revenue) / qty : 0;
+        }
+        if (column.key === 'trend') return trendFor(row).join(',');
+        const value = row[column.key as keyof AnalysisSkuRow];
+        return typeof value === 'number' || typeof value === 'string' ? value : '';
+      },
+      cell: ({ row }) => <AnalysisCell row={row.original} column={column} index={row.index} />,
+    })), [hiddenColumns, narrow]);
 
   function applyPreset(label: string) {
     setActiveRange(label);
@@ -709,7 +641,6 @@ export default function Analysis() {
     setQuery('');
     setActiveRange('30d');
     setRange(rangeFromPreset('30d'));
-    setPage(0);
   }
 
   return (
@@ -787,85 +718,19 @@ export default function Analysis() {
           <TrendChart rows={filteredRows} dateBuckets={dateBuckets} />
 
           <section className="portal-analysis-table-card">
-            <div className="portal-analysis-table-wrap">
-              <table className={`portal-analysis-table ${narrow ? 'is-narrow' : ''}`} style={{ width: tableWidth, minWidth: tableWidth }}>
-                <colgroup>
-                  {orderedColumns.map((column) => <col key={column.key} style={{ width: tableWidths[column.key] }} />)}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {orderedColumns.map((column) => (
-                      <th
-                        key={column.key}
-                        draggable
-                        onDragStart={(event) => {
-                          setDraggedColumn(column.key);
-                          event.dataTransfer.effectAllowed = 'move';
-                          event.dataTransfer.setData('text/plain', column.key);
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = 'move';
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const dragged = draggedColumn ?? event.dataTransfer.getData('text/plain');
-                          if (!dragged) return;
-                          setColumnOrder((previous) => reorderTableColumns(previous, dragged, column.key));
-                          setDraggedColumn(null);
-                        }}
-                        onDragEnd={() => setDraggedColumn(null)}
-                        className={`${column.className ?? ''} ${draggedColumn === column.key ? 'dragging' : ''}`}
-                        style={{ width: tableWidths[column.key] }}
-                      >
-                        {column.header}
-                        <button
-                          type="button"
-                          aria-label={`Resize ${column.header} column`}
-                          className="portal-table-resize-handle"
-                          onPointerDown={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            resizeRef.current = {
-                              key: column.key,
-                              startX: event.clientX,
-                              startWidth: tableWidths[column.key] ?? event.currentTarget.parentElement?.getBoundingClientRect().width ?? MIN_TABLE_COLUMN_WIDTH,
-                            };
-                            document.body.style.cursor = 'col-resize';
-                            document.body.style.userSelect = 'none';
-                          }}
-                        />
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((row, index) => (
-                    <tr key={`${row.sku}-${safePage}-${index}`} onClick={() => setSelectedSku(row)} className="is-clickable">
-                      {orderedColumns.map((column) => (
-                        <td
-                          key={column.key}
-                          className={column.className ?? ''}
-                          style={{ width: tableWidths[column.key] }}
-                        >
-                          <AnalysisCell row={row} column={column} index={safePage * pageSize + index} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="portal-analysis-foot">
-              <span>{analysis.isLoading ? 'Loading analysis...' : `Showing ${firstRow}-${lastRow} of ${safeNumber(filteredRows.length)} SKUs`}</span>
-              <div>
-                <label>Rows <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{DEFAULT_TABLE_PAGE_SIZE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
-                <button disabled={safePage <= 0} onClick={() => setPage(0)}>First</button>
-                <button disabled={safePage <= 0} onClick={() => setPage((value) => Math.max(value - 1, 0))}>Prev</button>
-                <button className="active">{safePage + 1}</button>
-                <button disabled={safePage >= totalPages - 1} onClick={() => setPage((value) => Math.min(value + 1, totalPages - 1))}>Next</button>
-                <button disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>Last</button>
-              </div>
+            <div className="p-4">
+              <Table
+                tableId="analysis-sku-breakdown"
+                data={filteredRows}
+                columns={tableColumns}
+                loading={analysis.isLoading && !analysis.data}
+                skeletonRows={8}
+                defaultPageSize={DEFAULT_TABLE_PAGE_SIZE}
+                pageSizeOptions={[...DEFAULT_TABLE_PAGE_SIZE_OPTIONS]}
+                emptyMessage="No SKU analysis rows found"
+                onRowClick={setSelectedSku}
+                className={narrow ? 'text-[12px]' : ''}
+              />
             </div>
           </section>
         </>

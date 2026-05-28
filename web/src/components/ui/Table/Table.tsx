@@ -163,7 +163,7 @@ export function Table<TData>({
   });
 
   return (
-    <div className={`flex flex-col rounded-lg border border-line bg-white shadow-sm ${className}`}>
+    <div data-portal-table={tableId} className={`flex flex-col rounded-lg border border-line bg-white shadow-sm ${className}`}>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

@@ -1,8 +1,12 @@
 import { Download, PackageCheck } from 'lucide-react';
-import { DataTable, EmptyState, ErrorPanel, KpiSkeletonGrid, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useMemo } from 'react';
+import { EmptyState, ErrorPanel, KpiSkeletonGrid, PageHeader, Panel, RefreshButton } from '../components/PortalPrimitives';
+import { Table } from '../components/ui/Table';
 import { safeDate, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useInventoryQuery } from '../lib/portalQueries';
+import type { PortalInventoryItem } from '../types/portal';
 
 export default function Inbound() {
   const auth = useAuth();
@@ -15,6 +19,51 @@ export default function Inbound() {
     const reorder = Number(item.reorderLevel ?? 0);
     return reorder > 0 && stock <= reorder;
   });
+  const columns = useMemo<ColumnDef<PortalInventoryItem>[]>(
+    () => [
+      {
+        id: 'sku',
+        header: 'SKU',
+        size: 160,
+        minSize: 120,
+        accessorFn: (item) => item.sku ?? `SKU ${item.id}`,
+        cell: ({ row }) => <span className="font-black text-ink">{row.original.sku ?? `SKU ${row.original.id}`}</span>,
+      },
+      {
+        id: 'product',
+        header: 'Product',
+        size: 280,
+        minSize: 180,
+        accessorFn: (item) => item.name ?? '',
+        cell: ({ row }) => <span className="font-semibold text-ink-2">{row.original.name ?? 'Unnamed item'}</span>,
+      },
+      {
+        id: 'stock',
+        header: 'Stock',
+        size: 110,
+        minSize: 90,
+        accessorFn: (item) => Number(item.effectiveStock ?? item.stockQty ?? 0),
+        cell: ({ row }) => <span className="font-black tabular-nums text-ink">{safeNumber(row.original.effectiveStock ?? row.original.stockQty)}</span>,
+      },
+      {
+        id: 'reorder',
+        header: 'Reorder',
+        size: 120,
+        minSize: 100,
+        accessorFn: (item) => Number(item.reorderLevel ?? 0),
+        cell: ({ row }) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(row.original.reorderLevel)}</span>,
+      },
+      {
+        id: 'updated',
+        header: 'Updated',
+        size: 150,
+        minSize: 120,
+        accessorFn: (item) => item.updatedAt ?? '',
+        cell: ({ row }) => <span className="font-semibold text-ink-2">{safeDate(row.original.updatedAt)}</span>,
+      },
+    ],
+    [],
+  );
 
   return (
     <>
@@ -65,42 +114,18 @@ export default function Inbound() {
       </div>}
 
       <Panel title="Receiving watchlist" right={<span className="text-xs font-bold text-ink-3">{safeNumber(lowStock.length)} SKU(s)</span>}>
-        {inventory.isLoading && !inventory.data ? <TableSkeleton rows={5} columns={5} /> : (
-          <DataTable
+        <div className="p-4">
+          <Table
             tableId="inbound-receiving-watchlist"
-            rows={lowStock}
-            getRowKey={(item) => item.id}
-            columns={[
-              {
-                key: 'sku',
-                header: 'SKU',
-                render: (item) => <span className="font-black text-ink">{item.sku ?? `SKU ${item.id}`}</span>,
-              },
-              {
-                key: 'product',
-                header: 'Product',
-                render: (item) => <span className="font-semibold text-ink-2">{item.name ?? 'Unnamed item'}</span>,
-              },
-              {
-                key: 'stock',
-                header: 'Stock',
-                className: 'right',
-                render: (item) => <span className="font-black tabular-nums text-ink">{safeNumber(item.effectiveStock ?? item.stockQty)}</span>,
-              },
-              {
-                key: 'reorder',
-                header: 'Reorder',
-                className: 'right',
-                render: (item) => <span className="font-semibold tabular-nums text-ink-2">{safeNumber(item.reorderLevel)}</span>,
-              },
-              {
-                key: 'updated',
-                header: 'Updated',
-                render: (item) => <span className="font-semibold text-ink-2">{safeDate(item.updatedAt)}</span>,
-              },
-            ]}
+            data={lowStock}
+            columns={columns}
+            loading={inventory.isLoading && !inventory.data}
+            skeletonRows={5}
+            defaultPageSize={25}
+            pageSizeOptions={[10, 25, 50, 100]}
+            emptyMessage="No inbound attention needed"
           />
-        )}
+        </div>
         {!inventory.isLoading && lowStock.length === 0 ? <EmptyState title="No inbound attention needed" body="Low-stock and receiving-watch SKUs will appear here." /> : null}
       </Panel>
     </>

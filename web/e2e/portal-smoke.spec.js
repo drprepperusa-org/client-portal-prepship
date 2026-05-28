@@ -79,6 +79,24 @@ test('overview controls produce visible outcomes instead of no-op clicks', async
   await expect(page.getByText('Awaiting Shipment')).toBeVisible();
 });
 
+test('client portal data pages use shared table component', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('clientPortal.demo', 'true');
+  });
+
+  for (const route of [
+    '/dashboard/orders',
+    '/dashboard/inbound',
+    '/dashboard/shipments',
+    '/dashboard/inventory',
+    '/dashboard/analysis',
+    '/dashboard/invoices',
+  ]) {
+    await page.goto(`${baseUrl}${route}`);
+    await expect(page.locator('[data-portal-table]')).toBeVisible();
+  }
+});
+
 test('demo badge appears when demo mode is explicitly enabled', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('clientPortal.demo', 'true');

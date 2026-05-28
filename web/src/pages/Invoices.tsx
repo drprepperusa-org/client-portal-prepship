@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Download, Pencil, RotateCcw, X } from 'lucide-react';
-import { DataTable, EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
+import type { ColumnDef } from '@tanstack/react-table';
+import { EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import { StoreBadge, storeNameForClient } from '../components/StoreScopeControls';
+import { Table } from '../components/ui/Table';
 import { defaultRange, localDateTimeRange, portalApi, safeDate, safeMoney, safeNumber } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { DEMO_TOKEN } from '../lib/demo-data';
@@ -382,6 +384,257 @@ export default function Invoices() {
     }
   }
 
+  const invoiceDetailColumns: ColumnDef<BillingInvoiceDetailRow>[] = [
+    {
+      id: 'actions',
+      header: 'Actions',
+      size: 150,
+      minSize: 140,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const source = row.original;
+        const rowKey = invoiceRowKey(source);
+        const isEditing = editingKey === rowKey;
+        const hasEdit = Boolean(rowAdjustments[rowKey]);
+        const isSaving = savingRowKey === rowKey;
+        return isEditing ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void saveEditRow(source)}
+              disabled={isSaving}
+              className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white transition-colors hover:bg-brand/90"
+              aria-label={`Save invoice row ${source.orderNumber ?? rowKey}`}
+              title={isSaving ? 'Saving' : 'Save'}
+            >
+              <Check size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={cancelEditRow}
+              disabled={isSaving}
+              className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:bg-surface-2"
+              aria-label={`Cancel invoice row ${source.orderNumber ?? rowKey}`}
+              title="Cancel"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => startEditRow(source)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[11px] font-black text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand"
+            >
+              <Pencil size={13} /> Edit
+            </button>
+            {hasEdit ? (
+              <button
+                type="button"
+                onClick={() => resetEditedRow(source)}
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
+                aria-label={`Reset invoice row ${source.orderNumber ?? rowKey}`}
+                title="Reset row"
+              >
+                <RotateCcw size={13} />
+              </button>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'include',
+      header: 'Billable',
+      size: 110,
+      minSize: 100,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const rowKey = invoiceRowKey(row.original);
+        const excluded = excludedKeys.has(rowKey);
+        const selected = selectedExcludeKeys.has(rowKey);
+        return (
+          <label className="inline-flex items-center gap-2 text-[11px] font-black text-ink-2">
+            <input
+              type="checkbox"
+              checked={excluded || selected}
+              disabled={excluded}
+              onChange={(event) => toggleExcludeCandidate(rowKey, event.target.checked)}
+              className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)] disabled:opacity-60"
+            />
+            {excluded ? 'Excluded' : 'Select'}
+          </label>
+        );
+      },
+    },
+    {
+      id: 'client',
+      header: 'Client',
+      size: 190,
+      minSize: 160,
+      accessorFn: (row) => storeNameForClient(clientRows(clients.data), row.clientId, row.clientName ?? undefined),
+      cell: ({ row }) => <StoreBadge name={storeNameForClient(clientRows(clients.data), row.original.clientId, row.original.clientName ?? undefined)} />,
+    },
+    {
+      id: 'order',
+      header: 'Order',
+      size: 145,
+      minSize: 120,
+      accessorFn: (row) => row.orderNumber ?? row.orderId ?? '',
+      cell: ({ row }) => <span className="font-black text-ink">{row.original.orderNumber ?? row.original.orderId ?? 'Unassigned'}</span>,
+    },
+    {
+      id: 'recipient',
+      header: 'Recipient',
+      size: 190,
+      minSize: 150,
+      accessorFn: (row) => row.recipientName ?? '',
+      cell: ({ row }) => <span className="font-semibold text-ink-2">{row.original.recipientName ?? '-'}</span>,
+    },
+    {
+      id: 'itemNames',
+      header: 'Item name',
+      size: 280,
+      minSize: 210,
+      accessorFn: (row) => row.itemNames ?? '',
+      cell: ({ row }) => <span className="line-clamp-2 font-semibold text-ink-2">{row.original.itemNames ?? '-'}</span>,
+    },
+    {
+      id: 'shipDate',
+      header: 'Ship date',
+      size: 130,
+      minSize: 115,
+      accessorFn: (row) => row.shipDate ?? '',
+      cell: ({ row }) => <span className="font-semibold text-ink-2">{safeDate(row.original.shipDate)}</span>,
+    },
+    {
+      id: 'qty',
+      header: 'Qty',
+      size: 110,
+      minSize: 95,
+      accessorFn: (row) => invoiceNumber(effectiveInvoiceRow(row).qty),
+      cell: ({ row }) => {
+        const source = row.original;
+        const rowKey = invoiceRowKey(source);
+        if (editingKey === rowKey && editDraft) {
+          return (
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={editDraft.qty}
+              onChange={(event) => updateEditDraft('qty', event.target.value)}
+              className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-right text-xs font-black tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          );
+        }
+        return <span className="font-black tabular-nums text-ink">{safeNumber(effectiveInvoiceRow(source).qty)}</span>;
+      },
+    },
+    {
+      id: 'pickpack',
+      header: 'Pick/pack',
+      size: 130,
+      minSize: 115,
+      accessorFn: (row) => formulatedPickPack(effectiveInvoiceRow(row)),
+      cell: ({ row }) => {
+        const source = row.original;
+        const rowKey = invoiceRowKey(source);
+        if (editingKey === rowKey && editDraft) {
+          return (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={editDraft.pickpackTotal}
+              onChange={(event) => updateEditDraft('pickpackTotal', event.target.value)}
+              className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          );
+        }
+        return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(formulatedPickPack(effectiveInvoiceRow(source)))}</span>;
+      },
+    },
+    {
+      id: 'packages',
+      header: 'Box fee',
+      size: 130,
+      minSize: 115,
+      accessorFn: (row) => invoiceNumber(effectiveInvoiceRow(row).packageTotal),
+      cell: ({ row }) => {
+        const source = row.original;
+        const rowKey = invoiceRowKey(source);
+        if (editingKey === rowKey && editDraft) {
+          return (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={editDraft.packageTotal}
+              onChange={(event) => updateEditDraft('packageTotal', event.target.value)}
+              className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          );
+        }
+        return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effectiveInvoiceRow(source).packageTotal)}</span>;
+      },
+    },
+    {
+      id: 'shipping',
+      header: 'Shipping',
+      size: 130,
+      minSize: 115,
+      accessorFn: (row) => invoiceNumber(effectiveInvoiceRow(row).shippingTotal),
+      cell: ({ row }) => {
+        const source = row.original;
+        const rowKey = invoiceRowKey(source);
+        if (editingKey === rowKey && editDraft) {
+          return (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={editDraft.shippingTotal}
+              onChange={(event) => updateEditDraft('shippingTotal', event.target.value)}
+              className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          );
+        }
+        return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effectiveInvoiceRow(source).shippingTotal)}</span>;
+      },
+    },
+    {
+      id: 'total',
+      header: 'Total',
+      size: 130,
+      minSize: 115,
+      accessorFn: (row) => invoiceNumber(effectiveInvoiceRow(row).rowTotal),
+      cell: ({ row }) => {
+        const source = row.original;
+        const rowKey = invoiceRowKey(source);
+        if (editingKey === rowKey && editDraft) {
+          return (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={editDraft.rowTotal}
+              onChange={(event) => updateEditDraft('rowTotal', event.target.value)}
+              className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-black tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
+            />
+          );
+        }
+        const excluded = excludedKeys.has(rowKey);
+        return (
+          <span className={`font-black tabular-nums ${excluded ? 'text-ink-3 line-through' : 'text-ink'}`}>
+            {safeMoney(effectiveInvoiceRow(source).rowTotal)}
+          </span>
+        );
+      },
+    },
+  ];
+
   return (
     <>
       <PageHeader
@@ -552,245 +805,18 @@ export default function Invoices() {
           </div>
         }
       >
-        {invoiceDetails.isLoading && !invoiceDetails.data ? (
-          <TableSkeleton rows={6} columns={8} />
-        ) : (
-          <DataTable<BillingInvoiceDetailRow>
+        <div className="p-4">
+          <Table
             tableId="invoice-order-details-v4"
-            rows={detailRows}
-            getRowKey={invoiceRowKey}
-            columns={[
-              {
-                key: 'actions',
-                header: 'Actions',
-                width: '150px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  const isEditing = editingKey === rowKey;
-                  const hasEdit = Boolean(rowAdjustments[rowKey]);
-                  const isSaving = savingRowKey === rowKey;
-                  return isEditing ? (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => void saveEditRow(row)}
-                        disabled={isSaving}
-                        className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white transition-colors hover:bg-brand/90"
-                        aria-label={`Save invoice row ${row.orderNumber ?? rowKey}`}
-                        title={isSaving ? 'Saving' : 'Save'}
-                      >
-                        <Check size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEditRow}
-                        disabled={isSaving}
-                        className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:bg-surface-2"
-                        aria-label={`Cancel invoice row ${row.orderNumber ?? rowKey}`}
-                        title="Cancel"
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => startEditRow(row)}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[11px] font-black text-ink-2 transition-colors hover:bg-brand-bg hover:text-brand"
-                      >
-                        <Pencil size={13} /> Edit
-                      </button>
-                      {hasEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => resetEditedRow(row)}
-                          className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
-                          aria-label={`Reset invoice row ${row.orderNumber ?? rowKey}`}
-                          title="Reset row"
-                        >
-                          <RotateCcw size={13} />
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                },
-              },
-              {
-                key: 'include',
-                header: 'Billable',
-                width: '110px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  const excluded = excludedKeys.has(rowKey);
-                  const selected = selectedExcludeKeys.has(rowKey);
-                  return (
-                    <label className="inline-flex items-center gap-2 text-[11px] font-black text-ink-2">
-                      <input
-                        type="checkbox"
-                        checked={excluded || selected}
-                        disabled={excluded}
-                        onChange={(event) => toggleExcludeCandidate(rowKey, event.target.checked)}
-                        className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)] disabled:opacity-60"
-                      />
-                      {excluded ? 'Excluded' : 'Select'}
-                    </label>
-                  );
-                },
-              },
-              {
-                key: 'client',
-                header: 'Client',
-                width: '190px',
-                render: (row) => <StoreBadge name={storeNameForClient(clientRows(clients.data), row.clientId, row.clientName ?? undefined)} />,
-              },
-              {
-                key: 'order',
-                header: 'Order',
-                width: '145px',
-                render: (row) => <span className="font-black text-ink">{row.orderNumber ?? row.orderId ?? 'Unassigned'}</span>,
-              },
-              {
-                key: 'recipient',
-                header: 'Recipient',
-                width: '190px',
-                render: (row) => <span className="font-semibold text-ink-2">{row.recipientName ?? '-'}</span>,
-              },
-              {
-                key: 'itemNames',
-                header: 'Item name',
-                width: '280px',
-                render: (row) => <span className="line-clamp-2 font-semibold text-ink-2">{row.itemNames ?? '-'}</span>,
-              },
-              {
-                key: 'shipDate',
-                header: 'Ship date',
-                width: '130px',
-                render: (row) => <span className="font-semibold text-ink-2">{safeDate(row.shipDate)}</span>,
-              },
-              {
-                key: 'qty',
-                header: 'Qty',
-                className: 'right',
-                width: '110px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  if (editingKey === rowKey && editDraft) {
-                    return (
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={editDraft.qty}
-                        onChange={(event) => updateEditDraft('qty', event.target.value)}
-                        className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-right text-xs font-black tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
-                      />
-                    );
-                  }
-                  const effective = effectiveInvoiceRow(row);
-                  return <span className="font-black tabular-nums text-ink">{safeNumber(effective.qty)}</span>;
-                },
-              },
-              {
-                key: 'pickpack',
-                header: 'Pick/pack',
-                className: 'right',
-                width: '130px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  if (editingKey === rowKey && editDraft) {
-                    return (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editDraft.pickpackTotal}
-                        onChange={(event) => updateEditDraft('pickpackTotal', event.target.value)}
-                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
-                      />
-                    );
-                  }
-                  const effective = effectiveInvoiceRow(row);
-                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(formulatedPickPack(effective))}</span>;
-                },
-              },
-              {
-                key: 'packages',
-                header: 'Box fee',
-                className: 'right',
-                width: '130px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  if (editingKey === rowKey && editDraft) {
-                    return (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editDraft.packageTotal}
-                        onChange={(event) => updateEditDraft('packageTotal', event.target.value)}
-                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
-                      />
-                    );
-                  }
-                  const effective = effectiveInvoiceRow(row);
-                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effective.packageTotal)}</span>;
-                },
-              },
-              {
-                key: 'shipping',
-                header: 'Shipping',
-                className: 'right',
-                width: '130px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  if (editingKey === rowKey && editDraft) {
-                    return (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editDraft.shippingTotal}
-                        onChange={(event) => updateEditDraft('shippingTotal', event.target.value)}
-                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-bold tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
-                      />
-                    );
-                  }
-                  const effective = effectiveInvoiceRow(row);
-                  return <span className="font-semibold tabular-nums text-ink-2">{safeMoney(effective.shippingTotal)}</span>;
-                },
-              },
-              {
-                key: 'total',
-                header: 'Total',
-                className: 'right',
-                width: '130px',
-                render: (row) => {
-                  const rowKey = invoiceRowKey(row);
-                  if (editingKey === rowKey && editDraft) {
-                    return (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editDraft.rowTotal}
-                        onChange={(event) => updateEditDraft('rowTotal', event.target.value)}
-                        className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-right text-xs font-black tabular-nums text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
-                      />
-                    );
-                  }
-                  const excluded = excludedKeys.has(rowKey);
-                  const effective = effectiveInvoiceRow(row);
-                  return (
-                    <span className={`font-black tabular-nums ${excluded ? 'text-ink-3 line-through' : 'text-ink'}`}>
-                      {safeMoney(effective.rowTotal)}
-                    </span>
-                  );
-                },
-              },
-            ]}
+            data={detailRows}
+            columns={invoiceDetailColumns}
+            loading={invoiceDetails.isLoading && !invoiceDetails.data}
+            skeletonRows={6}
+            defaultPageSize={50}
+            pageSizeOptions={[25, 50, 100, 200]}
+            emptyMessage="No billable order details"
           />
-        )}
+        </div>
         {!invoiceDetails.isLoading && (invoiceDetails.data?.data.length ?? 0) === 0 ? (
           <EmptyState
             title="No billable order details"
