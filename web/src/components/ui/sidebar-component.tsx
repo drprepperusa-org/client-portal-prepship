@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { isPrepShipAdminEmail } from '../../lib/adminAccess';
-import { useOrdersQuery } from '../../lib/portalQueries';
+import { useAwaitingActiveOrderCountQuery } from '../../lib/portalQueries';
 
 export type SidebarNavItem = {
   to: string;
@@ -66,8 +66,8 @@ export default function ClientPortalSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const canSeeAdmin = isPrepShipAdminEmail(auth.user?.email);
-  const awaitingOrders = useOrdersQuery(auth.accessToken, 'awaiting_shipment');
-  const awaitingShipmentCount = awaitingOrders.data?.pagination?.total ?? awaitingOrders.data?.data?.length ?? 0;
+  const awaitingOrders = useAwaitingActiveOrderCountQuery(auth.accessToken);
+  const awaitingShipmentCount = awaitingOrders.data?.count ?? 0;
 
   const groups = NAV_GROUP_ORDER
     .filter((group) => canSeeAdmin || !ADMIN_GROUPS.has(group))

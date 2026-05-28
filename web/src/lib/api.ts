@@ -410,6 +410,11 @@ export const portalApi = {
         storeId: firstScopedStoreId(token),
       });
     },
+    awaitingActiveOrderCount(token: string) {
+      return apiGet<{ count: number }>(token, '/api/client-portal/orders/awaiting-active-count', {
+        storeId: firstScopedStoreId(token),
+      });
+    },
     shipments(token: string, options: { page?: number } = {}) {
       return apiGetScopedByClient<Paginated<PortalShipment>>(token, '/api/client-portal/shipments', {
         page: options.page ?? 1,

@@ -54,6 +54,10 @@ function asTimestamp(value: Date) {
   return value.toISOString();
 }
 
+function liveAwaitingSince() {
+  return new Date(Date.now() - 30 * 86_400_000);
+}
+
 function intArrayLiteral(values: number[]) {
   return sql`array[${sql.join(values.map((id) => sql`${id}`), sql`, `)}]::int[]`;
 }
@@ -433,6 +437,30 @@ app.get('/orders', async (c) => {
       totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)),
     },
   });
+});
+
+app.get('/orders/awaiting-active-count', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const where = and(
+    orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    activeClientPredicate(),
+    eq(orders.orderStatus, 'awaiting_shipment'),
+    gte(orders.orderDate, liveAwaitingSince()),
+    eq(orders.externallyShipped, false),
+    sql`coalesce((${orders.raw}->>'externallyFulfilled')::boolean, false) = false`,
+    sql`jsonb_array_length(coalesce(${orders.items}, '[]'::jsonb)) > 0`,
+    sql`not exists (
+      select 1
+      from ${shipments} active_shipment
+      where active_shipment.order_id = ${orders.id}
+        and active_shipment.voided = false
+    )`,
+  );
+  const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
+  const count = Number(row?.count ?? 0);
+  await recordPortalAudit('portal.orders.awaiting_active_count', scope, { count });
+  return c.json({ count });
 });
 
 function parsePositiveInt(value: string | undefined): number | null {

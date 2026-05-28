@@ -8,7 +8,7 @@ import { StoreSelectorDropdown, storeNameForClient } from '../components/StoreSc
 import { Table } from '../components/ui/Table';
 import { safeDate, safeMoney } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useClientsQuery, useInventoryQuery, useOrdersQuery, useShipmentsQuery } from '../lib/portalQueries';
+import { useAwaitingActiveOrderCountQuery, useClientsQuery, useInventoryQuery, useOrdersQuery, useShipmentsQuery } from '../lib/portalQueries';
 import type { OrderItem, OrderStatus, PortalClient, PortalInventoryItem, PortalOrder, PortalShipment } from '../types/portal';
 
 const orderTabs: Array<{ value: OrderStatus; label: string; empty: string }> = [
@@ -80,6 +80,7 @@ export default function Orders() {
   const [storeSearch, setStoreSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PortalOrder | null>(null);
   const orders = useOrdersQuery(auth.accessToken, activeStatus);
+  const awaitingActiveOrders = useAwaitingActiveOrderCountQuery(auth.accessToken);
   const clients = useClientsQuery(auth.accessToken);
   const inventory = useInventoryQuery(auth.accessToken);
   const shipments = useShipmentsQuery(auth.accessToken);
@@ -127,7 +128,9 @@ export default function Orders() {
     },
     [activeClientId, clients.data, rows, search],
   );
-  const visibleTotal = activeClientId === 'all'
+  const visibleTotal = activeStatus === 'awaiting_shipment' && activeClientId === 'all'
+    ? awaitingActiveOrders.data?.count ?? filteredRows.length
+    : activeClientId === 'all'
     ? orders.data?.pagination?.total ?? rows.length
     : storeBuckets.find((bucket) => bucket.clientId === activeClientId)?.count ?? filteredRows.length;
   const inventoryImages = useMemo(() => {

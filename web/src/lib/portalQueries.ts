@@ -19,6 +19,7 @@ export const portalQueryKeys = {
   dashboard: (token?: string | null) => ['portal', portalSessionKey(token), 'dashboard'] as const,
   dailyCounts: (token?: string | null) => ['portal', portalSessionKey(token), 'daily-counts'] as const,
   orders: (token?: string | null, status?: OrderStatus | 'all') => ['portal', portalSessionKey(token), 'orders', status ?? 'all'] as const,
+  awaitingActiveOrderCount: (token?: string | null) => ['portal', portalSessionKey(token), 'orders', 'awaiting-active-count'] as const,
   shipments: (token?: string | null) => ['portal', portalSessionKey(token), 'shipments'] as const,
   inventory: (token?: string | null) => ['portal', portalSessionKey(token), 'inventory'] as const,
   billing: (token?: string | null, range?: { from: string; to: string }) =>
@@ -179,6 +180,18 @@ export function useOrdersQuery(token: string | null, status: OrderStatus | 'all'
     queryKey: portalQueryKeys.orders(token, status),
     enabled: enabled(token),
     queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.clientPortal.orders(token!, { status })),
+  });
+}
+
+export function useAwaitingActiveOrderCountQuery(token: string | null) {
+  return useQuery({
+    queryKey: portalQueryKeys.awaitingActiveOrderCount(token),
+    enabled: enabled(token),
+    queryFn: () => (
+      demoAllowed(token!)
+        ? Promise.resolve({ count: demoOrdersForStatus('awaiting_shipment').data.length })
+        : portalApi.clientPortal.awaitingActiveOrderCount(token!)
+    ),
   });
 }
 
