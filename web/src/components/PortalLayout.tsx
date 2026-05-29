@@ -186,7 +186,7 @@ export default function PortalLayout() {
                 <ChevronDown size={15} />
               </button>
               {openMenu === 'stores' ? (
-                <div aria-label="Store scope menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] max-h-80 w-72 overflow-auto rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                <div aria-label="Store scope menu" className="portal-pop-in absolute right-0 top-[calc(100%+8px)] z-[120] max-h-80 w-72 overflow-auto rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
                   <div className="text-[11px] font-semibold uppercase text-ink-3">Assigned scope · {scopedClients.length || 0} store{scopedClients.length === 1 ? '' : 's'}</div>
                   <div className="mt-2 space-y-1.5">
                     {scopedClients.length === 0 ? (
@@ -216,7 +216,7 @@ export default function PortalLayout() {
                 <Bell size={19} />
               </button>
               {openMenu === 'notifications' ? (
-                <div aria-label="Notification center menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-80 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                <div aria-label="Notification center menu" className="portal-pop-in absolute right-0 top-[calc(100%+8px)] z-[120] w-80 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
                   <div className="font-semibold">Notification center</div>
                   <div className="mt-3 space-y-2">
                     <div className="rounded-md bg-surface-2 px-3 py-2 text-xs">Orders and shipment sync are current.</div>
@@ -241,7 +241,7 @@ export default function PortalLayout() {
                 <ChevronDown size={15} />
               </button>
               {openMenu === 'account' ? (
-                <div aria-label="Account details menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-72 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                <div aria-label="Account details menu" className="portal-pop-in absolute right-0 top-[calc(100%+8px)] z-[120] w-72 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
                   <div className="font-semibold">{displayName || 'Client'}</div>
                   <div className="mt-1 text-xs text-ink-3">{userEmail}</div>
                   <div className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-xs">{workspaceLabel}</div>

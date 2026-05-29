@@ -13,7 +13,7 @@ import {
   Settings2,
   ShieldCheck,
 } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { NavLink, useParams } from 'react-router-dom';
 import { EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
 import type { BackfillMode, BackfillResponse, BackfillTarget } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -554,6 +554,19 @@ export default function Settings() {
         subtitle={activeSection.description}
         action={<RefreshButton loading={clients.isFetching || settings.isFetching || me.isFetching || carrierAccounts.isFetching} onClick={() => { void clients.refetch(); void settings.refetch(); void me.refetch(); void carrierAccounts.refetch(); }} />}
       />
+
+      <nav className="portal-settings-tabs" aria-label="Settings sections">
+        {settingsSections.map((section) => (
+          <NavLink
+            key={section.value}
+            to={`/dashboard/settings/${section.value}`}
+            className={`portal-settings-tab${routeSection === section.value ? ' active' : ''}`}
+          >
+            <section.icon size={14} aria-hidden />
+            <span>{section.label}</span>
+          </NavLink>
+        ))}
+      </nav>
       {clients.error ? <div className="mb-5"><ErrorPanel message={clients.error instanceof Error ? clients.error.message : String(clients.error)} loading={clients.isFetching} onRetry={() => void clients.refetch()} /></div> : null}
       {settings.error ? <div className="mb-5"><ErrorPanel message={settings.error instanceof Error ? settings.error.message : String(settings.error)} loading={settings.isFetching} onRetry={() => void settings.refetch()} /></div> : null}
       {error ? <div className="mb-5"><ErrorNotice message={error} /></div> : null}

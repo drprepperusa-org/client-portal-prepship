@@ -2830,6 +2830,22 @@ input[type="radio"]:checked::before {
   gap: 10px;
 }
 
+.portal-settings-list header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.portal-settings-list header span {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(var(--ink-3-rgb));
+  white-space: nowrap;
+}
+
 .portal-settings-flag-list {
   padding: 16px;
 }
@@ -8757,5 +8773,83 @@ label[class*="-search"]:not(.portal-login-field),
 
   [data-portal-table] tbody td > * {
     text-align: left;
+  }
+}
+
+/* ============================================================
+   Stripe polish — smooth transitions, settings sub-nav, motion
+   2026-05-29
+   ============================================================ */
+
+/* Smooth, consistent transitions on every form control + button so
+   focus / hover / press feels fluid app-wide. */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+button {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease,
+    box-shadow .16s ease, transform .1s ease, opacity .16s ease;
+}
+button:not(:disabled):active {
+  transform: translateY(0.5px);
+}
+input:not([type="checkbox"]):not([type="radio"]):hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: rgb(var(--line-strong-rgb));
+}
+
+/* Settings section sub-nav (segmented control, Stripe-style). */
+.portal-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 20px;
+  padding: 4px;
+  background: rgb(var(--surface-2-rgb));
+  border: 1px solid rgb(var(--line-rgb));
+  border-radius: 10px;
+}
+.portal-settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgb(var(--ink-2-rgb));
+  transition: background-color .18s ease, color .18s ease, box-shadow .18s ease, transform .12s ease;
+}
+.portal-settings-tab:hover {
+  color: rgb(var(--ink-rgb));
+  background: rgb(var(--surface-3-rgb));
+}
+.portal-settings-tab.active {
+  background: rgb(var(--surface-rgb));
+  color: rgb(var(--brand-rgb));
+  box-shadow: var(--shadow-card);
+}
+.portal-settings-tab.active svg { color: rgb(var(--brand-rgb)); }
+
+/* Reusable pop-in for dropdowns / popovers / menus. */
+@keyframes portal-pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.portal-pop-in,
+.portal-analysis-calendar,
+.portal-analysis-columns-menu {
+  animation: portal-pop-in .16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
   }
 }
