@@ -200,12 +200,10 @@ export default function PortalLayout() {
                 onClick={() => toggleMenu('notifications')}
               >
                 <Bell size={19} />
-                <span>7</span>
               </button>
               {openMenu === 'notifications' ? (
                 <div aria-label="Notification center menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-80 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
                   <div className="font-semibold">Notification center</div>
-                  <div className="mt-1 text-xs text-ink-3">7 active alerts</div>
                   <div className="mt-3 space-y-2">
                     <div className="rounded-md bg-surface-2 px-3 py-2 text-xs">Orders and shipment sync are current.</div>
                     <div className="rounded-md bg-surface-2 px-3 py-2 text-xs">Inventory alerts are available from the Overview rail.</div>

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, ShieldCheck, Check } from 'lucide-react';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { EmailInput, PasswordInput } from '../components/ui/Input';
 
@@ -10,7 +10,6 @@ export default function Login() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -41,7 +40,6 @@ export default function Login() {
     setError(null);
     try {
       await auth.signIn(cleanEmail, password);
-      // rememberMe persistence is handled by the auth provider session logic implicitly
       navigate(from, { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign in';
@@ -127,25 +125,7 @@ export default function Login() {
                 disabled={submitting}
                 required
               />
-              <div className="mt-3 flex items-center justify-between">
-                <label className="group flex cursor-pointer items-center gap-2">
-                  <div className={`
-                    grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border transition-all duration-200
-                    ${rememberMe 
-                      ? 'border-brand bg-brand text-white' 
-                      : 'border-line-2 bg-transparent text-transparent group-hover:border-brand/60'
-                    }
-                  `}>
-                    <Check size={12} strokeWidth={3} />
-                  </div>
-                  <input 
-                    type="checkbox" 
-                    className="sr-only" 
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                  />
-                  <span className="text-[13px] font-medium text-ink-2 select-none">Remember me</span>
-                </label>
+              <div className="mt-3 flex items-center justify-end">
                 <Link to="/reset-password" className="text-[13px] font-medium text-brand transition-colors hover:text-brand-dark hover:underline">
                   Forgot password?
                 </Link>

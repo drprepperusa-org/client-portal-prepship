@@ -24,7 +24,8 @@ import {
 } from '../lib/tablePreferences';
 import type { AnalysisSkuOrder, AnalysisSkuRow } from '../types/portal';
 
-const palette = ['#2563eb', '#16a34a', '#f59e0b', '#ef4444', '#7c3aed'];
+// Stripe-aligned categorical palette: blurple, green, amber, red, sky.
+const palette = ['#635bff', '#3ecf8e', '#f5be58', '#df2f4a', '#3a97d4'];
 const rangeLabels = ['30d', '90d', '180d', '1yr', 'All'];
 const dayMs = 86_400_000;
 
@@ -385,7 +386,7 @@ function AnalysisCell({ row, column, index }: { row: AnalysisSkuRow; column: Ana
   const qty = toNumber(row.total_qty);
   const revenue = toNumber(row.total_revenue);
   const avgSell = qty > 0 ? revenue / qty : 0;
-  const sparkColor = index % 4 === 2 || index % 8 === 7 ? '#ef4444' : '#16a34a';
+  const sparkColor = index % 4 === 2 || index % 8 === 7 ? '#df2f4a' : '#21bf73';
 
   switch (column.key) {
     case 'item':
@@ -396,7 +397,7 @@ function AnalysisCell({ row, column, index }: { row: AnalysisSkuRow; column: Ana
         </div>
       );
     case 'sku':
-      return <a>{row.sku}</a>;
+      return <span className="portal-analysis-sku">{row.sku}</span>;
     case 'client':
       return rowClient(row);
     case 'orders':
@@ -626,7 +627,7 @@ function SkuDetailDrawer({
                   return (
                     <tr key={`${orderNumber}-${index}`}>
                       <td>{safeDate(orderDate)}</td>
-                      <td><a>{orderNumber}</a></td>
+                      <td><span className="portal-analysis-order-no">{orderNumber}</span></td>
                       <td>{customer}</td>
                       <td>{safeNumber(order.qty)}</td>
                       <td>{cost ? safeMoney(cost) : external ? <span className="portal-analysis-pill warn">EXT</span> : '-'}</td>

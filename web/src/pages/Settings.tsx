@@ -10,7 +10,6 @@ import {
   MapPin,
   Percent,
   Play,
-  RefreshCw,
   Settings2,
   ShieldCheck,
 } from 'lucide-react';
@@ -272,14 +271,6 @@ function SettingsHero({ section, action }: { section: (typeof settingsSections)[
   );
 }
 
-function ActionButton({ children, tone = 'blue' }: { children: ReactNode; tone?: SectionTone | 'danger' }) {
-  return (
-    <button type="button" className={`portal-settings-action portal-settings-action-${tone}`}>
-      {children}
-    </button>
-  );
-}
-
 function ReadableSettingsPanel({ title, rows, loading }: { title: string; rows: PortalSetting[]; loading: boolean }) {
   return (
     <Panel title={title} right={<span className="text-xs font-bold text-ink-3">{rows.length} setting(s)</span>}>
@@ -483,8 +474,6 @@ export default function Settings() {
       <SettingsHero
         section={activeSection}
         action={
-          routeSection === 'locations' ? <ActionButton tone="blue">+ Add Location</ActionButton> :
-          routeSection === 'cache' ? <ActionButton tone="purple"><RefreshCw size={14} /> Refresh All Rates & Clear Cache</ActionButton> :
           routeSection === 'system' ? <RefreshButton loading={syncStatus.isFetching} onClick={() => void syncStatus.refetch()} /> :
           undefined
         }
