@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -22,6 +22,7 @@ import {
   useCarrierAccountsQuery,
   useClientsQuery,
   useMeQuery,
+  useSetSettingMutation,
   useSettingsQuery,
   useSyncStatusQuery,
 } from '../lib/portalQueries';
@@ -327,7 +328,15 @@ function markupValue(row: PortalSetting | undefined) {
   };
 }
 
-function MarkupsSection({ rows, carrierAccounts }: { rows: PortalSetting[]; carrierAccounts: CarrierAccount[] }) {
+function MarkupsSection({
+  rows,
+  carrierAccounts,
+  onSave,
+}: {
+  rows: PortalSetting[];
+  carrierAccounts: CarrierAccount[];
+  onSave: (key: string, value: string) => Promise<void>;
+}) {
   const directAccounts = carrierAccounts.length ? carrierAccounts : [
     { provider: 'shipp', label: 'Shipp Carrier', accountIdentifier: '81ea513665...' },
     { provider: 'easypost', label: 'EasyPost Carrier', accountIdentifier: 'EZAKdae0...' },
@@ -359,8 +368,9 @@ function MarkupsSection({ rows, carrierAccounts }: { rows: PortalSetting[]; carr
             <span>{group.names.length} carriers</span>
           </header>
           {group.names.map((name) => {
-            const markup = markupValue(rowForName(name));
-            return <MarkupRow key={`${group.title}-${name}`} name={name} type={markup.type} value={markup.value} />;
+            const row = rowForName(name);
+            const markup = markupValue(row);
+            return <MarkupRow key={`${group.title}-${name}`} name={name} type={markup.type} value={markup.value} settingKey={row?.key ?? null} onSave={onSave} />;
           })}
         </section>
       ))}
@@ -371,25 +381,98 @@ function MarkupsSection({ rows, carrierAccounts }: { rows: PortalSetting[]; carr
         </header>
         {directAccounts.map((account, index) => {
           const name = account.label ?? account.provider ?? `Carrier ${index + 1}`;
-          const markup = markupValue(rowForName(name));
-          return <MarkupRow key={`${name}-${index}`} name={name} type={markup.type} value={markup.value} />;
+          const row = rowForName(name);
+          const markup = markupValue(row);
+          return <MarkupRow key={`${name}-${index}`} name={name} type={markup.type} value={markup.value} settingKey={row?.key ?? null} onSave={onSave} />;
         })}
       </section>
     </div>
   );
 }
 
-function MarkupRow({ name, type, value }: { name: string; type: string; value: string }) {
-  const isPct = type === 'pct';
+function MarkupRow({
+  name,
+  type,
+  value,
+  settingKey,
+  onSave,
+}: {
+  name: string;
+  type: string;
+  value: string;
+  // Exact settings key (e.g. `markup.<provider>`); null when no saved
+  // markup row resolved for this carrier. We only persist when a key is
+  // known so we never guess at which carrier a write applies to — a wrong
+  // key would silently mis-apply a billed-shipping markup.
+  settingKey: string | null;
+  onSave: (key: string, value: string) => Promise<void>;
+}) {
+  const [draftType, setDraftType] = useState(type === 'pct' ? 'pct' : 'amount');
+  const [draftValue, setDraftValue] = useState(value);
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const editable = Boolean(settingKey);
+
+  // Re-sync from server whenever the underlying setting changes (e.g. after
+  // a refetch following a successful save elsewhere).
+  useEffect(() => {
+    setDraftType(type === 'pct' ? 'pct' : 'amount');
+    setDraftValue(value);
+    setStatus('idle');
+  }, [type, value, settingKey]);
+
+  const isPct = draftType === 'pct';
+
+  async function persist(nextType: string, nextValue: string) {
+    if (!settingKey) return;
+    const numeric = Number(nextValue);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      // Invalid input — revert to last good value rather than persisting NaN.
+      setDraftValue(value);
+      setStatus('error');
+      return;
+    }
+    setStatus('saving');
+    try {
+      await onSave(settingKey, JSON.stringify({ type: nextType, value: String(numeric) }));
+      setStatus('saved');
+    } catch {
+      setStatus('error');
+    }
+  }
+
   return (
     <div className="portal-settings-markup-row">
       <span>{name}</span>
-      <select value={isPct ? 'pct' : 'amount'} aria-label={`${name} markup type`} onChange={() => undefined}>
+      <select
+        value={isPct ? 'pct' : 'amount'}
+        aria-label={`${name} markup type`}
+        disabled={!editable}
+        onChange={(event) => {
+          setDraftType(event.target.value);
+          void persist(event.target.value, draftValue);
+        }}
+      >
         <option value="amount">$</option>
         <option value="pct">%</option>
       </select>
-      <input value={value} aria-label={`${name} markup value`} onChange={() => undefined} />
-      <strong>{isPct ? `+${value}%` : `+$${Number(value || 0).toFixed(2)}`}</strong>
+      <input
+        value={draftValue}
+        inputMode="decimal"
+        aria-label={`${name} markup value`}
+        disabled={!editable}
+        title={editable ? undefined : 'No saved markup for this carrier yet — set it from the operator console first.'}
+        onChange={(event) => {
+          setDraftValue(event.target.value);
+          setStatus('idle');
+        }}
+        onBlur={() => void persist(draftType, draftValue)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
+        }}
+      />
+      <strong className={status === 'saving' ? 'opacity-60' : status === 'error' ? 'text-danger' : status === 'saved' ? 'text-ok' : undefined}>
+        {status === 'saving' ? 'Saving…' : status === 'error' ? 'Error' : isPct ? `+${draftValue}%` : `+$${Number(draftValue || 0).toFixed(2)}`}
+      </strong>
     </div>
   );
 }
@@ -403,6 +486,11 @@ export default function Settings() {
   const me = useMeQuery(auth.accessToken);
   const syncStatus = useSyncStatusQuery(auth.accessToken);
   const backfill = useBackfillMutation(auth.accessToken);
+  const setSetting = useSetSettingMutation(auth.accessToken);
+
+  async function saveMarkup(key: string, value: string) {
+    await setSetting.mutateAsync({ key, value });
+  }
   const [backfillMode, setBackfillMode] = useState<BackfillMode>('incremental');
   const [runningTarget, setRunningTarget] = useState<BackfillTarget | null>(null);
   const [lastBackfillResult, setLastBackfillResult] = useState<BackfillResponse | null>(null);
@@ -535,7 +623,7 @@ export default function Settings() {
       ) : null}
 
       {routeSection === 'markups' ? (
-        settings.isLoading && !settings.data ? <TableSkeleton rows={8} columns={4} /> : <MarkupsSection rows={markupRows} carrierAccounts={carrierAccounts.data?.data ?? []} />
+        settings.isLoading && !settings.data ? <TableSkeleton rows={8} columns={4} /> : <MarkupsSection rows={markupRows} carrierAccounts={carrierAccounts.data?.data ?? []} onSave={saveMarkup} />
       ) : null}
 
       {routeSection === 'locations' ? (
