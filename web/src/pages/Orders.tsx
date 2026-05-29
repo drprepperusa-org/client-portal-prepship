@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
@@ -74,12 +75,13 @@ function clientRows(value: unknown): PortalClient[] {
 
 export default function Orders() {
   const auth = useAuth();
+  const [urlParams] = useSearchParams();
   const [activeStatus, setActiveStatus] = useState<OrderStatus>('awaiting_shipment');
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
-  const [search, setSearch] = useState('');
   const [storeSearch, setStoreSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PortalOrder | null>(null);
-  const orders = useOrdersQuery(auth.accessToken, activeStatus);
+  const search = urlParams.get('q') ?? '';
+  const orders = useOrdersQuery(auth.accessToken, activeStatus, search);
   const awaitingActiveOrders = useAwaitingActiveOrderCountQuery(auth.accessToken);
   const clients = useClientsQuery(auth.accessToken);
   const inventory = useInventoryQuery(auth.accessToken);

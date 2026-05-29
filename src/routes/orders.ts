@@ -204,9 +204,34 @@ function visiblePredicateForOrdersList(q: { storeId?: number; includeInactiveCli
 }
 
 function visibleAwaitingOrdersPredicate(alias: 'orders' | 'o' = 'orders') {
+  const id = sql.raw(`${alias}.id`);
   const externalOrderId = sql.raw(`${alias}.external_order_id`);
+  const orderNumber = sql.raw(`${alias}.order_number`);
+  const raw = sql.raw(`${alias}.raw`);
+  const items = sql.raw(`${alias}.items`);
   return sql`not (
     coalesce(${externalOrderId}, '') ilike 'ebay-%'
+  )
+  and not (
+    (
+      coalesce(${orderNumber}, '') ilike 'SEAuto-%'
+      or coalesce(${raw}->>'orderNumber', '') ilike 'SEAuto-%'
+      or coalesce(${raw}->>'orderKey', '') ilike 'SEAuto-%'
+    )
+    and jsonb_array_length(
+      case when jsonb_typeof(${items}) = 'array' then ${items} else '[]'::jsonb end
+    ) = 0
+    and coalesce((${sql.raw(`${alias}.order_total`)})::numeric, 0) = 0
+    and not exists (
+      select 1
+      from order_items visible_item
+      where visible_item.order_id = ${id}
+        and coalesce(visible_item.quantity, 0) > 0
+        and (
+          trim(coalesce(visible_item.sku, '')) <> ''
+          or trim(coalesce(visible_item.name, '')) <> ''
+        )
+    )
   )`;
 }
 

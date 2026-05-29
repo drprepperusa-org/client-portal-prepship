@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Bar, BarChart, ResponsiveContainer } from 'recharts';
@@ -28,10 +29,11 @@ function safeExternalUrl(value: unknown): string | null {
 
 export default function Shipments() {
   const auth = useAuth();
+  const [urlParams] = useSearchParams();
   const clients = useClientsQuery(auth.accessToken);
-  const shipments = useShipmentsQuery(auth.accessToken);
+  const search = urlParams.get('q') ?? '';
+  const shipments = useShipmentsQuery(auth.accessToken, search);
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
-  const [search, setSearch] = useState('');
   const [storeSearch, setStoreSearch] = useState('');
   const isFirstLoad = shipments.isLoading && !shipments.data;
   const stores = clientRows(clients.data);

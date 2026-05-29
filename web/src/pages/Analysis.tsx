@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import SearchBar from '../components/ui/search-bar';
+import { useSearchParams } from 'react-router-dom';
 import { Table } from '../components/ui/Table';
 import { StoreSelectorDropdown, clientIdOf, type StoreFilterValue } from '../components/StoreScopeControls';
 import { safeDate, safeMoney, safeNumber } from '../lib/api';
@@ -707,11 +708,15 @@ function AnalysisEmptyState({
 
 export default function Analysis() {
   const auth = useAuth();
+  const [urlParams] = useSearchParams();
   const [range, setRange] = useState(() => rangeFromPreset('30d'));
   const [activeRange, setActiveRange] = useState('30d');
   const analysis = useAnalysisSkuBreakdownQuery(auth.accessToken, range);
   const clients = useClientsQuery(auth.accessToken);
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    setQuery(urlParams.get('q') ?? '');
+  }, [urlParams]);
   const [activeClientId, setActiveClientId] = useState<StoreFilterValue>('all');
   const [storeSearch, setStoreSearch] = useState('');
   const [narrow, setNarrow] = useState(false);

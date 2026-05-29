@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import { and, desc, eq, gte, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { carrierAccountClients, carrierAccounts } from '../db/schema/carrier-accounts';
 import { clients } from '../db/schema/clients';
@@ -70,6 +70,11 @@ function requestedStoreId(c: Context) {
   return parsePositiveInt(c.req.query('storeId'));
 }
 
+function requestedSearch(c: Context) {
+  const value = c.req.query('search')?.trim();
+  return value ? value.slice(0, 120) : '';
+}
+
 function clientScopePredicate(scope: ClientPortalScope): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   if (!scope.clientIds.length) return sql`false`;
@@ -102,6 +107,91 @@ function activeClientPredicate(orderTable: typeof orders = orders): SQL {
       )
     )
   )`;
+}
+
+function visibleAwaitingOrdersPredicate(orderTable: typeof orders = orders): SQL {
+  return sql`not (
+    (
+      coalesce(${orderTable.orderNumber}, '') ilike 'SEAuto-%'
+      or coalesce(${orderTable.raw}->>'orderNumber', '') ilike 'SEAuto-%'
+      or coalesce(${orderTable.raw}->>'orderKey', '') ilike 'SEAuto-%'
+    )
+    and jsonb_array_length(
+      case when jsonb_typeof(${orderTable.items}) = 'array' then ${orderTable.items} else '[]'::jsonb end
+    ) = 0
+    and coalesce((${orderTable.orderTotal})::numeric, 0) = 0
+    and not exists (
+      select 1
+      from order_items visible_item
+      where visible_item.order_id = ${orderTable.id}
+        and coalesce(visible_item.quantity, 0) > 0
+        and (
+          trim(coalesce(visible_item.sku, '')) <> ''
+          or trim(coalesce(visible_item.name, '')) <> ''
+        )
+    )
+  )`;
+}
+
+function orderSearchPredicate(search: string): SQL | undefined {
+  if (!search) return undefined;
+  const pattern = `%${search}%`;
+  return or(
+    ilike(orders.orderNumber, pattern),
+    ilike(orders.externalOrderId, pattern),
+    ilike(orders.shipToName, pattern),
+    ilike(orders.customerEmail, pattern),
+    ilike(orders.shipToCity, pattern),
+    ilike(orders.shipToState, pattern),
+    ilike(orders.carrierCode, pattern),
+    ilike(orders.serviceCode, pattern),
+    ilike(clients.name, pattern),
+    sql`${orders.id}::text ilike ${pattern}`,
+    sql`exists (
+      select 1
+      from ${orderItems} order_search_item
+      where order_search_item.order_id = ${orders.id}
+        and (
+          order_search_item.sku ilike ${pattern}
+          or order_search_item.name ilike ${pattern}
+        )
+    )`,
+    sql`exists (
+      select 1
+      from ${shipments} order_search_shipment
+      where order_search_shipment.order_id = ${orders.id}
+        and (
+          order_search_shipment.tracking_number ilike ${pattern}
+          or order_search_shipment.label_tracking ilike ${pattern}
+        )
+    )`,
+  );
+}
+
+function shipmentSearchPredicate(search: string): SQL | undefined {
+  if (!search) return undefined;
+  const pattern = `%${search}%`;
+  return or(
+    ilike(shipments.trackingNumber, pattern),
+    ilike(shipments.labelTracking, pattern),
+    ilike(shipments.carrierCode, pattern),
+    ilike(shipments.serviceCode, pattern),
+    ilike(clients.name, pattern),
+    ilike(orders.orderNumber, pattern),
+    ilike(orders.externalOrderId, pattern),
+    sql`${shipments.id}::text ilike ${pattern}`,
+  );
+}
+
+function inventorySearchPredicate(search: string): SQL | undefined {
+  if (!search) return undefined;
+  const pattern = `%${search}%`;
+  return or(
+    ilike(inventory.sku, pattern),
+    ilike(inventory.name, pattern),
+    ilike(clients.name, pattern),
+    sql`${inventory.id}::text ilike ${pattern}`,
+  );
 }
 
 function orderScopePredicate(
@@ -401,10 +491,13 @@ app.get('/orders', async (c) => {
   const status = c.req.query('status');
   const clientId = parsePositiveInt(c.req.query('clientId'));
   const storeId = parsePositiveInt(c.req.query('storeId'));
+  const search = requestedSearch(c);
   const where = and(
     orderScopePredicate(scope, { clientId, storeId }),
     activeClientPredicate(),
     status ? eq(orders.orderStatus, status) : undefined,
+    status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined,
+    orderSearchPredicate(search),
   );
   const rows = await db
     .select({
@@ -420,9 +513,13 @@ app.get('/orders', async (c) => {
     .orderBy(desc(orders.orderDate), desc(orders.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRows = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
+  const countRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .leftJoin(clients, eq(clients.id, orders.clientId))
+    .where(where);
   const count = countRows[0]?.count ?? rows.length;
-  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId });
+  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, search });
   return c.json({
     data: rows.map((row) =>
       toPortalOrderDto(
@@ -446,6 +543,7 @@ app.get('/orders/awaiting-active-count', async (c) => {
     orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
     activeClientPredicate(),
     eq(orders.orderStatus, 'awaiting_shipment'),
+    visibleAwaitingOrdersPredicate(),
     gte(orders.orderDate, liveAwaitingSince()),
     eq(orders.externallyShipped, false),
     sql`coalesce((${orders.raw}->>'externallyFulfilled')::boolean, false) = false`,
@@ -494,9 +592,11 @@ app.get('/shipments', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
+  const search = requestedSearch(c);
   const where = and(
     eq(shipments.voided, false),
-    shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) })
+    shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    shipmentSearchPredicate(search),
   );
   const rows = await db
     .select({
@@ -511,9 +611,14 @@ app.get('/shipments', async (c) => {
     .orderBy(desc(shipments.shipDate), desc(shipments.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRows = await db.select({ count: sql<number>`count(*)::int` }).from(shipments).where(where);
+  const countRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(shipments)
+    .leftJoin(clients, eq(clients.id, shipments.clientId))
+    .leftJoin(orders, eq(orders.id, shipments.orderId))
+    .where(where);
   const count = countRows[0]?.count ?? rows.length;
-  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize });
+  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search });
   return c.json({
     data: rows.map((row) => toPortalShipmentDto({ ...row.shipment, clientName: row.clientName, storeName: row.clientName, storeId: row.storeId })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
@@ -525,9 +630,11 @@ app.get('/inventory', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
+  const search = requestedSearch(c);
   const where = and(
     eq(inventory.active, true),
-    inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) })
+    inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    inventorySearchPredicate(search),
   );
   const rows = await db
     .select({
@@ -541,9 +648,13 @@ app.get('/inventory', async (c) => {
     .orderBy(desc(inventory.updatedAt), desc(inventory.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRows = await db.select({ count: sql<number>`count(*)::int` }).from(inventory).where(where);
+  const countRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(inventory)
+    .leftJoin(clients, eq(clients.id, inventory.clientId))
+    .where(where);
   const count = countRows[0]?.count ?? rows.length;
-  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize });
+  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search });
   return c.json({
     data: rows.map((row) => toPortalInventoryDto({ ...row.item, clientName: row.clientName, storeName: row.clientName, storeIds: row.storeIds })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },

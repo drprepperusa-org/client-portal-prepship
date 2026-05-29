@@ -18,10 +18,10 @@ export const portalQueryKeys = {
   root: ['portal'] as const,
   dashboard: (token?: string | null) => ['portal', portalSessionKey(token), 'dashboard'] as const,
   dailyCounts: (token?: string | null) => ['portal', portalSessionKey(token), 'daily-counts'] as const,
-  orders: (token?: string | null, status?: OrderStatus | 'all') => ['portal', portalSessionKey(token), 'orders', status ?? 'all'] as const,
+  orders: (token?: string | null, status?: OrderStatus | 'all', search = '') => ['portal', portalSessionKey(token), 'orders', status ?? 'all', search] as const,
   awaitingActiveOrderCount: (token?: string | null) => ['portal', portalSessionKey(token), 'orders', 'awaiting-active-count'] as const,
-  shipments: (token?: string | null) => ['portal', portalSessionKey(token), 'shipments'] as const,
-  inventory: (token?: string | null) => ['portal', portalSessionKey(token), 'inventory'] as const,
+  shipments: (token?: string | null, search = '') => ['portal', portalSessionKey(token), 'shipments', search] as const,
+  inventory: (token?: string | null, search = '') => ['portal', portalSessionKey(token), 'inventory', search] as const,
   billing: (token?: string | null, range?: { from: string; to: string }) =>
     ['portal', portalSessionKey(token), 'billing', range?.from ?? 'default', range?.to ?? 'default'] as const,
   invoiceDetails: (token?: string | null, range?: { from: string; to: string }) =>
@@ -175,11 +175,11 @@ function demoInvoiceDetails() {
   };
 }
 
-export function useOrdersQuery(token: string | null, status: OrderStatus | 'all' = 'all') {
+export function useOrdersQuery(token: string | null, status: OrderStatus | 'all' = 'all', search = '') {
   return useQuery({
-    queryKey: portalQueryKeys.orders(token, status),
+    queryKey: portalQueryKeys.orders(token, status, search.trim()),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.clientPortal.orders(token!, { status })),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoOrdersForStatus(status)) : portalApi.clientPortal.orders(token!, { status, search: search.trim() })),
   });
 }
 
@@ -195,20 +195,20 @@ export function useAwaitingActiveOrderCountQuery(token: string | null) {
   });
 }
 
-export function useShipmentsQuery(token: string | null) {
+export function useShipmentsQuery(token: string | null, search = '') {
   return useQuery({
-    queryKey: portalQueryKeys.shipments(token),
+    queryKey: portalQueryKeys.shipments(token, search.trim()),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoShipments) : portalApi.clientPortal.shipments(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoShipments) : portalApi.clientPortal.shipments(token!, { search: search.trim() })),
     placeholderData: keepPreviousData,
   });
 }
 
-export function useInventoryQuery(token: string | null) {
+export function useInventoryQuery(token: string | null, search = '') {
   return useQuery({
-    queryKey: portalQueryKeys.inventory(token),
+    queryKey: portalQueryKeys.inventory(token, search.trim()),
     enabled: enabled(token),
-    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoInventory) : portalApi.clientPortal.inventory(token!)),
+    queryFn: () => (demoAllowed(token!) ? Promise.resolve(demoInventory) : portalApi.clientPortal.inventory(token!, { search: search.trim() })),
     placeholderData: keepPreviousData,
   });
 }
@@ -470,9 +470,9 @@ export function useBackfillMutation(token: string | null) {
       void client.invalidateQueries({ queryKey: portalQueryKeys.syncStatus(token) });
       void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard(token) });
       void client.invalidateQueries({ queryKey: portalQueryKeys.dailyCounts(token) });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.orders(token, 'all') });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.shipments(token) });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.inventory(token) });
+      void client.invalidateQueries({ queryKey: ['portal', portalSessionKey(token), 'orders'] });
+      void client.invalidateQueries({ queryKey: ['portal', portalSessionKey(token), 'shipments'] });
+      void client.invalidateQueries({ queryKey: ['portal', portalSessionKey(token), 'inventory'] });
       void client.invalidateQueries({ queryKey: portalQueryKeys.products(token) });
       void client.invalidateQueries({ queryKey: portalQueryKeys.analysisOverview(token) });
       void client.invalidateQueries({ queryKey: portalQueryKeys.dailyShipments(token) });

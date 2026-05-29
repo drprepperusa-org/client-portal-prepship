@@ -415,11 +415,12 @@ export const portalApi = {
         storeId: firstScopedStoreId(token),
       });
     },
-    shipments(token: string, options: { page?: number } = {}) {
+    shipments(token: string, options: { search?: string; page?: number } = {}) {
       return apiGetScopedByClient<Paginated<PortalShipment>>(token, '/api/client-portal/shipments', {
         page: options.page ?? 1,
         pageSize: 25,
         voided: false,
+        search: options.search,
       });
     },
     inventory(token: string, options: { search?: string; lowStock?: boolean; page?: number } = {}) {
@@ -518,11 +519,12 @@ export const portalApi = {
       search: options.search,
     });
   },
-  shipments(token: string, options: { page?: number } = {}) {
+  shipments(token: string, options: { search?: string; page?: number } = {}) {
     return apiGet<Paginated<PortalShipment>>(token, '/shipments', {
       page: options.page ?? 1,
       pageSize: 25,
       voided: false,
+      search: options.search,
     });
   },
   inventory(token: string, options: { search?: string; lowStock?: boolean; page?: number } = {}) {

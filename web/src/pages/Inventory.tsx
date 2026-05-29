@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { EmptyState, ErrorPanel, PageHeader, Panel, RefreshButton } from '../components/PortalPrimitives';
@@ -17,10 +18,11 @@ function clientRows(value: unknown): PortalClient[] {
 
 export default function Inventory() {
   const auth = useAuth();
+  const [urlParams] = useSearchParams();
   const clients = useClientsQuery(auth.accessToken);
-  const inventory = useInventoryQuery(auth.accessToken);
+  const search = urlParams.get('q') ?? '';
+  const inventory = useInventoryQuery(auth.accessToken, search);
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
-  const [search, setSearch] = useState('');
   const [storeSearch, setStoreSearch] = useState('');
   const isFirstLoad = inventory.isLoading && !inventory.data;
   const stores = clientRows(clients.data);

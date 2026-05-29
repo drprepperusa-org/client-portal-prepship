@@ -5,7 +5,7 @@ import { Bell, ChevronDown, Menu, Store, X } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import ClientPortalSidebar, { clientPortalNavItems } from './ui/sidebar-component';
 import { AppleSpotlight } from './ui/apple-spotlight';
-import { SearchBarButton } from './ui/search-bar';
+import SearchBar from './ui/search-bar';
 
 export default function PortalLayout() {
   const auth = useAuth();
@@ -15,6 +15,7 @@ export default function PortalLayout() {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
   const [openMenu, setOpenMenu] = useState<'stores' | 'notifications' | 'account' | null>(null);
   const activeTitle =
     clientPortalNavItems.find((item) =>
@@ -34,6 +35,24 @@ export default function PortalLayout() {
     setMobileNavOpen(false);
     setOpenMenu(null);
   }, [location.pathname]);
+
+  useEffect(() => {
+    setGlobalSearch(new URLSearchParams(location.search).get('q') ?? '');
+  }, [location.search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams(location.search);
+      const current = params.get('q') ?? '';
+      const next = globalSearch.trim();
+      if (current === next) return;
+      if (next) params.set('q', next);
+      else params.delete('q');
+      const query = params.toString();
+      navigate(`${location.pathname}${query ? `?${query}` : ''}`, { replace: true });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [globalSearch, location.pathname, location.search, navigate]);
 
   // Global ⌘K / Ctrl+K opens spotlight
   useEffect(() => {
@@ -62,6 +81,20 @@ export default function PortalLayout() {
     },
     [navigate],
   );
+
+  const submitGlobalSearch = useCallback(() => {
+    const query = globalSearch.trim();
+    if (!query) return;
+    const searchableRoute = [
+      '/dashboard/orders',
+      '/dashboard/shipments',
+      '/dashboard/inventory',
+      '/dashboard/analysis',
+    ].some((path) => location.pathname.startsWith(path));
+    if (!searchableRoute) {
+      navigate(`/dashboard/orders?q=${encodeURIComponent(query)}`);
+    }
+  }, [globalSearch, location.pathname, navigate]);
 
   function toggleMenu(menu: 'stores' | 'notifications' | 'account') {
     setOpenMenu((current) => (current === menu ? null : menu));
@@ -100,12 +133,40 @@ export default function PortalLayout() {
             <strong>{activeTitle.label}</strong>
           </div>
           <div className="flex flex-1 items-center justify-center px-4">
-            <SearchBarButton
-              containerClassName="max-w-[560px]"
-              placeholder="Search orders, SKUs, shipments, PO's, tracking IDs…"
-              onClick={() => setSpotlightOpen(true)}
-              hint="⌘K"
-            />
+            <div className="relative w-full max-w-[560px]">
+              <SearchBar
+                containerClassName="w-full"
+                className="pr-20"
+                aria-label="Global dashboard search"
+                placeholder="Search orders, SKUs, shipments, PO's, tracking IDs..."
+                value={globalSearch}
+                onChange={(event) => setGlobalSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submitGlobalSearch();
+                  }
+                }}
+              />
+              {globalSearch ? (
+                <button
+                  type="button"
+                  aria-label="Clear global search"
+                  onClick={() => setGlobalSearch('')}
+                  className="absolute right-12 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-ink-3 transition hover:bg-surface hover:text-ink"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label="Open command palette"
+                onClick={() => setSpotlightOpen(true)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-3 shadow-sm transition hover:bg-surface-2 hover:text-ink"
+              >
+                Ctrl K
+              </button>
+            </div>
           </div>
           <div className="portal-topbar-actions">
             <div className="relative">
