@@ -638,7 +638,7 @@ function OrderRow({ order, selected }: { order: PortalOrder; selected: boolean }
   return (
     <tr data-selected={selected ? 'true' : 'false'}>
       <td>
-        <Link to="/dashboard/orders">{order.orderNumber ?? order.externalOrderId ?? `PS-${order.id}`}</Link>
+        <Link to={`/dashboard/orders?order=${encodeURIComponent(String(order.id))}`}>{order.orderNumber ?? order.externalOrderId ?? `PS-${order.id}`}</Link>
         <small>{safeDate(order.orderDate)}</small>
       </td>
       <td><StoreMark label={order.sourceProvider ?? order.clientName ?? 'PrepShip'} /></td>
@@ -648,7 +648,7 @@ function OrderRow({ order, selected }: { order: PortalOrder; selected: boolean }
       <td><span className={`portal-status-pill ${statusTone(order.orderStatus)}`}>{orderStatus(order.orderStatus)}</span></td>
       <td><CarrierMark carrier={order.label?.carrierCode ?? order.carrierCode} /></td>
       <td>{safeNumber(itemCount)}</td>
-      <td><Link to="/dashboard/orders" aria-label={`Open order ${order.orderNumber ?? order.id}`}><MoreHorizontal size={17} /></Link></td>
+      <td><Link to={`/dashboard/orders?order=${encodeURIComponent(String(order.id))}`} aria-label={`Open order ${order.orderNumber ?? order.id}`}><MoreHorizontal size={17} /></Link></td>
     </tr>
   );
 }

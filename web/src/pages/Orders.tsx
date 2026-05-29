@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
@@ -80,6 +80,7 @@ export default function Orders() {
   const [activeClientId, setActiveClientId] = useState<number | 'all'>('all');
   const [storeSearch, setStoreSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PortalOrder | null>(null);
+  const handledOrderParamRef = useRef<string | null>(null);
   const search = urlParams.get('q') ?? '';
   const orders = useOrdersQuery(auth.accessToken, activeStatus, search);
   const awaitingActiveOrders = useAwaitingActiveOrderCountQuery(auth.accessToken);
@@ -146,6 +147,26 @@ export default function Orders() {
     () => (selectedOrder ? shipmentForOrder(selectedOrder, shipments.data?.data ?? []) : null),
     [selectedOrder, shipments.data],
   );
+
+  // Deep-link support: /dashboard/orders?order=<id|number> opens that
+  // order's drawer once it has loaded into the current row set (e.g. when
+  // navigating from the Overview Priority Order Queue). Tracked by a ref so
+  // closing the drawer doesn't immediately reopen it, and a new ?order=
+  // value re-triggers.
+  useEffect(() => {
+    const target = urlParams.get('order');
+    if (!target || handledOrderParamRef.current === target) return;
+    const match = rows.find(
+      (order) =>
+        String(order.id) === target ||
+        order.orderNumber === target ||
+        order.externalOrderId === target,
+    );
+    if (match) {
+      setSelectedOrder(match);
+      handledOrderParamRef.current = target;
+    }
+  }, [urlParams, rows]);
 
   function itemImage(item: OrderItem | null | undefined) {
     if (!item) return null;
@@ -272,7 +293,7 @@ export default function Orders() {
         accessorFn: (order) => orderWeightOz(order) ?? 0,
         cell: ({ row }) => {
           const weight = orderWeightOz(row.original);
-          return weight == null ? <MutedAction label="add dims" /> : <span className="portal-order-muted-value">{formatWeight(weight)}</span>;
+          return weight == null ? <MutedAction label="pending" /> : <span className="portal-order-muted-value">{formatWeight(weight)}</span>;
         },
       },
       {
@@ -299,7 +320,7 @@ export default function Orders() {
         accessorFn: (order) => bestRateAmount(order) ?? 0,
         cell: ({ row }) => {
           const rate = bestRateAmount(row.original);
-          return rate == null ? <MutedAction label="add dims" /> : <span className="portal-order-rate">{safeMoney(rate)}</span>;
+          return rate == null ? <MutedAction label="pending" /> : <span className="portal-order-rate">{safeMoney(rate)}</span>;
         },
       },
     ],
@@ -631,7 +652,7 @@ function MutedAction({ label }: { label: string }) {
 function ShippingAccountCell({ order }: { order: PortalOrder }) {
   const account = shippingAccountName(order);
   const service = serviceName(order);
-  if (!account && !service) return <MutedAction label="add dims" />;
+  if (!account && !service) return <MutedAction label="pending" />;
   return (
     <div className="portal-order-shipping-account">
       <strong>{account || carrierCode(order) || 'Carrier account'}</strong>
@@ -641,7 +662,7 @@ function ShippingAccountCell({ order }: { order: PortalOrder }) {
 }
 
 function CarrierLogo({ carrier }: { carrier: string }) {
-  if (!carrier) return <MutedAction label="add dims" />;
+  if (!carrier) return <MutedAction label="pending" />;
   const normalized = carrier.toLowerCase();
   if (normalized.includes('ups')) {
     return <span className="portal-order-carrier-logo is-ups" aria-label="UPS"><SiUps aria-hidden="true" /></span>;

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, ChevronDown, Menu, Store, X } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { useClientsQuery } from '../lib/portalQueries';
 import ClientPortalSidebar, { clientPortalNavItems } from './ui/sidebar-component';
 import { AppleSpotlight } from './ui/apple-spotlight';
 import SearchBar from './ui/search-bar';
@@ -17,6 +18,9 @@ export default function PortalLayout() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [openMenu, setOpenMenu] = useState<'stores' | 'notifications' | 'account' | null>(null);
+  const clients = useClientsQuery(auth.accessToken);
+  const scopedClients = Array.isArray(clients.data) ? clients.data : clients.data?.data ?? [];
+  const storeLabel = scopedClients.length === 1 ? scopedClients[0]?.name ?? 'All Stores' : 'All Stores';
   const activeTitle =
     clientPortalNavItems.find((item) =>
       item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
@@ -178,15 +182,25 @@ export default function PortalLayout() {
                 onClick={() => toggleMenu('stores')}
               >
                 <Store size={16} />
-                <span>All Stores</span>
+                <span>{storeLabel}</span>
                 <ChevronDown size={15} />
               </button>
               {openMenu === 'stores' ? (
-                <div aria-label="Store scope menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] w-72 rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
-                  <div className="text-[11px] font-semibold uppercase text-ink-3">Assigned scope</div>
-                  <div className="mt-2 rounded-md bg-surface-2 px-3 py-2">
-                    <div className="font-semibold">DrPrepperUSA</div>
-                    <div className="mt-0.5 text-xs text-ink-3">All stores visible to this portal session</div>
+                <div aria-label="Store scope menu" className="absolute right-0 top-[calc(100%+8px)] z-[120] max-h-80 w-72 overflow-auto rounded-md border border-line bg-surface p-3 text-sm text-ink shadow-lg">
+                  <div className="text-[11px] font-semibold uppercase text-ink-3">Assigned scope · {scopedClients.length || 0} store{scopedClients.length === 1 ? '' : 's'}</div>
+                  <div className="mt-2 space-y-1.5">
+                    {scopedClients.length === 0 ? (
+                      <div className="rounded-md bg-surface-2 px-3 py-2 text-xs text-ink-3">
+                        {clients.isLoading ? 'Loading stores…' : 'No stores are assigned to this portal session.'}
+                      </div>
+                    ) : (
+                      scopedClients.map((client) => (
+                        <div key={client.id ?? client.name} className="rounded-md bg-surface-2 px-3 py-2">
+                          <div className="font-semibold">{client.name ?? `Client ${client.id ?? ''}`}</div>
+                          <div className="mt-0.5 text-xs text-ink-3">Visible to this portal session</div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               ) : null}
