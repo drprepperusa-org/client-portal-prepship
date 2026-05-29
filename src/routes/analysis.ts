@@ -22,7 +22,7 @@ const EXPEDITED_SERVICES = [
   'fedex_priority_overnight', 'fedex_standard_overnight', 'fedex_first_overnight',
 ] as const;
 
-const EXPEDITED_SERVICES_SQL = sql`ARRAY[${sql.join(EXPEDITED_SERVICES.map((s) => sql`${s}`), sql`, `)}]::text[]`;
+export const EXPEDITED_SERVICES_SQL = sql`ARRAY[${sql.join(EXPEDITED_SERVICES.map((s) => sql`${s}`), sql`, `)}]::text[]`;
 
 const app = new Hono();
 

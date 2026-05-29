@@ -9,6 +9,7 @@ import { orderOverrides, orders } from '../db/schema/orders';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
 import { billingSummary } from '../services/billing';
+import { getSkuOrdersForSku } from '../services/sku-orders';
 import { getSkuBreakdownFromOrderItems } from './analysis';
 import {
   HERITAGE_PREP_FEE_CLIENT_NAME,
@@ -209,6 +210,26 @@ function orderScopePredicate(
     filters.clientId ? eq(orders.clientId, filters.clientId) : undefined,
     filters.storeId ? eq(orders.storeId, filters.storeId) : undefined,
   );
+}
+
+// Raw counterpart of orderScopePredicate, bound to the orders table aliased
+// `o`. Used by analytics SQL (e.g. /analysis/sku-orders) that scans
+// order_items joined to `orders o` rather than the drizzle `orders` ref.
+// Returns undefined when the session is unrestricted (full visibility).
+function rawOrderScopeForAlias(
+  scope: ClientPortalScope,
+  filters: { clientId?: number | null; storeId?: number | null } = {}
+): SQL | undefined {
+  if (!scope.isRestricted) return undefined;
+  const predicates: SQL[] = [];
+  if (scope.clientIds.length) predicates.push(sql`o.client_id = any(${intArrayLiteral(scope.clientIds)})`);
+  if (scope.storeIds.length) predicates.push(sql`o.store_id = any(${intArrayLiteral(scope.storeIds)})`);
+  if (!predicates.length) return sql`false`;
+  const scopePredicate = predicates.length === 1 ? predicates[0]! : sql`(${sql.join(predicates, sql` or `)})`;
+  const extra: SQL[] = [scopePredicate];
+  if (filters.clientId) extra.push(sql`o.client_id = ${filters.clientId}`);
+  if (filters.storeId) extra.push(sql`o.store_id = ${filters.storeId}`);
+  return extra.length === 1 ? extra[0]! : sql`(${sql.join(extra, sql` and `)})`;
 }
 
 function inventoryScopePredicate(
@@ -687,6 +708,43 @@ app.get('/analysis', async (c) => {
     totalSkus: result.totalSkus,
     totalOrders: result.totalOrders,
   });
+});
+
+// Per-SKU "Recent Orders" payload for the Analysis page detail drawer.
+// Portal counterpart of the operator GET /inventory/:id/sku-orders route —
+// it resolves the inventory row *within the caller's scope* (so a client can
+// only inspect their own SKUs) and feeds the shared READ-only analytics
+// helper a tenant-scoped order predicate.
+app.get('/analysis/sku-orders', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const inventoryId = parsePositiveInt(c.req.query('inventoryId') ?? c.req.query('invSkuId'));
+  if (!inventoryId) return c.json({ error: 'inventoryId is required' }, 400);
+
+  const to = parseDate(c.req.query('dateTo')) ?? new Date();
+  const from = parseDate(c.req.query('dateFrom')) ?? new Date(to.getTime() - 29 * 86_400_000);
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
+
+  const [item] = await db
+    .select({ sku: inventory.sku, name: inventory.name, clientId: inventory.clientId })
+    .from(inventory)
+    .where(and(eq(inventory.id, inventoryId), inventoryScopePredicate(scope, { clientId, storeId })))
+    .limit(1);
+  if (!item) return c.json({ error: 'Inventory item not found' }, 404);
+
+  const result = await getSkuOrdersForSku({
+    sku: item.sku,
+    name: item.name,
+    clientId: item.clientId,
+    dateFrom: asTimestamp(from),
+    dateTo: asTimestamp(to),
+    canViewFinancials: scope.canViewFinancials,
+    orderScopeSql: rawOrderScopeForAlias(scope, { clientId, storeId }),
+  });
+
+  await recordPortalAudit('portal.analysis.sku_orders', scope, { inventoryId, orders: result.orders.length });
+  return c.json(result);
 });
 
 app.get('/daily-shipments', async (c) => {

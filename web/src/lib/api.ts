@@ -452,6 +452,17 @@ export const portalApi = {
         storeId: firstScopedStoreId(token),
       });
     },
+    skuOrders(token: string, inventoryId: number, range = defaultRange()) {
+      const { dateFrom, dateTo } = localDateTimeRange(range);
+      // Not paginated, and the portal session scopes orders server-side, so a
+      // plain GET is correct here (no per-client fan-out / data merging).
+      return apiGet<AnalysisSkuOrdersResponse>(token, '/api/client-portal/analysis/sku-orders', {
+        inventoryId,
+        dateFrom,
+        dateTo,
+        storeId: firstScopedStoreId(token),
+      });
+    },
     dailyShipments(token: string, range = defaultRange()) {
       const { dateFrom, dateTo } = localDateTimeRange(range);
       return apiGet<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>(

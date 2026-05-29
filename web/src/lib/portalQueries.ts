@@ -362,7 +362,7 @@ export function useAnalysisSkuOrdersQuery(token: string | null, inventoryId: num
     queryFn: () =>
       demoAllowed(token!)
         ? Promise.resolve({ sku: '', totalUnits: 0, standardShipCount: 0, standardShippingTotal: 0, avgStandardShippingCost: 0, dailySales: [], orders: [] })
-        : portalApi.skuOrders(token!, inventoryId!, range),
+        : portalApi.clientPortal.skuOrders(token!, inventoryId!, range),
     placeholderData: keepPreviousData,
   });
 }
