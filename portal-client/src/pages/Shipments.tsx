@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, MapPin, Copy, Building2 } from 'lucide-react';
+import { Search, MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
@@ -24,6 +24,21 @@ function clientAccent(name: string | null): Accent {
   return CLIENT_ACCENTS[h];
 }
 
+/** Build a carrier tracking-page URL from the carrier code + tracking number. */
+function trackingUrl(carrierCode: string | null | undefined, tracking: string | null | undefined): string | null {
+  if (!tracking) return null;
+  const c = (carrierCode ?? '').toLowerCase();
+  const t = encodeURIComponent(tracking);
+  if (c.includes('ups')) return `https://www.ups.com/track?loc=en_US&tracknum=${t}`;
+  if (c.includes('usps') || c.includes('stamps')) return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${t}`;
+  if (c.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${t}`;
+  if (c.includes('dhl')) return `https://www.dhl.com/us-en/home/tracking/tracking-parcel.html?submit=1&tracking-id=${t}`;
+  // Universal fallback (17track) for unknown / custom carriers.
+  return `https://t.17track.net/en#nums=${t}`;
+}
+
+const STATUS_OPTIONS = ['In Transit', 'Label Created', 'Voided'] as const;
+
 export default function Shipments() {
   const toast = useToast();
   const { clientId: globalClientId } = usePortalFilters();
@@ -33,6 +48,7 @@ export default function Shipments() {
   // Per-page client filter (like Orders' client switcher) for fast scoping.
   // undefined = follow the global "All clients" topbar filter.
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string>('');
   const [selected, setSelected] = useState<PortalShipment | null>(null);
   const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
@@ -40,7 +56,10 @@ export default function Shipments() {
   useEffect(() => setPage(1), [debouncedQ, effectiveClientId]);
 
   const query = useShipments({ search: debouncedQ, page, clientId: effectiveClientId });
-  const rows = query.data?.data ?? [];
+  const allRows = query.data?.data ?? [];
+  // Delivery status is derived (Voided / In Transit / Label Created), so this
+  // filters the loaded page client-side.
+  const rows = statusFilter ? allRows.filter((s) => shipmentStatusMeta(s).label === statusFilter) : allRows;
   const pg = query.data?.pagination;
 
   const showClientFilter = clients.length > 1;
@@ -57,7 +76,25 @@ export default function Shipments() {
       },
       { key: 'carrier', header: 'Carrier', defaultWidth: 110, className: 'text-center', render: (s) => (s.carrierCode ? <CarrierBadge code={s.carrierCode} /> : <span className="text-ink-3">—</span>), sortAccessor: (s) => s.carrierCode ?? '' },
       { key: 'service', header: 'Service', defaultWidth: 160, render: (s) => <span className="text-ink-3">{s.serviceCode ?? '—'}</span>, sortAccessor: (s) => s.serviceCode ?? '' },
-      { key: 'tracking', header: 'Tracking #', defaultWidth: 180, render: (s) => <span className="font-mono text-xs text-ink-2">{s.trackingNumber ?? s.labelTracking ?? '—'}</span>, sortAccessor: (s) => s.trackingNumber ?? s.labelTracking ?? '' },
+      {
+        key: 'tracking',
+        header: 'Tracking #',
+        defaultWidth: 190,
+        render: (s) => {
+          const tn = s.trackingNumber ?? s.labelTracking;
+          const url = trackingUrl(s.carrierCode, tn);
+          if (!tn) return <span className="text-ink-3">—</span>;
+          return url ? (
+            <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="focus-ring inline-flex items-center gap-1 font-mono text-xs text-brand-700 hover:text-brand-600 hover:underline" title="Track on carrier site">
+              <span className="truncate">{tn}</span>
+              <ExternalLink size={12} className="shrink-0" />
+            </a>
+          ) : (
+            <span className="font-mono text-xs text-ink-2">{tn}</span>
+          );
+        },
+        sortAccessor: (s) => s.trackingNumber ?? s.labelTracking ?? '',
+      },
       {
         key: 'status',
         header: 'Status',
@@ -81,23 +118,41 @@ export default function Shipments() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tracking, carrier, order…" aria-label="Search shipments" className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90" />
         </label>
 
-        {showClientFilter && (
-          <label className="relative flex items-center sm:shrink-0">
-            <Building2 size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
+        <div className="flex items-center gap-2 sm:shrink-0">
+          <label className="relative flex items-center">
+            <Truck size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
             <select
-              value={clientFilter ?? ''}
-              onChange={(e) => setClientFilter(e.target.value ? Number(e.target.value) : undefined)}
-              aria-label="Filter by client"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filter by status"
               className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
             >
-              <option value="">All clients</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name ?? `Client ${c.id}`}</option>
+              <option value="">All statuses</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
               ))}
             </select>
             <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
           </label>
-        )}
+
+          {showClientFilter && (
+            <label className="relative flex items-center">
+              <Building2 size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
+              <select
+                value={clientFilter ?? ''}
+                onChange={(e) => setClientFilter(e.target.value ? Number(e.target.value) : undefined)}
+                aria-label="Filter by client"
+                className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
+              >
+                <option value="">All clients</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name ?? `Client ${c.id}`}</option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
+            </label>
+          )}
+        </div>
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
@@ -142,6 +197,17 @@ export default function Shipments() {
                 </Button>
               )}
             </div>
+
+            {trackingUrl(selected.carrierCode, selected.trackingNumber ?? selected.labelTracking) && (
+              <a
+                href={trackingUrl(selected.carrierCode, selected.trackingNumber ?? selected.labelTracking)!}
+                target="_blank"
+                rel="noreferrer"
+                className="focus-ring flex w-full items-center justify-center gap-2 rounded-glass-sm bg-gradient-to-br from-brand-400 to-brand-600 py-2.5 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95"
+              >
+                <ExternalLink size={15} /> Track package
+              </a>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Carrier" value={selected.carrierCode ?? '—'} />

@@ -58,6 +58,9 @@ export function useReportsRange(dateFrom: string, dateTo: string) {
 }
 /** When billing line items were last (re)generated via the portal. */
 export const useBillingStatus = () => useTokenQuery(['billing-status'], portalApi.billingStatus);
+
+/** Carrier rate markups (Settings → Markups). */
+export const useMarkups = () => useTokenQuery(['markups'], portalApi.markups);
 export function useInvoiceDetails() {
   const { days, clientId } = usePortalFilters();
   return useTokenQuery(['invoice-details', days, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, days, clientId));

@@ -27,7 +27,7 @@ import {
   getLatestBackfillJob,
   type BackfillJob,
 } from '../services/rates-backfill';
-import { getProviderAccountNicknames } from '../services/rates';
+import { getProviderAccountNicknames, listMarkupCarrierGroups } from '../services/rates';
 import { isAdminEmail } from '../lib/admin-emails';
 import {
   toPortalInboundDto,
@@ -981,6 +981,61 @@ app.post('/billing/generate', async (c) => {
 });
 
 const BILLING_LAST_GENERATED_KEY = 'billing_last_generated';
+
+// ── Carrier rate markups (Settings → Markups) ───────────────────────────────
+// Per-carrier-account % or flat markup applied to live rate quotes (the profit
+// layer). Stored as settings['markup.<carrierId>'] = {type:'pct'|'flat',value}.
+// Admin-only. rates.ts reads markup.% at quote time.
+function requireBillingAdmin(c: Context) {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials || (!scope.isGlobal && !scope.permissions.includes('settings:write'))) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  return scope;
+}
+
+app.get('/markups', async (c) => {
+  const scope = requireBillingAdmin(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const rows = await db.select({ key: settings.key, value: settings.value }).from(settings).where(ilike(settings.key, 'markup.%'));
+  const markups: Record<string, { type: 'pct' | 'flat'; value: number }> = {};
+  for (const r of rows) {
+    const id = r.key.slice('markup.'.length);
+    if (!id || !r.value) continue;
+    try {
+      const v = JSON.parse(r.value) as { type?: string; value?: unknown };
+      markups[id] = { type: v.type === 'flat' ? 'flat' : 'pct', value: Number(v.value) || 0 };
+    } catch {
+      /* skip malformed */
+    }
+  }
+  const groups = await listMarkupCarrierGroups();
+  await recordPortalAudit('portal.markups.list', scope, { count: Object.keys(markups).length, groups: groups.length });
+  return c.json({ groups, markups });
+});
+
+app.put('/markups', async (c) => {
+  const scope = requireBillingAdmin(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const body = (await c.req.json().catch(() => ({}))) as { carrierId?: number | string; type?: string; value?: number | null };
+  const id = body.carrierId == null ? '' : String(body.carrierId).trim();
+  if (!id) return c.json({ error: 'carrierId is required' }, 400);
+  const key = `markup.${id}`;
+
+  if (body.value === null) {
+    await db.delete(settings).where(eq(settings.key, key));
+    await recordPortalAudit('portal.markups.delete', scope, { carrierId: id });
+    return c.json({ ok: true, removed: true });
+  }
+
+  const type = body.type === 'flat' ? 'flat' : 'pct';
+  const value = Math.max(0, Number(body.value) || 0);
+  const val = JSON.stringify({ type, value });
+  await db.insert(settings).values({ key, value: val }).onConflictDoUpdate({ target: settings.key, set: { value: val } });
+  await recordPortalAudit('portal.markups.set', scope, { carrierId: id, type, value });
+  return c.json({ ok: true, markup: { type, value } });
+});
 
 // When billing was last (re)generated via the portal.
 app.get('/billing/status', async (c) => {

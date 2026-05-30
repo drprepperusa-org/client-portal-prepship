@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Search, RefreshCw, Check, Zap, AlertCircle } from 'lucide-react';
-import { Thumb } from '@/components/ui/Thumb';
+import { HoverZoomImage } from '@/components/ui/HoverZoomImage';
 import { GlassPanel } from '@/components/ui/Glass';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
@@ -174,7 +174,7 @@ export default function Orders() {
         <div className="space-y-1">
           {(o.items.length ? o.items.slice(0, 4) : [{ name: '—', sku: null, quantity: null, imageUrl: null }]).map((it, i) => (
             <div key={i} className="flex items-center gap-2">
-              <Thumb src={it.imageUrl} alt={it.name ?? ''} size={20} rounded="rounded" iconSize={11} />
+              <HoverZoomImage src={it.imageUrl} alt={it.name ?? ''} size={28} zoom={240} />
               <span className="block truncate text-ink-2" title={it.name ?? ''}>{it.name ?? '—'}</span>
               {Number(it.quantity) > 1 && <span className="shrink-0 rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-3">×{it.quantity}</span>}
             </div>

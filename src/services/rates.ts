@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { eq, like, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, like, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { clients } from '../db/schema/clients';
+import { carrierAccounts } from '../db/schema/carrier-accounts';
 import { rateCache } from '../db/schema/rates';
 import { settings } from '../db/schema/settings';
 import {
@@ -492,6 +493,89 @@ export async function getProviderAccountNicknames(
     if (m && override.nickname) map.set(Number(m[1]), override.nickname);
   }
   return map;
+}
+
+/** The curated carrier accounts that can carry a rate markup (id + code +
+ *  nickname), for the Settings → Markups editor. */
+export function listMarkupCarriers(): Array<{ id: number; carrierCode: string; nickname: string }> {
+  const out: Array<{ id: number; carrierCode: string; nickname: string }> = [];
+  for (const [carrierId, ov] of V2_CARRIER_ACCOUNT_OVERRIDES) {
+    const m = /se-(\d+)/i.exec(carrierId);
+    if (m) out.push({ id: Number(m[1]), carrierCode: ov.carrier_code, nickname: ov.nickname });
+  }
+  out.sort((a, b) => a.nickname.localeCompare(b.nickname));
+  return out;
+}
+
+export type MarkupCarrier = { id: number; carrierCode: string; nickname: string };
+export type MarkupCarrierGroup = { key: string; label: string; carriers: MarkupCarrier[] };
+
+/**
+ * Carrier accounts grouped for the Markups editor, matching v4's layout:
+ *   - one "ShipStation Carriers — {Client}" group per client that has a
+ *     ShipStation V2 key (its carriers come from GET /v2/carriers, 15-min
+ *     cached), and
+ *   - a "Direct Carrier Accounts" group for non-ShipStation providers.
+ * Falls back to the curated DR PREPPER set if nothing is wired.
+ */
+export async function listMarkupCarrierGroups(): Promise<MarkupCarrierGroup[]> {
+  const groups: MarkupCarrierGroup[] = [];
+
+  const toCarrierList = (carriers: CarrierInfo[]): MarkupCarrier[] => {
+    const seen = new Set<number>();
+    const list: MarkupCarrier[] = [];
+    for (const c of carriers) {
+      const m = /se-(\d+)/i.exec(c.carrier_id);
+      const id = m ? Number(m[1]) : NaN;
+      if (!Number.isFinite(id) || seen.has(id)) continue;
+      seen.add(id);
+      list.push({ id, carrierCode: c.carrier_code, nickname: c.nickname ?? c.carrier_code });
+    }
+    list.sort((a, b) => a.nickname.localeCompare(b.nickname));
+    return list;
+  };
+
+  // Main / default ShipStation account (env key) — DR PREPPER.
+  const mainList = toCarrierList(await getAllCarriers().catch(() => [] as CarrierInfo[]));
+  if (mainList.length) groups.push({ key: 'ss-main', label: 'ShipStation Carriers — DR PREPPER', carriers: mainList });
+
+  // Per-client ShipStation accounts (clients with their own V2 key).
+  const clientRows = await db
+    .select({ id: clients.id, name: clients.name, key: clients.ssApiKeyV2 })
+    .from(clients)
+    .where(and(isNotNull(clients.ssApiKeyV2), eq(clients.active, true), eq(clients.isTest, false)));
+
+  for (const cl of clientRows) {
+    if (!cl.key) continue;
+    const list = toCarrierList(await getAllCarriers(cl.key).catch(() => [] as CarrierInfo[]));
+    if (list.length) groups.push({ key: `ss-${cl.id}`, label: `ShipStation Carriers — ${cl.name}`, carriers: list });
+  }
+
+  // Drop duplicate groups (e.g. a client whose key == the env key) by id-set.
+  const seenSets = new Set<string>();
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const sig = groups[i]!.carriers.map((c) => c.id).sort((a, b) => a - b).join(',');
+    if (sig && seenSets.has(sig)) groups.splice(i, 1);
+    else seenSets.add(sig);
+  }
+
+  const direct = await db
+    .select({ id: carrierAccounts.id, provider: carrierAccounts.provider, label: carrierAccounts.label })
+    .from(carrierAccounts)
+    .where(and(eq(carrierAccounts.active, true), ne(carrierAccounts.provider, 'shipstation')))
+    .limit(100);
+  if (direct.length) {
+    groups.push({
+      key: 'direct',
+      label: 'Direct Carrier Accounts',
+      carriers: direct.map((d) => ({ id: d.id, carrierCode: d.provider, nickname: d.label ?? d.provider })),
+    });
+  }
+
+  if (groups.length === 0) {
+    groups.push({ key: 'ss-default', label: 'ShipStation Carriers — DR PREPPER', carriers: listMarkupCarriers() });
+  }
+  return groups;
 }
 
 type RateCredentialContext = {

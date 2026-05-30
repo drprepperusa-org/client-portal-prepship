@@ -91,6 +91,7 @@ async function apiSend<T>(method: string, token: string, path: string, body: unk
 
 export const apiPost = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('POST', token, path, body);
 export const apiPatch = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('PATCH', token, path, body);
+export const apiPut = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('PUT', token, path, body);
 
 /* ---------- Portal DTO types (mirror src/lib/client-portal/dto.ts) ---------- */
 export interface PortalOrder {
@@ -611,7 +612,28 @@ export const portalApi = {
     }),
   billingStatus: (token: string) =>
     apiGet<{ lastGenerated: BillingLastGenerated | null }>(token, '/api/client-portal/billing/status'),
+
+  /** Carrier rate markups (Settings → Markups). Admin-only. */
+  markups: (token: string) =>
+    apiGet<{ groups: MarkupGroup[]; markups: Record<string, MarkupValue> }>(token, '/api/client-portal/markups'),
+  setMarkup: (token: string, carrierId: number | string, body: MarkupValue | { value: null }) =>
+    apiPut<{ ok: boolean }>(token, '/api/client-portal/markups', { carrierId, ...body }),
 };
+
+export interface MarkupCarrier {
+  id: number;
+  carrierCode: string;
+  nickname: string;
+}
+export interface MarkupGroup {
+  key: string;
+  label: string;
+  carriers: MarkupCarrier[];
+}
+export interface MarkupValue {
+  type: 'pct' | 'flat';
+  value: number;
+}
 
 export interface BillingLastGenerated {
   at: string;

@@ -167,11 +167,11 @@ export function Select({ label, options, placeholder = 'Select…', searchable =
             {selected.length === 0 && placeholder}
             {multiple
               ? selected.map((v) => (
-                  <span key={v} className="inline-flex items-center gap-1 rounded-md bg-brand-100 px-1.5 py-0.5 text-xs font-medium text-brand-700">
-                    {labelFor(v)}
-                    <X size={11} className="cursor-pointer hover:text-rose-500" onClick={(e) => { e.stopPropagation(); toggle(v); }} />
-                  </span>
-                ))
+                <span key={v} className="inline-flex items-center gap-1 rounded-md bg-brand-100 px-1.5 py-0.5 text-xs font-medium text-brand-700">
+                  {labelFor(v)}
+                  <X size={11} className="cursor-pointer hover:text-rose-500" onClick={(e) => { e.stopPropagation(); toggle(v); }} />
+                </span>
+              ))
               : selected.length > 0 && <span className="truncate text-ink">{labelFor(selected[0])}</span>}
           </span>
           <ChevronDown size={17} className={cn('shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')} />
@@ -190,29 +190,29 @@ export function Select({ label, options, placeholder = 'Select…', searchable =
                 className="glass-strong z-[60] max-h-64 overflow-auto rounded-glass-sm p-1.5 shadow-glass-lg"
                 role="listbox"
               >
-              {searchable && (
-                <div className="sticky top-0 mb-1 flex items-center gap-2 rounded-md bg-white/80 px-2.5 py-1.5">
-                  <Search size={14} className="text-ink-3" />
-                  <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-slate-400" />
-                </div>
-              )}
-              {filtered.length === 0 && <p className="px-3 py-4 text-center text-sm text-ink-3">No matches</p>}
-              {filtered.map((o) => {
-                const active = selected.includes(o.value);
-                return (
-                  <button
-                    key={o.value}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => toggle(o.value)}
-                    className={cn('flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors', active ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100/80')}
-                  >
-                    {o.label}
-                    {active && <Check size={15} className="text-brand-600" />}
-                  </button>
-                );
-              })}
+                {searchable && (
+                  <div className="sticky top-0 mb-1 flex items-center gap-2 rounded-md bg-white/80 px-2.5 py-1.5">
+                    <Search size={14} className="text-ink-3" />
+                    <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-slate-400" />
+                  </div>
+                )}
+                {filtered.length === 0 && <p className="px-3 py-4 text-center text-sm text-ink-3">No matches</p>}
+                {filtered.map((o) => {
+                  const active = selected.includes(o.value);
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => toggle(o.value)}
+                      className={cn('flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors', active ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100/80')}
+                    >
+                      {o.label}
+                      {active && <Check size={15} className="text-brand-600" />}
+                    </button>
+                  );
+                })}
               </motion.div>
             )}
           </AnimatePresence>,
