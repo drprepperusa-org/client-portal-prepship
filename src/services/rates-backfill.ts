@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { orders, orderOverrides } from '../db/schema/orders';
 import { settings } from '../db/schema/settings';
@@ -81,9 +81,22 @@ export type BackfillJob = {
 
 type BackfillOptions = {
   clientId?: number;
+  /**
+   * Restrict the backfill to these client IDs. Used by the client-portal API to
+   * keep a scoped (non-global) user from triggering rate calls for other
+   * tenants' orders. Ignored when `clientId` is provided.
+   */
+  clientIds?: number[];
   limit?: number;
   maxAgeHours?: number;
 };
+
+/** Build the client-scoping predicate: single id > id list > unrestricted. */
+function clientScopePredicate(opts: BackfillOptions) {
+  if (opts.clientId !== undefined) return eq(orders.clientId, opts.clientId);
+  if (opts.clientIds && opts.clientIds.length) return inArray(orders.clientId, opts.clientIds);
+  return undefined;
+}
 
 export const RATE_BACKFILL_STATUS_KEY = 'rate_backfill_best_rates.last_run';
 
@@ -285,9 +298,7 @@ async function runBackfill(
       .where(
         and(
           eq(orders.orderStatus, 'awaiting_shipment'),
-          opts.clientId !== undefined
-            ? eq(orders.clientId, opts.clientId)
-            : undefined,
+          clientScopePredicate(opts),
           notInArray(orders.storeId, [...EXCLUDED_STORE_IDS]),
           sql`${orders.weightOz} is not null and ${orders.weightOz} > 0`,
           sql`${orders.shipToPostalCode} is not null and ${orders.shipToPostalCode} <> ''`,

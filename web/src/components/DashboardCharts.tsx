@@ -101,7 +101,7 @@ export function ChannelMixChart({ data }: { data: ChannelMixPoint[] }) {
             tickLine={false}
             axisLine={false}
           />
-          <Tooltip cursor={{ fill: 'rgba(3, 169, 244, .08)' }} contentStyle={{ border: `1px solid ${gridColor}`, borderRadius: 8 }} />
+          <Tooltip cursor={{ fill: 'rgb(var(--brand-rgb) / 0.08)' }} contentStyle={{ border: `1px solid ${gridColor}`, borderRadius: 8 }} />
           <Bar dataKey="count" name="Orders" radius={[0, 8, 8, 0]} barSize={22}>
             {data.map((entry) => (
               <Cell key={entry.name} fill={entry.color} />

@@ -6,7 +6,7 @@ dist/
 *.log
 .DS_Store
 .vercel
-.claude/settings.local.json
+.claude/
 undefined/
 .codex/
 test-results/

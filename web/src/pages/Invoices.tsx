@@ -461,7 +461,7 @@ export default function Invoices() {
               checked={excluded || selected}
               disabled={excluded}
               onChange={(event) => toggleExcludeCandidate(rowKey, event.target.checked)}
-              className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)] disabled:opacity-60"
+              className="h-4 w-4 rounded border-line text-brand accent-[rgb(var(--brand-rgb))] disabled:opacity-60"
             />
             {excluded ? 'Excluded' : 'Select'}
           </label>

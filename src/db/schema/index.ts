@@ -21,3 +21,4 @@ export * from './carrier-accounts';
 export * from './fulfillment-outbox';
 export * from './analytics-cache';
 export * from './workflows';
+export * from './inbound';

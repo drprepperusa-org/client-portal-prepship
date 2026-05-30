@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Send } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { EmailInput } from '../components/ui/Input';
+import Button from '../components/ui/Button';
 
 export default function ResetPassword() {
   const auth = useAuth();
@@ -57,22 +59,15 @@ export default function ResetPassword() {
         </p>
 
         <form onSubmit={submit} className="mt-6 space-y-4">
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Email</span>
-            <div className="mt-1.5 flex h-9 items-center rounded-md border border-line bg-white px-3 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15">
-              <input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                type="email"
-                required
-                autoFocus
-                disabled={submitting}
-                placeholder="you@drprepperusa.com"
-                autoComplete="username"
-                className="flex-1 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-ink-3"
-              />
-            </div>
-          </label>
+          <EmailInput
+            label="Email address"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            autoFocus
+            disabled={submitting}
+            autoComplete="username"
+          />
 
           {message ? (
             <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800" role="status">
@@ -91,20 +86,16 @@ export default function ResetPassword() {
             </div>
           ) : null}
 
-          <button
+          <Button
             type="submit"
-            disabled={submitting || !email.trim()}
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-brand text-[13px] font-medium text-white shadow-sm shadow-brand/20 transition-colors hover:bg-brand-dark disabled:opacity-60"
+            size="lg"
+            fullWidth
+            loading={submitting}
+            disabled={!email.trim()}
+            leftIcon={<Send size={15} strokeWidth={2.25} />}
           >
-            {submitting ? (
-              <>
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden />
-                Sending…
-              </>
-            ) : (
-              'Send reset email'
-            )}
-          </button>
+            {submitting ? 'Sending…' : 'Send reset email'}
+          </Button>
         </form>
 
         <div className="mt-8 border-t border-line pt-5 text-center text-[12px] leading-relaxed text-ink-3">

@@ -468,6 +468,32 @@ async function getAllCarriers(apiKeyV2?: string | null): Promise<CarrierInfo[]> 
   return carriers;
 }
 
+/**
+ * Build a map of numeric provider-account-id → human nickname for the
+ * "Shipping Account" column. shipments.provider_account_id is the carrier_id
+ * with the `se-` prefix stripped (e.g. carrier `se-433542` → account 433542),
+ * so we re-attach the prefix to look up nicknames. Sources, in priority order:
+ *   1. the curated V2_CARRIER_ACCOUNT_OVERRIDES (authoritative nicknames), then
+ *   2. the live (15-min cached) GET /v2/carriers list.
+ * Cheap to call per request — getAllCarriers() is cached.
+ */
+export async function getProviderAccountNicknames(
+  apiKeyV2?: string | null,
+): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  const carriers = await getAllCarriers(apiKeyV2).catch(() => [] as CarrierInfo[]);
+  for (const c of carriers) {
+    const m = /se-(\d+)/i.exec(c.carrier_id);
+    if (m && c.nickname) map.set(Number(m[1]), c.nickname);
+  }
+  // Curated overrides win — they're the canonical account labels.
+  for (const [carrierId, override] of V2_CARRIER_ACCOUNT_OVERRIDES) {
+    const m = /se-(\d+)/i.exec(carrierId);
+    if (m && override.nickname) map.set(Number(m[1]), override.nickname);
+  }
+  return map;
+}
+
 type RateCredentialContext = {
   storeId: number | null;
   clientId: number | null;

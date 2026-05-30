@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Inbox, RefreshCw } from 'lucide-react';
+import Button from './ui/Button';
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   DEFAULT_TABLE_PAGE_SIZE_OPTIONS,
@@ -30,29 +31,29 @@ export function PageHeader({
 
 export function RefreshButton({ loading, onClick }: { loading: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      size="lg"
       onClick={onClick}
       disabled={loading}
-      className="inline-flex h-11 items-center justify-center gap-2 rounded-card bg-surface px-4 text-[12px] font-extrabold text-ink ring-1 ring-line transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 hover:shadow-sm active:translate-y-0 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand/35 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none"
+      leftIcon={<RefreshCw size={14} className={loading ? 'animate-spinSlow text-brand' : ''} />}
     >
-      <RefreshCw size={14} className={loading ? 'animate-spinSlow text-brand' : ''} />
       Refresh
-    </button>
+    </Button>
   );
 }
 
 export function RetryButton({ loading, onClick }: { loading?: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="danger"
+      size="sm"
       onClick={onClick}
       disabled={loading}
-      className="inline-flex h-9 items-center gap-2 rounded-lg bg-danger px-3 text-[12px] font-extrabold text-white transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-danger/90 hover:shadow-sm active:translate-y-0 active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger/35 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none"
+      leftIcon={<RefreshCw size={14} className={loading ? 'animate-spinSlow' : ''} />}
     >
-      <RefreshCw size={14} className={loading ? 'animate-spinSlow' : ''} />
       Retry
-    </button>
+    </Button>
   );
 }
 
@@ -240,7 +241,7 @@ export function DataTable<T>({
                       aria-label="Select visible rows"
                       checked={allVisibleSelected}
                       onChange={toggleVisibleRows}
-                      className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)]"
+                      className="h-4 w-4 rounded border-line text-brand accent-[rgb(var(--brand-rgb))]"
                     />
                   </label>
                 </th>
@@ -311,7 +312,7 @@ export function DataTable<T>({
                         checked={selected}
                         onClick={(event) => event.stopPropagation()}
                         onChange={() => toggleRow(rowKey)}
-                        className="h-4 w-4 rounded border-line text-brand accent-[var(--theme-blue)]"
+                        className="h-4 w-4 rounded border-line text-brand accent-[rgb(var(--brand-rgb))]"
                       />
                     </td>
                   ) : null}

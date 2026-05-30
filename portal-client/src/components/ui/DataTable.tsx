@@ -1,0 +1,355 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type DragEvent, type ReactNode } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { GripVertical, RotateCcw, Columns3, Check, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { cn } from '@/lib/cn';
+import { staggerContainer, staggerItem } from '@/lib/motion';
+import { useColumnLayout } from '@/lib/useColumnLayout';
+
+export interface Column<T> {
+  key: string;
+  header: string;
+  /** Cell renderer. */
+  render: (row: T) => ReactNode;
+  className?: string;
+  /** Hide column header label on mobile card layout. */
+  mobileHidden?: boolean;
+  /** Initial width in px (before any user resize). */
+  defaultWidth?: number;
+  /** Hard minimum width in px (the effective floor also respects the title width). */
+  minWidth?: number;
+  /** Allow resizing this column (default true). */
+  resizable?: boolean;
+  /** Allow drag-reordering this column (default true). */
+  draggable?: boolean;
+  /**
+   * Makes the column sortable. Returns a comparable value for `row`. Numbers
+   * sort numerically; strings use locale/numeric-aware compare; null/undefined
+   * sort last. Omit to make the column non-sortable.
+   */
+  sortAccessor?: (row: T) => string | number | null | undefined;
+}
+
+type SortState = { key: string; dir: 'asc' | 'desc' } | null;
+
+interface DataTableProps<T> {
+  columns: Column<T>[];
+  rows: T[];
+  rowKey: (row: T) => string;
+  onRowClick?: (row: T) => void;
+  empty?: ReactNode;
+  /** Optional footer row(s) (e.g. a totals row), rendered in <tfoot>. */
+  footer?: ReactNode;
+  /** Initial sort. */
+  defaultSort?: SortState;
+  /**
+   * Stable id used to persist column order/width to localStorage. Omit to keep
+   * customization in-memory only (resets on unmount).
+   */
+  tableId?: string;
+}
+
+export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId, footer, defaultSort = null }: DataTableProps<T>) {
+  const layout = useColumnLayout(tableId, columns);
+  const byKey = Object.fromEntries(columns.map((c) => [c.key, c])) as Record<string, Column<T>>;
+  const ordered = layout.visibleOrder.map((k) => byKey[k]).filter(Boolean) as Column<T>[];
+
+  // ---- Sorting ----
+  const [sort, setSort] = useState<SortState>(defaultSort);
+  function toggleSort(c: Column<T>) {
+    if (!c.sortAccessor) return;
+    setSort((cur) => {
+      if (!cur || cur.key !== c.key) return { key: c.key, dir: 'asc' };
+      if (cur.dir === 'asc') return { key: c.key, dir: 'desc' };
+      return null; // third click clears the sort
+    });
+  }
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    const acc = columns.find((c) => c.key === sort.key)?.sortAccessor;
+    if (!acc) return rows;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = acc(a);
+      const vb = acc(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }, [rows, sort, columns]);
+
+  // Columns visibility dropdown
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  // ---- Resize (pointer-driven). Latest layout is read via a ref so the window
+  // listeners stay stable for the whole drag even if `layout` re-renders. ----
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const resizing = useRef<{ key: string; startX: number; startW: number } | null>(null);
+
+  const onResizeMove = useCallback((e: PointerEvent) => {
+    const r = resizing.current;
+    if (!r) return;
+    layoutRef.current.setWidth(r.key, r.startW + (e.clientX - r.startX));
+  }, []);
+
+  const endResize = useCallback(() => {
+    resizing.current = null;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    window.removeEventListener('pointermove', onResizeMove);
+  }, [onResizeMove]);
+
+  const startResize = useCallback(
+    (key: string, e: ReactPointerEvent) => {
+      // Stop the header's native drag from kicking in when grabbing the handle.
+      e.preventDefault();
+      e.stopPropagation();
+      resizing.current = { key, startX: e.clientX, startW: layoutRef.current.widthOf(key) };
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      window.addEventListener('pointermove', onResizeMove);
+      window.addEventListener('pointerup', endResize, { once: true });
+    },
+    [onResizeMove, endResize],
+  );
+
+  // ---- Reorder (HTML5 drag-and-drop on headers) ----
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
+
+  function onHeaderDragStart(key: string, e: DragEvent) {
+    if (resizing.current) {
+      e.preventDefault();
+      return;
+    }
+    setDragKey(key);
+    e.dataTransfer.effectAllowed = 'move';
+    // Some browsers require data to be set for the drag to initialize.
+    try {
+      e.dataTransfer.setData('text/plain', key);
+    } catch {
+      /* ignore */
+    }
+  }
+  function onHeaderDragOver(key: string, e: DragEvent) {
+    if (!dragKey || dragKey === key) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (overKey !== key) setOverKey(key);
+  }
+  function onHeaderDrop(key: string, e: DragEvent) {
+    e.preventDefault();
+    if (dragKey) layout.reorder(dragKey, key);
+    setDragKey(null);
+    setOverKey(null);
+  }
+  function onHeaderDragEnd() {
+    setDragKey(null);
+    setOverKey(null);
+  }
+
+  if (rows.length === 0 && empty) return <>{empty}</>;
+
+  return (
+    <>
+      {/* ---- Desktop / tablet: resizable + reorderable table ---- */}
+      <div className="hidden md:block">
+        {tableId && (
+          <div className="flex items-center justify-end gap-2 px-1 pb-2">
+            {layout.isCustomized && (
+              <button
+                onClick={layout.resetLayout}
+                className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-ink-3 transition-colors hover:bg-slate-100 hover:text-brand-600"
+              >
+                <RotateCcw size={13} /> Reset
+              </button>
+            )}
+            {/* Columns visibility control */}
+            <div className="relative" ref={colsRef}>
+              <button
+                onClick={() => setColsOpen((o) => !o)}
+                className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/80 bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white"
+              >
+                <Columns3 size={14} /> Columns
+                <span className="text-ink-3">
+                  {layout.visibleOrder.length}/{layout.order.length}
+                </span>
+              </button>
+              <AnimatePresence>
+                {colsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.14 }}
+                    className="glass-strong absolute right-0 z-30 mt-2 max-h-80 w-60 overflow-auto rounded-glass-sm p-2 shadow-glass-lg"
+                  >
+                    <p className="px-2 pb-1.5 text-[11px] text-ink-3">Toggle visibility · drag headers to reorder · drag edge to resize</p>
+                    {layout.order.map((k) => {
+                      const col = byKey[k];
+                      if (!col) return null;
+                      const visible = !layout.hidden.includes(k);
+                      // Don't allow hiding the final visible column.
+                      const isLastVisible = visible && layout.visibleOrder.length === 1;
+                      return (
+                        <button
+                          key={k}
+                          onClick={() => !isLastVisible && layout.toggleHidden(k)}
+                          disabled={isLastVisible}
+                          className={cn(
+                            'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50',
+                          )}
+                        >
+                          <span className={cn('grid h-4 w-4 place-items-center rounded border', visible ? 'border-brand-500 bg-gradient-to-br from-brand-400 to-brand-600' : 'border-slate-300 bg-white')}>
+                            {visible && <Check size={11} className="text-white" strokeWidth={3.5} />}
+                          </span>
+                          <span className="text-ink-2">{col.header}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
+
+        {/* Horizontal scroll so wide tables scroll instead of overlapping. */}
+        <div className="overflow-x-auto rounded-glass">
+          <table className="border-collapse text-sm" style={{ width: layout.totalWidth, tableLayout: 'fixed' }}>
+            <colgroup>
+              {ordered.map((c) => (
+                <col key={c.key} style={{ width: layout.widthOf(c.key) }} />
+              ))}
+            </colgroup>
+
+            <thead>
+              <tr className="border-b border-slate-200/70 text-left">
+                {ordered.map((c) => {
+                  const canDrag = c.draggable !== false;
+                  const canResize = c.resizable !== false;
+                  const isDragging = dragKey === c.key;
+                  const isDropTarget = overKey === c.key && dragKey !== c.key;
+                  return (
+                    <th
+                      key={c.key}
+                      draggable={canDrag && !resizing.current}
+                      onDragStart={(e) => canDrag && onHeaderDragStart(c.key, e)}
+                      onDragOver={(e) => onHeaderDragOver(c.key, e)}
+                      onDrop={(e) => onHeaderDrop(c.key, e)}
+                      onDragEnd={onHeaderDragEnd}
+                      onClick={() => toggleSort(c)}
+                      aria-sort={sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                      className={cn(
+                        'group relative select-none overflow-hidden px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-3 transition-colors',
+                        canDrag ? 'cursor-grab active:cursor-grabbing' : c.sortAccessor && 'cursor-pointer',
+                        sort?.key === c.key && 'text-brand-600',
+                        isDragging && 'opacity-40',
+                        isDropTarget && 'bg-brand-50/70',
+                        c.className,
+                      )}
+                    >
+                      {/* Drop indicator: a colored bar on the target's leading edge. */}
+                      {isDropTarget && <span className="absolute inset-y-0 left-0 w-0.5 bg-brand-500" />}
+
+                      <span className={cn('flex items-center gap-1', c.className?.includes('text-right') && 'justify-end')}>
+                        {canDrag && (
+                          <GripVertical
+                            size={12}
+                            className="shrink-0 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100"
+                            aria-hidden
+                          />
+                        )}
+                        {/* Measured for the min-width floor → titles never clip. */}
+                        <span ref={layout.registerHeaderRef(c.key)} className="whitespace-nowrap">
+                          {c.header}
+                        </span>
+                        {c.sortAccessor && (
+                          <span className="shrink-0 text-slate-400">
+                            {sort?.key === c.key ? (
+                              sort.dir === 'asc' ? <ChevronUp size={12} className="text-brand-600" /> : <ChevronDown size={12} className="text-brand-600" />
+                            ) : (
+                              <ChevronsUpDown size={11} className="opacity-0 transition-opacity group-hover:opacity-50" />
+                            )}
+                          </span>
+                        )}
+                      </span>
+
+                      {/* Resize handle on the trailing edge. */}
+                      {canResize && (
+                        <span
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Resize ${c.header} column`}
+                          onPointerDown={(e) => startResize(c.key, e)}
+                          onClick={(e) => e.stopPropagation()}
+                          draggable={false}
+                          className="absolute right-0 top-0 z-10 flex h-full w-2 cursor-col-resize touch-none items-center justify-center"
+                        >
+                          <span className="h-1/2 w-px bg-slate-200 transition-colors group-hover:bg-slate-300" />
+                          <span className="absolute inset-y-0 right-0 w-0.5 bg-transparent transition-colors hover:bg-brand-400" />
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+
+            <motion.tbody variants={staggerContainer} initial="initial" animate="enter">
+              {sortedRows.map((row) => (
+                <motion.tr
+                  key={rowKey(row)}
+                  variants={staggerItem}
+                  onClick={() => onRowClick?.(row)}
+                  className={cn('border-b border-slate-100 transition-colors last:border-0 hover:bg-brand-50/50', onRowClick && 'cursor-pointer')}
+                >
+                  {ordered.map((c) => (
+                    <td key={c.key} className={cn('overflow-hidden px-4 py-3.5 align-middle text-ink-2', c.className)}>
+                      {c.render(row)}
+                    </td>
+                  ))}
+                </motion.tr>
+              ))}
+            </motion.tbody>
+
+            {footer && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-white/40 font-bold text-ink">{footer}</tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
+      {/* ---- Mobile: stacked cards (honors column order; no resize needed) ---- */}
+      <motion.div variants={staggerContainer} initial="initial" animate="enter" className="flex flex-col gap-3 md:hidden">
+        {sortedRows.map((row) => (
+          <motion.div
+            key={rowKey(row)}
+            variants={staggerItem}
+            onClick={() => onRowClick?.(row)}
+            className={cn('glass rounded-glass-sm p-4', onRowClick && 'cursor-pointer')}
+          >
+            {ordered.map((c) => (
+              <div key={c.key} className="flex items-center justify-between gap-3 py-1.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-slate-100">
+                {!c.mobileHidden && <span className="text-xs font-semibold uppercase tracking-wide text-ink-3">{c.header}</span>}
+                <span className={cn('text-right text-ink-2', c.mobileHidden && 'w-full text-left')}>{c.render(row)}</span>
+              </div>
+            ))}
+          </motion.div>
+        ))}
+      </motion.div>
+    </>
+  );
+}

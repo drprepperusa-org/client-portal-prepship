@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { EmailInput, PasswordInput } from '../components/ui/Input';
+import Button from '../components/ui/Button';
 
 export default function Login() {
   const auth = useAuth();
@@ -15,7 +16,7 @@ export default function Login() {
 
   if (auth.loading) {
     return (
-      <div className="grid min-h-screen w-full place-items-center bg-[#FAFAFA] text-ink-3">
+      <div className="grid min-h-screen w-full place-items-center bg-surface text-ink-3">
         Loading…
       </div>
     );
@@ -65,7 +66,7 @@ export default function Login() {
             className="mb-8 flex items-center gap-3 animate-fadeInUp" 
             style={{ animationFillMode: 'both' }}
           >
-            <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white p-1.5 shadow-[0_4px_12px_rgba(3,169,244,0.18)] ring-1 ring-line">
+            <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white p-1.5 shadow-[0_4px_12px_rgb(var(--brand-rgb)/0.18)] ring-1 ring-line">
               <img src="/prepship-v4-logo.svg" alt="" className="h-full w-full object-contain" aria-hidden />
             </div>
             <div>
@@ -136,19 +137,17 @@ export default function Login() {
               className="mt-2 animate-fadeInUp" 
               style={{ animationDelay: '400ms', animationFillMode: 'both' }}
             >
-              <button
+              <Button
                 type="submit"
-                disabled={submitting || !email.trim() || !password}
-                className="group relative flex h-[44px] w-full items-center justify-center gap-2 overflow-hidden rounded-[10px] bg-brand text-[14px] font-semibold text-white shadow-[0_4px_14px_rgba(3,169,244,0.25)] transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:-translate-y-[1px] hover:bg-brand-dark hover:shadow-[0_6px_20px_rgba(3,169,244,0.35)] active:translate-y-[1px] active:shadow-[0_2px_8px_rgba(3,169,244,0.25)] disabled:pointer-events-none disabled:opacity-65"
+                size="lg"
+                fullWidth
+                loading={submitting}
+                disabled={!email.trim() || !password}
+                rightIcon={<ArrowRight size={16} strokeWidth={2.5} />}
+                className="h-[44px]"
               >
-                <div className={`absolute inset-0 flex items-center justify-center transition-transform duration-300 ease-in-out ${submitting ? 'translate-y-0 opacity-100' : '-translate-y-8 opacity-0'}`}>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden />
-                </div>
-                <div className={`flex items-center gap-2 transition-transform duration-300 ease-in-out ${submitting ? 'translate-y-8 opacity-0' : 'translate-y-0 opacity-100'}`}>
-                  Sign in
-                  <ArrowRight size={16} strokeWidth={2.5} className="transition-transform duration-300 group-hover:translate-x-1" />
-                </div>
-              </button>
+                {submitting ? 'Signing in…' : 'Sign in'}
+              </Button>
             </div>
           </form>
 
@@ -172,12 +171,12 @@ export default function Login() {
 
       {/* Right Column: Branded Visual */}
       <div className="relative hidden w-1/2 overflow-hidden bg-brand lg:block">
-        {/* Animated Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-brand via-[#0288D1] to-[#01579B] opacity-90" />
-        
+        {/* Animated Gradient Background — blurple → deep blurple */}
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgb(var(--brand-rgb)),rgb(var(--brand-2-rgb)),rgb(var(--brand-dark-rgb)))] opacity-95" />
+
         {/* Subtle Floating Orbs/Shapes */}
         <div className="absolute -left-[10%] top-[10%] h-[50vw] w-[50vw] rounded-full bg-white/10 blur-[80px]" />
-        <div className="absolute -bottom-[20%] right-[10%] h-[40vw] w-[40vw] rounded-full bg-[#81D4FA]/20 blur-[100px]" />
+        <div className="absolute -bottom-[20%] right-[10%] h-[40vw] w-[40vw] rounded-full bg-[rgb(var(--brand-soft-rgb))]/25 blur-[100px]" />
         
         {/* System Status Top Right */}
         <div className="absolute right-8 top-8 flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 backdrop-blur-md">
@@ -206,17 +205,6 @@ export default function Login() {
           </div>
         </div>
       </div>
-      
-      {/* Dynamic Keyframes for simple stagger (if not in tailwind.config) */}
-      <style>{`
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeInUp {
-          animation: fadeInUp 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-        }
-      `}</style>
     </main>
   );
 }

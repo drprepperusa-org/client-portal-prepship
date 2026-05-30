@@ -3,12 +3,15 @@ import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'driz
 import { db } from '../db/client';
 import { carrierAccountClients, carrierAccounts } from '../db/schema/carrier-accounts';
 import { clients } from '../db/schema/clients';
-import { inventory } from '../db/schema/inventory';
+import { inventory, inventoryLedger } from '../db/schema/inventory';
+import { packages } from '../db/schema/packages';
 import { orderItems } from '../db/schema/order-items';
 import { orderOverrides, orders } from '../db/schema/orders';
+import { inboundShipments, inboundItems } from '../db/schema/inbound';
+import { applyMovement } from '../services/inventory';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
-import { billingSummary } from '../services/billing';
+import { billingSummary, generateLineItems } from '../services/billing';
 import { getSkuOrdersForSku } from '../services/sku-orders';
 import { getSkuBreakdownFromOrderItems } from './analysis';
 import {
@@ -18,8 +21,16 @@ import {
 import { getSyncStatus } from '../services/order-sync';
 import { getShipmentSyncStatus } from '../services/shipment-sync';
 import { getPersistedWorkerStatus } from '../services/worker-status';
+import {
+  startBackfillBestRates,
+  getActiveBackfillJob,
+  getLatestBackfillJob,
+  type BackfillJob,
+} from '../services/rates-backfill';
+import { getProviderAccountNicknames } from '../services/rates';
 import { isAdminEmail } from '../lib/admin-emails';
 import {
+  toPortalInboundDto,
   toPortalIntegrationDto,
   toPortalInventoryDto,
   toPortalOrderDto,
@@ -302,6 +313,12 @@ type PortalInvoiceDetailRow = {
   order_number: string | null;
   recipient_name: string | null;
   item_names: string | null;
+  skus: string | null;
+  carrier_code: string | null;
+  best_rate_dims: string | null;
+  dim_l: string | null;
+  dim_w: string | null;
+  dim_h: string | null;
   ship_date: string | null;
   qty: string;
   pickpack_total: string;
@@ -344,6 +361,9 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
           orderNumber: row.orderNumber,
           recipientName: row.recipientName,
           itemNames: row.itemNames,
+          skus: null,
+          carrierCode: null,
+          boxSize: null,
           shipDate: row.shipDate,
           qty: row.qty.toFixed(3),
           pickpackTotal: row.pickpackTotal.toFixed(2),
@@ -371,6 +391,18 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
           and oi.name is not null
           and oi.name <> ''
       ) as item_names,
+      (
+        select string_agg(distinct oi.sku, ', ')
+        from ${orderItems} oi
+        where oi.order_id = b.order_id
+          and oi.sku is not null
+          and oi.sku <> ''
+      ) as skus,
+      max(o.carrier_code) as carrier_code,
+      max(oo.best_rate_dims) as best_rate_dims,
+      max(o.raw->'dimensions'->>'length') as dim_l,
+      max(o.raw->'dimensions'->>'width') as dim_w,
+      max(o.raw->'dimensions'->>'height') as dim_h,
       to_char(min(b.ship_date)::date, 'YYYY-MM-DD') as ship_date,
       coalesce((
         select sum(greatest(0, coalesce(oi.quantity, 0)))
@@ -387,6 +419,7 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     left join ${orders} o on o.id = b.order_id
+    left join ${orderOverrides} oo on oo.order_id = b.order_id
     where coalesce(c.active, true) = true
       and b.ship_date >= ${input.dateFrom}::timestamptz
       and b.ship_date <= ${input.dateTo}::timestamptz
@@ -397,6 +430,14 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
     limit 1000
   `);
 
+  const dimsFromRaw = (l: string | null, w: string | null, h: string | null): string | null => {
+    const nl = Number(l);
+    const nw = Number(w);
+    const nh = Number(h);
+    if ([nl, nw, nh].every((n) => Number.isFinite(n) && n > 0)) return `${nl}x${nw}x${nh}`;
+    return null;
+  };
+
   return rows.map((row) => ({
     clientId: row.client_id,
     clientName: row.client_name,
@@ -404,6 +445,9 @@ async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?
     orderNumber: row.order_number,
     recipientName: row.recipient_name,
     itemNames: row.item_names,
+    skus: row.skus,
+    carrierCode: row.carrier_code,
+    boxSize: row.best_rate_dims ?? dimsFromRaw(row.dim_l, row.dim_w, row.dim_h),
     shipDate: row.ship_date,
     qty: row.qty,
     pickpackTotal: row.pickpack_total,
@@ -526,6 +570,21 @@ app.get('/orders', async (c) => {
       override: orderOverrides,
       clientName: clients.name,
       storeIds: clients.storeIds,
+      // Active (non-voided) shipment's billed account for this order — drives
+      // the "Shipping Account" column for shipped/cancelled orders.
+      shipAcctNickname: sql<string | null>`(
+        select ${shipments.providerAccountNickname} from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
+      shipAcctId: sql<number | null>`(
+        select ${shipments.providerAccountId} from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+          and ${shipments.providerAccountId} is not null
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -540,14 +599,18 @@ app.get('/orders', async (c) => {
     .leftJoin(clients, eq(clients.id, orders.clientId))
     .where(where);
   const count = countRows[0]?.count ?? rows.length;
+  // Resolve numeric account ids → nicknames (cached carrier list + curated map).
+  const accountNicknames = await getProviderAccountNicknames().catch(() => new Map<number, string>());
   await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, search });
   return c.json({
-    data: rows.map((row) =>
-      toPortalOrderDto(
-        { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override },
+    data: rows.map((row) => {
+      const shipmentAccount =
+        row.shipAcctNickname ?? (row.shipAcctId != null ? accountNicknames.get(row.shipAcctId) ?? null : null);
+      return toPortalOrderDto(
+        { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override, shipmentAccount },
         { includeFinancials: scope.canViewFinancials },
-      )
-    ),
+      );
+    }),
     pagination: {
       page,
       pageSize,
@@ -662,9 +725,14 @@ app.get('/inventory', async (c) => {
       item: inventory,
       clientName: clients.name,
       storeIds: clients.storeIds,
+      pkgName: packages.name,
+      pkgLength: packages.length,
+      pkgWidth: packages.width,
+      pkgHeight: packages.height,
     })
     .from(inventory)
     .leftJoin(clients, eq(clients.id, inventory.clientId))
+    .leftJoin(packages, eq(packages.id, inventory.packageId))
     .where(where)
     .orderBy(desc(inventory.updatedAt), desc(inventory.id))
     .limit(pageSize)
@@ -675,9 +743,86 @@ app.get('/inventory', async (c) => {
     .leftJoin(clients, eq(clients.id, inventory.clientId))
     .where(where);
   const count = countRows[0]?.count ?? rows.length;
+
+  // Sold-30d per SKU is derived from the ledger ('Ship' rows are negative qty,
+  // so we negate the sum). One grouped query over just this page's rows.
+  const pageIds = rows.map((r) => r.item.id);
+  const soldById = new Map<number, number>();
+  if (pageIds.length) {
+    const soldRows = await db.execute<{ inventory_id: number; sold: number }>(sql`
+      select inventory_id, coalesce(-sum(qty), 0)::int as sold
+      from inventory_ledger
+      where inventory_id in (${sql.join(pageIds.map((id) => sql`${id}`), sql`, `)})
+        and lower(type) like 'ship%'
+        and created_at >= now() - interval '30 days'
+      group by inventory_id
+    `);
+    for (const r of soldRows) soldById.set(r.inventory_id, Number(r.sold) || 0);
+  }
+
   await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search });
   return c.json({
-    data: rows.map((row) => toPortalInventoryDto({ ...row.item, clientName: row.clientName, storeName: row.clientName, storeIds: row.storeIds })),
+    data: rows.map((row) =>
+      toPortalInventoryDto({
+        ...row.item,
+        clientName: row.clientName,
+        storeName: row.clientName,
+        storeIds: row.storeIds,
+        soldLast30Days: soldById.get(row.item.id) ?? 0,
+        pkg: row.pkgName != null || row.pkgLength != null ? { name: row.pkgName, length: row.pkgLength, width: row.pkgWidth, height: row.pkgHeight } : null,
+      }),
+    ),
+    pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
+  });
+});
+
+// Inventory movement history (audit trail) — ledger rows scoped to the
+// caller's clients. Read-only. Filters: clientId, sku, type, date range.
+app.get('/inventory-history', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const page = parsePage(c.req.query('page'));
+  const pageSize = parsePageSize(c.req.query('pageSize'));
+  const sku = c.req.query('sku')?.trim();
+  const type = c.req.query('type')?.trim();
+  const from = parseDate(c.req.query('from'));
+  const to = parseDate(c.req.query('to'));
+  const where = and(
+    inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    sku ? ilike(inventory.sku, `%${sku}%`) : undefined,
+    type ? eq(inventoryLedger.type, type) : undefined,
+    from ? gte(inventoryLedger.createdAt, from) : undefined,
+    to ? lte(inventoryLedger.createdAt, to) : undefined,
+  );
+  const rows = await db
+    .select({
+      id: inventoryLedger.id,
+      sku: inventory.sku,
+      name: inventory.name,
+      clientName: clients.name,
+      type: inventoryLedger.type,
+      qty: inventoryLedger.qty,
+      orderId: inventoryLedger.orderId,
+      note: inventoryLedger.note,
+      source: inventoryLedger.createdBy,
+      createdAt: inventoryLedger.createdAt,
+    })
+    .from(inventoryLedger)
+    .innerJoin(inventory, eq(inventory.id, inventoryLedger.inventoryId))
+    .leftJoin(clients, eq(clients.id, inventory.clientId))
+    .where(where)
+    .orderBy(desc(inventoryLedger.createdAt), desc(inventoryLedger.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+  const countRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(inventoryLedger)
+    .innerJoin(inventory, eq(inventory.id, inventoryLedger.inventoryId))
+    .where(where);
+  const count = countRows[0]?.count ?? rows.length;
+  await recordPortalAudit('portal.inventory.history', scope, { page, pageSize, sku: sku ?? null, type: type ?? null });
+  return c.json({
+    data: rows.map((r) => ({ ...r, createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
   });
 });
@@ -787,6 +932,69 @@ app.get('/reports', async (c) => {
   });
   await recordPortalAudit('portal.reports.view', scope, { rows: summary.clients.length });
   return c.json({ data: summary.clients, clients: summary.clients, grandTotal: summary.grandTotal, billingVisible: true });
+});
+
+// Generate / regenerate billing line items for a date range (admin-only).
+// Idempotent (upsert) — safe to re-run. Scope-restricted for non-global users
+// so a tenant can only (re)generate their own billing.
+app.post('/billing/generate', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials || (!scope.isGlobal && !scope.permissions.includes('settings:write'))) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { dateFrom?: string; dateTo?: string; clientId?: number };
+  if (!body.dateFrom || !body.dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const clientId = typeof body.clientId === 'number' ? body.clientId : undefined;
+  if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
+    return c.json({ error: 'Requested client is outside your access scope.' }, 403);
+  }
+
+  const result = await generateLineItems({
+    clientId,
+    dateFrom: body.dateFrom,
+    dateTo: body.dateTo,
+    scopeClientIds: scope.isGlobal ? undefined : scope.clientIds,
+    scopeStoreIds: scope.isGlobal ? undefined : scope.storeIds,
+    scopeRestricted: !scope.isGlobal,
+  });
+
+  // Persist a "last generated" marker so the portal can show when billing was
+  // last refreshed.
+  const generatedAt = new Date().toISOString();
+  try {
+    const value = JSON.stringify({
+      at: generatedAt,
+      dateFrom: body.dateFrom,
+      dateTo: body.dateTo,
+      generated: result.generated,
+      total: result.total,
+      by: scope.email ?? scope.userId ?? null,
+    });
+    await db.insert(settings).values({ key: BILLING_LAST_GENERATED_KEY, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
+  } catch (err) {
+    console.warn('[client-portal] failed to persist billing last-generated:', err instanceof Error ? err.message : err);
+  }
+
+  await recordPortalAudit('portal.billing.generate', scope, { dateFrom: body.dateFrom, dateTo: body.dateTo, clientId, generated: result.generated });
+  return c.json({ generated: result.generated, total: result.total, skipped: result.skipped, message: result.message, lastGeneratedAt: generatedAt });
+});
+
+const BILLING_LAST_GENERATED_KEY = 'billing_last_generated';
+
+// When billing was last (re)generated via the portal.
+app.get('/billing/status', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials) return c.json({ lastGenerated: null });
+  const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, BILLING_LAST_GENERATED_KEY)).limit(1);
+  let lastGenerated: unknown = null;
+  try {
+    lastGenerated = row?.value ? JSON.parse(row.value) : null;
+  } catch {
+    lastGenerated = null;
+  }
+  return c.json({ lastGenerated });
 });
 
 app.get('/invoice-details', async (c) => {
@@ -958,13 +1166,339 @@ app.get('/sync-status', async (c) => {
   });
 });
 
+// Scope-safe projection of a backfill job. failureSamples embed order numbers
+// + ship-to city/state (cross-tenant PII), so they are dropped for any caller
+// that is not global. Everything else is non-identifying numeric progress.
+function publicBackfillJob(job: BackfillJob | null, isGlobal: boolean) {
+  if (!job) return null;
+  return {
+    jobId: job.jobId,
+    status: job.status,
+    total: job.total,
+    processed: job.processed,
+    updated: job.updated,
+    skipped: job.skipped,
+    failed: job.failed,
+    message: job.message,
+    error: job.error,
+    startedAt: new Date(job.startedAt).toISOString(),
+    finishedAt: job.finishedAt ? new Date(job.finishedAt).toISOString() : null,
+    ...(isGlobal ? { failureSamples: [...job.failureSamples] } : {}),
+  };
+}
+
+/**
+ * Best-rate backfill — fills the "pending" Best Rate cells in the Orders table.
+ *
+ * Safety profile (intentionally narrow): fetches ShipStation rate *quotes* via
+ * /v2/rates/estimate for awaiting-shipment orders that lack a best rate, then
+ * upserts the cheapest into orderOverrides.bestRateJson. It does NOT buy
+ * postage/labels, notify marketplaces, or write to the orders table or
+ * shipped/cancelled history — so it stays inside the production guardrails.
+ *
+ * Multi-tenant: a non-global caller is hard-restricted to their own clientIds;
+ * a store-only scope (no resolvable clientIds) is refused rather than allowed
+ * to fan out across tenants.
+ */
 app.post('/backfill', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
     return c.json({ error: 'Admin access required' }, 403);
   }
-  return c.json({ error: 'Backfill is disabled on the client portal API. Use the PrepShip stable admin API.' }, 403);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    clientId?: number;
+    limit?: number;
+    maxAgeHours?: number;
+  };
+
+  const jobOpts: { clientId?: number; clientIds?: number[]; limit?: number; maxAgeHours?: number } = {};
+  if (scope.isGlobal) {
+    // Global admin: optional single-client narrow, otherwise all awaiting orders.
+    if (typeof body.clientId === 'number') jobOpts.clientId = body.clientId;
+  } else {
+    if (!scope.clientIds.length) {
+      return c.json({ error: 'Rate backfill requires client-scoped access.' }, 403);
+    }
+    if (typeof body.clientId === 'number') {
+      if (!scope.clientIds.includes(body.clientId)) {
+        return c.json({ error: 'Requested client is outside your access scope.' }, 403);
+      }
+      jobOpts.clientIds = [body.clientId];
+    } else {
+      jobOpts.clientIds = scope.clientIds;
+    }
+  }
+  if (typeof body.limit === 'number') jobOpts.limit = body.limit;
+  if (typeof body.maxAgeHours === 'number') jobOpts.maxAgeHours = body.maxAgeHours;
+
+  const job = startBackfillBestRates(jobOpts);
+  void recordPortalAudit('orders.backfill_best_rates.start', scope, {
+    jobId: job.jobId,
+    scope: scope.isGlobal ? 'global' : 'client',
+    clientIds: jobOpts.clientIds ?? (jobOpts.clientId !== undefined ? [jobOpts.clientId] : 'all'),
+    limit: jobOpts.limit ?? null,
+    maxAgeHours: jobOpts.maxAgeHours ?? null,
+  });
+  return c.json({ jobId: job.jobId, status: job.status, job: publicBackfillJob(job, scope.isGlobal) });
+});
+
+// Poll progress of the active (or most recent) backfill job.
+app.get('/backfill/status', (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  const job = getActiveBackfillJob() ?? getLatestBackfillJob();
+  return c.json({ job: publicBackfillJob(job, scope.isGlobal) });
+});
+
+// ── Inbound (receiving) shipments ──────────────────────────────────────────
+// Manually-entered POs/ASNs arriving at the warehouse. Read is client-scoped;
+// create is admin-only (global or settings:write).
+app.get('/inbound', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const clientId = parsePositiveInt(c.req.query('clientId'));
+
+  const preds: (SQL | undefined)[] = [];
+  if (!scope.isGlobal) {
+    if (!scope.clientIds.length) return c.json({ data: [] });
+    preds.push(inArray(inboundShipments.clientId, scope.clientIds));
+  }
+  if (clientId != null) {
+    if (!scope.isGlobal && !scope.clientIds.includes(clientId)) return c.json({ data: [] });
+    preds.push(eq(inboundShipments.clientId, clientId));
+  }
+  const where = preds.length ? and(...preds) : undefined;
+
+  const heads = await db
+    .select({
+      shipment: inboundShipments,
+      clientName: clients.name,
+    })
+    .from(inboundShipments)
+    .leftJoin(clients, eq(clients.id, inboundShipments.clientId))
+    .where(where)
+    .orderBy(desc(inboundShipments.createdAt), desc(inboundShipments.id))
+    .limit(200);
+
+  const ids = heads.map((h) => h.shipment.id);
+  const items = ids.length
+    ? await db.select().from(inboundItems).where(inArray(inboundItems.inboundId, ids))
+    : [];
+  const byInbound = new Map<number, typeof items>();
+  for (const it of items) {
+    const list = byInbound.get(it.inboundId) ?? [];
+    list.push(it);
+    byInbound.set(it.inboundId, list);
+  }
+
+  await recordPortalAudit('portal.inbound.list', scope, { rows: heads.length });
+  return c.json({
+    data: heads.map((h) => toPortalInboundDto({ ...h.shipment, clientName: h.clientName }, byInbound.get(h.shipment.id) ?? [])),
+  });
+});
+
+app.post('/inbound', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    clientId?: number;
+    reference?: string;
+    supplier?: string;
+    status?: string;
+    carrier?: string;
+    trackingNumber?: string;
+    expectedDate?: string;
+    notes?: string;
+    items?: Array<{ sku?: string; name?: string; expectedQty?: number; receivedQty?: number }>;
+  };
+
+  const clientId = typeof body.clientId === 'number' ? body.clientId : null;
+  if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
+    return c.json({ error: 'Requested client is outside your access scope.' }, 403);
+  }
+  const status = ['expected', 'in_transit', 'received', 'cancelled'].includes(body.status ?? '')
+    ? (body.status as string)
+    : 'expected';
+
+  const [head] = await db
+    .insert(inboundShipments)
+    .values({
+      clientId,
+      reference: body.reference?.trim() || null,
+      supplier: body.supplier?.trim() || null,
+      status,
+      carrier: body.carrier?.trim() || null,
+      trackingNumber: body.trackingNumber?.trim() || null,
+      expectedDate: body.expectedDate ? new Date(body.expectedDate) : null,
+      receivedDate: status === 'received' ? new Date() : null,
+      notes: body.notes?.trim() || null,
+      updatedAt: new Date(),
+    })
+    .returning();
+
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  const cleanItems = rawItems
+    .filter((it) => (it?.sku ?? '').trim() || (it?.name ?? '').trim())
+    .slice(0, 200)
+    .map((it) => ({
+      inboundId: head!.id,
+      sku: it.sku?.trim() || null,
+      name: it.name?.trim() || null,
+      expectedQty: Number(it.expectedQty) || 0,
+      receivedQty: Number(it.receivedQty) || 0,
+    }));
+  if (cleanItems.length) await db.insert(inboundItems).values(cleanItems);
+
+  await recordPortalAudit('portal.inbound.create', scope, { id: head!.id, clientId, items: cleanItems.length });
+  return c.json({ data: { id: head!.id } }, 201);
+});
+
+// Receive an inbound shipment: set received quantities, mark received, and
+// (optionally) add the received units to inventory via the canonical
+// applyMovement('receive') ledger writer. Admin-only.
+app.patch('/inbound/:id{[0-9]+}/receive', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  const id = Number(c.req.param('id'));
+  const body = (await c.req.json().catch(() => ({}))) as {
+    addToInventory?: boolean;
+    items?: Array<{ id: number; receivedQty: number }>;
+  };
+
+  const [head] = await db.select().from(inboundShipments).where(eq(inboundShipments.id, id)).limit(1);
+  if (!head) return c.json({ error: 'Inbound shipment not found' }, 404);
+  if (!scope.isGlobal && (head.clientId == null || !scope.clientIds.includes(head.clientId))) {
+    return c.json({ error: 'Inbound shipment is outside your access scope.' }, 403);
+  }
+
+  const items = await db.select().from(inboundItems).where(eq(inboundItems.inboundId, id));
+  const recvById = new Map((body.items ?? []).map((i) => [Number(i.id), Math.max(0, Number(i.receivedQty) || 0)]));
+  const receivedFor = (it: (typeof items)[number]) => (recvById.has(it.id) ? recvById.get(it.id)! : it.expectedQty);
+
+  for (const it of items) {
+    await db.update(inboundItems).set({ receivedQty: receivedFor(it) }).where(eq(inboundItems.id, it.id));
+  }
+  await db
+    .update(inboundShipments)
+    .set({ status: 'received', receivedDate: new Date(), updatedAt: new Date() })
+    .where(eq(inboundShipments.id, id));
+
+  // Optional inventory bump — match each received line to inventory by SKU
+  // within the same client; skip (don't fail) when there's no match.
+  const bumps: Array<{ sku: string; qty: number; matched: boolean }> = [];
+  if (body.addToInventory) {
+    for (const it of items) {
+      const qty = receivedFor(it);
+      if (!it.sku || qty <= 0) continue;
+      const [inv] = await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(
+          and(
+            sql`lower(${inventory.sku}) = lower(${it.sku})`,
+            head.clientId != null ? eq(inventory.clientId, head.clientId) : undefined,
+          ),
+        )
+        .limit(1);
+      if (!inv) {
+        bumps.push({ sku: it.sku, qty, matched: false });
+        continue;
+      }
+      await applyMovement({
+        inventoryId: inv.id,
+        type: 'receive',
+        qty,
+        note: `Inbound ${head.reference ?? `#${head.id}`}`,
+        createdBy: scope.email ?? scope.userId,
+      });
+      bumps.push({ sku: it.sku, qty, matched: true });
+    }
+  }
+
+  await recordPortalAudit('portal.inbound.receive', scope, { id, addToInventory: !!body.addToInventory, bumps: bumps.length });
+  return c.json({ data: { id, status: 'received', bumps } });
+});
+
+// Bulk import inbound shipments (CSV/feed). Each shipment is created with its
+// line items. Out-of-scope client rows are skipped, not rejected. Admin-only.
+app.post('/inbound/import', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    shipments?: Array<{
+      clientId?: number;
+      reference?: string;
+      supplier?: string;
+      status?: string;
+      carrier?: string;
+      trackingNumber?: string;
+      expectedDate?: string;
+      notes?: string;
+      items?: Array<{ sku?: string; name?: string; expectedQty?: number }>;
+    }>;
+  };
+  const shipments = Array.isArray(body.shipments) ? body.shipments.slice(0, 500) : [];
+  if (!shipments.length) return c.json({ error: 'No rows to import' }, 400);
+
+  let created = 0;
+  let itemsCreated = 0;
+  let skipped = 0;
+  for (const s of shipments) {
+    const clientId = typeof s.clientId === 'number' ? s.clientId : null;
+    if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
+      skipped++;
+      continue;
+    }
+    const status = ['expected', 'in_transit', 'received', 'cancelled'].includes(s.status ?? '')
+      ? (s.status as string)
+      : 'expected';
+    const [head] = await db
+      .insert(inboundShipments)
+      .values({
+        clientId,
+        reference: s.reference?.trim() || null,
+        supplier: s.supplier?.trim() || null,
+        status,
+        carrier: s.carrier?.trim() || null,
+        trackingNumber: s.trackingNumber?.trim() || null,
+        expectedDate: s.expectedDate ? new Date(s.expectedDate) : null,
+        notes: s.notes?.trim() || null,
+        updatedAt: new Date(),
+      })
+      .returning();
+    created++;
+    const its = (Array.isArray(s.items) ? s.items : [])
+      .filter((it) => (it?.sku ?? '').trim() || (it?.name ?? '').trim())
+      .slice(0, 200)
+      .map((it) => ({
+        inboundId: head!.id,
+        sku: it.sku?.trim() || null,
+        name: it.name?.trim() || null,
+        expectedQty: Number(it.expectedQty) || 0,
+        receivedQty: 0,
+      }));
+    if (its.length) {
+      await db.insert(inboundItems).values(its);
+      itemsCreated += its.length;
+    }
+  }
+
+  await recordPortalAudit('portal.inbound.import', scope, { created, itemsCreated, skipped });
+  return c.json({ data: { created, itemsCreated, skipped } }, 201);
 });
 
 app.get('/integrations', async (c) => {
