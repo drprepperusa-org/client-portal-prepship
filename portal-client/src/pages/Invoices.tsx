@@ -185,11 +185,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       ) : (
         <GlassPanel className="p-2 sm:p-3">
           <div className="flex items-center justify-between gap-3 px-2 pb-2">
-            <button onClick={() => setSelectedClient(null)} className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-glass-sm px-2 py-1 text-sm font-medium text-ink-2 hover:bg-slate-100">
-              <ChevronLeft size={16} /> All clients
+            <button onClick={() => setSelectedClient(null)} className="focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-glass-sm px-2 py-1 text-sm font-medium text-ink-2 hover:bg-slate-100">
+              <ChevronLeft size={16} /> <span className="hidden sm:inline">All clients</span>
             </button>
-            <p className="text-sm font-bold text-ink">Line items — {selectedName}</p>
-            <div className="flex items-center gap-3">
+            <p className="min-w-0 flex-1 truncate text-center text-sm font-bold text-ink">Line items — {selectedName}</p>
+            <div className="flex shrink-0 items-center gap-3">
               <span className="hidden text-xs text-ink-3 sm:inline">{lineItems.length} line{lineItems.length === 1 ? '' : 's'}</span>
               <button
                 onClick={() => viewInvoice(selectedClient ?? undefined)}

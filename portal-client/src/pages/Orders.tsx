@@ -173,9 +173,9 @@ export default function Orders() {
       render: (o) => (
         <div className="space-y-1">
           {(o.items.length ? o.items.slice(0, 4) : [{ name: '—', sku: null, quantity: null, imageUrl: null }]).map((it, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="flex min-w-0 items-center gap-2">
               <HoverZoomImage src={it.imageUrl} alt={it.name ?? ''} size={28} zoom={240} />
-              <span className="block truncate text-ink-2" title={it.name ?? ''}>{it.name ?? '—'}</span>
+              <span className="min-w-0 flex-1 truncate text-ink-2" title={it.name ?? ''}>{it.name ?? '—'}</span>
               {Number(it.quantity) > 1 && <span className="shrink-0 rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-3">×{it.quantity}</span>}
             </div>
           ))}
@@ -241,13 +241,13 @@ export default function Orders() {
   return (
     <div className="space-y-4">
       {/* Status tabs */}
-      <GlassPanel className="flex items-center gap-1 p-1.5">
+      <GlassPanel className="flex items-center gap-1 overflow-x-auto p-1.5">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              'focus-ring relative flex-1 cursor-pointer rounded-glass-sm px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+              'focus-ring relative flex-1 cursor-pointer whitespace-nowrap rounded-glass-sm px-3 py-2 text-sm font-semibold transition-colors sm:flex-none sm:px-4',
               tab === t.id ? 'bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-glass' : 'text-ink-2 hover:bg-slate-100',
             )}
           >

@@ -342,9 +342,9 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
             className={cn('glass rounded-glass-sm p-4', onRowClick && 'cursor-pointer')}
           >
             {ordered.map((c) => (
-              <div key={c.key} className="flex items-center justify-between gap-3 py-1.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-slate-100">
-                {!c.mobileHidden && <span className="text-xs font-semibold uppercase tracking-wide text-ink-3">{c.header}</span>}
-                <span className={cn('text-right text-ink-2', c.mobileHidden && 'w-full text-left')}>{c.render(row)}</span>
+              <div key={c.key} className="flex items-start justify-between gap-3 py-1.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-slate-100">
+                {!c.mobileHidden && <span className="shrink-0 pt-0.5 text-xs font-semibold uppercase tracking-wide text-ink-3">{c.header}</span>}
+                <div className={cn('min-w-0 text-right text-ink-2', c.mobileHidden ? 'w-full text-left' : 'flex-1')}>{c.render(row)}</div>
               </div>
             ))}
           </motion.div>

@@ -224,9 +224,9 @@ export default function Shipments() {
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+    <div className="min-w-0 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
       <p className="text-xs font-medium text-ink-3">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
     </div>
   );
 }

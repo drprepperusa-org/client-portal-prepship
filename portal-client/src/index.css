@@ -26,6 +26,10 @@ body {
   text-rendering: optimizeLegibility;
   /* Clean neutral white theme — whisper-gray page so white cards pop */
   background-color: #f6f7f9;
+  /* Safety net: never allow stray-wide content to scroll the page sideways
+     (on iOS that horizontal rubber-band makes the menu/drawer hard to tap).
+     Vertical scrolling and the viewport-fixed drawer are unaffected. */
+  overflow-x: hidden;
 }
 
 /* Custom scrollbar — subtle, neutral */

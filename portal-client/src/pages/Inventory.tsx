@@ -76,13 +76,13 @@ export default function Inventory() {
   return (
     <div className="space-y-4">
       {/* Tabs */}
-      <GlassPanel className="flex items-center gap-1 p-1.5">
+      <GlassPanel className="flex items-center gap-1 overflow-x-auto p-1.5">
         {(['stock', 'history'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              'focus-ring relative flex-1 cursor-pointer rounded-glass-sm px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+              'focus-ring relative flex-1 cursor-pointer whitespace-nowrap rounded-glass-sm px-3 py-2 text-sm font-semibold transition-colors sm:flex-none sm:px-4',
               tab === t ? 'bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-glass' : 'text-ink-2 hover:bg-slate-100',
             )}
           >

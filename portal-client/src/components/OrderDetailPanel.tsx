@@ -38,12 +38,12 @@ export function bestRateAmount(json: Record<string, unknown> | null | undefined)
 
 function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+    <div className="min-w-0 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
       <div className="flex items-center gap-1.5 text-ink-3">
         {icon}
-        <span className="text-xs font-medium">{label}</span>
+        <span className="truncate text-xs font-medium">{label}</span>
       </div>
-      <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
     </div>
   );
 }
@@ -78,9 +78,9 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
 
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3"><MapPin size={13} /> Ship to</p>
-        <p className="text-sm font-semibold text-ink">{o.shipToName ?? '—'}</p>
-        <p className="text-sm text-ink-2">{dest}</p>
-        {o.clientName && <p className="mt-1 text-xs text-ink-3">{o.clientName}</p>}
+        <p className="break-words text-sm font-semibold text-ink">{o.shipToName ?? '—'}</p>
+        <p className="break-words text-sm text-ink-2">{dest}</p>
+        {o.clientName && <p className="mt-1 break-words text-xs text-ink-3">{o.clientName}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

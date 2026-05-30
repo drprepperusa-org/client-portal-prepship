@@ -204,9 +204,9 @@ function OrderDetailLoader({ id }: { id: number }) {
 
 function SkuStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">{label}</p>
-      <p className="mt-1 text-lg font-bold text-ink tnum">{value}</p>
+    <div className="min-w-0 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+      <p className="truncate text-[10px] font-bold uppercase tracking-wider text-ink-3">{label}</p>
+      <p className="mt-1 truncate text-lg font-bold text-ink tnum" title={value}>{value}</p>
     </div>
   );
 }
@@ -229,7 +229,7 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SkuStat label="30-day units" value={String(data?.totalUnits ?? 0)} />
         <SkuStat label="Avg ship cost" value={money(Number(data?.avgStandardShippingCost ?? 0))} />
         <SkuStat label="Avg / day" value={avgPerDay.toFixed(1)} />
