@@ -1,51 +1,765 @@
 // @ts-nocheck
-// UPS shield — flat, ID-FREE rendition (solid fills only; no gradients,
-// clipPaths, masks, or internal id="" references).
+// UPS shield logo — full-detail SVG with multiple radial/linear gradients
+// to capture the brown shield + gold rim depth and the UPS lettering with
+// authentic shading. Provided by the user; converted from raw SVG to JSX
+// by camelCasing namespaced attributes (xlink:href → xlinkHref,
+// clip-path → clipPath, stop-color → stopColor).
 //
-// Why: the previous full-detail logo carried ~90 hardcoded internal IDs
-// (id="A".."az") plus 60+ fill="url(#…)" references. When more than one UPS
-// badge renders on a page those IDs collide, and on iOS Safari the duplicate
-// id + url(#…) paint references fail to resolve and the shield renders SOLID
-// BLACK. Flat solid fills sidestep that class of bug entirely and render
-// identically on every browser.
-//
-// Sized by the `height` prop; width preserves the UPS aspect (~0.733) so the
-// shield never distorts at any size (CarrierBadge passes H.ups = 34).
+// Sized by the `height` prop; width is computed from the original
+// viewBox aspect (95.55 × 130.875 → ~0.730 ratio) so the shield never
+// distorts at any size.
+
+import { useId } from "react";
+
 export default function UpsLogo({ height = 22, ...props }: { height?: number } & React.SVGProps<SVGSVGElement>) {
-  const width = Math.round(height * (96 / 131));
+  // viewBox width / height = 95.55 / 130.875 ≈ 0.7302
+  const width = Math.round(height * (95.55 / 130.875))
+  // Per-instance prefix -> unique internal ids (no cross-instance collision;
+  // fixes solid-black render on iOS Safari when multiple UPS badges mount).
+  const __p = "u" + useId().replace(/[^a-zA-Z0-9]/g, "");
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       width={width}
       height={height}
-      viewBox="0 0 96 131"
+      viewBox="-11.025 -21.8125 95.55 130.875"
       role="img"
       aria-label="UPS"
       {...props}
     >
-      {/* Brown shield body */}
+      <defs>
+        <path d="M-14.272-13.996h102v115h-102z" id={`${__p}a`} />
+      </defs>
+      <clipPath id={`${__p}b`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}a`} />
+      </clipPath>
       <path
-        fill="#351C15"
-        d="M48 5C36 7 19 11 9 14c-1 22-1 48 1 66 3 24 22 41 38 47 16-6 35-23 38-47 2-18 2-44 1-66C78 11 60 7 48 5Z"
+        transform="translate(.022 .122)"
+        d="M36.728-.122c-14.406 0-26.283 2.74-36.75 8.288v42.832c0 9.15 3.442 16.808 9.954 22.146 5.872 4.812 24.665 13.058 26.796 13.984 2.13-.927 20.924-9.172 26.796-13.984 6.512-5.34 9.954-12.997 9.954-22.146V8.168c-10.467-5.55-22.344-8.29-36.75-8.29"
+        fill="#1E0000"
+        clipPath={`url(#${__p}b)`}
       />
-      {/* Gold heraldic knot/bowtie near the top */}
-      <path
-        fill="#FFB500"
-        d="M48 28c-6 8-14 12-21 14 7 5 15 9 21 17 6-8 14-12 21-17-7-2-15-6-21-14Z"
-      />
-      {/* Gold "ups" wordmark (lowercase italic serif) */}
-      <text
-        x="48"
-        y="96"
-        textAnchor="middle"
-        fontFamily="Georgia, 'Times New Roman', serif"
-        fontStyle="italic"
-        fontWeight="700"
-        fontSize="34"
-        fill="#FFB500"
+      <defs>
+        <path
+          d="M.728 8.618v42.38c0 8.916 3.347 16.375 9.68 21.565 5.793 4.75 24.205 12.83 26.32 13.748 2.114-.918 20.527-8.998 26.32-13.747 6.333-5.19 9.68-12.65 9.68-21.565V8.618c-10-5.303-22.113-7.99-36-7.99S10.73 3.316.728 8.62"
+          id={`${__p}c`}
+        />
+      </defs>
+      <clipPath id={`${__p}e`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}c`} />
+      </clipPath>
+      <radialGradient
+        gradientUnits="userSpaceOnUse"
+        gradientTransform="matrix(0 119.608 59.804 0 -6028.71 1722.482)"
+        r="1"
+        cy="101.004"
+        cx="-14.272"
+        id={`${__p}d`}
       >
-        ups
-      </text>
+        <stop stopColor="#FFDC00" offset="0" />
+        <stop stopColor="#FFBE00" offset=".35" />
+        <stop stopColor="#C86E14" offset="1" />
+      </radialGradient>
+      <path transform="translate(.022 .122)" d="M.728.63h72v85.68h-72z" fill={`url(#${__p}d)`} clipPath={`url(#${__p}e)`} />
+      <defs>
+        <path d="M-14.272-13.996h102v115h-102z" id={`${__p}f`} />
+      </defs>
+      <clipPath id={`${__p}g`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}f`} />
+      </clipPath>
+      <path
+        transform="translate(.022 .122)"
+        d="M59.708 81.447v3.677h.664V83.59h.095c.05.074 1 1.534 1 1.534h.803l-1.107-1.62c.486-.114.814-.467.814-.977 0-.522-.322-1.08-1.225-1.08zm.967.537c.563 0 .638.276.638.516 0 .347-.148.577-.86.577h-.08v-1.093zm2.597 1.312c0 1.368-1.114 2.484-2.493 2.484-1.373 0-2.49-1.116-2.49-2.484 0-1.372 1.117-2.495 2.49-2.495 1.378 0 2.492 1.124 2.492 2.496m-2.495-3.028c-1.665 0-3.02 1.363-3.02 3.028s1.355 3.02 3.02 3.02c1.675 0 3.026-1.355 3.026-3.02s-1.35-3.028-3.026-3.028"
+        fill="#C86E14"
+        clipPath={`url(#${__p}g)`}
+      />
+      <defs>
+        <path
+          d="M35.49 33.65v19.244c.448.167 1.183.378 2.032.378 3.606 0 5.326-3.308 5.326-10.155 0-7.017-1.505-9.918-5.14-9.918-.85 0-1.71.2-2.218.45M19.757 52.396V28.79h6.252v27.17c-2.393 1.626-5.604 2.516-9.437 2.516-6.198 0-9.34-3.362-9.34-10V28.79h6.26v19.965c0 1.777.43 4.407 3.3 4.407 1.273 0 2.283-.297 2.964-.766m9.466-22.013c2.272-1.466 5.027-2.228 8.443-2.228 7.476 0 11.584 5.672 11.584 14.803 0 9.148-3.99 15.41-10.942 15.41-1.285 0-2.193-.17-2.818-.355V71.2h-6.267V30.384zm31.46 19.44c-.046-1.967-1.157-3.033-3.91-4.65-5.166-3.032-6.094-5.524-6.103-8.856-.027-5.06 4.282-8.042 8.403-8.162 3.44-.105 5.77 1.187 6.872 2.034v5.446c-1.305-1.34-3.422-2.554-5.61-2.574-1.774-.016-3.622.765-3.684 2.993-.06 2.278 1.783 3.18 4.12 4.548 5.232 3.076 6.244 5.84 6.124 9.494-.12 4.004-2.88 8.38-9.068 8.38-2.476 0-4.924-.774-6.885-1.945v-5.767c1.6 1.425 3.99 2.534 5.988 2.548h.025c2.284 0 3.784-1.313 3.73-3.49M4.037 26.76V51c0 7.896 2.92 14.49 8.468 19.01C17.402 74 32.477 80.82 36.728 82.7c4.196-1.85 19.233-8.586 24.217-12.69C66.53 65.41 69.42 58.97 69.42 51V9.51c-4.446-.414-9.064-.686-13.77-.686-17.447 0-36.15 3.75-51.614 17.934"
+          id={`${__p}h`}
+        />
+      </defs>
+      <clipPath id={`${__p}j`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}h`} />
+      </clipPath>
+      <radialGradient
+        gradientUnits="userSpaceOnUse"
+        gradientTransform="matrix(0 118.6833 59.3417 0 -5981.98 1709.35)"
+        r="1"
+        cy="101.004"
+        cx="-14.272"
+        id={`${__p}i`}
+      >
+        <stop stopColor="#4B3333" offset="0" />
+        <stop stopColor="#351A1A" offset=".35" />
+        <stop stopColor="#1E0000" offset=".85" />
+        <stop stopColor="#1E0000" offset="1" />
+      </radialGradient>
+      <path transform="translate(.022 .122)" d="M4.036 8.824H69.42V82.7H4.036z" fill={`url(#${__p}i)`} clipPath={`url(#${__p}j)`} />
+      <defs>
+        <path
+          d="M4.036 51c0 7.896 2.92 14.49 8.468 19.01C17.402 74 32.477 80.82 36.728 82.7v-.493c-3.53-1.562-18.982-8.505-23.94-12.546C7.357 65.236 4.485 58.783 4.485 51h-.45z"
+          id={`${__p}k`}
+        />
+      </defs>
+      <clipPath id={`${__p}m`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}k`} />
+      </clipPath>
+      <linearGradient
+        gradientTransform="rotate(-136 638.5086 -2395.2041) scale(45.5362)"
+        y2="100.922"
+        x2="-13.273"
+        y1="100.922"
+        x1="-14.273"
+        gradientUnits="userSpaceOnUse"
+        id={`${__p}l`}
+      >
+        <stop stopColor="#E49F15" offset="0" />
+        <stop stopColor="#E39C15" offset=".024" />
+        <stop stopColor="#DC9116" offset=".178" />
+        <stop stopColor="#D88A17" offset=".396" />
+        <stop stopColor="#D78817" offset="1" />
+      </linearGradient>
+      <path
+        transform="translate(.022 .122)"
+        d="M20.953 99.035l-32.757-31.633 31.616-32.738 32.756 31.632"
+        fill={`url(#${__p}l)`}
+        clipPath={`url(#${__p}m)`}
+      />
+      <defs>
+        <path
+          d="M68.97 51c0 7.84-2.796 14.12-8.312 18.662-4.796 3.95-19.294 10.5-23.93 12.545v.492c4.195-1.85 19.232-8.586 24.216-12.69C66.53 65.41 69.42 58.97 69.42 51z"
+          id={`${__p}n`}
+        />
+      </defs>
+      <clipPath id={`${__p}p`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}n`} />
+      </clipPath>
+      <linearGradient
+        gradientTransform="rotate(-44 5492.2122 -3109.8493) scale(45.5362)"
+        y2="101.086"
+        x2="-13.272"
+        y1="101.086"
+        x1="-14.272"
+        gradientUnits="userSpaceOnUse"
+        id={`${__p}o`}
+      >
+        <stop stopColor="#FFC20E" offset="0" />
+        <stop stopColor="#D89016" offset="1" />
+      </linearGradient>
+      <path
+        transform="translate(.022 .122)"
+        d="M20.888 66.296l32.756-31.632L85.26 67.402 52.503 99.035"
+        fill={`url(#${__p}o)`}
+        clipPath={`url(#${__p}p)`}
+      />
+      <defs>
+        <path
+          d="M4.036 26.758l.45.198C17.536 15.06 34.273 9.274 55.65 9.274c4.174 0 8.536.212 13.32.646l.45-.41c-4.446-.414-9.064-.686-13.77-.686-17.447 0-36.15 3.75-51.614 17.934"
+          id={`${__p}q`}
+        />
+      </defs>
+      <clipPath id={`${__p}s`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}q`} />
+      </clipPath>
+      <linearGradient
+        gradientTransform="rotate(-19.2 19730.5077 -6247.8541) scale(67.419)"
+        y2="100.969"
+        x2="-13.272"
+        y1="100.969"
+        x1="-14.272"
+        gradientUnits="userSpaceOnUse"
+        id={`${__p}r`}
+      >
+        <stop stopColor="#E49F15" offset="0" />
+        <stop stopColor="#8F4A02" offset=".975" />
+        <stop stopColor="#8F4A02" offset="1" />
+      </linearGradient>
+      <path
+        transform="translate(.022 .122)"
+        d="M-1.595 10.785l63.943-22.267L75.05 24.995 11.108 47.263"
+        fill={`url(#${__p}r)`}
+        clipPath={`url(#${__p}s)`}
+      />
+      <defs>
+        <path d="M42.398 43.117c0 5.535-1.09 9.706-4.876 9.706v.45c3.606 0 5.326-3.31 5.326-10.156z" id={`${__p}t`} />
+      </defs>
+      <clipPath id={`${__p}v`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}t`} />
+      </clipPath>
+      <linearGradient
+        gradientTransform="rotate(-63.3 920.386 -716.0851) scale(11.4647)"
+        y2="101.094"
+        x2="-13.271"
+        y1="101.094"
+        x1="-14.271"
+        gradientUnits="userSpaceOnUse"
+        id={`${__p}u`}
+      >
+        <stop stopColor="#FFC20E" offset="0" />
+        <stop stopColor="#FFC20E" offset=".05" />
+        <stop stopColor="#BF7312" offset=".95" />
+        <stop stopColor="#BF7312" offset="1" />
+      </linearGradient>
+      <path
+        transform="translate(.022 .122)"
+        d="M33.446 51.222l5.15-10.243 8.328 4.187-5.15 10.243"
+        fill={`url(#${__p}u)`}
+        clipPath={`url(#${__p}v)`}
+      />
+      <defs>
+        <path d="M35.49 52.894c.448.167 1.183.378 2.032.378v-.45c-.616 0-1.168-.12-1.582-.25z" id={`${__p}w`} />
+      </defs>
+      <clipPath id={`${__p}y`}>
+        <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}w`} />
+      </clipPath>
+      <linearGradient
+        gradientTransform="rotate(-173 12.0455 -79.7612) scale(2.064)"
+        y2="101.008"
+        x2="-13.272"
+        y1="101.008"
+        x1="-14.272"
+        gradientUnits="userSpaceOnUse"
+        id={`${__p}x`}
+      >
+        <stop stopColor="#FFC20E" offset="0" />
+        <stop stopColor="#FFC20E" offset=".05" />
+        <stop stopColor="#F0AF13" offset=".95" />
+        <stop stopColor="#F0AF13" offset="1" />
+      </linearGradient>
+      <path
+        transform="translate(.022 .122)"
+        d="M37.492 53.518l-2.087-.256.115-.936 2.087.256"
+        fill={`url(#${__p}x)`}
+        clipPath={`url(#${__p}y)`}
+      />
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M35.49 33.65l.45.297c.436-.16 1.086-.298 1.77-.298v-.45c-.85 0-1.712.2-2.22.45" id={`${__p}z`} />
+        </defs>
+        <clipPath id={`${__p}B`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}z`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-14.7 1017.8543 -360.0338) scale(2.26)"
+          y2="101.022"
+          x2="-13.272"
+          y1="101.022"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}A`}
+        >
+          <stop stopColor="#A65E0C" offset="0" />
+          <stop stopColor="#A65E0C" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M35.307 33.247l2.258-.593.327 1.245-2.26.59" fill={`url(#${__p}A)`} clipPath={`url(#${__p}B)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M37.708 33.65c3.692 0 4.69 3.45 4.69 9.467h.45c0-7.017-1.506-9.918-5.14-9.918v.45z" id={`${__p}C`} />
+        </defs>
+        <clipPath id={`${__p}E`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}C`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-116.9 301.6393 -605.189) scale(11.171)"
+          y2="101.095"
+          x2="-13.272"
+          y1="101.095"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}D`}
+        >
+          <stop stopColor="#BF7312" offset="0" />
+          <stop stopColor="#BF7312" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M38.76 45.19l-5.053-9.96 8.088-4.105 5.055 9.962" fill={`url(#${__p}D)`} clipPath={`url(#${__p}E)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M50.22 36.32l.45-.003c-.027-5.06 4.282-8.042 8.403-8.162l-.014-.45c-4.554.133-8.867 3.465-8.84 8.614"
+            id={`${__p}F`}
+          />
+        </defs>
+        <clipPath id={`${__p}H`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}F`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(137.9 -303.6878 -564.1818) scale(12.334)"
+          y2="101.086"
+          x2="-13.273"
+          y1="101.086"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}G`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#D89016" offset=".95" />
+          <stop stopColor="#D89016" offset="1" />
+        </linearGradient>
+        <path d="M63.36 32.447l-9.175 8.29-8.277-9.16 9.175-8.29" fill={`url(#${__p}G)`} clipPath={`url(#${__p}H)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M56.652 36.055l.45.01c.016-.6.294-2.554 3.172-2.554l.062-.448h-.055c-1.756 0-3.568.788-3.628 2.993" id={`${__p}I`} />
+        </defs>
+        <clipPath id={`${__p}K`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}I`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-41 683.0354 -387.678) scale(4.7434)"
+          y2="100.93"
+          x2="-13.272"
+          y1="100.93"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}J`}
+        >
+          <stop stopColor="#D78817" offset="0" />
+          <stop stopColor="#D78817" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M55.165 34.355l3.585-3.117 3.073 3.535-3.586 3.117" fill={`url(#${__p}J)`} clipPath={`url(#${__p}K)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M60.274 33.51c2.59 0 4.802 1.685 6.122 3.233l-.45-1.107c-1.305-1.34-3.422-2.554-5.61-2.574l-.062.45z"
+            id={`${__p}L`}
+          />
+        </defs>
+        <clipPath id={`${__p}N`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}L`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-152.5 74.7183 -359.7447) scale(7.0756)"
+          y2="101.059"
+          x2="-13.272"
+          y1="101.059"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}M`}
+        >
+          <stop stopColor="#BF7312" offset="0" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M65.09 39.25l-6.324-3.292 2.814-5.403 6.324 3.292" fill={`url(#${__p}M)`} clipPath={`url(#${__p}N)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M59.06 27.705l.014.45c3.44-.105 5.77 1.187 6.872 2.034l.45-.222c-.944-.765-3.345-2.27-6.94-2.27-.13 0-.263.003-.396.007"
+            id={`${__p}O`}
+          />
+        </defs>
+        <clipPath id={`${__p}Q`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}O`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(17.9 -2574.2597 161.5686) scale(7.6762)"
+          y2="100.978"
+          x2="-13.273"
+          y1="100.978"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}P`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#E49F15" offset=".95" />
+          <stop stopColor="#E49F15" offset="1" />
+        </linearGradient>
+        <path d="M59.753 25.553l7.372 2.38-1.422 4.4-7.37-2.38" fill={`url(#${__p}P)`} clipPath={`url(#${__p}Q)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M57.827 58.476v.45c5.677 0 9.367-3.78 9.52-8.813l-.45-.016c-.12 4.004-2.883 8.38-9.07 8.38" id={`${__p}R`} />
+        </defs>
+        <clipPath id={`${__p}T`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}R`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="matrix(-9.265 9.073 9.073 9.265 -980.627 -755.523)"
+          y2="100.915"
+          x2="-13.272"
+          y1="100.915"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}S`}
+        >
+          <stop stopColor="#D78817" offset="0" />
+          <stop stopColor="#D78817" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M71.758 54.604l-9.27 9.08-9.074-9.265 9.272-9.08" fill={`url(#${__p}S)`} clipPath={`url(#${__p}T)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M50.492 56.787c2.24 1.337 4.646 2.14 7.335 2.14v-.45c-2.476 0-4.924-.774-6.885-1.945z" id={`${__p}U`} />
+        </defs>
+        <clipPath id={`${__p}W`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}U`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="matrix(7.341 2.119 2.119 -7.341 -58.774 828.564)"
+          y2="101.027"
+          x2="-13.272"
+          y1="101.027"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}V`}
+        >
+          <stop stopColor="#BF7312" offset="0" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M51.056 54.576l7.41 2.14-1.203 4.164-7.41-2.138" fill={`url(#${__p}V)`} clipPath={`url(#${__p}W)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M50.942 50.765c1.598 1.425 3.99 2.534 5.987 2.548l.002-.45c-2.23-.016-4.806-1.45-6.44-3.102l.45 1.005z"
+            id={`${__p}X`}
+          />
+        </defs>
+        <clipPath id={`${__p}Z`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}X`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-154.1 67.4418 -362.6335) scale(7.3418)"
+          y2="100.957"
+          x2="-13.273"
+          y1="100.957"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}Y`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#F0AF13" offset="1" />
+        </linearGradient>
+        <path d="M55.704 55.844l-6.608-3.21 2.625-5.404 6.608 3.208" fill={`url(#${__p}Y)`} clipPath={`url(#${__p}Z)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M60.234 49.835c.05 1.998-1.348 3.042-3.302 3.028l-.003.45c2.296.01 3.808-1.306 3.754-3.49l-.45.012z" id={`${__p}aa`} />
+        </defs>
+        <clipPath id={`${__p}ac`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}aa`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-42.6 724.8037 -399.2695) scale(5.1262)"
+          y2="101.085"
+          x2="-13.273"
+          y1="101.085"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}ab`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#D89016" offset=".95" />
+          <stop stopColor="#D89016" offset="1" />
+        </linearGradient>
+        <path d="M55.186 51.427l3.807-3.5 3.488 3.793-3.806 3.5" fill={`url(#${__p}ab)`} clipPath={`url(#${__p}ac)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M50.22 36.32c.01 3.508 1.048 6.144 6.324 9.24 2.822 1.658 3.65 2.617 3.69 4.275l.45-.01c-.048-1.97-1.16-3.035-3.913-4.653-5.164-3.03-6.092-5.523-6.1-8.855l-.45.002z"
+            id={`${__p}ad`}
+          />
+        </defs>
+        <clipPath id={`${__p}af`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}ad`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(55.2 -1779.5362 -562.5667) scale(17.0604)"
+          y2="101.036"
+          x2="-13.271"
+          y1="101.036"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}ae`}
+        >
+          <stop stopColor="#D89016" offset="0" />
+          <stop stopColor="#BF7312" offset=".4" />
+          <stop stopColor="#BF7312" offset=".6" />
+          <stop stopColor="#D89016" offset="1" />
+        </linearGradient>
+        <path d="M57.276 31.413l9.743 14.02-13.392 9.305-9.743-14.018" fill={`url(#${__p}ae)`} clipPath={`url(#${__p}af)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M60.772 40.603c5.23 3.076 6.243 5.84 6.123 9.494l.45.016c.123-3.734-.896-6.693-6.346-9.897-2.214-1.342-3.954-2.073-3.898-4.15l-.45-.01c-.062 2.277 1.782 3.178 4.12 4.547"
+            id={`${__p}ag`}
+          />
+        </defs>
+        <clipPath id={`${__p}ai`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}ag`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(53.8 -1890.2306 -569.116) scale(17.6596)"
+          y2="100.962"
+          x2="-13.272"
+          y1="100.962"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}ah`}
+        >
+          <stop stopColor="#D78817" offset="0" />
+          <stop stopColor="#E49F15" offset=".4" />
+          <stop stopColor="#E49F15" offset=".6" />
+          <stop stopColor="#D78817" offset="1" />
+        </linearGradient>
+        <path d="M63.673 30.87l10.494 14.34-13.783 10.086L49.89 40.958" fill={`url(#${__p}ah)`} clipPath={`url(#${__p}ai)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M-14.272-13.996h102v115h-102z" id={`${__p}aj`} />
+        </defs>
+        <clipPath id={`${__p}ak`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}aj`} />
+        </clipPath>
+        <path d="M35.49 71.2h-6.266l-.45.45h7.165" fill="#8F4A02" clipPath={`url(#${__p}ak)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M35.94 58.59c.707.152 1.5.23 2.368.23v-.45c-1.285 0-2.193-.172-2.818-.356l.45.577z" id={`${__p}al`} />
+        </defs>
+        <clipPath id={`${__p}an`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}al`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="matrix(2.874 .445 .445 -2.874 31.535 354.878)"
+          y2="101.016"
+          x2="-13.271"
+          y1="101.016"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}am`}
+        >
+          <stop stopColor="#A65E0C" offset="0" />
+          <stop stopColor="#A65E0C" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M35.556 57.587l2.874.445-.188 1.213-2.874-.445" fill={`url(#${__p}am)`} clipPath={`url(#${__p}an)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M49.25 42.958c0 9.148-3.99 15.41-10.942 15.41v.45c8.07 0 11.392-7.71 11.392-15.86z" id={`${__p}ao`} />
+        </defs>
+        <clipPath id={`${__p}aq`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}ao`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(125.6 -631.9064 -879.3728) scale(19.5286)"
+          y2="100.903"
+          x2="-13.272"
+          y1="100.903"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}ap`}
+        >
+          <stop stopColor="#A65E0C" offset="0" />
+          <stop stopColor="#A65E0C" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M57.208 48.333L45.838 64.21 30.802 53.445 42.17 37.566" fill={`url(#${__p}ap)`} clipPath={`url(#${__p}aq)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M28.773 30.137l.45.246c2.272-1.466 5.027-2.228 8.443-2.228v-.45c-3.47 0-6.49.795-8.893 2.432"
+            id={`${__p}ar`}
+          />
+        </defs>
+        <clipPath id={`${__p}at`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}ar`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(165.5 -107.9428 -440.9522) scale(9.218)"
+          y2="101.033"
+          x2="-13.273"
+          y1="101.033"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}as`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#F0AF13" offset=".95" />
+          <stop stopColor="#F0AF13" offset="1" />
+        </linearGradient>
+        <path d="M38.315 30.215L29.33 32.54l-1.206-4.667 8.985-2.324" fill={`url(#${__p}as)`} clipPath={`url(#${__p}at)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M37.667 28.155c7.476 0 11.584 5.672 11.584 14.803h.45c0-8.078-3.38-15.253-12.033-15.253v.45z" id={`${__p}au`} />
+        </defs>
+        <clipPath id={`${__p}aw`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}au`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(51.9 -2162.2392 -642.6783) scale(19.428)"
+          y2="100.898"
+          x2="-13.271"
+          y1="100.898"
+          x1="-14.271"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}av`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#A65E0C" offset=".95" />
+          <stop stopColor="#A65E0C" offset="1" />
+        </linearGradient>
+        <path d="M45.12 21.862L57.105 37.15 42.248 48.8 30.26 33.513" fill={`url(#${__p}av)`} clipPath={`url(#${__p}aw)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M-14.272-13.996h102v115h-102z" id={`${__p}ax`} />
+        </defs>
+        <clipPath id={`${__p}ay`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}ax`} />
+        </clipPath>
+        <path
+          d="M13.494 28.79H7.232l-.45-.45h7.16zm12.516 0h-6.252l-.45-.45h7.152z"
+          fill="#FFC20E"
+          clipPath={`url(#${__p}ay)`}
+        />
+        <path
+          d="M4.037 51V26.756l.45.198v24.043h-.45zm62.36-14.257v-6.776l-.45.222v5.445l.45 1.108zM13.942 48.755V28.34l-.45.45v19.964h.45z"
+          fill="#D78817"
+          clipPath={`url(#${__p}ay)`}
+        />
+        <path
+          d="M68.97 51V9.92l.45-.41V51zm-18.478-1.24v7.026l.45-.255v-5.766l-.45-1.003zm-30.735 2.636V28.79l-.45-.45v23.81zm-12.524-3.92V28.79l-.45-.45v20.137h.45z"
+          fill="#D89016"
+          clipPath={`url(#${__p}ay)`}
+        />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M6.783 48.476c0 6.63 3.108 10.45 9.79 10.45v-.45c-6.198 0-9.34-3.362-9.34-10z" id={`${__p}az`} />
+        </defs>
+        <clipPath id={`${__p}aB`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}az`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(47.1 -1815.334 -457.4634) scale(14.319)"
+          y2="101.115"
+          x2="-13.272"
+          y1="101.115"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}aA`}
+        >
+          <stop stopColor="#D89016" offset="0" />
+          <stop stopColor="#D89016" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M12.037 43.594l9.747 10.49-10.465 9.724-9.748-10.49" fill={`url(#${__p}aA)`} clipPath={`url(#${__p}aB)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path
+            d="M16.573 58.476v.45c4 0 7.232-.924 9.886-2.727l-.45-.24c-2.393 1.626-5.604 2.516-9.437 2.516"
+            id={`${__p}aC`}
+          />
+        </defs>
+        <clipPath id={`${__p}aE`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}aC`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="matrix(-9.928 2.5676 2.5676 9.928 -374.5 -909.682)"
+          y2="100.977"
+          x2="-13.272"
+          y1="100.977"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}aD`}
+        >
+          <stop stopColor="#A65E0C" offset="0" />
+          <stop stopColor="#A65E0C" offset=".05" />
+          <stop stopColor="#8F4A02" offset=".95" />
+          <stop stopColor="#8F4A02" offset="1" />
+        </linearGradient>
+        <path d="M27.178 58.74l-9.985 2.582-1.34-5.176 9.986-2.582" fill={`url(#${__p}aD)`} clipPath={`url(#${__p}aE)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M16.794 52.712v.45c1.272 0 2.282-.297 2.963-.766l-.45-.25c-.636.367-1.517.566-2.513.566" id={`${__p}aF`} />
+        </defs>
+        <clipPath id={`${__p}aH`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}aF`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="matrix(2.9715 -.73 -.73 -2.9715 132.897 342.768)"
+          y2="101.012"
+          x2="-13.273"
+          y1="101.012"
+          x1="-14.273"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}aG`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#F0AF13" offset=".95" />
+          <stop stopColor="#F0AF13" offset="1" />
+        </linearGradient>
+        <path d="M16.56 52.206l3.028-.744.404 1.642-3.03.745" fill={`url(#${__p}aG)`} clipPath={`url(#${__p}aH)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M13.493 48.755c0 1.777.43 4.407 3.3 4.407v-.45c-2.207 0-2.85-1.78-2.85-3.957z" id={`${__p}aI`} />
+        </defs>
+        <clipPath id={`${__p}aK`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}aI`} />
+        </clipPath>
+        <linearGradient
+          gradientTransform="rotate(-126.2 123.5326 -275.4211) scale(5.506)"
+          y2="100.916"
+          x2="-13.272"
+          y1="100.916"
+          x1="-14.272"
+          gradientUnits="userSpaceOnUse"
+          id={`${__p}aJ`}
+        >
+          <stop stopColor="#FFC20E" offset="0" />
+          <stop stopColor="#FFC20E" offset=".05" />
+          <stop stopColor="#D78817" offset=".95" />
+          <stop stopColor="#D78817" offset="1" />
+        </linearGradient>
+        <path d="M14.645 54.735l-3.252-4.443 4.25-3.11 3.252 4.443" fill={`url(#${__p}aJ)`} clipPath={`url(#${__p}aK)`} />
+      </g>
+      <g transform="translate(.022 .122)">
+        <defs>
+          <path d="M-14.272-13.996h102v115h-102z" id={`${__p}aL`} />
+        </defs>
+        <clipPath id={`${__p}aM`}>
+          <use height="100%" width="100%" overflow="visible" xlinkHref={`#${__p}aL`} />
+        </clipPath>
+        <path d="M28.773 30.137V71.65l.45-.45V30.383" fill="#D78817" clipPath={`url(#${__p}aM)`} />
+        <path
+          d="M35.94 52.572V33.946l-.45-.297v19.243zm0 6.02v13.06l-.45-.45v-13.19zM26.46 56.2V28.34l-.45.45v27.17"
+          fill="#BF7312"
+          clipPath={`url(#${__p}aM)`}
+        />
+      </g>
     </svg>
-  );
+  )
 }
