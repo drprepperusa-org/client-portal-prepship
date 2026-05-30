@@ -6,60 +6,9 @@
   "installCommand": "npm install && npm --prefix portal-client install",
   "rewrites": [
     {
-      "source": "/api/client-portal/me",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/users/me"
+      "source": "/api/client-portal/:path*",
+      "destination": "https://client-portal-prepship.onrender.com/api/client-portal/:path*"
     },
-    {
-      "source": "/api/client-portal/dashboard",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/dashboard/summary"
-    },
-    {
-      "source": "/api/client-portal/daily-counts",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/dashboard/daily-counts"
-    },
-    {
-      "source": "/api/client-portal/orders/:path*",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/orders/:path*"
-    },
-    {
-      "source": "/api/client-portal/shipments",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/shipments"
-    },
-    {
-      "source": "/api/client-portal/inventory",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/inventory"
-    },
-    {
-      "source": "/api/client-portal/analysis",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/analysis/sku-breakdown"
-    },
-    {
-      "source": "/api/client-portal/reports",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/billing/summary"
-    },
-    {
-      "source": "/api/client-portal/integrations",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/carrier-accounts"
-    },
-    {
-      "source": "/api/client-portal/activity",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/users/me"
-    },
-    {
-      "source": "/api/:path((?!carrier-accounts|carriers/|store-accounts|oauth/|debug-env|migrate-from|admin/|cron/).+)",
-      "destination": "https://prepshipv4-api-l5xc.onrender.com/:path"
-    },
-    {
-      "source": "/oauth/:path*",
-      "destination": "/api/oauth/:path*"
-    },
-    { "source": "/maintenance", "destination": "/maintenance.html" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/sync-walmart-fees",
-      "schedule": "0 9 * * *"
-    }
+    { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ]
 }
