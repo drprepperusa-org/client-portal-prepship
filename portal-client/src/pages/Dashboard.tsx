@@ -5,7 +5,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState } from '@/components/ui/Display';
 import { OrdersAreaChart, VolumeBarChart } from '@/components/charts/Charts';
 import { staggerContainer } from '@/lib/motion';
-import { useDashboard, useDailyCounts, useDailyShipments } from '@/lib/hooks';
+import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money } from '@/lib/status';
 
@@ -14,11 +14,16 @@ export default function Dashboard() {
   const dash = useDashboard();
   const counts = useDailyCounts();
   const ships = useDailyShipments();
+  const aw = useAwaitingCount();
 
-  const loading = dash.isLoading || counts.isLoading || ships.isLoading;
+  const loading = dash.isLoading || counts.isLoading || ships.isLoading || aw.isLoading;
 
   const countRows = counts.data?.data ?? [];
-  const awaiting = countRows.reduce((n, r) => n + Number(r.awaiting ?? 0), 0);
+  // Open orders = current orders still awaiting shipment (a live state count,
+  // NOT a 30-day window). Sourced from the same endpoint as the sidebar badge
+  // so the two always agree; windowing it by order date dropped older unshipped
+  // orders and made this read lower than the real backlog.
+  const openOrders = aw.data?.count ?? 0;
   const shipped = countRows.reduce((n, r) => n + Number(r.shipped ?? 0), 0);
 
   const ordersSeries = countRows.map((r) => ({ day: r.day.slice(5), orders: r.total, shipped: r.shipped }));
@@ -33,7 +38,7 @@ export default function Dashboard() {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-glass" />)
         ) : (
           <>
-            <StatCard label={`Open orders (${days}d)`} value={awaiting.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" />
+            <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" />
             <StatCard label={`Shipped (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" />
             <StatCard label={`Units shipped (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} />
             <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" hint="Visible if permitted" />
