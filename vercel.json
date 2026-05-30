@@ -2,8 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "npm run build:web",
-  "outputDirectory": "web/dist",
-  "installCommand": "npm install",
+  "outputDirectory": "portal-client/dist",
+  "installCommand": "npm install && npm --prefix portal-client install",
   "rewrites": [
     {
       "source": "/api/client-portal/me",
