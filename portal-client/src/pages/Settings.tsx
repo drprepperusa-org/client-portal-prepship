@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Bell, Users, CreditCard, Building2, ReceiptText, Store, Percent, Truck, AlertTriangle, BarChart3, Check } from 'lucide-react';
+import { User, Bell, Users, CreditCard, Building2, ReceiptText, Store, Percent, Truck, AlertTriangle, BarChart3, Check, Search, ShieldCheck } from 'lucide-react';
 import { GlassPanel, SectionTitle, Divider } from '@/components/ui/Glass';
 import { TextInput, EmailInput, TextArea } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
-import { Avatar, Chip } from '@/components/ui/Display';
+import { Avatar, Chip, SkeletonRows } from '@/components/ui/Display';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useClients, useAccessList } from '@/lib/hooks';
 import { BrandMark, resolveLogoKey } from '@/components/store/StoreLogo';
 import { MarkupsEditor } from '@/components/MarkupsEditor';
+import { ACCENTS, type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
 
 const TABS = [
@@ -35,6 +36,21 @@ function loadJSON<T extends object>(key: string, fallback: T): T {
   }
 }
 
+// Compact "last active" label for the access roster (e.g. "3d ago").
+function relativeTime(iso: string | null): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const days = Math.floor((Date.now() - then) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
+type RoleFilter = 'all' | 'admin' | 'client' | 'global';
+
 type NotifPrefs = { ship: boolean; lowStock: boolean; invoice: boolean; weekly: boolean };
 const NOTIF_DEFAULTS: NotifPrefs = { ship: true, lowStock: true, invoice: true, weekly: false };
 const NOTIF_OPTS: { key: keyof NotifPrefs; icon: typeof Bell; title: string; desc: string }[] = [
@@ -56,8 +72,32 @@ export default function Settings() {
   const [bio, setBio] = useState(savedProfile.bio);
   const [notif, setNotif] = useState<NotifPrefs>(() => loadJSON(LS_NOTIF, NOTIF_DEFAULTS));
   const [accessSearch, setAccessSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const accessUsers = accessList.data?.data ?? [];
+
+  // Roster roll-ups, computed once from the full (unfiltered) list.
+  const adminCount = accessUsers.filter((u) => u.isAdmin).length;
+  const globalCount = accessUsers.filter((u) => u.isGlobal).length;
+  const clientCount = accessUsers.length - adminCount;
+  const storesCovered = new Set(accessUsers.flatMap((u) => u.clients.map((c) => c.id))).size;
+
+  const accessStats: { label: string; value: number; icon: typeof Users; accent: Accent }[] = [
+    { label: 'Total logins', value: accessUsers.length, icon: Users, accent: 'indigo' },
+    { label: 'Admins', value: adminCount, icon: ShieldCheck, accent: 'violet' },
+    { label: 'Client users', value: clientCount, icon: User, accent: 'sky' },
+    { label: 'Stores covered', value: storesCovered, icon: Store, accent: 'emerald' },
+  ];
+  const roleFilters: { id: RoleFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'All', count: accessUsers.length },
+    { id: 'admin', label: 'Admins', count: adminCount },
+    { id: 'client', label: 'Clients', count: clientCount },
+    { id: 'global', label: 'Global', count: globalCount },
+  ];
+
   const filteredAccessUsers = accessUsers.filter((user) => {
+    if (roleFilter === 'admin' && !user.isAdmin) return false;
+    if (roleFilter === 'client' && user.isAdmin) return false;
+    if (roleFilter === 'global' && !user.isGlobal) return false;
     const needle = accessSearch.trim().toLowerCase();
     if (!needle) return true;
     return (
@@ -167,85 +207,147 @@ export default function Settings() {
             {tab === 'team' && (
               <div className="space-y-5">
                 <SectionTitle title="Account access" subtitle="Emails and the client stores each login handles" />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                  <TextInput
-                    label="Search access"
-                    value={accessSearch}
-                    onChange={(e) => setAccessSearch(e.target.value)}
-                    placeholder="Email, role, or store"
-                  />
-                  <div className="flex items-end">
-                    <div className="rounded-glass-sm bg-white/60 px-3 py-2.5 text-sm font-semibold text-ink ring-1 ring-slate-200/70">
-                      {filteredAccessUsers.length} login{filteredAccessUsers.length === 1 ? '' : 's'}
-                    </div>
+
+                {/* Roster roll-up tiles */}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {accessStats.map((s) => {
+                    const a = ACCENTS[s.accent];
+                    return (
+                      <div key={s.label} className="flex items-center gap-3 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+                        <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', a.bg, a.text)}>
+                          <s.icon size={16} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xl font-semibold leading-none tabular-nums text-ink">{s.value}</p>
+                          <p className="mt-1 truncate text-xs text-ink-3">{s.label}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Search + role segmented filter */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="w-full sm:max-w-xs">
+                    <TextInput
+                      value={accessSearch}
+                      onChange={(e) => setAccessSearch(e.target.value)}
+                      placeholder="Search email, role, or store"
+                      icon={<Search size={16} />}
+                      aria-label="Search access roster"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 self-start overflow-x-auto rounded-glass-sm bg-white/60 p-1 ring-1 ring-slate-200/70 sm:self-auto">
+                    {roleFilters.map((f) => {
+                      const active = roleFilter === f.id;
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setRoleFilter(f.id)}
+                          aria-pressed={active}
+                          className={cn(
+                            'focus-ring relative cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                            active ? 'text-ink' : 'text-ink-3 hover:text-ink',
+                          )}
+                        >
+                          {active && (
+                            <motion.span
+                              layoutId="access-filter-pill"
+                              transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                              className="absolute inset-0 rounded-md bg-white shadow-glass ring-1 ring-slate-200/70"
+                            />
+                          )}
+                          <span className="relative z-10">{f.label}</span>
+                          <span className={cn('relative z-10 ml-1.5 tabular-nums', active ? 'text-brand-600' : 'text-ink-3')}>{f.count}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {accessList.isLoading && <p className="rounded-glass-sm bg-white/60 p-4 text-sm text-ink-3 ring-1 ring-slate-200/70">Loading access roster...</p>}
+                {accessList.isLoading && (
+                  <SkeletonRows rows={4} className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70" />
+                )}
                 {accessList.isError && (
                   <p className="rounded-glass-sm bg-rose-50 p-4 text-sm font-medium text-rose-700 ring-1 ring-rose-100">
                     Could not load the access roster.
                   </p>
                 )}
                 {!accessList.isLoading && !accessList.isError && filteredAccessUsers.length === 0 && (
-                  <p className="rounded-glass-sm bg-white/60 p-4 text-sm text-ink-3 ring-1 ring-slate-200/70">No matching logins found.</p>
+                  <div className="flex flex-col items-center gap-2 rounded-glass-sm bg-white/60 px-6 py-10 text-center ring-1 ring-slate-200/70">
+                    <span className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-ink-3"><Users size={20} /></span>
+                    <p className="text-sm font-semibold text-ink">No matching logins</p>
+                    <p className="text-xs text-ink-3">Try a different search term or role filter.</p>
+                  </div>
                 )}
 
                 <div className="space-y-3">
                   {filteredAccessUsers.map((user) => {
                     const handledClients = user.clients;
+                    const lastSeen = relativeTime(user.lastSignInAt);
                     return (
-                      <div key={user.id} className="rounded-glass-sm bg-white/65 p-4 ring-1 ring-slate-200/70">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <motion.div
+                        layout
+                        key={user.id}
+                        className="overflow-hidden rounded-glass-sm bg-white/65 ring-1 ring-slate-200/70 transition-shadow hover:shadow-glass"
+                      >
+                        {/* Identity header */}
+                        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex min-w-0 items-center gap-3">
                             <Avatar name={user.email} size={42} />
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-ink">{user.email}</p>
                               <p className="truncate text-xs text-ink-3">
-                                {user.role ?? 'No role'}{user.lastSignInAt ? ` · Last sign-in ${new Date(user.lastSignInAt).toLocaleDateString()}` : ''}
+                                {user.role ?? 'No role'}
+                                {lastSeen ? ` · Active ${lastSeen}` : ' · Never signed in'}
                               </p>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Chip accent={user.isAdmin ? 'indigo' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                            <Chip accent={user.isAdmin ? 'violet' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
                             {user.isGlobal && <Chip accent="emerald" dot={false}>Global</Chip>}
                           </div>
                         </div>
 
-                        <Divider />
-                        <div className="space-y-2">
-                          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
-                            <Store size={13} /> Stores handled ({handledClients.length})
+                        {/* Stores footer */}
+                        <div className="border-t border-slate-200/70 bg-slate-50/60 px-4 py-3">
+                          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
+                            <Store size={13} /> Stores handled
+                            <span className="rounded-full bg-slate-200/70 px-1.5 py-px text-[10px] tabular-nums text-ink-2">{handledClients.length}</span>
                           </p>
-                          {handledClients.length === 0 && (
-                            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-ink-3">
-                              No explicit client stores assigned in metadata{user.isGlobal ? '; this login has global portal access.' : '.'}
+                          {handledClients.length === 0 ? (
+                            <p className="text-xs text-ink-3">
+                              No explicit stores assigned{user.isGlobal ? '; this login has global portal access.' : '.'}
                             </p>
-                          )}
-                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                            {handledClients.map((client) => {
-                              const platform = resolveLogoKey(null, client.name);
-                              return (
-                                <div key={client.id} className="flex items-center gap-3 rounded-lg bg-slate-50/80 px-3 py-2 ring-1 ring-slate-200/70">
-                                  <BrandMark provider={null} label={client.name} name={client.name} size={34} />
-                                  <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-semibold text-ink">{client.name ?? `Client ${client.id}`}</p>
-                                    <p className="truncate text-xs capitalize text-ink-3">
-                                      {platform !== 'custom' ? platform : 'Client'} · ID {client.id}
-                                      {client.storeIds?.length ? ` · Stores ${client.storeIds.join(', ')}` : ''}
-                                    </p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {handledClients.map((client) => {
+                                const platform = resolveLogoKey(null, client.name);
+                                return (
+                                  <div key={client.id} className="flex items-center gap-2.5 rounded-lg bg-white px-2.5 py-1.5 ring-1 ring-slate-200/70">
+                                    <BrandMark provider={null} label={client.name} name={client.name} size={26} />
+                                    <div className="min-w-0">
+                                      <p className="truncate text-xs font-semibold text-ink">{client.name ?? `Client ${client.id}`}</p>
+                                      <p className="truncate text-[11px] capitalize text-ink-3">
+                                        {platform !== 'custom' ? platform : 'Client'} · ID {client.id}
+                                      </p>
+                                    </div>
+                                    <span className={cn('ml-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold', client.active ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')}>
+                                      <span className={cn('h-1.5 w-1.5 rounded-full', client.active ? 'bg-emerald-500' : 'bg-amber-500')} />
+                                      {client.active ? 'Live' : 'Off'}
+                                    </span>
                                   </div>
-                                  <Chip accent={client.active ? 'emerald' : 'amber'} dot={false}>{client.active ? 'Live' : 'Off'}</Chip>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      </motion.div>
                     );
                   })}
                 </div>
-                <p className="text-xs text-ink-3">This list is loaded from Supabase Auth app metadata and real PrepShip client records.</p>
+                <p className="text-xs text-ink-3">Loaded from Supabase Auth app metadata and real PrepShip client records.</p>
               </div>
             )}
             {/* BILLING - point at the real Invoices/Finance data instead of a
