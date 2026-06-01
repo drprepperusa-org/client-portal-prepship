@@ -5,7 +5,7 @@ import { User, Bell, Users, CreditCard, Building2, ReceiptText, Store, Percent, 
 import { GlassPanel, SectionTitle, Divider } from '@/components/ui/Glass';
 import { TextInput, EmailInput, TextArea } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
-import { Avatar, Chip, SkeletonRows, Tooltip } from '@/components/ui/Display';
+import { Avatar, Chip, SkeletonRows } from '@/components/ui/Display';
 import { Modal } from '@/components/ui/Modal';
 import { RadioGroup, Select } from '@/components/ui/Selection';
 import { useToast } from '@/components/ui/Toast';
@@ -374,7 +374,7 @@ export default function Settings() {
                         {/* Stores footer */}
                         <div className="rounded-b-glass-sm border-t border-slate-200/70 bg-slate-50/60 px-4 py-3">
                           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
-                            <Store size={13} /> Stores handled
+                            <Store size={13} /> {user.isGlobal ? 'All stores · global access' : 'Stores handled'}
                             <span className="rounded-full bg-slate-200/70 px-1.5 py-px text-[10px] tabular-nums text-ink-2">{handledClients.length}</span>
                           </p>
                           {handledClients.length === 0 ? (
@@ -523,20 +523,19 @@ const ICON_TONES: Record<IconTone, string> = {
 };
 function IconBtn({ tone, label, onClick, disabled, children }: { tone: IconTone; label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
-    <Tooltip label={label} side="top">
-      <button
-        type="button"
-        aria-label={label}
-        disabled={disabled}
-        onClick={onClick}
-        className={cn(
-          'focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-40 disabled:hover:bg-transparent',
-          ICON_TONES[tone],
-        )}
-      >
-        {children}
-      </button>
-    </Tooltip>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-40 disabled:hover:bg-transparent',
+        ICON_TONES[tone],
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

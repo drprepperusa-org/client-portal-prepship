@@ -1306,21 +1306,28 @@ app.get('/access-list', async (c) => {
             ? userMeta.display_name
             : null;
 
+      // Global/admin logins (hardcoded operator email, role 'admin', or the
+      // scope:global permission) can see EVERY client store — not just whatever
+      // happens to be pinned in their metadata. So for them, "stores handled" is
+      // the full client roster; scoped client_users keep their assigned subset.
+      const globalAccess = isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global');
+      const effectiveClients = globalAccess ? clientRows : mergedClients;
+
       return {
         id: user.id,
         email: user.email ?? '',
         name: displayName,
         role,
         permissions,
-        isAdmin: isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global'),
-        isGlobal: isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global'),
+        isAdmin: globalAccess,
+        isGlobal: globalAccess,
         // Protected operator accounts (hardcoded admin emails) can't be
         // deactivated/deleted; surface that so the UI can disable those actions.
         isProtected: isAdminEmail(user.email),
         active: !userIsBanned(user),
-        clientIds,
+        clientIds: globalAccess ? clientRows.map((client) => client.id) : clientIds,
         storeIds,
-        clients: mergedClients.map((client) => ({
+        clients: effectiveClients.map((client) => ({
           id: client.id,
           name: client.name,
           email: client.email,
