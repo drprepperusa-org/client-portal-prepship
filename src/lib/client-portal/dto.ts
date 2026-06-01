@@ -63,6 +63,40 @@ function friendlyServiceFromCode(code?: string | null): string | null {
   return pretty || null;
 }
 
+function stringFromRecord(record: Record<string, unknown> | null, keys: string[]): string | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function numberFromRecord(record: Record<string, unknown> | null, keys: string[]): number | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const direct = Number(record[key]);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const value = record[key];
+    if (value && typeof value === 'object' && 'amount' in (value as Record<string, unknown>)) {
+      const nested = Number((value as Record<string, unknown>).amount);
+      if (Number.isFinite(nested) && nested > 0) return nested;
+    }
+  }
+  return null;
+}
+
+function rateAmountFromRecord(record: Record<string, unknown> | null): number | null {
+  const direct = numberFromRecord(record, ['cost', 'rate', 'amount', 'shipmentCost', 'shipment_cost', 'totalCost', 'total']);
+  if (direct != null) return direct;
+  const shipping = numberFromRecord(record, ['shipping_amount']) ?? 0;
+  const other = numberFromRecord(record, ['other_amount']) ?? 0;
+  const confirmation = numberFromRecord(record, ['confirmation_amount']) ?? 0;
+  const total = shipping + other + confirmation;
+  return total > 0 ? total : null;
+}
+
 /** A promo/discount line (e.g. "WELCOME10" at -$10.99) is not a shippable
  *  item — exclude it from the item list + quantity so the portal matches v4. */
 function isDiscountLine(row: Record<string, unknown>): boolean {
@@ -137,6 +171,13 @@ export function toPortalOrderDto(
      * shipped/cancelled orders; supplied by the route layer.
      */
     shipmentAccount?: string | null;
+    latestShipment?: {
+      carrierCode?: string | null;
+      serviceCode?: string | null;
+      serviceName?: string | null;
+      amount?: number | string | null;
+      selectedRateJson?: Record<string, unknown> | null;
+    } | null;
   },
   options: { includeFinancials?: boolean } = {}
 ) {
@@ -166,9 +207,39 @@ export function toPortalOrderDto(
   const bestRateCarrierCode =
     (br?.carrierCode as string | undefined) ?? (br?.carrier_code as string | undefined) ?? null;
   const isAwaiting = row.orderStatus === 'awaiting_shipment';
+  const selectedRateJson =
+    row.latestShipment?.selectedRateJson && typeof row.latestShipment.selectedRateJson === 'object'
+      ? (row.latestShipment.selectedRateJson as Record<string, unknown>)
+      : null;
+  const selectedRateCarrierCode =
+    row.latestShipment?.carrierCode ??
+    stringFromRecord(selectedRateJson, ['carrierCode', 'carrier_code', 'carrier']) ??
+    null;
+  const selectedRateServiceCode =
+    row.latestShipment?.serviceCode ??
+    stringFromRecord(selectedRateJson, ['serviceCode', 'service_code']) ??
+    null;
+  const selectedRateServiceName =
+    row.latestShipment?.serviceName ??
+    stringFromRecord(selectedRateJson, ['serviceName', 'service_name', 'service_type']) ??
+    friendlyServiceFromCode(selectedRateServiceCode);
+  const selectedRateAmount =
+    row.latestShipment?.amount != null && Number(row.latestShipment.amount) > 0
+      ? row.latestShipment.amount
+      : rateAmountFromRecord(selectedRateJson);
+  const selectedRate =
+    !isAwaiting && (selectedRateCarrierCode || selectedRateServiceCode || selectedRateServiceName || selectedRateAmount != null)
+      ? {
+          carrierCode: selectedRateCarrierCode,
+          serviceCode: selectedRateServiceCode,
+          serviceName: selectedRateServiceName ? cleanServiceName(selectedRateServiceName) : null,
+          amount: options.includeFinancials ? selectedRateAmount : null,
+          source: 'shipment' as const,
+        }
+      : null;
   const carrierCode = isAwaiting
     ? (bestRateCarrierCode ?? row.carrierCode)
-    : (row.carrierCode ?? bestRateCarrierCode);
+    : (selectedRateCarrierCode ?? row.carrierCode ?? bestRateCarrierCode);
   return {
     id: row.id,
     clientId: row.clientId,
@@ -191,6 +262,7 @@ export function toPortalOrderDto(
     rateWeightOz: row.override?.rateWeightOz ?? null,
     shippingAccount,
     shippingService,
+    selectedRate: selectedRate,
     items: safeItems(row.items, options.includeFinancials),
     ...(options.includeFinancials
       ? {

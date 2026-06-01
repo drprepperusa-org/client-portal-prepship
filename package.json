@@ -97,6 +97,7 @@
     "test:production-watchdog": "node scripts/production-watchdog-guard.mjs",
     "test:workflow-orchestration": "node scripts/workflow-orchestration-guard.mjs",
     "test:settings-backfill": "node scripts/settings-backfill-guard.mjs",
+    "test:client-portal-orders-selected-rate": "node scripts/client-portal-orders-selected-rate-guard.mjs",
     "test:portal-query-session-scope": "node scripts/portal-query-session-scope-guard.mjs",
     "test:durable-jobs-plan": "node scripts/durable-jobs-plan-guard.mjs",
     "test:rate-backfill-durable": "node scripts/rate-backfill-durable-guard.mjs",

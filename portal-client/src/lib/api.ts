@@ -115,6 +115,13 @@ export interface PortalOrder {
   weightOz: number | null;
   shippingAccount: string | null;
   shippingService?: string | null;
+  selectedRate?: {
+    carrierCode: string | null;
+    serviceCode: string | null;
+    serviceName: string | null;
+    amount: number | string | null;
+    source: 'shipment' | 'selected_rate';
+  } | null;
   items: Array<{ sku: string | null; name: string | null; quantity: number | null; imageUrl?: string | null }>;
   orderTotal?: number | string | null;
   shippingAmount?: number | string | null;

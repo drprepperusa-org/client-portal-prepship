@@ -10,7 +10,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { CarrierBadge } from '@/components/store/CarrierBadge';
-import { OrderDetailPanel, fmtWeight, bestRateAmount } from '@/components/OrderDetailPanel';
+import { OrderDetailPanel, fmtWeight } from '@/components/OrderDetailPanel';
 import { useOrders, useSyncStatus } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -44,6 +44,16 @@ function fmtDateTime(iso: string | null): { date: string; time: string } {
     time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
   };
 }
+
+function selectedRateService(o: PortalOrder): string | null {
+  return o.selectedRate?.serviceName ?? o.selectedRate?.serviceCode ?? null;
+}
+
+function selectedRateAmount(o: PortalOrder): number | null {
+  const amount = Number(o.selectedRate?.amount);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
 export default function Orders() {
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
@@ -98,7 +108,7 @@ export default function Orders() {
   }
 
   // ── Fill rates: trigger the server-side best-rate backfill, poll progress, ──
-  // then refresh so the freshly-computed Best Rate values replace "— pending".
+  // then refresh so awaiting orders can use the latest server-side rate data.
   // This fetches live ShipStation rate QUOTES (no postage/labels) and writes
   // additively to orderOverrides — see /api/client-portal/backfill.
   const [backfill, setBackfill] = useState<{ running: boolean; job: BackfillJob | null; error: string | null }>({
@@ -190,9 +200,13 @@ export default function Orders() {
       defaultWidth: 150,
       render: (o) => (
         <div className="space-y-1">
-          {(o.items.length ? o.items.slice(0, 4) : [{ sku: '—' }]).map((it, i) => (
-            <p key={i} className="truncate font-mono text-[12px] text-ink-3">{it.sku ?? '—'}</p>
+          {(o.items.length ? o.items.slice(0, 4) : [{ sku: '—', quantity: null }]).map((it, i) => (
+            <div key={i} className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate font-mono text-[12px] text-ink-3" title={it.sku ?? ''}>{it.sku ?? '—'}</span>
+              {Number(it.quantity) > 1 && <span className="shrink-0 rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-3">x{it.quantity}</span>}
+            </div>
           ))}
+          {o.items.length > 4 && <p className="text-[11px] text-ink-3">+{o.items.length - 4} more</p>}
         </div>
       ),
       sortAccessor: (o) => o.items[0]?.sku ?? '',
@@ -201,40 +215,25 @@ export default function Orders() {
     { key: 'total', header: 'Order Total', defaultWidth: 120, className: 'text-right', render: (o) => <span className="font-semibold text-ink tnum">{o.orderTotal != null ? money(o.orderTotal) : '—'}</span>, sortAccessor: (o) => Number(o.orderTotal) || 0 },
     { key: 'weight', header: 'Weight', defaultWidth: 110, render: (o) => <span className="tnum text-ink-2">{fmtWeight(o.weightOz)}</span>, sortAccessor: (o) => o.weightOz ?? 0 },
     {
-      key: 'account',
-      header: 'Shipping Account',
-      defaultWidth: 180,
-      render: (o) =>
-        o.shippingAccount ? (
-          <div className="leading-tight">
-            <p className="truncate font-medium text-ink" title={o.shippingAccount}>{o.shippingAccount}</p>
-            {(o.shippingService ?? o.serviceCode) && (
-              <p className="truncate text-xs text-ink-3" title={o.shippingService ?? o.serviceCode ?? ''}>{o.shippingService ?? o.serviceCode}</p>
-            )}
-          </div>
-        ) : (
-          <span className="text-ink-3">— pending</span>
-        ),
-      sortAccessor: (o) => o.shippingAccount ?? '',
-    },
-    {
-      key: 'carrier',
-      header: 'Carrier',
-      defaultWidth: 116,
-      className: 'text-center',
-      render: (o) => (o.carrierCode ? <CarrierBadge code={o.carrierCode} /> : <span className="text-xs text-ink-3">— pending</span>),
-      sortAccessor: (o) => o.carrierCode ?? '',
-    },
-    {
-      key: 'best',
-      header: 'Best Rate',
-      defaultWidth: 110,
-      className: 'text-right',
+      key: 'selectedRate',
+      header: 'Selected Rate',
+      defaultWidth: 190,
       render: (o) => {
-        const rate = bestRateAmount(o.bestRateJson);
-        return rate != null ? <span className="font-semibold text-brand-700 tnum">{money(rate)}</span> : <span className="text-xs text-ink-3">— pending</span>;
+        const service = selectedRateService(o);
+        const amount = selectedRateAmount(o);
+        const carrier = o.selectedRate?.carrierCode ?? (o.orderStatus === 'awaiting_shipment' ? null : o.carrierCode);
+        if (!carrier && !service && amount == null) return <span className="text-xs text-ink-3">Not selected</span>;
+        return (
+          <div className="min-w-0 leading-tight">
+            <div className="flex min-w-0 items-center gap-2">
+              {carrier ? <CarrierBadge code={carrier} /> : null}
+              {amount != null && <span className="shrink-0 font-semibold text-brand-700 tnum">{money(amount)}</span>}
+            </div>
+            {service && <p className="mt-1 truncate text-xs text-ink-3" title={service}>{service}</p>}
+          </div>
+        );
       },
-      sortAccessor: (o) => bestRateAmount(o.bestRateJson) ?? -1,
+      sortAccessor: (o) => selectedRateAmount(o) ?? -1,
     },
   ];
 
@@ -281,7 +280,7 @@ export default function Orders() {
             <button
               onClick={handleFillRates}
               disabled={backfill.running || syncing}
-              title="Fetch live carrier rate quotes for awaiting orders and fill the Best Rate column (no labels are purchased)"
+              title="Fetch live carrier rate quotes for awaiting orders (no labels are purchased)"
               className="focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm bg-white/70 px-4 text-sm font-semibold text-brand-700 ring-1 ring-brand-200 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Zap size={15} className={cn(backfill.running && 'animate-pulse')} />
@@ -322,4 +321,3 @@ export default function Orders() {
     </div>
   );
 }
-

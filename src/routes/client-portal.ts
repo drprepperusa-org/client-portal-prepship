@@ -601,6 +601,36 @@ app.get('/orders', async (c) => {
         order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
         limit 1
       )`,
+      shipCarrierCode: sql<string | null>`(
+        select coalesce(${shipments.labelCarrier}, ${shipments.carrierCode}) from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
+      shipServiceCode: sql<string | null>`(
+        select ${shipments.serviceCode} from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
+      shipServiceName: sql<string | null>`(
+        select ${shipments.labelService} from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
+      shipSelectedAmount: sql<string | null>`(
+        select coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
+      shipSelectedRateJson: sql<Record<string, unknown> | null>`(
+        select ${shipments.selectedRateJson} from ${shipments}
+        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
+        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
+        limit 1
+      )`,
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -623,7 +653,20 @@ app.get('/orders', async (c) => {
       const shipmentAccount =
         row.shipAcctNickname ?? (row.shipAcctId != null ? accountNicknames.get(row.shipAcctId) ?? null : null);
       return toPortalOrderDto(
-        { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override, shipmentAccount },
+        {
+          ...row.order,
+          clientName: row.clientName,
+          storeName: row.clientName,
+          override: row.override,
+          shipmentAccount,
+          latestShipment: {
+            carrierCode: row.shipCarrierCode,
+            serviceCode: row.shipServiceCode,
+            serviceName: row.shipServiceName,
+            amount: row.shipSelectedAmount,
+            selectedRateJson: row.shipSelectedRateJson,
+          },
+        },
         { includeFinancials: scope.canViewFinancials },
       );
     }),
