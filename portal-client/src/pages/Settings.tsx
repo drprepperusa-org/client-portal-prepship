@@ -1,16 +1,19 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Bell, Users, CreditCard, Building2, ReceiptText, Store, Percent, Truck, AlertTriangle, BarChart3, Check, Search, ShieldCheck } from 'lucide-react';
+import { User, Bell, Users, CreditCard, Building2, ReceiptText, Store, Percent, Truck, AlertTriangle, BarChart3, Check, Search, ShieldCheck, Pencil, Trash2, UserX, UserCheck, ShieldAlert } from 'lucide-react';
 import { GlassPanel, SectionTitle, Divider } from '@/components/ui/Glass';
 import { TextInput, EmailInput, TextArea } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
-import { Avatar, Chip, SkeletonRows } from '@/components/ui/Display';
+import { Avatar, Chip, SkeletonRows, Tooltip } from '@/components/ui/Display';
+import { Modal } from '@/components/ui/Modal';
+import { RadioGroup, Select } from '@/components/ui/Selection';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useClients, useAccessList } from '@/lib/hooks';
 import { BrandMark, resolveLogoKey } from '@/components/store/StoreLogo';
 import { MarkupsEditor } from '@/components/MarkupsEditor';
+import { portalApi, type PortalAccessUser, type PortalClientRow } from '@/lib/api';
 import { ACCENTS, type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
 
@@ -62,7 +65,7 @@ const NOTIF_OPTS: { key: keyof NotifPrefs; icon: typeof Bell; title: string; des
 
 export default function Settings() {
   const toast = useToast();
-  const { email: authEmail } = useAuth();
+  const { email: authEmail, accessToken, userId } = useAuth();
   const clients = useClients().data?.data ?? [];
   const accessList = useAccessList();
   const [tab, setTab] = useState<TabId>('profile');
@@ -106,6 +109,33 @@ export default function Settings() {
       user.clients.some((client) => (client.name ?? '').toLowerCase().includes(needle))
     );
   });
+
+  // Admin actions on a login: a confirmation modal for deactivate/activate/delete,
+  // and a richer edit modal for role/stores/name.
+  const [confirm, setConfirm] = useState<{ kind: 'deactivate' | 'activate' | 'delete'; user: PortalAccessUser } | null>(null);
+  const [editTarget, setEditTarget] = useState<PortalAccessUser | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function runConfirm() {
+    if (!confirm || !accessToken) return;
+    setBusy(true);
+    try {
+      if (confirm.kind === 'delete') {
+        await portalApi.deleteAccessUser(accessToken, confirm.user.id);
+        toast.success('Login deleted', `${confirm.user.email} no longer has portal access.`);
+      } else {
+        const active = confirm.kind === 'activate';
+        await portalApi.updateAccessUser(accessToken, confirm.user.id, { active });
+        toast.success(active ? 'Login activated' : 'Login deactivated', confirm.user.email);
+      }
+      await accessList.refetch();
+      setConfirm(null);
+    } catch (e) {
+      toast.error('Action failed', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function saveProfile() {
     try {
@@ -286,6 +316,9 @@ export default function Settings() {
                   {filteredAccessUsers.map((user) => {
                     const handledClients = user.clients;
                     const lastSeen = relativeTime(user.lastSignInAt);
+                    const isSelf = user.id === userId;
+                    // Why an action is blocked, surfaced as a tooltip + disabled state.
+                    const lockReason = user.isProtected ? 'Protected operator account' : isSelf ? 'This is your own login' : null;
                     return (
                       <motion.div
                         layout
@@ -305,8 +338,35 @@ export default function Settings() {
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                            {!user.active && <Chip accent="rose" dot>Deactivated</Chip>}
                             <Chip accent={user.isAdmin ? 'violet' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
                             {user.isGlobal && <Chip accent="emerald" dot={false}>Global</Chip>}
+                            <div className="ml-0.5 flex items-center gap-1">
+                              <IconBtn label="Edit access" onClick={() => setEditTarget(user)}>
+                                <Pencil size={15} />
+                              </IconBtn>
+                              {user.active ? (
+                                <IconBtn
+                                  label={lockReason ? `Can't deactivate · ${lockReason}` : 'Deactivate login'}
+                                  disabled={Boolean(lockReason)}
+                                  onClick={() => setConfirm({ kind: 'deactivate', user })}
+                                >
+                                  <UserX size={15} />
+                                </IconBtn>
+                              ) : (
+                                <IconBtn label="Activate login" onClick={() => setConfirm({ kind: 'activate', user })}>
+                                  <UserCheck size={15} />
+                                </IconBtn>
+                              )}
+                              <IconBtn
+                                label={lockReason ? `Can't delete · ${lockReason}` : 'Delete login'}
+                                disabled={Boolean(lockReason)}
+                                danger
+                                onClick={() => setConfirm({ kind: 'delete', user })}
+                              >
+                                <Trash2 size={15} />
+                              </IconBtn>
+                            </div>
                           </div>
                         </div>
 
@@ -392,6 +452,177 @@ export default function Settings() {
           </motion.div>
         </AnimatePresence>
       </GlassPanel>
+
+      {/* Confirm deactivate / activate / delete */}
+      <Modal
+        open={Boolean(confirm)}
+        onClose={() => !busy && setConfirm(null)}
+        title={confirm?.kind === 'delete' ? 'Delete login' : confirm?.kind === 'activate' ? 'Activate login' : 'Deactivate login'}
+        maxWidth={460}
+      >
+        {confirm && (
+          <div className="space-y-5">
+            <div className="flex items-start gap-3">
+              <span
+                className={cn(
+                  'grid h-11 w-11 shrink-0 place-items-center rounded-xl',
+                  confirm.kind === 'delete' ? 'bg-rose-50 text-rose-600' : confirm.kind === 'activate' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600',
+                )}
+              >
+                {confirm.kind === 'delete' ? <Trash2 size={20} /> : confirm.kind === 'activate' ? <UserCheck size={20} /> : <UserX size={20} />}
+              </span>
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm font-semibold text-ink">{confirm.user.email}</p>
+                <p className="text-sm text-ink-3">
+                  {confirm.kind === 'delete'
+                    ? 'This permanently removes the login from the portal. This action cannot be undone.'
+                    : confirm.kind === 'activate'
+                      ? 'This login will be able to sign in to the portal again.'
+                      : 'This login will be signed out and blocked from signing in until you reactivate it.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirm(null)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant={confirm.kind === 'activate' ? 'primary' : 'danger'} size="sm" loading={busy} onClick={runConfirm}>
+                {confirm.kind === 'delete' ? 'Delete login' : confirm.kind === 'activate' ? 'Activate' : 'Deactivate'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit role / assigned stores / display name */}
+      {editTarget && (
+        <AccessEditModal
+          user={editTarget}
+          clients={clients}
+          token={accessToken}
+          toast={toast}
+          onClose={() => setEditTarget(null)}
+          onSaved={async () => {
+            await accessList.refetch();
+            setEditTarget(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/* Small icon-only action button with a tooltip, used in the access roster. */
+function IconBtn({ label, onClick, disabled, danger, children }: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean; children: ReactNode }) {
+  return (
+    <Tooltip label={label} side="top">
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className={cn(
+          'focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-3 transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+          danger ? 'hover:bg-rose-50 hover:text-rose-600' : 'hover:bg-slate-100 hover:text-ink',
+        )}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
+/* Edit modal: role, assigned client stores, and display name for one login. */
+function AccessEditModal({
+  user,
+  clients,
+  token,
+  toast,
+  onClose,
+  onSaved,
+}: {
+  user: PortalAccessUser;
+  clients: PortalClientRow[];
+  token: string | null;
+  toast: ReturnType<typeof useToast>;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [role, setRole] = useState<'admin' | 'client_user'>(user.isAdmin ? 'admin' : 'client_user');
+  const [name, setName] = useState(user.name ?? '');
+  const [clientIds, setClientIds] = useState<string[]>(user.clientIds.map(String));
+  const [saving, setSaving] = useState(false);
+
+  const clientOptions = clients.map((c) => ({ value: String(c.id), label: c.name ?? `Client ${c.id}` }));
+
+  async function save() {
+    if (!token) return;
+    setSaving(true);
+    try {
+      await portalApi.updateAccessUser(token, user.id, {
+        role,
+        clientIds: clientIds.map(Number).filter((n) => Number.isInteger(n)),
+        displayName: name.trim(),
+      });
+      toast.success('Access updated', user.email);
+      await onSaved();
+    } catch (e) {
+      toast.error('Update failed', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={() => !saving && onClose()} title="Edit access" maxWidth={520}>
+      <div className="space-y-5">
+        <div className="flex items-center gap-3">
+          <Avatar name={user.email} size={40} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{user.email}</p>
+            <p className="truncate text-xs text-ink-3">{user.role ?? 'No role'}</p>
+          </div>
+        </div>
+
+        <TextInput label="Display name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Jane from DJC" />
+
+        <RadioGroup
+          label="Role"
+          value={role}
+          onChange={setRole}
+          options={[
+            { value: 'admin', label: 'Admin · full global access' },
+            { value: 'client_user', label: 'Client user · only assigned stores' },
+          ]}
+        />
+        {user.isProtected && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <ShieldAlert size={14} /> Protected operator account — admin role is enforced regardless of this setting.
+          </p>
+        )}
+
+        <div className="space-y-1.5">
+          <span className="text-[13px] font-semibold text-ink-2">Assigned client stores</span>
+          <Select
+            multiple
+            searchable
+            placeholder="Select client stores…"
+            value={clientIds}
+            onChange={(v) => setClientIds(Array.isArray(v) ? v : [v])}
+            options={clientOptions}
+          />
+          <p className="text-xs text-ink-3">Client users only see orders and data for the stores selected here.</p>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button size="sm" loading={saving} onClick={save}>
+            Save changes
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

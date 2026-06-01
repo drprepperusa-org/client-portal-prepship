@@ -1252,13 +1252,29 @@ app.get('/access-list', async (c) => {
         if (!mergedClients.some((existing) => existing.id === client.id)) mergedClients.push(client);
       }
 
+      const userMeta =
+        user.user_metadata && typeof user.user_metadata === 'object' && !Array.isArray(user.user_metadata)
+          ? (user.user_metadata as Record<string, unknown>)
+          : {};
+      const displayName =
+        typeof userMeta.name === 'string'
+          ? userMeta.name
+          : typeof userMeta.display_name === 'string'
+            ? userMeta.display_name
+            : null;
+
       return {
         id: user.id,
         email: user.email ?? '',
+        name: displayName,
         role,
         permissions,
         isAdmin: isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global'),
         isGlobal: isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global'),
+        // Protected operator accounts (hardcoded admin emails) can't be
+        // deactivated/deleted; surface that so the UI can disable those actions.
+        isProtected: isAdminEmail(user.email),
+        active: !userIsBanned(user),
         clientIds,
         storeIds,
         clients: mergedClients.map((client) => ({
@@ -1281,6 +1297,148 @@ app.get('/access-list', async (c) => {
 
   await recordPortalAudit('portal.access_list.view', scope, { users: users.length });
   return c.json({ data: users });
+});
+
+/* ---- Access roster admin mutations (deactivate/activate, edit, delete) ----
+   All gated behind the same global/'users:manage' check as the GET above and
+   guarded against lock-out: nobody can deactivate/delete their own login, a
+   protected operator (hardcoded admin email), or the last remaining admin. */
+
+// ~100 years — Supabase has no "disable" flag, so a long ban is how we stop a
+// login from authenticating. Cleared with ban_duration: 'none' to reactivate.
+const DEACTIVATE_BAN_DURATION = '876600h';
+
+type AdminUserLike = { email?: string | null; app_metadata?: unknown; banned_until?: string | null };
+
+function accessAppMeta(user: { app_metadata?: unknown }): Record<string, unknown> {
+  return user.app_metadata && typeof user.app_metadata === 'object' && !Array.isArray(user.app_metadata)
+    ? (user.app_metadata as Record<string, unknown>)
+    : {};
+}
+
+function userIsBanned(user: { banned_until?: string | null }): boolean {
+  const until = user.banned_until ?? null;
+  return Boolean(until && new Date(until).getTime() > Date.now());
+}
+
+function userIsAdminLike(user: AdminUserLike): boolean {
+  const meta = accessAppMeta(user);
+  const role = typeof meta.role === 'string' ? meta.role : null;
+  return isAdminEmail(user.email) || role === 'admin' || stringArray(meta.permissions).includes('scope:global');
+}
+
+/** Number of admins who can still sign in — used to prevent locking everyone out. */
+async function countActiveAdmins(): Promise<number> {
+  const { data } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  return (data?.users ?? []).filter((u) => userIsAdminLike(u) && !userIsBanned(u)).length;
+}
+
+function requireUserManageAdmin(c: Context, scope: ClientPortalScope) {
+  if (!scope.isGlobal && !scope.permissions.includes('users:manage')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  return null;
+}
+
+// PATCH = edit role / assigned client stores / display name, and/or toggle active.
+app.patch('/access-list/:id', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const denied = requireUserManageAdmin(c, scope);
+  if (denied) return denied;
+
+  const id = c.req.param('id');
+  const body = (await c.req.json().catch(() => ({}))) as {
+    role?: string | null;
+    clientIds?: unknown;
+    displayName?: string | null;
+    active?: boolean;
+  };
+
+  const { data: target, error: getErr } = await supabaseAdmin.auth.admin.getUserById(id);
+  if (getErr || !target?.user) return c.json({ error: 'User not found' }, 404);
+  const user = target.user;
+
+  const isSelf = user.id === scope.userId;
+  const deactivating = body.active === false;
+  const demotingAdmin = typeof body.role === 'string' && body.role !== 'admin' && userIsAdminLike(user);
+
+  // Lock-out guardrails.
+  if (deactivating && isSelf) return c.json({ error: "You can't deactivate your own login." }, 400);
+  if (deactivating && isAdminEmail(user.email)) {
+    return c.json({ error: 'This is a protected operator account and cannot be deactivated.' }, 400);
+  }
+  if ((deactivating || demotingAdmin) && userIsAdminLike(user)) {
+    if ((await countActiveAdmins()) <= 1) {
+      return c.json({ error: 'At least one active admin must remain.' }, 400);
+    }
+  }
+
+  // Merge metadata so we never clobber unrelated keys.
+  const meta = { ...accessAppMeta(user) };
+  if (body.role !== undefined) {
+    if (body.role === 'admin') {
+      meta.role = 'admin';
+    } else {
+      meta.role = body.role || 'client_user';
+      // Strip the global grant so a demoted user isn't still effectively admin.
+      meta.permissions = stringArray(meta.permissions).filter((p) => p !== 'scope:global');
+    }
+  }
+  if (body.clientIds !== undefined) meta.clientIds = normalizeMetadataIds(body.clientIds);
+
+  const updates: Record<string, unknown> = { app_metadata: meta };
+  if (body.displayName !== undefined) {
+    const userMeta =
+      user.user_metadata && typeof user.user_metadata === 'object' && !Array.isArray(user.user_metadata)
+        ? (user.user_metadata as Record<string, unknown>)
+        : {};
+    updates.user_metadata = { ...userMeta, name: body.displayName, display_name: body.displayName };
+  }
+  if (body.active !== undefined) updates.ban_duration = body.active ? 'none' : DEACTIVATE_BAN_DURATION;
+
+  const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(id, updates);
+  if (updErr) {
+    console.warn('[client-portal/access-list] update failed:', updErr.message);
+    return c.json({ error: 'Failed to update user' }, 500);
+  }
+  await recordPortalAudit('portal.access_list.update', scope, {
+    targetId: id,
+    role: body.role ?? undefined,
+    active: body.active ?? undefined,
+    clientIds: body.clientIds !== undefined ? normalizeMetadataIds(body.clientIds) : undefined,
+    renamed: body.displayName !== undefined ? true : undefined,
+  });
+  return c.json({ ok: true });
+});
+
+// DELETE = permanently remove the Supabase Auth login.
+app.delete('/access-list/:id', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const denied = requireUserManageAdmin(c, scope);
+  if (denied) return denied;
+
+  const id = c.req.param('id');
+  const { data: target, error: getErr } = await supabaseAdmin.auth.admin.getUserById(id);
+  if (getErr || !target?.user) return c.json({ error: 'User not found' }, 404);
+  const user = target.user;
+
+  if (user.id === scope.userId) return c.json({ error: "You can't delete your own login." }, 400);
+  if (isAdminEmail(user.email)) {
+    return c.json({ error: 'This is a protected operator account and cannot be deleted.' }, 400);
+  }
+  if (userIsAdminLike(user) && (await countActiveAdmins()) <= 1) {
+    return c.json({ error: 'At least one active admin must remain.' }, 400);
+  }
+
+  const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(id);
+  if (delErr) {
+    console.warn('[client-portal/access-list] delete failed:', delErr.message);
+    return c.json({ error: 'Failed to delete user' }, 500);
+  }
+  await recordPortalAudit('portal.access_list.delete', scope, { targetId: id, email: user.email ?? null });
+  return c.json({ ok: true });
 });
 
 app.get('/settings', async (c) => {

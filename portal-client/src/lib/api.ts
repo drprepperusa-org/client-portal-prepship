@@ -92,6 +92,7 @@ async function apiSend<T>(method: string, token: string, path: string, body: unk
 export const apiPost = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('POST', token, path, body);
 export const apiPatch = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('PATCH', token, path, body);
 export const apiPut = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('PUT', token, path, body);
+export const apiDelete = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('DELETE', token, path, body);
 
 /* ---------- Portal DTO types (mirror src/lib/client-portal/dto.ts) ---------- */
 export interface PortalOrder {
@@ -225,15 +226,27 @@ export interface PortalClientRow {
 export interface PortalAccessUser {
   id: string;
   email: string;
+  name: string | null;
   role: string | null;
   permissions: string[];
   isAdmin: boolean;
   isGlobal: boolean;
+  /** Hardcoded operator account — cannot be deactivated or deleted. */
+  isProtected: boolean;
+  /** False when the login is banned/deactivated and cannot sign in. */
+  active: boolean;
   clientIds: number[];
   storeIds: number[];
   clients: PortalClientRow[];
   createdAt: string | null;
   lastSignInAt: string | null;
+}
+
+export interface AccessUserPatch {
+  role?: 'admin' | 'client_user';
+  clientIds?: number[];
+  displayName?: string;
+  active?: boolean;
 }
 
 export interface BillingSummaryRow {
@@ -520,6 +533,10 @@ export const portalApi = {
   me: (token: string) => apiGet<PortalMe>(token, '/api/client-portal/me'),
   clients: (token: string) => apiGet<{ data: PortalClientRow[] }>(token, '/api/client-portal/clients'),
   accessList: (token: string) => apiGet<{ data: PortalAccessUser[] }>(token, '/api/client-portal/access-list'),
+  updateAccessUser: (token: string, id: string, patch: AccessUserPatch) =>
+    apiPatch<{ ok: true }>(token, `/api/client-portal/access-list/${id}`, patch),
+  deleteAccessUser: (token: string, id: string) =>
+    apiDelete<{ ok: true }>(token, `/api/client-portal/access-list/${id}`),
   syncStatus: (token: string) => apiGet<SyncStatus>(token, '/api/client-portal/sync-status'),
 
   /** Trigger a best-rate backfill (rate quotes only; additive). Admin/scoped. */
