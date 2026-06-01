@@ -187,7 +187,7 @@ export function Select({ label, options, placeholder = 'Select…', searchable =
                 exit={{ opacity: 0, y: -8, scale: 0.98 }}
                 transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
                 style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
-                className="glass-strong z-[60] max-h-64 overflow-auto rounded-glass-sm p-1.5 shadow-glass-lg"
+                className="glass-strong z-[80] max-h-64 overflow-auto rounded-glass-sm p-1.5 shadow-glass-lg"
                 role="listbox"
               >
                 {searchable && (
