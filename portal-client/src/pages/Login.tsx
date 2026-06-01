@@ -62,8 +62,8 @@ export default function Login() {
           <p className="mt-1.5 text-sm text-ink-3">Sign in to your fulfillment portal</p>
 
           <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
-            <EmailInput label="Email" required value={email} onChange={(e) => setEmail(e.target.value)} icon={<Mail size={16} />} placeholder="you@company.com" />
-            <PasswordInput label="Password" required value={pw} onChange={(e) => setPw(e.target.value)} icon={<Lock size={16} />} placeholder="••••••••" />
+            <EmailInput label="Email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} icon={<Mail size={16} />} placeholder="you@company.com" />
+            <PasswordInput label="Password" required autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} icon={<Lock size={16} />} placeholder="••••••••" />
 
             <div className="flex items-center justify-between">
               <Checkbox label="Remember me" checked={remember} onChange={setRemember} />
