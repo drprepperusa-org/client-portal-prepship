@@ -323,7 +323,7 @@ export default function Settings() {
                       <motion.div
                         layout
                         key={user.id}
-                        className="overflow-hidden rounded-glass-sm bg-white/65 ring-1 ring-slate-200/70 transition-shadow hover:shadow-glass"
+                        className="rounded-glass-sm bg-white/65 ring-1 ring-slate-200/70 transition-shadow hover:shadow-glass"
                       >
                         {/* Identity header */}
                         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -338,15 +338,16 @@ export default function Settings() {
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                            {!user.active && <Chip accent="rose" dot>Deactivated</Chip>}
+                            {user.active === false && <Chip accent="rose" dot>Deactivated</Chip>}
                             <Chip accent={user.isAdmin ? 'violet' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
                             {user.isGlobal && <Chip accent="emerald" dot={false}>Global</Chip>}
-                            <div className="ml-0.5 flex items-center gap-1">
-                              <IconBtn label="Edit access" onClick={() => setEditTarget(user)}>
+                            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200/70 pl-1.5">
+                              <IconBtn tone="brand" label="Edit access" onClick={() => setEditTarget(user)}>
                                 <Pencil size={15} />
                               </IconBtn>
-                              {user.active ? (
+                              {user.active !== false ? (
                                 <IconBtn
+                                  tone="amber"
                                   label={lockReason ? `Can't deactivate · ${lockReason}` : 'Deactivate login'}
                                   disabled={Boolean(lockReason)}
                                   onClick={() => setConfirm({ kind: 'deactivate', user })}
@@ -354,14 +355,14 @@ export default function Settings() {
                                   <UserX size={15} />
                                 </IconBtn>
                               ) : (
-                                <IconBtn label="Activate login" onClick={() => setConfirm({ kind: 'activate', user })}>
+                                <IconBtn tone="emerald" label="Activate login" onClick={() => setConfirm({ kind: 'activate', user })}>
                                   <UserCheck size={15} />
                                 </IconBtn>
                               )}
                               <IconBtn
+                                tone="rose"
                                 label={lockReason ? `Can't delete · ${lockReason}` : 'Delete login'}
                                 disabled={Boolean(lockReason)}
-                                danger
                                 onClick={() => setConfirm({ kind: 'delete', user })}
                               >
                                 <Trash2 size={15} />
@@ -371,7 +372,7 @@ export default function Settings() {
                         </div>
 
                         {/* Stores footer */}
-                        <div className="border-t border-slate-200/70 bg-slate-50/60 px-4 py-3">
+                        <div className="rounded-b-glass-sm border-t border-slate-200/70 bg-slate-50/60 px-4 py-3">
                           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
                             <Store size={13} /> Stores handled
                             <span className="rounded-full bg-slate-200/70 px-1.5 py-px text-[10px] tabular-nums text-ink-2">{handledClients.length}</span>
@@ -512,8 +513,15 @@ export default function Settings() {
   );
 }
 
-/* Small icon-only action button with a tooltip, used in the access roster. */
-function IconBtn({ label, onClick, disabled, danger, children }: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean; children: ReactNode }) {
+/* Color-coded icon-only action button used in the access roster. */
+type IconTone = 'brand' | 'amber' | 'emerald' | 'rose';
+const ICON_TONES: Record<IconTone, string> = {
+  brand: 'text-brand-600 hover:bg-brand-50',
+  amber: 'text-amber-600 hover:bg-amber-50',
+  emerald: 'text-emerald-600 hover:bg-emerald-50',
+  rose: 'text-rose-600 hover:bg-rose-50',
+};
+function IconBtn({ tone, label, onClick, disabled, children }: { tone: IconTone; label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
     <Tooltip label={label} side="top">
       <button
@@ -522,8 +530,8 @@ function IconBtn({ label, onClick, disabled, danger, children }: { label: string
         disabled={disabled}
         onClick={onClick}
         className={cn(
-          'focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-3 transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-          danger ? 'hover:bg-rose-50 hover:text-rose-600' : 'hover:bg-slate-100 hover:text-ink',
+          'focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-40 disabled:hover:bg-transparent',
+          ICON_TONES[tone],
         )}
       >
         {children}
