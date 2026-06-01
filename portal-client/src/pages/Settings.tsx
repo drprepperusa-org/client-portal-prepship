@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Avatar, Chip } from '@/components/ui/Display';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useMe, useClients } from '@/lib/hooks';
+import { useClients, useAccessList } from '@/lib/hooks';
 import { BrandMark, resolveLogoKey } from '@/components/store/StoreLogo';
 import { MarkupsEditor } from '@/components/MarkupsEditor';
 import { cn } from '@/lib/cn';
@@ -47,21 +47,32 @@ const NOTIF_OPTS: { key: keyof NotifPrefs; icon: typeof Bell; title: string; des
 export default function Settings() {
   const toast = useToast();
   const { email: authEmail } = useAuth();
-  const me = useMe();
   const clients = useClients().data?.data ?? [];
+  const accessList = useAccessList();
   const [tab, setTab] = useState<TabId>('profile');
   const savedProfile = loadJSON(LS_PROFILE, { name: '', bio: '' });
   const [name, setName] = useState(savedProfile.name || (authEmail ? authEmail.split('@')[0] : ''));
   const [email, setEmail] = useState(authEmail ?? '');
   const [bio, setBio] = useState(savedProfile.bio);
   const [notif, setNotif] = useState<NotifPrefs>(() => loadJSON(LS_NOTIF, NOTIF_DEFAULTS));
+  const [accessSearch, setAccessSearch] = useState('');
+  const accessUsers = accessList.data?.data ?? [];
+  const filteredAccessUsers = accessUsers.filter((user) => {
+    const needle = accessSearch.trim().toLowerCase();
+    if (!needle) return true;
+    return (
+      user.email.toLowerCase().includes(needle) ||
+      (user.role ?? '').toLowerCase().includes(needle) ||
+      user.clients.some((client) => (client.name ?? '').toLowerCase().includes(needle))
+    );
+  });
 
   function saveProfile() {
     try {
       localStorage.setItem(LS_PROFILE, JSON.stringify({ name, bio }));
       toast.success('Profile saved', 'Your details are stored on this device.');
     } catch {
-      toast.error('Couldn’t save', 'Local storage is unavailable in this browser.');
+      toast.error("Couldn't save", 'Local storage is unavailable in this browser.');
     }
   }
   function saveNotif() {
@@ -69,7 +80,7 @@ export default function Settings() {
       localStorage.setItem(LS_NOTIF, JSON.stringify(notif));
       toast.success('Preferences updated', 'Your notification choices are saved.');
     } catch {
-      toast.error('Couldn’t save', 'Local storage is unavailable in this browser.');
+      toast.error("Couldn't save", 'Local storage is unavailable in this browser.');
     }
   }
 
@@ -152,47 +163,92 @@ export default function Settings() {
               </div>
             )}
 
-            {/* ACCESS — real signed-in user + real client accounts in scope.
-                There is no portal-side user-invite endpoint (membership is
-                operator-managed), so we show authoritative access data, not a
-                fabricated team list. */}
+            {/* ACCESS - authoritative Supabase Auth roster mapped to real client rows. */}
             {tab === 'team' && (
               <div className="space-y-5">
-                <SectionTitle title="Account access" subtitle="Who is signed in and which client accounts this login can see" />
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-                    <Avatar name={authEmail ?? 'You'} size={40} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink">{authEmail ?? '—'}</p>
-                      <p className="truncate text-xs text-ink-3">Signed in{me.data?.role ? ` · ${me.data.role}` : ''}</p>
+                <SectionTitle title="Account access" subtitle="Emails and the client stores each login handles" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+                  <TextInput
+                    label="Search access"
+                    value={accessSearch}
+                    onChange={(e) => setAccessSearch(e.target.value)}
+                    placeholder="Email, role, or store"
+                  />
+                  <div className="flex items-end">
+                    <div className="rounded-glass-sm bg-white/60 px-3 py-2.5 text-sm font-semibold text-ink ring-1 ring-slate-200/70">
+                      {filteredAccessUsers.length} login{filteredAccessUsers.length === 1 ? '' : 's'}
                     </div>
-                    <Chip accent={me.data?.isAdmin ? 'indigo' : 'amber'} dot={false}>{me.data?.isAdmin ? 'Admin' : 'Member'}</Chip>
                   </div>
                 </div>
 
-                <Divider />
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3"><Store size={13} /> Stores under this account ({clients.length})</p>
-                <div className="space-y-2">
-                  {clients.length === 0 && <p className="text-sm text-ink-3">No stores in scope.</p>}
-                  {clients.map((c) => {
-                    const platform = resolveLogoKey(null, c.name);
+                {accessList.isLoading && <p className="rounded-glass-sm bg-white/60 p-4 text-sm text-ink-3 ring-1 ring-slate-200/70">Loading access roster...</p>}
+                {accessList.isError && (
+                  <p className="rounded-glass-sm bg-rose-50 p-4 text-sm font-medium text-rose-700 ring-1 ring-rose-100">
+                    Could not load the access roster.
+                  </p>
+                )}
+                {!accessList.isLoading && !accessList.isError && filteredAccessUsers.length === 0 && (
+                  <p className="rounded-glass-sm bg-white/60 p-4 text-sm text-ink-3 ring-1 ring-slate-200/70">No matching logins found.</p>
+                )}
+
+                <div className="space-y-3">
+                  {filteredAccessUsers.map((user) => {
+                    const handledClients = user.clients;
                     return (
-                      <div key={c.id} className="flex items-center gap-3 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-                        <BrandMark provider={null} label={c.name} name={c.name} size={40} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-ink">{c.name ?? `Store ${c.id}`}</p>
-                          <p className="truncate text-xs capitalize text-ink-3">{platform !== 'custom' ? platform : 'Store'}{c.email ? ` · ${c.email}` : ''}</p>
+                      <div key={user.id} className="rounded-glass-sm bg-white/65 p-4 ring-1 ring-slate-200/70">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar name={user.email} size={42} />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-ink">{user.email}</p>
+                              <p className="truncate text-xs text-ink-3">
+                                {user.role ?? 'No role'}{user.lastSignInAt ? ` · Last sign-in ${new Date(user.lastSignInAt).toLocaleDateString()}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Chip accent={user.isAdmin ? 'indigo' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
+                            {user.isGlobal && <Chip accent="emerald" dot={false}>Global</Chip>}
+                          </div>
                         </div>
-                        <Chip accent={c.active ? 'emerald' : 'amber'} dot={false}>{c.active ? 'Active' : 'Inactive'}</Chip>
+
+                        <Divider />
+                        <div className="space-y-2">
+                          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
+                            <Store size={13} /> Stores handled ({handledClients.length})
+                          </p>
+                          {handledClients.length === 0 && (
+                            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-ink-3">
+                              No explicit client stores assigned in metadata{user.isGlobal ? '; this login has global portal access.' : '.'}
+                            </p>
+                          )}
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                            {handledClients.map((client) => {
+                              const platform = resolveLogoKey(null, client.name);
+                              return (
+                                <div key={client.id} className="flex items-center gap-3 rounded-lg bg-slate-50/80 px-3 py-2 ring-1 ring-slate-200/70">
+                                  <BrandMark provider={null} label={client.name} name={client.name} size={34} />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-ink">{client.name ?? `Client ${client.id}`}</p>
+                                    <p className="truncate text-xs capitalize text-ink-3">
+                                      {platform !== 'custom' ? platform : 'Client'} · ID {client.id}
+                                      {client.storeIds?.length ? ` · Stores ${client.storeIds.join(', ')}` : ''}
+                                    </p>
+                                  </div>
+                                  <Chip accent={client.active ? 'emerald' : 'amber'} dot={false}>{client.active ? 'Live' : 'Off'}</Chip>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-                <p className="text-xs text-ink-3">Stores &amp; user access are managed by your PrepShip operator.</p>
+                <p className="text-xs text-ink-3">This list is loaded from Supabase Auth app metadata and real PrepShip client records.</p>
               </div>
             )}
-
-            {/* BILLING — point at the real Invoices/Finance data instead of a
+            {/* BILLING - point at the real Invoices/Finance data instead of a
                 fabricated card + plan. Payment methods are operator-managed. */}
             {tab === 'billing' && (
               <div className="space-y-5">

@@ -28,6 +28,7 @@ const LIVE_ORDERS_MS = 45_000;
 
 export const useMe = () => useTokenQuery(['me'], portalApi.me);
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
+export const useAccessList = () => useTokenQuery(['access-list'], portalApi.accessList);
 export const useSyncStatus = () => useTokenQuery(['sync-status'], portalApi.syncStatus);
 export const useAwaitingCount = () =>
   useTokenQuery(['awaiting-count'], portalApi.awaitingCount, true, { refetchInterval: LIVE_ORDERS_MS });

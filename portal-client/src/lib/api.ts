@@ -222,6 +222,20 @@ export interface PortalClientRow {
   storeIds?: number[] | null;
 }
 
+export interface PortalAccessUser {
+  id: string;
+  email: string;
+  role: string | null;
+  permissions: string[];
+  isAdmin: boolean;
+  isGlobal: boolean;
+  clientIds: number[];
+  storeIds: number[];
+  clients: PortalClientRow[];
+  createdAt: string | null;
+  lastSignInAt: string | null;
+}
+
 export interface BillingSummaryRow {
   clientId?: number;
   clientName?: string;
@@ -505,6 +519,7 @@ async function scopedReportsRange(token: string, dateFrom: string, dateTo: strin
 export const portalApi = {
   me: (token: string) => apiGet<PortalMe>(token, '/api/client-portal/me'),
   clients: (token: string) => apiGet<{ data: PortalClientRow[] }>(token, '/api/client-portal/clients'),
+  accessList: (token: string) => apiGet<{ data: PortalAccessUser[] }>(token, '/api/client-portal/access-list'),
   syncStatus: (token: string) => apiGet<SyncStatus>(token, '/api/client-portal/sync-status'),
 
   /** Trigger a best-rate backfill (rate quotes only; additive). Admin/scoped. */

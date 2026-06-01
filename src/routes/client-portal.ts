@@ -29,6 +29,7 @@ import {
 } from '../services/rates-backfill';
 import { getProviderAccountNicknames, listMarkupCarrierGroups } from '../services/rates';
 import { isAdminEmail } from '../lib/admin-emails';
+import { supabaseAdmin } from '../lib/supabase';
 import {
   toPortalInboundDto,
   toPortalIntegrationDto,
@@ -72,6 +73,21 @@ function liveAwaitingSince() {
 
 function intArrayLiteral(values: number[]) {
   return sql`array[${sql.join(values.map((id) => sql`${id}`), sql`, `)}]::int[]`;
+}
+
+function normalizeMetadataIds(value: unknown): number[] {
+  const raw = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? value : [];
+  return Array.from(
+    new Set(
+      raw
+        .map((item) => Number(item))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  );
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function requestedClientId(c: Context) {
@@ -1189,6 +1205,82 @@ app.get('/clients', async (c) => {
     .limit(200);
   await recordPortalAudit('portal.clients.list', scope, { rows: rows.length });
   return c.json({ data: rows });
+});
+
+app.get('/access-list', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('users:manage')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+
+  const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  if (error) {
+    console.warn('[client-portal/access-list] listUsers failed:', error.message);
+    return c.json({ error: 'Failed to load access list' }, 500);
+  }
+
+  const clientRows = await db
+    .select({ id: clients.id, name: clients.name, email: clients.email, active: clients.active, storeIds: clients.storeIds })
+    .from(clients)
+    .orderBy(clients.name)
+    .limit(500);
+  const clientsById = new Map(clientRows.map((client) => [client.id, client]));
+
+  const users = (data.users ?? [])
+    .map((user) => {
+      const metadata =
+        user.app_metadata && typeof user.app_metadata === 'object' && !Array.isArray(user.app_metadata)
+          ? (user.app_metadata as Record<string, unknown>)
+          : {};
+      const clientIds = normalizeMetadataIds(
+        metadata.clientIds ?? metadata.client_ids ?? metadata.assignedClientIds ?? metadata.assigned_client_ids,
+      );
+      const storeIds = normalizeMetadataIds(
+        metadata.storeIds ?? metadata.store_ids ?? metadata.assignedStoreIds ?? metadata.assigned_store_ids,
+      );
+      const role = typeof metadata.role === 'string' ? metadata.role : null;
+      const permissions = stringArray(metadata.permissions);
+      const matchedClients = clientIds
+        .map((id) => clientsById.get(id))
+        .filter((client): client is (typeof clientRows)[number] => Boolean(client));
+      const matchedStoreClients = storeIds.length
+        ? clientRows.filter((client) => (client.storeIds ?? []).some((storeId) => storeIds.includes(Number(storeId))))
+        : [];
+      const mergedClients = [...matchedClients];
+      for (const client of matchedStoreClients) {
+        if (!mergedClients.some((existing) => existing.id === client.id)) mergedClients.push(client);
+      }
+
+      return {
+        id: user.id,
+        email: user.email ?? '',
+        role,
+        permissions,
+        isAdmin: isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global'),
+        isGlobal: isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global'),
+        clientIds,
+        storeIds,
+        clients: mergedClients.map((client) => ({
+          id: client.id,
+          name: client.name,
+          email: client.email,
+          active: client.active,
+          storeIds: client.storeIds,
+        })),
+        createdAt: user.created_at ?? null,
+        lastSignInAt: user.last_sign_in_at ?? null,
+      };
+    })
+    .filter((user) => user.email)
+    .sort((a, b) => {
+      if (a.isAdmin && !b.isAdmin) return -1;
+      if (!a.isAdmin && b.isAdmin) return 1;
+      return a.email.localeCompare(b.email);
+    });
+
+  await recordPortalAudit('portal.access_list.view', scope, { users: users.length });
+  return c.json({ data: users });
 });
 
 app.get('/settings', async (c) => {
