@@ -84,6 +84,14 @@ export default function Settings() {
   const clientCount = accessUsers.length - adminCount;
   const storesCovered = new Set(accessUsers.flatMap((u) => u.clients.map((c) => c.id))).size;
 
+  // Every client store known to the roster, deduped. A global admin's entry
+  // carries the full list, so this is the complete set of stores — used as the
+  // option source for the Edit-access picker so it always offers all clients,
+  // not just whatever the viewer's own token scope returns from /clients.
+  const allClientsById = new Map<number, PortalClientRow>();
+  for (const u of accessUsers) for (const c of u.clients) if (!allClientsById.has(c.id)) allClientsById.set(c.id, c);
+  const allClients = [...allClientsById.values()].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+
   const accessStats: { label: string; value: number; icon: typeof Users; accent: Accent }[] = [
     { label: 'Total logins', value: accessUsers.length, icon: Users, accent: 'indigo' },
     { label: 'Admins', value: adminCount, icon: ShieldCheck, accent: 'violet' },
@@ -499,7 +507,7 @@ export default function Settings() {
       {editTarget && (
         <AccessEditModal
           user={editTarget}
-          clients={clients}
+          clients={allClients.length ? allClients : clients}
           token={accessToken}
           toast={toast}
           onClose={() => setEditTarget(null)}
