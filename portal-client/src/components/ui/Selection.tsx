@@ -161,9 +161,9 @@ export function Select({ label, options, placeholder = 'Select…', searchable =
           onClick={() => setOpen((o) => !o)}
           aria-haspopup="listbox"
           aria-expanded={open}
-          className={cn('focus-ring flex h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-glass-sm border border-white/80 bg-white/70 px-3.5 text-left text-[15px] ring-1 ring-slate-200/70 backdrop-blur-sm transition-colors hover:bg-white/90', open && 'border-brand-400 shadow-[0_0_0_3px_rgba(3, 169, 244,0.18)]')}
+          className={cn('focus-ring flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-glass-sm border border-white/80 bg-white/70 px-3.5 py-1.5 text-left text-[15px] ring-1 ring-slate-200/70 backdrop-blur-sm transition-colors hover:bg-white/90', open && 'border-brand-400 shadow-[0_0_0_3px_rgba(3, 169, 244,0.18)]')}
         >
-          <span className={cn('flex flex-1 flex-wrap gap-1.5 truncate', selected.length === 0 && 'text-slate-400')}>
+          <span className={cn('flex flex-1 flex-wrap items-center gap-1.5', selected.length === 0 && 'text-slate-400')}>
             {selected.length === 0 && placeholder}
             {multiple
               ? selected.map((v) => (

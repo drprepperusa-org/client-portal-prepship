@@ -555,12 +555,15 @@ function AccessEditModal({
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
+  const clientOptions = clients.map((c) => ({ value: String(c.id), label: c.name ?? `Client ${c.id}` }));
+  const validIds = new Set(clientOptions.map((o) => o.value));
+
   const [role, setRole] = useState<'admin' | 'client_user'>(user.isAdmin ? 'admin' : 'client_user');
   const [name, setName] = useState(user.name ?? '');
-  const [clientIds, setClientIds] = useState<string[]>(user.clientIds.map(String));
+  // Only pre-select stores that exist as real options, so we never render orphan
+  // numeric chips for inactive / out-of-scope client IDs.
+  const [clientIds, setClientIds] = useState<string[]>(() => user.clientIds.map(String).filter((id) => validIds.has(id)));
   const [saving, setSaving] = useState(false);
-
-  const clientOptions = clients.map((c) => ({ value: String(c.id), label: c.name ?? `Client ${c.id}` }));
 
   async function save() {
     if (!token) return;
@@ -568,8 +571,9 @@ function AccessEditModal({
     try {
       await portalApi.updateAccessUser(token, user.id, {
         role,
-        clientIds: clientIds.map(Number).filter((n) => Number.isInteger(n)),
         displayName: name.trim(),
+        // Store assignment only applies to scoped client users; admins are global.
+        ...(role === 'client_user' ? { clientIds: clientIds.map(Number).filter((n) => Number.isInteger(n)) } : {}),
       });
       toast.success('Access updated', user.email);
       await onSaved();
@@ -608,18 +612,24 @@ function AccessEditModal({
           </p>
         )}
 
-        <div className="space-y-1.5">
-          <span className="text-[13px] font-semibold text-ink-2">Assigned client stores</span>
-          <Select
-            multiple
-            searchable
-            placeholder="Select client stores…"
-            value={clientIds}
-            onChange={(v) => setClientIds(Array.isArray(v) ? v : [v])}
-            options={clientOptions}
-          />
-          <p className="text-xs text-ink-3">Client users only see orders and data for the stores selected here.</p>
-        </div>
+        {role === 'client_user' ? (
+          <div className="space-y-1.5">
+            <span className="text-[13px] font-semibold text-ink-2">Assigned client stores</span>
+            <Select
+              multiple
+              searchable
+              placeholder="Search stores to assign…"
+              value={clientIds}
+              onChange={(v) => setClientIds(Array.isArray(v) ? v : [v])}
+              options={clientOptions}
+            />
+            <p className="text-xs text-ink-3">Type to search. This user only sees orders and data for the stores selected here.</p>
+          </div>
+        ) : (
+          <p className="flex items-center gap-1.5 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+            <Store size={14} /> Admins have global access to every client store — no assignment needed.
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" size="sm" onClick={onClose} disabled={saving}>
