@@ -1,9 +1,12 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Truck, Boxes, Wallet, Inbox } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState } from '@/components/ui/Display';
 import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
+import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
 import { staggerContainer } from '@/lib/motion';
 import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -11,10 +14,15 @@ import { money } from '@/lib/status';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
+  const nav = useNavigate();
   const dash = useDashboard();
   const counts = useDailyCounts();
   const ships = useDailyShipments();
   const aw = useAwaitingCount();
+
+  // Live-peek modal: which KPI is open + the rect of the card it grew from.
+  const [peek, setPeek] = useState<{ key: PeekKey; rect: DOMRect } | null>(null);
+  const openPeek = (key: PeekKey) => (rect: DOMRect) => setPeek({ key, rect });
 
   const loading = dash.isLoading || counts.isLoading || ships.isLoading || aw.isLoading;
 
@@ -40,10 +48,10 @@ export default function Dashboard() {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-glass" />)
         ) : (
           <>
-            <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" />
-            <StatCard label={`Shipped (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" />
-            <StatCard label={`Units shipped (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} />
-            <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" hint="Visible if permitted" />
+            <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" onPeek={openPeek('open')} />
+            <StatCard label={`Shipped (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" onPeek={openPeek('shipped')} />
+            <StatCard label={`Units shipped (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} onPeek={openPeek('units')} />
+            <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" hint="Visible if permitted" onPeek={openPeek('revenue')} />
           </>
         )}
       </motion.div>
@@ -99,6 +107,23 @@ export default function Dashboard() {
           )}
         </div>
       </GlassPanel>
+
+      <KpiPeekModal
+        peek={peek?.key ?? null}
+        origin={peek?.rect ?? null}
+        onClose={() => setPeek(null)}
+        onNavigate={nav}
+        data={{
+          days,
+          openOrders,
+          units: Number(dash.data?.units ?? 0),
+          revenue: Number(dash.data?.revenue ?? 0),
+          counts: countRows,
+          daily: dash.data?.daily ?? [],
+          dailyRevenue: dash.data?.dailyRevenue ?? [],
+          bySku: dash.data?.bySku ?? [],
+        }}
+      />
     </div>
   );
 }
