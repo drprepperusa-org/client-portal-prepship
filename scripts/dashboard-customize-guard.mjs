@@ -22,6 +22,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(lib.includes('localStorage') && lib.includes('prepship.dashLayout.'), 'layout persists to a per-user localStorage key');
   assert(lib.includes('function normalize'), 'stored layouts are normalized (tolerates added/removed widgets)');
   assert(lib.includes("'kpis'") && lib.includes("'ordersChart'") && lib.includes("'volumeChart'") && lib.includes("'topSkus'"), 'all dashboard widgets are layout-managed');
+  assert(lib.includes('WidgetWidth') && lib.includes("'half'") && lib.includes('widths:'), 'layout stores a per-widget width (full/half)');
 }
 
 // ── Dashboard edit mode: button, drag-reorder, hide/show, reset ──
@@ -32,6 +33,8 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(dash.includes('<Reorder.Group') && dash.includes('<Reorder.Item'), 'edit mode uses drag-and-drop reordering');
   assert(dash.includes('onReorder={setOrder}'), 'reordering updates (and persists) the widget order');
   assert(dash.includes('toggleHidden') && dash.includes('resetLayout'), 'widgets can be hidden/shown and the layout reset');
+  assert(dash.includes('toggleWidth') && dash.includes('widthClass(layout.widths[id])'), 'widgets support half/full width and the layout honors it');
+  assert(dash.includes('flex flex-wrap'), 'widgets lay out in a wrapping row so half-width widgets sit side-by-side');
   assert(dash.includes('loadLayout(userId)') && dash.includes('saveLayout(userId, layout)'), 'layout is loaded + saved per signed-in user');
   assert(dash.includes('function renderWidget'), 'widgets render through a single layout-driven renderer');
   assert(dash.includes("openPeek('open')") && dash.includes('<KpiPeekModal') && dash.includes('<ChartDayModal'), 'existing peek + drill-down behavior is preserved');

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, Reorder } from 'framer-motion';
-import { ShoppingCart, Truck, Boxes, Wallet, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw } from 'lucide-react';
+import { ShoppingCart, Truck, Boxes, Wallet, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState } from '@/components/ui/Display';
@@ -21,7 +21,12 @@ import {
   WIDGET_LABELS,
   type DashLayout,
   type WidgetId,
+  type WidgetWidth,
 } from '@/lib/dashboardLayout';
+
+/** Width class for a widget: half collapses to full below `lg` so it never gets
+ *  cramped on small screens. gap-4 = 1rem, so half = (100% - gap) / 2. */
+const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.5rem)]' : 'w-full');
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
@@ -58,6 +63,8 @@ export default function Dashboard() {
   const setOrder = (order: WidgetId[]) => setLayout((l) => ({ ...l, order }));
   const toggleHidden = (id: WidgetId) =>
     setLayout((l) => ({ ...l, hidden: l.hidden.includes(id) ? l.hidden.filter((x) => x !== id) : [...l.hidden, id] }));
+  const toggleWidth = (id: WidgetId) =>
+    setLayout((l) => ({ ...l, widths: { ...l.widths, [id]: l.widths[id] === 'full' ? 'half' : 'full' } }));
   const resetLayout = () => setLayout(DEFAULT_LAYOUT);
 
   const loading = dash.isLoading || counts.isLoading || ships.isLoading || aw.isLoading;
@@ -185,29 +192,40 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Widgets */}
+      {/* Widgets — a wrapping row so half-width widgets sit side-by-side. */}
       {editing ? (
-        <Reorder.Group axis="y" values={layout.order} onReorder={setOrder} className="space-y-4">
+        <Reorder.Group axis="y" values={layout.order} onReorder={setOrder} className="flex flex-wrap items-start gap-4">
           {layout.order.map((id) => {
             const isHidden = layout.hidden.includes(id);
+            const isHalf = layout.widths[id] === 'half';
             return (
               <Reorder.Item
                 key={id}
                 value={id}
-                className="cursor-grab rounded-glass bg-white/30 p-1.5 ring-1 ring-brand-200/70 active:cursor-grabbing"
+                className={cn('cursor-grab rounded-glass bg-white/30 p-1.5 ring-1 ring-brand-200/70 active:cursor-grabbing', widthClass(layout.widths[id]))}
               >
-                <div className="mb-1.5 flex items-center justify-between px-2">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
-                    <GripVertical size={15} className="text-ink-3" />
-                    {WIDGET_LABELS[id]}
+                <div className="mb-1.5 flex items-center justify-between gap-2 px-2">
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-2">
+                    <GripVertical size={15} className="shrink-0 text-ink-3" />
+                    <span className="truncate">{WIDGET_LABELS[id]}</span>
                   </span>
-                  <button
-                    onClick={() => toggleHidden(id)}
-                    aria-label={isHidden ? `Show ${WIDGET_LABELS[id]}` : `Hide ${WIDGET_LABELS[id]}`}
-                    className="focus-ring grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-3 ring-1 ring-slate-200/70 transition-colors hover:bg-white/70 hover:text-ink"
-                  >
-                    {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      onClick={() => toggleWidth(id)}
+                      aria-label={`Make ${WIDGET_LABELS[id]} ${isHalf ? 'full' : 'half'} width`}
+                      className="focus-ring inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg px-2 text-[11px] font-medium text-ink-3 ring-1 ring-slate-200/70 transition-colors hover:bg-white/70 hover:text-ink"
+                    >
+                      {isHalf ? <Columns2 size={13} /> : <Square size={13} />}
+                      {isHalf ? 'Half' : 'Full'}
+                    </button>
+                    <button
+                      onClick={() => toggleHidden(id)}
+                      aria-label={isHidden ? `Show ${WIDGET_LABELS[id]}` : `Hide ${WIDGET_LABELS[id]}`}
+                      className="focus-ring grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-3 ring-1 ring-slate-200/70 transition-colors hover:bg-white/70 hover:text-ink"
+                    >
+                      {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
                 </div>
                 <div className={cn('pointer-events-none', isHidden && 'opacity-40 grayscale')}>{renderWidget(id, true)}</div>
               </Reorder.Item>
@@ -215,9 +233,11 @@ export default function Dashboard() {
           })}
         </Reorder.Group>
       ) : (
-        <div className="space-y-4">
+        <div className="flex flex-wrap items-start gap-4">
           {visibleOrder.map((id) => (
-            <div key={id}>{renderWidget(id, false)}</div>
+            <div key={id} className={widthClass(layout.widths[id])}>
+              {renderWidget(id, false)}
+            </div>
           ))}
         </div>
       )}
