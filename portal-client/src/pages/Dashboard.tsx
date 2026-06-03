@@ -7,6 +7,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState } from '@/components/ui/Display';
 import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
+import { ChartDayModal, type DayPeekSource } from '@/components/dashboard/ChartDayModal';
 import { staggerContainer } from '@/lib/motion';
 import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -24,6 +25,10 @@ export default function Dashboard() {
   const [peek, setPeek] = useState<{ key: PeekKey; rect: DOMRect } | null>(null);
   const openPeek = (key: PeekKey) => (rect: DOMRect) => setPeek({ key, rect });
 
+  // Chart drill-down: which day is open + which chart it came from + click point.
+  const [dayPeek, setDayPeek] = useState<{ day: string; source: DayPeekSource; origin?: { x: number; y: number } } | null>(null);
+  const openDay = (source: DayPeekSource) => (day: string, origin?: { x: number; y: number }) => setDayPeek({ day, source, origin });
+
   const loading = dash.isLoading || counts.isLoading || ships.isLoading || aw.isLoading;
 
   const countRows = counts.data?.data ?? [];
@@ -36,8 +41,10 @@ export default function Dashboard() {
 
   // Orders vs. units per day, sourced from the single scoped /dashboard
   // response so the two bar segments are always aligned (same rows, same scope).
-  const ordersUnitsSeries = (dash.data?.daily ?? []).map((d) => ({ day: d.day.slice(5), orders: d.orders, units: d.units }));
-  const volumeSeries = (ships.data?.data ?? []).map((r) => ({ month: r.day.slice(5), vol: r.shipments }));
+  // Full YYYY-MM-DD is kept (axis formats to MM-DD) so a bar click can resolve
+  // the day's full detail.
+  const ordersUnitsSeries = (dash.data?.daily ?? []).map((d) => ({ day: d.day, orders: d.orders, units: d.units }));
+  const volumeSeries = (ships.data?.data ?? []).map((r) => ({ day: r.day, vol: r.shipments }));
   const topSku = dash.data?.bySku?.[0]?.sku ?? '—';
 
   return (
@@ -61,14 +68,14 @@ export default function Dashboard() {
         <GlassPanel className="p-5 lg:col-span-2">
           <SectionTitle title="Orders over time" subtitle={`Orders count vs. unit count (last ${days} days)`} />
           <div className="mt-4">
-            {loading ? <Skeleton className="h-[260px]" /> : ordersUnitsSeries.length ? <OrdersUnitsBarChart data={ordersUnitsSeries} /> : <EmptyState icon={<Inbox size={24} />} title="No order activity" message="No orders in the selected period." />}
+            {loading ? <Skeleton className="h-[260px]" /> : ordersUnitsSeries.length ? <OrdersUnitsBarChart data={ordersUnitsSeries} onSelectDay={openDay('orders')} /> : <EmptyState icon={<Inbox size={24} />} title="No order activity" message="No orders in the selected period." />}
           </div>
         </GlassPanel>
 
         <GlassPanel className="p-5">
           <SectionTitle title="Shipment volume" subtitle="Daily shipments" />
           <div className="mt-4">
-            {loading ? <Skeleton className="h-[260px]" /> : volumeSeries.length ? <VolumeBarChart data={volumeSeries} /> : <EmptyState icon={<Inbox size={24} />} title="No shipments" message="No shipments in the selected period." />}
+            {loading ? <Skeleton className="h-[260px]" /> : volumeSeries.length ? <VolumeBarChart data={volumeSeries} onSelectDay={openDay('shipments')} /> : <EmptyState icon={<Inbox size={24} />} title="No shipments" message="No shipments in the selected period." />}
           </div>
         </GlassPanel>
       </div>
@@ -123,6 +130,15 @@ export default function Dashboard() {
           dailyRevenue: dash.data?.dailyRevenue ?? [],
           bySku: dash.data?.bySku ?? [],
         }}
+      />
+
+      <ChartDayModal
+        day={dayPeek?.day ?? null}
+        source={dayPeek?.source ?? 'orders'}
+        origin={dayPeek?.origin}
+        onClose={() => setDayPeek(null)}
+        onNavigate={nav}
+        data={{ days, daily: dash.data?.daily ?? [], counts: countRows, shipments: ships.data?.data ?? [] }}
       />
     </div>
   );

@@ -50,7 +50,7 @@ function useCountUp(target: number, active: boolean, duration = 720) {
   return val;
 }
 
-function CountUp({ value, active, format }: { value: number; active: boolean; format: (n: number) => string }) {
+export function CountUp({ value, active, format }: { value: number; active: boolean; format: (n: number) => string }) {
   const v = useCountUp(value, active);
   return <>{format(v)}</>;
 }
@@ -63,7 +63,7 @@ export interface ChartPoint {
   value: number;
 }
 
-function niceDate(day: string) {
+export function niceDate(day: string) {
   const d = new Date(`${day}T00:00:00`);
   return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -56,11 +56,23 @@ function OrdersUnitsTooltip({
  * tops out at 25, never 45. When units < orders the continuation is 0 and the
  * tooltip still reports the accurate raw values.
  */
-export function OrdersUnitsBarChart({ data }: { data: { day: string; orders: number; units: number }[] }) {
+/** Recharts passes the chart state + native event to onClick; we only need the
+ *  active day label and the cursor position (to grow the day modal from it). */
+type BarClickState = { activeLabel?: string | number };
+export type DaySelect = (day: string, point?: { x: number; y: number }) => void;
+function dayClickHandler(onSelectDay?: DaySelect) {
+  return (state: BarClickState, e: ReactMouseEvent) => {
+    const day = state?.activeLabel;
+    if (day != null && onSelectDay) onSelectDay(String(day), e ? { x: e.clientX, y: e.clientY } : undefined);
+  };
+}
+const mmdd = (d: string | number) => String(d).slice(5);
+
+export function OrdersUnitsBarChart({ data, onSelectDay }: { data: { day: string; orders: number; units: number }[]; onSelectDay?: DaySelect }) {
   const rows = data.map((d) => ({ ...d, unitDelta: Math.max(0, Number(d.units) - Number(d.orders)) }));
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={rows} margin={{ left: -10, right: 6, top: 6 }}>
+      <BarChart data={rows} margin={{ left: -10, right: 6, top: 6 }} onClick={dayClickHandler(onSelectDay)} className={onSelectDay ? 'cursor-pointer' : undefined}>
         <defs>
           <linearGradient id="gOuOrders" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4FC3F7" />
@@ -72,7 +84,7 @@ export function OrdersUnitsBarChart({ data }: { data: { day: string; orders: num
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
-        <XAxis dataKey="day" tick={AXIS} axisLine={false} tickLine={false} />
+        <XAxis dataKey="day" tickFormatter={mmdd} tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
         <Tooltip content={<OrdersUnitsTooltip />} cursor={{ fill: 'rgba(3, 169, 244,0.06)' }} />
         <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
@@ -83,10 +95,10 @@ export function OrdersUnitsBarChart({ data }: { data: { day: string; orders: num
   );
 }
 
-export function VolumeBarChart({ data }: { data: { month: string; vol: number }[] }) {
+export function VolumeBarChart({ data, onSelectDay }: { data: { day: string; vol: number }[]; onSelectDay?: DaySelect }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={data} margin={{ left: -10, right: 6, top: 6 }}>
+      <BarChart data={data} margin={{ left: -10, right: 6, top: 6 }} onClick={dayClickHandler(onSelectDay)} className={onSelectDay ? 'cursor-pointer' : undefined}>
         <defs>
           <linearGradient id="gBar" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4FC3F7" />
@@ -94,7 +106,7 @@ export function VolumeBarChart({ data }: { data: { month: string; vol: number }[
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
-        <XAxis dataKey="month" tick={AXIS} axisLine={false} tickLine={false} />
+        <XAxis dataKey="day" tickFormatter={mmdd} tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(3, 169, 244,0.06)' }} />
         <Bar dataKey="vol" fill="url(#gBar)" radius={[8, 8, 0, 0]} maxBarSize={42} />

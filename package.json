@@ -72,6 +72,7 @@
     "test:dashboard-bar-chart-top-skus": "tsx scripts/dashboard-bar-chart-top-skus-guard.ts",
     "test:dashboard-client-filter": "node scripts/dashboard-client-filter-guard.mjs",
     "test:dashboard-kpi-peek": "node scripts/dashboard-kpi-peek-guard.mjs",
+    "test:dashboard-chart-drilldown": "node scripts/dashboard-chart-drilldown-guard.mjs",
     "test:analysis-lazy-table": "node scripts/analysis-lazy-table-guard.mjs",
     "test:analysis-table-first": "node scripts/analysis-table-first-guard.mjs",
     "test:receive-sku-picker": "node scripts/receive-sku-picker-guard.mjs",
