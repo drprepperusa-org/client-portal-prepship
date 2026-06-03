@@ -1,7 +1,6 @@
+import type { CSSProperties } from 'react';
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   LineChart,
@@ -27,27 +26,59 @@ const tooltipStyle = {
   fontSize: 13,
 };
 
-export function OrdersAreaChart({ data }: { data: { day: string; orders: number; shipped: number }[] }) {
+/** Custom tooltip for the cumulative orders/units bar: always reports the real
+ *  Orders count and Unit count, never the internal continuation delta. */
+function OrdersUnitsTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  label?: string | number;
+  payload?: Array<{ payload: { orders: number; units: number } }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div style={tooltipStyle as CSSProperties} className="px-3 py-2">
+      <div className="mb-1 font-medium text-ink-2">{label}</div>
+      <div style={{ color: '#03A9F4' }}>Orders count: {Number(row.orders).toLocaleString()}</div>
+      <div style={{ color: '#14B8A6' }}>Unit count: {Number(row.units).toLocaleString()}</div>
+    </div>
+  );
+}
+
+/**
+ * Cumulative (NOT additive) orders-vs-units bar chart. Each day stacks an
+ * "Orders count" segment up to the order count, then a continuation segment of
+ * only the EXTRA units beyond that (`unitDelta = max(0, units - orders)`), so
+ * the bar top lands at the true unit count — a day with 20 orders / 25 units
+ * tops out at 25, never 45. When units < orders the continuation is 0 and the
+ * tooltip still reports the accurate raw values.
+ */
+export function OrdersUnitsBarChart({ data }: { data: { day: string; orders: number; units: number }[] }) {
+  const rows = data.map((d) => ({ ...d, unitDelta: Math.max(0, Number(d.units) - Number(d.orders)) }));
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={data} margin={{ left: -18, right: 6, top: 6 }}>
+      <BarChart data={rows} margin={{ left: -10, right: 6, top: 6 }}>
         <defs>
-          <linearGradient id="gOrders" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#03A9F4" stopOpacity={0.4} />
-            <stop offset="100%" stopColor="#03A9F4" stopOpacity={0.02} />
+          <linearGradient id="gOuOrders" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4FC3F7" />
+            <stop offset="100%" stopColor="#03A9F4" />
           </linearGradient>
-          <linearGradient id="gShipped" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#14B8A6" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#14B8A6" stopOpacity={0.02} />
+          <linearGradient id="gOuUnits" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2DD4BF" />
+            <stop offset="100%" stopColor="#14B8A6" />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
         <XAxis dataKey="day" tick={AXIS} axisLine={false} tickLine={false} />
-        <YAxis tick={AXIS} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Area type="monotone" dataKey="orders" stroke="#03A9F4" strokeWidth={2.5} fill="url(#gOrders)" />
-        <Area type="monotone" dataKey="shipped" stroke="#14B8A6" strokeWidth={2.5} fill="url(#gShipped)" />
-      </AreaChart>
+        <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
+        <Tooltip content={<OrdersUnitsTooltip />} cursor={{ fill: 'rgba(3, 169, 244,0.06)' }} />
+        <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="orders" name="Orders count" stackId="ou" fill="url(#gOuOrders)" maxBarSize={42} />
+        <Bar dataKey="unitDelta" name="Unit count" stackId="ou" fill="url(#gOuUnits)" radius={[8, 8, 0, 0]} maxBarSize={42} />
+      </BarChart>
     </ResponsiveContainer>
   );
 }

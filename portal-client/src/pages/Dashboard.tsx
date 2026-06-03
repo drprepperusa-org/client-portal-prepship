@@ -3,7 +3,7 @@ import { ShoppingCart, Truck, Boxes, Wallet, Inbox } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState } from '@/components/ui/Display';
-import { OrdersAreaChart, VolumeBarChart } from '@/components/charts/Charts';
+import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
 import { staggerContainer } from '@/lib/motion';
 import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -26,7 +26,9 @@ export default function Dashboard() {
   const openOrders = aw.data?.count ?? 0;
   const shipped = countRows.reduce((n, r) => n + Number(r.shipped ?? 0), 0);
 
-  const ordersSeries = countRows.map((r) => ({ day: r.day.slice(5), orders: r.total, shipped: r.shipped }));
+  // Orders vs. units per day, sourced from the single scoped /dashboard
+  // response so the two bar segments are always aligned (same rows, same scope).
+  const ordersUnitsSeries = (dash.data?.daily ?? []).map((d) => ({ day: d.day.slice(5), orders: d.orders, units: d.units }));
   const volumeSeries = (ships.data?.data ?? []).map((r) => ({ month: r.day.slice(5), vol: r.shipments }));
   const topSku = dash.data?.bySku?.[0]?.sku ?? '—';
 
@@ -49,9 +51,9 @@ export default function Dashboard() {
       {/* Charts */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <GlassPanel className="p-5 lg:col-span-2">
-          <SectionTitle title="Orders over time" subtitle={`Orders received vs. shipped (last ${days} days)`} />
+          <SectionTitle title="Orders over time" subtitle={`Orders count vs. unit count (last ${days} days)`} />
           <div className="mt-4">
-            {loading ? <Skeleton className="h-[260px]" /> : ordersSeries.length ? <OrdersAreaChart data={ordersSeries} /> : <EmptyState icon={<Inbox size={24} />} title="No order activity" message="No orders in the selected period." />}
+            {loading ? <Skeleton className="h-[260px]" /> : ordersUnitsSeries.length ? <OrdersUnitsBarChart data={ordersUnitsSeries} /> : <EmptyState icon={<Inbox size={24} />} title="No order activity" message="No orders in the selected period." />}
           </div>
         </GlassPanel>
 
@@ -72,14 +74,28 @@ export default function Dashboard() {
           ) : (dash.data?.bySku?.length ?? 0) === 0 ? (
             <EmptyState icon={<Inbox size={24} />} title="No SKU data" message="SKU activity will appear here." />
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {dash.data!.bySku.slice(0, 8).map((s) => (
-                <li key={s.sku} className="flex items-center justify-between py-2.5">
-                  <span className="font-medium text-ink-2">{s.sku}</span>
-                  <span className="tnum text-ink-3">{s.units30.toLocaleString()} units</span>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-ink-3">
+                    <th className="py-2 pr-4">SKU</th>
+                    <th className="py-2 px-4 text-right">Unit Count Last 30 Days</th>
+                    <th className="py-2 pl-4 text-right">Avg Shipping Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dash.data!.bySku.slice(0, 8).map((s) => (
+                    <tr key={s.sku}>
+                      <td className="py-2.5 pr-4 font-medium text-ink-2">{s.sku}</td>
+                      <td className="py-2.5 px-4 text-right tnum text-ink-3">{s.units30.toLocaleString()}</td>
+                      <td className="py-2.5 pl-4 text-right tnum text-ink-3">
+                        {s.avgShippingPrice == null ? '—' : money(s.avgShippingPrice)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </GlassPanel>

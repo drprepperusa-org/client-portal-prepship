@@ -198,7 +198,9 @@ export interface PortalIntegration {
 export interface DashboardSummary {
   revenue: number;
   units: number;
-  bySku: Array<{ sku: string; units30: number; units7: number; revenue: number }>;
+  bySku: Array<{ sku: string; units30: number; units7: number; revenue: number; avgShippingPrice: number | null }>;
+  /** Per-day order + shippable-unit counts backing the cumulative bar chart. */
+  daily: Array<{ day: string; orders: number; units: number }>;
   dailyRevenue: Array<{ day: string; revenue: number }>;
 }
 
@@ -459,7 +461,7 @@ async function scopedDashboard(token: string, days: number): Promise<DashboardSu
   const scope = portalScopeFromToken(token);
   const range = defaultRange(days);
   if (!scope.isRestricted) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range);
-  if (!scope.clientIds.length && !scope.storeIds.length) return { revenue: 0, units: 0, bySku: [], dailyRevenue: [] };
+  if (!scope.clientIds.length && !scope.storeIds.length) return { revenue: 0, units: 0, bySku: [], daily: [], dailyRevenue: [] };
   const ids = scope.clientIds.length ? scope.clientIds : [undefined];
   const pages = await Promise.all(
     ids.map((clientId) =>
@@ -470,15 +472,60 @@ async function scopedDashboard(token: string, days: number): Promise<DashboardSu
       }),
     ),
   );
-  return pages.reduce<DashboardSummary>(
-    (acc, p) => ({
-      revenue: acc.revenue + Number(p.revenue ?? 0),
-      units: acc.units + Number(p.units ?? 0),
-      bySku: [...acc.bySku, ...(p.bySku ?? [])],
-      dailyRevenue: [...acc.dailyRevenue, ...(p.dailyRevenue ?? [])],
-    }),
-    { revenue: 0, units: 0, bySku: [], dailyRevenue: [] },
-  );
+  // Restricted users with >1 client get one response per client; merge by SKU
+  // and by day so a SKU shipped under two clients shows a single combined row
+  // (concatenating would duplicate it and skew the Top-SKUs ranking).
+  const bySku = new Map<string, DashboardSummary['bySku'][number]>();
+  const daily = new Map<string, DashboardSummary['daily'][number]>();
+  let revenue = 0;
+  let units = 0;
+  let dailyRevenue: DashboardSummary['dailyRevenue'] = [];
+  for (const p of pages) {
+    revenue += Number(p.revenue ?? 0);
+    units += Number(p.units ?? 0);
+    dailyRevenue = [...dailyRevenue, ...(p.dailyRevenue ?? [])];
+    for (const s of p.bySku ?? []) {
+      const cur = bySku.get(s.sku);
+      if (!cur) {
+        bySku.set(s.sku, { ...s });
+        continue;
+      }
+      cur.avgShippingPrice = blendAvgShipping(cur.avgShippingPrice, cur.units30, s.avgShippingPrice, s.units30);
+      cur.units30 += s.units30;
+      cur.units7 += s.units7;
+      cur.revenue += s.revenue;
+    }
+    for (const d of p.daily ?? []) {
+      const cur = daily.get(d.day);
+      if (!cur) daily.set(d.day, { ...d });
+      else {
+        cur.orders += d.orders;
+        cur.units += d.units;
+      }
+    }
+  }
+  return {
+    revenue,
+    units,
+    bySku: [...bySku.values()].sort((a, b) => b.units30 - a.units30),
+    daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    dailyRevenue,
+  };
+}
+
+/**
+ * Units-weighted blend of two per-unit average shipping prices when the same
+ * SKU appears across multiple client responses. Exact when every unit carried
+ * shipping; an acceptable approximation for the rare restricted multi-client
+ * fan-out (single-client / global users take the exact single-response path and
+ * never reach here). `null` on either side means "no shipping data for that
+ * slice" and is skipped rather than counted as $0.
+ */
+function blendAvgShipping(a: number | null, aUnits: number, b: number | null, bUnits: number): number | null {
+  if (a == null) return b;
+  if (b == null) return a;
+  const denom = aUnits + bUnits;
+  return denom > 0 ? (a * aUnits + b * bUnits) / denom : null;
 }
 
 async function scopedDailyCounts(token: string, days: number): Promise<{ data: DailyCount[] }> {

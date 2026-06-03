@@ -39,6 +39,12 @@ import {
 } from '../lib/client-portal/dto';
 import { recordPortalAudit } from '../lib/client-portal/audit';
 import {
+  safeItemQty,
+  topSkuRows,
+  dailyRevenueRows,
+  dailyOrderUnitsRows,
+} from '../lib/client-portal/dashboard-aggregate';
+import {
   assertClientPortalScope,
   isClientPortalScope,
   type ClientPortalScope,
@@ -525,6 +531,9 @@ app.get('/dashboard', async (c) => {
     revenue,
     units,
     bySku: topSkuRows(rows, scope.canViewFinancials),
+    // Order + unit counts per day power the cumulative bar chart. Counts are
+    // non-financial, so they are returned regardless of canViewFinancials.
+    daily: dailyOrderUnitsRows(rows),
     dailyRevenue: scope.canViewFinancials ? dailyRevenueRows(rows) : [],
   });
 });
@@ -1942,55 +1951,6 @@ async function storeAccountRows(scope: ClientPortalScope) {
     console.warn('[client-portal] store account list unavailable:', err);
     return [];
   }
-}
-
-function safeItemQty(value: unknown): number {
-  if (!Array.isArray(value)) return 0;
-  return value.reduce((sum, item) => {
-    if (!item || typeof item !== 'object') return sum;
-    const qty = Number((item as Record<string, unknown>).quantity ?? (item as Record<string, unknown>).qty ?? 0);
-    return sum + (Number.isFinite(qty) ? qty : 0);
-  }, 0);
-}
-
-function topSkuRows(rows: Array<typeof orders.$inferSelect>, canViewFinancials = false) {
-  const bySku = new Map<string, { sku: string; units30: number; units7: number; revenue: number }>();
-  for (const row of rows) {
-    if (!Array.isArray(row.items)) continue;
-    for (const item of row.items) {
-      if (!item || typeof item !== 'object') continue;
-      const record = item as Record<string, unknown>;
-      const sku = typeof record.sku === 'string' && record.sku.trim() ? record.sku : 'unknown';
-      const qty = Number(record.quantity ?? record.qty ?? 0);
-      const current = bySku.get(sku) ?? { sku, units30: 0, units7: 0, revenue: 0 };
-      current.units30 += Number.isFinite(qty) ? qty : 0;
-      if (canViewFinancials) {
-        const unitPrice = Number(record.unitPrice ?? record.unit_price ?? 0);
-        current.revenue += (Number.isFinite(unitPrice) ? unitPrice : 0) * (Number.isFinite(qty) ? qty : 0);
-      }
-      bySku.set(sku, current);
-    }
-  }
-  return [...bySku.values()].sort((a, b) => b.units30 - a.units30).slice(0, 10);
-}
-
-function dailyRevenueRows(rows: Array<typeof orders.$inferSelect>) {
-  const byDay = new Map<string, number>();
-  for (const row of rows) {
-    const key = dayKey(row.orderDate);
-    if (!key) continue;
-    byDay.set(key, (byDay.get(key) ?? 0) + Number(row.orderTotal ?? 0));
-  }
-  return [...byDay.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, revenue]) => ({ day, revenue }));
-}
-
-function dayKey(value: unknown) {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
 }
 
 export default app;
