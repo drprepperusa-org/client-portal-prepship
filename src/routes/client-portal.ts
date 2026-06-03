@@ -232,17 +232,23 @@ function orderScopePredicate(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null } = {}
 ): SQL | undefined {
-  if (!scope.isRestricted) return undefined;
+  // Explicit client/store filter from the top-bar switcher. Honored for EVERY
+  // caller — global admins included — because it can only ever NARROW the result
+  // set, never widen it. (Previously global admins bailed before this ran, so
+  // the Dashboard switcher was a no-op for them.)
+  const explicit = and(
+    filters.clientId ? eq(orders.clientId, filters.clientId) : undefined,
+    filters.storeId ? eq(orders.storeId, filters.storeId) : undefined,
+  );
+  // Unrestricted (global) callers see everything, narrowed only by `explicit`.
+  if (!scope.isRestricted) return explicit;
   const predicates: SQL[] = [];
   if (scope.clientIds.length) predicates.push(inArray(orders.clientId, scope.clientIds));
   if (scope.storeIds.length) predicates.push(inArray(orders.storeId, scope.storeIds));
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
-  return and(
-    scopePredicate,
-    filters.clientId ? eq(orders.clientId, filters.clientId) : undefined,
-    filters.storeId ? eq(orders.storeId, filters.storeId) : undefined,
-  );
+  // Restricted callers stay bounded by their scope AND any explicit narrowing.
+  return and(scopePredicate, explicit);
 }
 
 // Raw counterpart of orderScopePredicate, bound to the orders table aliased
@@ -298,7 +304,18 @@ function shipmentScopePredicate(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null } = {}
 ): SQL | undefined {
-  if (!scope.isRestricted) return undefined;
+  // Explicit switcher filter — narrows only, so safe for global admins too.
+  const explicit = and(
+    filters.clientId ? eq(shipments.clientId, filters.clientId) : undefined,
+    filters.storeId
+      ? sql`exists (
+          select 1 from ${orders} filtered_order
+          where filtered_order.id = ${shipments.orderId}
+            and filtered_order.store_id = ${filters.storeId}
+        )`
+      : undefined,
+  );
+  if (!scope.isRestricted) return explicit;
   const predicates: SQL[] = [];
   if (scope.clientIds.length) predicates.push(inArray(shipments.clientId, scope.clientIds));
   if (scope.storeIds.length) {
@@ -310,17 +327,7 @@ function shipmentScopePredicate(
   }
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
-  return and(
-    scopePredicate,
-    filters.clientId ? eq(shipments.clientId, filters.clientId) : undefined,
-    filters.storeId
-      ? sql`exists (
-          select 1 from ${orders} filtered_order
-          where filtered_order.id = ${shipments.orderId}
-            and filtered_order.store_id = ${filters.storeId}
-        )`
-      : undefined,
-  );
+  return and(scopePredicate, explicit);
 }
 
 function scopeOrResponse(c: Context) {

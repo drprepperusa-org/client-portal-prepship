@@ -40,6 +40,26 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(/async function scopedDailyCounts\(token: string, days: number, clientId\?: number\)/.test(api), 'scopedDailyCounts threads clientId');
 }
 
+// ── Backend honors the explicit client filter for GLOBAL admins too ──
+// The original bug: orderScopePredicate/shipmentScopePredicate bailed with
+// `return undefined` for unrestricted callers BEFORE applying filters.clientId,
+// so the switcher was a no-op for global admins. They must now return the
+// explicit (narrowing-only) predicate instead.
+{
+  const route = read('src/routes/client-portal.ts');
+  const fnBody = (name) => {
+    const start = route.indexOf(`function ${name}(`);
+    return start === -1 ? '' : route.slice(start, start + 1400);
+  };
+  for (const fn of ['orderScopePredicate', 'shipmentScopePredicate']) {
+    const body = fnBody(fn);
+    assert(body.includes('const explicit = and('), `${fn} computes an explicit narrowing predicate`);
+    assert(body.includes('if (!scope.isRestricted) return explicit;'), `${fn} applies the explicit filter for unrestricted (global) callers`);
+    assert(!body.includes('if (!scope.isRestricted) return undefined;'), `${fn} no longer drops the explicit filter for global admins`);
+    assert(body.includes('return and(scopePredicate, explicit);'), `${fn} keeps restricted callers bounded by scope AND the explicit filter`);
+  }
+}
+
 // ── Orders adopts the ?q= param even when already mounted ──
 {
   const orders = read('portal-client/src/pages/Orders.tsx');
