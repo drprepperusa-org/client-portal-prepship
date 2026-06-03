@@ -27,6 +27,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(/portalApi\.dailyCounts\(t,\s*days,\s*clientId\)/.test(hooks), 'useDailyCounts sends clientId to the request');
   assert(/portalApi\.dailyShipments\(t,\s*days,\s*clientId\)/.test(hooks), 'useDailyShipments sends clientId to the request');
   assert(/useDailyCounts[\s\S]*?clientId\s*\}\s*=\s*usePortalFilters/.test(hooks), 'useDailyCounts reads clientId from portal filters');
+  assert(/portalApi\.awaitingCount\(t,\s*clientId\)/.test(hooks), 'useAwaitingCount (Open orders KPI + sidebar badge) sends clientId');
 }
 
 // ── API layer accepts + forwards clientId with a scope-safe short-circuit ──
@@ -35,6 +36,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(/dashboard:\s*\(token: string, days = 30, clientId\?: number\)/.test(api), 'portalApi.dashboard accepts clientId');
   assert(/dailyCounts:\s*\(token: string, days = 30, clientId\?: number\)/.test(api), 'portalApi.dailyCounts accepts clientId');
   assert(/dailyShipments:\s*\(token: string, days = 30, clientId\?: number\)/.test(api), 'portalApi.dailyShipments accepts clientId');
+  assert(/awaitingCount:\s*\(token: string, clientId\?: number\)/.test(api), 'portalApi.awaitingCount accepts clientId');
   assert(/async function scopedDashboard\(token: string, days: number, clientId\?: number\)/.test(api), 'scopedDashboard threads clientId');
   assert(api.includes('if (clientId !== undefined) return apiGet<DashboardSummary>'), 'scopedDashboard short-circuits to a single scoped request for an explicit client');
   assert(/async function scopedDailyCounts\(token: string, days: number, clientId\?: number\)/.test(api), 'scopedDailyCounts threads clientId');

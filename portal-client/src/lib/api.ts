@@ -627,8 +627,14 @@ export const portalApi = {
   order: (token: string, id: number) => apiGet<{ data: PortalOrder }>(token, `/api/client-portal/orders/${id}`),
   skuOrders: (token: string, inventoryId: number, dateFrom?: string, dateTo?: string) =>
     apiGet<SkuOrdersResult>(token, '/api/client-portal/analysis/sku-orders', { inventoryId, dateFrom, dateTo }),
-  awaitingCount: (token: string) =>
-    apiGet<{ count: number }>(token, '/api/client-portal/orders/awaiting-active-count', { storeId: firstStoreId(token) }),
+  awaitingCount: (token: string, clientId?: number) =>
+    apiGet<{ count: number }>(token, '/api/client-portal/orders/awaiting-active-count', {
+      // Honor the top-bar client switcher so "Open orders" (and the sidebar
+      // badge) scope to the selected client; the single-store fallback only
+      // applies when no explicit client is chosen.
+      clientId,
+      storeId: clientId === undefined ? firstStoreId(token) : undefined,
+    }),
 
   shipments: (token: string, opts: ListOpts = {}) =>
     scopedList<PortalShipment>(token, '/api/client-portal/shipments', {

@@ -30,8 +30,12 @@ export const useMe = () => useTokenQuery(['me'], portalApi.me);
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
 export const useAccessList = () => useTokenQuery(['access-list'], portalApi.accessList);
 export const useSyncStatus = () => useTokenQuery(['sync-status'], portalApi.syncStatus);
-export const useAwaitingCount = () =>
-  useTokenQuery(['awaiting-count'], portalApi.awaitingCount, true, { refetchInterval: LIVE_ORDERS_MS });
+export function useAwaitingCount() {
+  const { clientId } = usePortalFilters();
+  return useTokenQuery(['awaiting-count', clientId ?? 'scope'], (t) => portalApi.awaitingCount(t, clientId), true, {
+    refetchInterval: LIVE_ORDERS_MS,
+  });
+}
 
 export function useDashboard() {
   const { days, clientId } = usePortalFilters();
