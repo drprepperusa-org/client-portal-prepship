@@ -62,6 +62,13 @@ export default function Orders() {
   const [selected, setSelected] = useState<PortalOrder | null>(null);
   const debouncedQ = useDebounced(q, 350);
 
+  // Adopt the ?q= param whenever it changes. useState only reads it at mount, so
+  // a top-bar search performed while Orders is ALREADY open would otherwise be
+  // silently ignored (the box wouldn't update). The param only changes on
+  // navigation, so this never clobbers in-page typing.
+  const urlQ = params.get('q') ?? '';
+  useEffect(() => setQ(urlQ), [urlQ]);
+
   useEffect(() => setPage(1), [debouncedQ, tab]);
 
   const query = useOrders({ status: tab, search: debouncedQ, page });

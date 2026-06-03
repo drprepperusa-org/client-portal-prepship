@@ -35,15 +35,15 @@ export const useAwaitingCount = () =>
 
 export function useDashboard() {
   const { days, clientId } = usePortalFilters();
-  return useTokenQuery(['dashboard', days, clientId ?? 'scope'], (t) => portalApi.dashboard(t, days));
+  return useTokenQuery(['dashboard', days, clientId ?? 'scope'], (t) => portalApi.dashboard(t, days, clientId));
 }
 export function useDailyCounts() {
-  const { days } = usePortalFilters();
-  return useTokenQuery(['daily-counts', days], (t) => portalApi.dailyCounts(t, days));
+  const { days, clientId } = usePortalFilters();
+  return useTokenQuery(['daily-counts', days, clientId ?? 'scope'], (t) => portalApi.dailyCounts(t, days, clientId));
 }
 export function useDailyShipments() {
-  const { days } = usePortalFilters();
-  return useTokenQuery(['daily-shipments', days], (t) => portalApi.dailyShipments(t, days));
+  const { days, clientId } = usePortalFilters();
+  return useTokenQuery(['daily-shipments', days, clientId ?? 'scope'], (t) => portalApi.dailyShipments(t, days, clientId));
 }
 export function useAnalysis() {
   const { days } = usePortalFilters();

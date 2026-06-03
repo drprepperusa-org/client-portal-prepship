@@ -457,9 +457,13 @@ async function scopedList<T>(token: string, path: string, params: Record<string,
   };
 }
 
-async function scopedDashboard(token: string, days: number): Promise<DashboardSummary> {
+async function scopedDashboard(token: string, days: number, clientId?: number): Promise<DashboardSummary> {
   const scope = portalScopeFromToken(token);
   const range = defaultRange(days);
+  // Explicit client filter from the top-bar switcher → one scoped request for
+  // that client. The backend re-checks the client against the caller's scope,
+  // so passing it can only ever narrow, never widen, visibility.
+  if (clientId !== undefined) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', { ...range, clientId });
   if (!scope.isRestricted) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range);
   if (!scope.clientIds.length && !scope.storeIds.length) return { revenue: 0, units: 0, bySku: [], daily: [], dailyRevenue: [] };
   const ids = scope.clientIds.length ? scope.clientIds : [undefined];
@@ -528,9 +532,11 @@ function blendAvgShipping(a: number | null, aUnits: number, b: number | null, bU
   return denom > 0 ? (a * aUnits + b * bUnits) / denom : null;
 }
 
-async function scopedDailyCounts(token: string, days: number): Promise<{ data: DailyCount[] }> {
+async function scopedDailyCounts(token: string, days: number, clientId?: number): Promise<{ data: DailyCount[] }> {
   const scope = portalScopeFromToken(token);
   const range = defaultRange(days);
+  // Explicit client filter from the top-bar switcher → one scoped request.
+  if (clientId !== undefined) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', { ...range, clientId });
   if (!scope.isRestricted) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', range);
   if (!scope.clientIds.length && !scope.storeIds.length) return { data: [] };
   const ids = scope.clientIds.length ? scope.clientIds : [undefined];
@@ -599,12 +605,15 @@ export const portalApi = {
   backfillStatus: (token: string) =>
     apiGet<{ job: BackfillJob | null }>(token, '/api/client-portal/backfill/status'),
 
-  dashboard: (token: string, days = 30) => scopedDashboard(token, days),
-  dailyCounts: (token: string, days = 30) => scopedDailyCounts(token, days),
-  dailyShipments: (token: string, days = 30) =>
+  dashboard: (token: string, days = 30, clientId?: number) => scopedDashboard(token, days, clientId),
+  dailyCounts: (token: string, days = 30, clientId?: number) => scopedDailyCounts(token, days, clientId),
+  dailyShipments: (token: string, days = 30, clientId?: number) =>
     apiGet<{ data: Array<{ day: string; shipments: number }> }>(token, '/api/client-portal/daily-shipments', {
       ...rangeToTimestamps(defaultRange(days)),
-      storeId: firstStoreId(token),
+      // Explicit client filter overrides the single-store fallback; otherwise
+      // keep restricting a single-store session to its store.
+      clientId,
+      storeId: clientId === undefined ? firstStoreId(token) : undefined,
     }),
 
   orders: (token: string, opts: ListOpts = {}) =>
