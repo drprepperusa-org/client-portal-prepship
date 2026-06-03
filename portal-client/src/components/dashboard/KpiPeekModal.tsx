@@ -1,7 +1,8 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ShoppingCart, Truck, Boxes, Wallet, X, ArrowRight, Inbox, type LucideIcon } from 'lucide-react';
+import { ShoppingCart, Truck, Boxes, Wallet, X, ArrowRight, Inbox, MousePointerClick, type LucideIcon } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { AnimatedIcon } from '@/components/ui/AnimatedIcon';
 import { useOrders } from '@/lib/hooks';
 import { itemCount, money, shortDate } from '@/lib/status';
@@ -22,7 +23,7 @@ export interface KpiPeekData {
   bySku: Array<{ sku: string; units30: number; revenue: number; avgShippingPrice: number | null }>;
 }
 
-const PANEL_W = 480;
+const PANEL_W = 540;
 
 /* ───────────────────────── count-up headline ───────────────────────── */
 
@@ -54,45 +55,117 @@ function CountUp({ value, active, format }: { value: number; active: boolean; fo
   return <>{format(v)}</>;
 }
 
-/* ───────────────────────── self-drawing sparkline ───────────────────────── */
+/* ───────────────────── interactive trend chart (bigger + clickable) ───────────────────── */
 
-function Sparkline({ values, color, height = 60 }: { values: number[]; color: string; height?: number }) {
-  const reduce = useReducedMotion();
+export interface ChartPoint {
+  day: string; // YYYY-MM-DD
+  label: string; // MM-DD
+  value: number;
+}
+
+function niceDate(day: string) {
+  const d = new Date(`${day}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/** Bigger area chart with on-chart indicators: dots, a hover crosshair/tooltip,
+ *  and click-to-pin — selecting a day surfaces a detail readout below. */
+function PeekChart({ data, color, format }: { data: ChartPoint[]; color: string; format: (n: number) => string }) {
   const id = useId();
-  const w = 100;
-  const h = height;
-  const max = Math.max(1, ...values);
-  const n = values.length;
-  const pts = values.map((v, i) => {
-    const x = n <= 1 ? 0 : (i / (n - 1)) * w;
-    const y = h - (Math.max(0, v) / max) * (h - 6) - 3;
-    return [x, y] as const;
-  });
-  if (!pts.length) pts.push([0, h - 3], [w, h - 3]);
-  const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-  const area = `${line} L${w},${h} L0,${h} Z`;
+  const [sel, setSel] = useState<ChartPoint | null>(null);
+  const values = data.map((d) => d.value);
+  const total = values.reduce((n, v) => n + v, 0);
+  const avg = values.length ? total / values.length : 0;
+
+  const pick = (state: { activePayload?: Array<{ payload?: ChartPoint }> } | null) => {
+    const p = state?.activePayload?.[0]?.payload;
+    if (p) setSel((cur) => (cur?.day === p.day ? null : p));
+  };
+
+  const share = sel && total > 0 ? (sel.value / total) * 100 : 0;
+  const vsAvg = sel && avg > 0 ? ((sel.value - avg) / avg) * 100 : 0;
+
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" aria-hidden>
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <motion.path d={area} fill={`url(#${id})`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.18, duration: 0.4 }} />
-      <motion.path
-        d={line}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-        initial={reduce ? undefined : { pathLength: 0 }}
-        animate={reduce ? undefined : { pathLength: 1 }}
-        transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
-      />
-    </svg>
+    <div className="rounded-glass-sm bg-white/45 p-3 ring-1 ring-slate-200/60">
+      <ResponsiveContainer width="100%" height={172}>
+        <AreaChart data={data} margin={{ left: -22, right: 6, top: 6, bottom: 0 }} onClick={pick} style={{ cursor: 'pointer' }}>
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.32} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} minTickGap={22} />
+          <YAxis tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} width={44} allowDecimals={false} />
+          <Tooltip
+            cursor={{ stroke: color, strokeWidth: 1, strokeDasharray: '4 4' }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const p = payload[0].payload as ChartPoint;
+              return (
+                <div className="rounded-lg border border-white/70 bg-white/90 px-3 py-2 text-xs shadow-glass backdrop-blur">
+                  <p className="font-semibold text-ink">{niceDate(p.day)}</p>
+                  <p style={{ color }} className="mt-0.5 font-bold tnum">{format(p.value)}</p>
+                </div>
+              );
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={2.5}
+            fill={`url(#${id})`}
+            dot={{ r: 2.5, fill: color, strokeWidth: 0 }}
+            activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
+            isAnimationActive
+            animationDuration={650}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+
+      {/* Click-to-detail readout */}
+      <AnimatePresence mode="wait">
+        {sel ? (
+          <motion.div
+            key={sel.day}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-white/60 px-3 py-2 ring-1 ring-slate-200/70"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-ink">{niceDate(sel.day)}</p>
+              <p style={{ color }} className="font-display text-lg font-bold tnum">{format(sel.value)}</p>
+            </div>
+            <div className="flex shrink-0 gap-2 text-right">
+              <div className="rounded-md bg-white/70 px-2 py-1 ring-1 ring-slate-200/70">
+                <p className="text-[10px] uppercase tracking-wide text-ink-3">Share</p>
+                <p className="text-xs font-semibold text-ink tnum">{share.toFixed(0)}%</p>
+              </div>
+              <div className="rounded-md bg-white/70 px-2 py-1 ring-1 ring-slate-200/70">
+                <p className="text-[10px] uppercase tracking-wide text-ink-3">vs avg</p>
+                <p className={cn('text-xs font-semibold tnum', vsAvg >= 0 ? 'text-emerald-600' : 'text-rose-500')}>
+                  {vsAvg >= 0 ? '+' : ''}{vsAvg.toFixed(0)}%
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.p
+            key="hint"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-ink-3"
+          >
+            <MousePointerClick size={13} /> Tap any day for detail
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -188,7 +261,7 @@ interface PeekConfig {
   value: number;
   format: (n: number) => string;
   sub: string;
-  trend: number[];
+  series: ChartPoint[];
   trendLabel: string;
   cta: { label: string; to: string };
   body: ReactNode;
@@ -197,32 +270,35 @@ interface PeekConfig {
 const int = (n: number) => Math.round(n).toLocaleString();
 const sum = (a: number[]) => a.reduce((n, v) => n + v, 0);
 const peak = (a: number[]) => (a.length ? Math.max(...a) : 0);
+const toSeries = <T extends { day: string }>(rows: T[], val: (r: T) => number): ChartPoint[] =>
+  rows.map((r) => ({ day: r.day, label: r.day.slice(5), value: val(r) }));
 
 function buildConfig(peek: PeekKey, d: KpiPeekData): PeekConfig {
   const ACC = (a: Accent) => ACCENTS[a].solid;
   switch (peek) {
     case 'open': {
-      const trend = d.counts.map((c) => c.awaiting);
+      const series = toSeries(d.counts, (c) => c.awaiting);
       return {
         label: 'Open orders', icon: ShoppingCart, accent: 'indigo', value: d.openOrders, format: int,
-        sub: 'Awaiting shipment right now', trend, trendLabel: `New awaiting / day (last ${d.days})`,
+        sub: 'Awaiting shipment right now', series, trendLabel: `New awaiting / day (last ${d.days})`,
         cta: { label: 'Go to Orders', to: '/orders' },
         body: <PeekSection title="Next to ship"><OpenOrdersPeek /></PeekSection>,
       };
     }
     case 'shipped': {
-      const trend = d.counts.map((c) => c.shipped);
-      const total = sum(trend);
+      const series = toSeries(d.counts, (c) => c.shipped);
+      const vals = series.map((s) => s.value);
+      const total = sum(vals);
       const orders = sum(d.counts.map((c) => c.total));
       return {
         label: 'Shipped', icon: Truck, accent: 'teal', value: total, format: int,
-        sub: `Last ${d.days} days`, trend, trendLabel: `Shipped / day`,
+        sub: `Last ${d.days} days`, series, trendLabel: `Shipped / day`,
         cta: { label: 'Go to Shipments', to: '/shipments' },
         body: (
           <PeekSection title="At a glance">
             <div className="grid grid-cols-3 gap-2">
-              <StatChip label="Peak day" value={int(peak(trend))} />
-              <StatChip label="Avg / day" value={int(trend.length ? total / trend.length : 0)} />
+              <StatChip label="Peak day" value={int(peak(vals))} />
+              <StatChip label="Avg / day" value={int(vals.length ? total / vals.length : 0)} />
               <StatChip label="Orders" value={int(orders)} />
             </div>
           </PeekSection>
@@ -230,13 +306,13 @@ function buildConfig(peek: PeekKey, d: KpiPeekData): PeekConfig {
       };
     }
     case 'units': {
-      const trend = d.daily.map((x) => x.units);
+      const series = toSeries(d.daily, (x) => x.units);
       const total = d.units;
       const top = [...d.bySku].sort((a, b) => b.units30 - a.units30).slice(0, 5);
       const max = peak(top.map((s) => s.units30));
       return {
         label: 'Units shipped', icon: Boxes, accent: 'amber', value: total, format: int,
-        sub: `Last ${d.days} days`, trend, trendLabel: `Units / day`,
+        sub: `Last ${d.days} days`, series, trendLabel: `Units / day`,
         cta: { label: 'Go to Analysis', to: '/analysis' },
         body: (
           <PeekSection title="Top SKUs by units">
@@ -251,15 +327,16 @@ function buildConfig(peek: PeekKey, d: KpiPeekData): PeekConfig {
     }
     case 'revenue':
     default: {
-      const trend = d.dailyRevenue.map((x) => x.revenue);
+      const series = toSeries(d.dailyRevenue, (x) => x.revenue);
+      const vals = series.map((s) => s.value);
       const orders = sum(d.counts.map((c) => c.total));
       const aov = orders > 0 ? d.revenue / orders : 0;
       const top = [...d.bySku].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
       const max = peak(top.map((s) => s.revenue));
-      const hidden = d.revenue === 0 && trend.every((v) => v === 0);
+      const hidden = d.revenue === 0 && vals.every((v) => v === 0);
       return {
         label: 'Revenue', icon: Wallet, accent: 'emerald', value: d.revenue, format: money,
-        sub: `Last ${d.days} days`, trend, trendLabel: `Revenue / day`,
+        sub: `Last ${d.days} days`, series, trendLabel: `Revenue / day`,
         cta: { label: 'Go to Finance', to: '/finance' },
         body: hidden ? (
           <PeekSection title="Top SKUs by revenue">
@@ -272,7 +349,7 @@ function buildConfig(peek: PeekKey, d: KpiPeekData): PeekConfig {
             <PeekSection title="At a glance">
               <div className="grid grid-cols-2 gap-2">
                 <StatChip label="Avg order value" value={money(aov)} />
-                <StatChip label="Peak day" value={money(peak(trend))} />
+                <StatChip label="Peak day" value={money(peak(vals))} />
               </div>
             </PeekSection>
             <PeekSection title="Top SKUs by revenue">
@@ -374,9 +451,7 @@ export function KpiPeekModal({
               {/* Body */}
               <motion.div variants={staggerContainer} initial="initial" animate="enter" className="flex-1 space-y-4 overflow-y-auto px-5 pb-2 pt-4">
                 <PeekSection title={cfg.trendLabel}>
-                  <div className="rounded-glass-sm bg-white/45 p-3 ring-1 ring-slate-200/60">
-                    <Sparkline values={cfg.trend} color={ACCENTS[cfg.accent].solid} />
-                  </div>
+                  <PeekChart data={cfg.series} color={ACCENTS[cfg.accent].solid} format={cfg.format} />
                 </PeekSection>
                 {cfg.body}
               </motion.div>

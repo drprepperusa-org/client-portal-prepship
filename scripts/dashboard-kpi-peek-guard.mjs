@@ -40,7 +40,9 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(modal.includes('function originTransform'), 'modal computes a grow-from-card origin transform');
   assert(modal.includes('requestAnimationFrame') && modal.includes('useCountUp'), 'headline value counts up via rAF');
   assert(modal.includes('useReducedMotion'), 'animations respect prefers-reduced-motion');
-  assert(modal.includes('pathLength'), 'sparkline draws itself (animated pathLength)');
+  assert(modal.includes('function PeekChart') && modal.includes("from 'recharts'"), 'trend uses an interactive Recharts chart');
+  assert(modal.includes('<Tooltip') && modal.includes('activeDot'), 'chart shows on-hover indicators (tooltip + active dot)');
+  assert(modal.includes('onClick={pick}') && modal.includes('Tap any day for detail'), 'clicking a day pins a detail readout');
   assert(modal.includes('function OpenOrdersPeek') && modal.includes("useOrders({ status: 'awaiting_shipment'"), 'Open-orders peek lazy-loads a short live list');
   for (const key of ['open', 'shipped', 'units', 'revenue']) {
     assert(modal.includes(`case '${key}'`), `modal builds a config for the ${key} peek`);
