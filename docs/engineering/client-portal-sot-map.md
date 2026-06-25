@@ -73,6 +73,7 @@ npm run test:client-portal-orders-selected-rate   # CP-001
 npm run test:dashboard-bar-chart-top-skus         # CP-002
 npm run guard:client-portal-api
 npm run guard:client-portal-architecture
+npm run test:client-portal-failure-states         # CP-003 follow-up (active failure-state coverage)
 ```
 
 Legacy `web/` typecheck is preserved but no longer gates the active build:
@@ -92,7 +93,7 @@ be mistaken for active certification. **None should gate active portal work.**
 
 | Guard script | Legacy path read | Recommended action |
 |---|---|---|
-| `frontend-failure-states-guard.mjs` ⚠️ | `web/src/components/Views/OrdersView.tsx` | **Priority** — wired into `test:full-site-certification` + `guard:frontend-failure-states`, so that aggregate is currently broken. Re-point to `portal-client/` failure states or scope legacy-only |
+| ~~`frontend-failure-states-guard.mjs`~~ | — | ✅ **Done this pass** — replaced by the active `client-portal-failure-states-guard.mjs` (see "What CP-003 changed" #5); `guard:frontend-failure-states` + `test:full-site-certification` now run the active guard |
 | `source-of-truth-guard.mjs` | Analysis/Dashboard/Orders/Inventory views | Re-point to `portal-client/src/pages/*` or mark legacy-only |
 | `orders-ux-guard.mjs`, `orders-request-pressure-guard.mjs`, `orders-startup-requests-guard.mjs` | `OrdersView.tsx` | Re-point to `pages/Orders.tsx` or legacy-only |
 | `order-detail-drawer-lazy-guard.mjs`, `secondary-order-detail-lazy-guard.mjs` | Orders/Inventory/Analysis/Billing/Packages views | Re-point or legacy-only |
@@ -116,6 +117,13 @@ be mistaken for active certification. **None should gate active portal work.**
    active `portal-client/` login + auth (invite-only, no public signup) instead
    of the legacy `web/` files — without weakening any security assertion.
 4. **Authored this SOT/mapping matrix.**
+5. **Re-pointed the failure-states guard** — replaced the dead legacy
+   `frontend-failure-states-guard.mjs` (it read removed `web/` files) with
+   `scripts/client-portal-failure-states-guard.mjs`, which pins the active
+   portal's real failure-state model: bounded `fetch` timeouts that throw
+   (never swallow), the shared `QueryState` error + `Retry` UI, and the live
+   Orders query wiring. `guard:frontend-failure-states` and
+   `test:full-site-certification` now run the active guard.
 
 ### CP-003 claim accuracy note
 
@@ -128,7 +136,8 @@ addressed above.
 
 ## Deferred (tracked follow-ups)
 
-- Re-point or legacy-scope the stale guards above (priority: `frontend-failure-states`).
+- Re-point or legacy-scope the remaining stale guards above (the priority one,
+  `frontend-failure-states`, is done — see change #5).
 - Optional extraction of read-model-heavy blocks from the large
   `src/routes/client-portal.ts` into `src/lib/client-portal/read-models/*`
   (out of scope for this pass to avoid an unreviewable rewrite).

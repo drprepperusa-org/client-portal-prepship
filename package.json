@@ -23,7 +23,7 @@
     "guard:bundle-size": "npm run test:web-bundle-budget",
     "guard:backend-connectivity": "node scripts/backend-connectivity-guard.mjs",
     "guard:enterprise-readiness-closeout": "node scripts/enterprise-readiness-closeout-guard.mjs",
-    "guard:frontend-failure-states": "npm run test:frontend-failure-states",
+    "guard:frontend-failure-states": "npm run test:client-portal-failure-states",
     "guard:orders-startup-requests": "npm run test:orders-startup-requests",
     "guard:client-portal-architecture": "node scripts/client-portal-architecture-guard.mjs",
     "guard:client-portal-api": "node scripts/client-portal-api-guard.mjs",
@@ -129,7 +129,7 @@
     "test:jwt-session-policy": "node scripts/jwt-session-policy-guard.mjs",
     "test:auth-logout": "node scripts/auth-logout-guard.mjs",
     "test:frontend-auth-cache": "node scripts/frontend-auth-cache-guard.mjs",
-    "test:frontend-failure-states": "node scripts/frontend-failure-states-guard.mjs",
+    "test:client-portal-failure-states": "node scripts/client-portal-failure-states-guard.mjs",
     "test:maintenance-page": "node scripts/maintenance-page-guard.mjs",
     "test:maintenance-gate:browser": "playwright test web/e2e/maintenance-gate.spec.js --reporter=line",
     "test:orders-ux": "node scripts/orders-ux-guard.mjs",
@@ -149,7 +149,7 @@
     "test:api-contracts": "node scripts/api-contracts-guard.mjs",
     "audit:client-portal-ui": "node scripts/client-portal-ui-audit.mjs",
     "test:portal-smoke": "playwright test web/e2e/portal-smoke.spec.js --reporter=line",
-    "test:full-site-certification": "npm run typecheck && npm run build:web && npm run guard:site-actions && npm run test:api-contracts && npm run test:shipstation-label-url && npm run test:print-queue-invalid-label && npm run test:portal-smoke && npm run test:frontend-failure-states"
+    "test:full-site-certification": "npm run typecheck && npm run build:web && npm run guard:site-actions && npm run test:api-contracts && npm run test:shipstation-label-url && npm run test:print-queue-invalid-label && npm run test:portal-smoke && npm run test:client-portal-failure-states"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
