@@ -48,7 +48,31 @@ const emptyDraft = (): Draft => ({
 function parseCsv(text: string, clients: PortalClientRow[]): { shipments: NewInboundInput[]; items: number } {
   const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return { shipments: [], items: 0 };
-  const split = (l: string) => l.split(',').map((s) => s.trim());
+  // Quote-aware splitter: a field wrapped in double quotes may contain commas,
+  // and "" is an escaped quote. Plain l.split(',') corrupted any such row.
+  const split = (line: string): string[] => {
+    const cells: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; } // escaped quote
+          else inQuotes = false;
+        } else cur += ch;
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        cells.push(cur.trim());
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur.trim());
+    return cells;
+  };
   const header = split(lines[0]).map((h) => h.toLowerCase());
   const at = (cells: string[], name: string) => { const i = header.indexOf(name); return i >= 0 ? (cells[i] ?? '') : ''; };
   const byName = new Map(clients.map((c) => [(c.name ?? '').toLowerCase(), c.id]));

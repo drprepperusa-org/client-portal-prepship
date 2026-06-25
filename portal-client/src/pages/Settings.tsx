@@ -564,6 +564,10 @@ function AccessEditModal({
 }) {
   const clientOptions = clients.map((c) => ({ value: String(c.id), label: c.name ?? `Client ${c.id}` }));
   const validIds = new Set(clientOptions.map((o) => o.value));
+  // Assignments with no matching option (inactive / out-of-fetch-window clients)
+  // aren't shown as chips, but are kept here and re-merged on save so editing a
+  // user never silently revokes a store the editor simply couldn't see.
+  const orphanClientIds = user.clientIds.map(String).filter((id) => !validIds.has(id));
 
   const [role, setRole] = useState<'admin' | 'client_user'>(user.isAdmin ? 'admin' : 'client_user');
   const [name, setName] = useState(user.name ?? '');
@@ -580,7 +584,10 @@ function AccessEditModal({
         role,
         displayName: name.trim(),
         // Store assignment only applies to scoped client users; admins are global.
-        ...(role === 'client_user' ? { clientIds: clientIds.map(Number).filter((n) => Number.isInteger(n)) } : {}),
+        // Re-merge orphan ids so out-of-view assignments aren't silently dropped.
+        ...(role === 'client_user'
+          ? { clientIds: [...new Set([...clientIds, ...orphanClientIds])].map(Number).filter((n) => Number.isInteger(n)) }
+          : {}),
       });
       toast.success('Access updated', user.email);
       await onSaved();

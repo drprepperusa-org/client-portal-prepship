@@ -440,23 +440,20 @@ function firstStoreId(token: string): number | undefined {
  * client (the API filters by a single clientId), then merging data + totals.
  */
 async function scopedList<T>(token: string, path: string, params: Record<string, QueryValue>): Promise<Paginated<T>> {
-  const scope = portalScopeFromToken(token);
-  // Explicit clientId, global, or single-client → one request.
-  if (params.clientId || !scope.isRestricted || scope.clientIds.length <= 1) {
-    return apiGet<Paginated<T>>(token, path, {
-      ...params,
-      clientId: params.clientId ?? (scope.isRestricted ? scope.clientIds[0] : undefined),
-      storeId: params.storeId ?? firstStoreId(token),
-    });
-  }
-  const pages = await Promise.all(scope.clientIds.map((clientId) => apiGet<Paginated<T>>(token, path, { ...params, clientId })));
-  const data = pages.flatMap((p) => p.data ?? []);
-  const total = pages.reduce((n, p) => n + Number(p.pagination?.total ?? p.data?.length ?? 0), 0);
-  const pageSize = pages[0]?.pagination?.pageSize ?? Number(params.pageSize ?? 50);
-  return {
-    data,
-    pagination: { page: Number(params.page ?? 1), pageSize, total, totalPages: total > 0 ? Math.ceil(total / pageSize) : 0 },
-  };
+  // ONE request — the backend scopes every list by the caller's full JWT
+  // client/store scope (order/shipment/inventoryScopePredicate all use
+  // inArray(scope.clientIds)) and paginates the union server-side. Pass an
+  // explicit clientId only when the top-bar switcher set one (it can only narrow,
+  // never widen); a single-store session still pins its store.
+  //
+  // This previously fanned out one request per client and concatenated the pages
+  // for restricted multi-client users — which made a single page render up to
+  // N×pageSize rows while the pager reported pageSize 50 + a summed total, so
+  // page counts and boundaries never lined up. Server-side pagination is correct.
+  return apiGet<Paginated<T>>(token, path, {
+    ...params,
+    storeId: params.storeId ?? firstStoreId(token),
+  });
 }
 
 async function scopedDashboard(token: string, days: number, clientId?: number): Promise<DashboardSummary> {
