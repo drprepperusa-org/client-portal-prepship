@@ -790,10 +790,16 @@ app.get('/inventory', async (c) => {
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
+  // Low/Out-only filter (Stock Levels checkbox): out of stock, or at/below a set
+  // reorder threshold. Optional + additive — the default listing is unchanged.
+  const lowStock = ['1', 'true', 'yes'].includes((c.req.query('lowStock') ?? '').toLowerCase());
   const where = and(
     eq(inventory.active, true),
     inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
     inventorySearchPredicate(search),
+    lowStock
+      ? sql`(${inventory.stockQty} <= 0 or (${inventory.reorderLevel} > 0 and ${inventory.stockQty} <= ${inventory.reorderLevel}))`
+      : undefined,
   );
   const rows = await db
     .select({
@@ -835,7 +841,7 @@ app.get('/inventory', async (c) => {
     for (const r of soldRows) soldById.set(r.inventory_id, Number(r.sold) || 0);
   }
 
-  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search });
+  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search, lowStock });
   return c.json({
     data: rows.map((row) =>
       toPortalInventoryDto({

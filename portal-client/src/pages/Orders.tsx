@@ -104,7 +104,7 @@ export default function Orders() {
       const totalPages = Math.max(1, pg?.totalPages ?? 1);
       for (let p = 1; p <= totalPages; p++) {
         await qc.prefetchQuery({
-          queryKey: ['orders', tab, debouncedQ, p, clientId ?? 'scope', true],
+          queryKey: ['orders', tab, debouncedQ, p, 50, clientId ?? 'scope', true],
           queryFn: () => portalApi.orders(accessToken, { status: tab, search: debouncedQ, page: p, clientId }),
         });
       }

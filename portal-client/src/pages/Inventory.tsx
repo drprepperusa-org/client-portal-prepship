@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, History, Boxes } from 'lucide-react';
 import { Thumb } from '@/components/ui/Thumb';
 import { GlassPanel } from '@/components/ui/Glass';
@@ -102,14 +102,13 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
   const [lowOnly, setLowOnly] = useState(false);
   const [page, setPage] = useState(1);
   const debouncedQ = useDebounced(q, 350);
-  useEffect(() => setPage(1), [debouncedQ]);
+  useEffect(() => setPage(1), [debouncedQ, lowOnly]);
 
-  const query = useInventory({ search: debouncedQ, page });
+  // Low/Out-only is filtered SERVER-side so it spans every page (not just the
+  // current one) and the pager totals stay accurate.
+  const query = useInventory({ search: debouncedQ, page, lowStock: lowOnly });
   const pg = query.data?.pagination;
-  const rows = useMemo(() => {
-    const data = query.data?.data ?? [];
-    return lowOnly ? data.filter(isLow) : data;
-  }, [query.data, lowOnly]);
+  const rows = query.data?.data ?? [];
 
   const columns: Column<PortalInventory>[] = [
     { key: 'sku', header: 'SKU', defaultWidth: 130, render: (s) => <span className="font-semibold text-brand-700">{s.sku ?? '—'}</span>, sortAccessor: (s) => s.sku ?? '' },
@@ -193,7 +192,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           emptyMessage="No inventory matches this view."
         >
           <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} />
-          {pg && !lowOnly && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
+          {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>
     </>

@@ -413,6 +413,8 @@ export interface ListOpts {
   pageSize?: number;
   /** Explicit client filter (from the client switcher). Overrides scope fan-out. */
   clientId?: number;
+  /** Inventory only: show only low/out-of-stock SKUs (server-side, all pages). */
+  lowStock?: boolean;
 }
 
 function defaultRange(days = 30) {
@@ -650,6 +652,7 @@ export const portalApi = {
       pageSize: opts.pageSize ?? 100,
       search: opts.search,
       clientId: opts.clientId,
+      lowStock: opts.lowStock ? 1 : undefined,
     }),
 
   inventoryHistory: (token: string, opts: { page?: number; sku?: string; type?: string; days?: number } = {}) => {

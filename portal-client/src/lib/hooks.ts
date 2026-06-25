@@ -84,7 +84,10 @@ export function useOrders(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['orders', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.clientId ?? 'scope'],
+    // pageSize MUST be in the key: the Dashboard "Open orders" peek requests this
+    // same status/page with pageSize 6, and without it that 6-row response would
+    // alias the full Orders list (refetchOnMount:false → sticky truncation).
+    ['orders', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.clientId ?? 'scope'],
     (t) => portalApi.orders(t, merged),
     true,
     { refetchInterval: LIVE_ORDERS_MS, refetchOnWindowFocus: true },
@@ -98,7 +101,7 @@ export function useShipments(opts: ListOpts = {}) {
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(['inventory', merged.search ?? '', merged.page ?? 1, merged.clientId ?? 'scope'], (t) => portalApi.inventory(t, merged));
+  return useTokenQuery(['inventory', merged.search ?? '', merged.page ?? 1, merged.lowStock ? 'low' : 'all', merged.clientId ?? 'scope'], (t) => portalApi.inventory(t, merged));
 }
 
 export function useInventoryHistory(opts: { page?: number; sku?: string; type?: string } = {}) {
@@ -142,8 +145,10 @@ export function usePrefetchPortal() {
     if (!accessToken) return;
     const t = accessToken;
     qc.prefetchQuery({ queryKey: ['dashboard', days, 'scope', true], queryFn: () => portalApi.dashboard(t, days) });
-    qc.prefetchQuery({ queryKey: ['daily-counts', days, true], queryFn: () => portalApi.dailyCounts(t, days) });
-    qc.prefetchQuery({ queryKey: ['orders', 'all', '', 1, 'scope', true], queryFn: () => portalApi.orders(t, {}) });
-    qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'scope', true], queryFn: () => portalApi.inventory(t, {}) });
+    qc.prefetchQuery({ queryKey: ['daily-counts', days, 'scope', true], queryFn: () => portalApi.dailyCounts(t, days) });
+    // Match the Orders page's first view exactly (awaiting tab, default pageSize)
+    // so the prefetch actually warms it instead of a key nothing reads.
+    qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.orders(t, { status: 'awaiting_shipment' }) });
+    qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.inventory(t, {}) });
   }, [accessToken, days, qc]);
 }
