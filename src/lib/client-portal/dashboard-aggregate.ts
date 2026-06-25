@@ -32,11 +32,23 @@ export interface TopSkuRow {
   avgShippingPrice: number | null;
 }
 
-/** Sum of shippable line-item quantities on an order (ignores non-numeric/qty<0). */
+/** A promo/discount line carries a negative unit price and is NOT a shippable
+ *  item. Excluding it keeps the dashboard's unit counts and SKU rollups in
+ *  lock-step with the order item list (src/lib/client-portal/dto.ts uses this
+ *  same predicate), so every client-portal surface agrees on "units". */
+export function isDiscountLine(item: unknown): boolean {
+  if (!item || typeof item !== 'object') return false;
+  const row = item as Record<string, unknown>;
+  const price = Number(row.unitPrice ?? row.unit_price ?? row.price);
+  return Number.isFinite(price) && price < 0;
+}
+
+/** Sum of shippable line-item quantities on an order (ignores non-numeric/qty<=0
+ *  and discount/promo lines). */
 export function safeItemQty(value: unknown): number {
   if (!Array.isArray(value)) return 0;
   return value.reduce((sum, item) => {
-    if (!item || typeof item !== 'object') return sum;
+    if (!item || typeof item !== 'object' || isDiscountLine(item)) return sum;
     const qty = Number((item as Record<string, unknown>).quantity ?? (item as Record<string, unknown>).qty ?? 0);
     return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
   }, 0);
@@ -75,7 +87,7 @@ export function topSkuRows(rows: DashboardOrderRow[], canViewFinancials = false)
     const orderQty = safeItemQty(row.items);
     const allocate = canViewFinancials && orderShipping > 0 && orderQty > 0;
     for (const item of row.items) {
-      if (!item || typeof item !== 'object') continue;
+      if (!item || typeof item !== 'object' || isDiscountLine(item)) continue;
       const record = item as Record<string, unknown>;
       const sku = typeof record.sku === 'string' && record.sku.trim() ? record.sku : 'unknown';
       const qtyRaw = Number(record.quantity ?? record.qty ?? 0);

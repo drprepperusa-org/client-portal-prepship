@@ -59,7 +59,7 @@ Browser ──▶ Vercel (portal-client/dist, static)
 | **Billing / invoices / financial visibility** | billing line items, `orders`, `shipments`, markups | `/reports`, `/invoice-details`, `/invoice`, `/billing/status`, `POST /billing/generate`, `/markups` | `BillingSummaryRow`, `BillingInvoiceDetailRow`, `billingVisible`, `MarkupGroup`/`MarkupValue` | `pages/Billing.tsx`, `pages/Invoices.tsx`, `pages/Finance.tsx`, `pages/Settings.tsx` (markups) | `test:billing-client-scope`, `guard:client-portal-api` | `billingVisible` gate (`canViewFinancials`); `billing/generate` + `markups` write paths are admin-only |
 | **Access roster / users / roles / scope** | Supabase users + app metadata (`clientIds`/`storeIds`/`role`/`permissions`) | `GET /me`, `/clients`, `/access-list`, `PATCH`/`DELETE /access-list/:id`; `resolveClientPortalScope()`/`assertClientPortalScope()` (`scope.ts`) | `PortalMe`, `PortalClientRow`, `PortalAccessUser`, `AccessUserPatch` | `pages/Settings.tsx`, top-bar client switcher | `test:rbac-permissions`, `test:client-store-scope`, `test:field-level-rbac`, `guard:client-portal-architecture` | Invite-only (no public signup); `client_user`/`read_only_support` require explicit scope; filters narrow only; protected operator account cannot be deactivated/deleted |
 | **Integrations / connections** | carrier accounts / store connectors / integrations | `GET /integrations` → `toPortalIntegrationDto()` (`dto.ts`) | `PortalIntegration` (`provider`, `label`, `accountIdentifier`, `source`, `active`, `type`) | `pages/Connections.tsx` | `test:credential-accounts`, `test:client-redaction`, `guard:client-portal-api` | Credentials/tokens/secrets never serialized; `canViewCredentials` gate; account identifiers only, no blobs |
-| **Inbound / receiving** | `inbound_shipments` + `inbound_items` | `GET`/`POST /inbound`, `PATCH /inbound/:id/receive`, `POST /inbound/import` → `toPortalInboundDto()` (`dto.ts`) | `PortalInbound`, `PortalInboundItem`, `NewInboundInput` | `pages/Inbound.tsx` | `guard:client-portal-api` (active); `receive-sku-picker` guard is legacy → follow-up | Scope by `clientId`; receive→inventory bump is server-owned |
+| **Inbound / receiving** | `inbound_shipments` + `inbound_items` | `GET`/`POST /inbound`, `PATCH /inbound/:id/receive`, `POST /inbound/import` → `toPortalInboundDto()` (`dto.ts`) | `PortalInbound`, `PortalInboundItem`, `NewInboundInput` | `pages/Inbound.tsx` | `guard:client-portal-api` | Scope by `clientId`; receive→inventory bump is server-owned |
 | **Analysis** | scoped `orders`/`inventory` SKU rollups | `GET /analysis`, `/analysis/sku-orders` | `AnalysisBreakdown`, `AnalysisSkuRow`, `SkuOrdersResult` | `pages/Analysis.tsx` | `test:analysis-client-scope` | Scope by `clientIds`/`storeIds`; `firstStoreId` restricts single-store sessions |
 
 ## Active verification commands
@@ -82,27 +82,25 @@ Legacy `web/` typecheck is preserved but no longer gates the active build:
 npm run typecheck:web:legacy                   # tsc -p web/tsconfig.json (legacy-only)
 ```
 
-## Stale legacy guards (follow-up)
+## Legacy guards — removed ✅
 
-The following guards hard-read `web/src/components/Views/*` files that no longer
-exist; they crash with `ENOENT` and certify the retired `web/` app, not the
-active portal. They are **not** part of active Client Portal verification.
-Recommended follow-up: re-point each to its `portal-client/src/...` equivalent
-*or* rename/annotate it as legacy-only (e.g. a `:web:legacy` suffix) so it can't
-be mistaken for active certification. **None should gate active portal work.**
+All guards that hard-read the removed `web/src/components/Views/*` files have been
+**deleted** (guard files + their `package.json` script entries), so the project no
+longer carries crashing legacy guards that could be mistaken for active
+certification. None gated active verification or CI (`.github/workflows/ci.yml`
+runs only `typecheck` + `build:web`). Removed this work:
 
-| Guard script | Legacy path read | Recommended action |
-|---|---|---|
-| ~~`frontend-failure-states-guard.mjs`~~ | — | ✅ **Done this pass** — replaced by the active `client-portal-failure-states-guard.mjs` (see "What CP-003 changed" #5); `guard:frontend-failure-states` + `test:full-site-certification` now run the active guard |
-| `source-of-truth-guard.mjs` | Analysis/Dashboard/Orders/Inventory views | Re-point to `portal-client/src/pages/*` or mark legacy-only |
-| `orders-ux-guard.mjs`, `orders-request-pressure-guard.mjs`, `orders-startup-requests-guard.mjs` | `OrdersView.tsx` | Re-point to `pages/Orders.tsx` or legacy-only |
-| `order-detail-drawer-lazy-guard.mjs`, `secondary-order-detail-lazy-guard.mjs` | Orders/Inventory/Analysis/Billing/Packages views | Re-point or legacy-only |
-| `dashboard-chart-lazy-guard.mjs`, `dashboard-first-paint-guard.mjs` | `DashboardView.tsx`/`DashboardCharts.tsx` | Re-point to `pages/Dashboard.tsx` + `components/charts/Charts.tsx` or legacy-only |
-| `inventory-default-view-guard.mjs`, `inventory-source-of-truth-guard.mjs`, `receive-sku-picker-guard.mjs` | `InventoryView.tsx` | Re-point to `pages/Inventory.tsx`/`pages/Inbound.tsx` or legacy-only |
-| `analysis-table-first-guard.mjs`, `analysis-lazy-table-guard.mjs` | `AnalysisView.tsx` | Re-point to `pages/Analysis.tsx` or legacy-only |
-| `best-rate-dims-guard.mjs` | `OrdersView.tsx` | Re-point or legacy-only |
-| `test-order-queue-label-guard.mjs` | `OrdersView.tsx` | Internal/operator flow — likely legacy-only |
-| `api-observability-metrics-guard.mjs` | `SettingsView.tsx` | Re-point to `pages/Settings.tsx` or legacy-only |
+`dashboard-chart-lazy`, `dashboard-first-paint`, `analysis-lazy-table`,
+`analysis-table-first`, `receive-sku-picker`, `inventory-default-view`,
+`inventory-source-of-truth`, `api-observability-metrics`, `orders-ux`,
+`orders-request-pressure`, `orders-startup-requests`, `test-order-queue-label`,
+`order-detail-drawer-lazy`, `secondary-order-detail-lazy`, `best-rate-dims`,
+`source-of-truth` — plus the earlier `dashboard-orders-units`, and
+`frontend-failure-states` (replaced by the active `client-portal-failure-states-guard.mjs`).
+
+The retired `web/` app remains on disk; if any of these behaviors need active
+coverage they should be re-authored against `portal-client/` (as
+`client-portal-failure-states-guard.mjs` was), not revived against `web/`.
 
 ## What CP-003 changed (this pass)
 
@@ -124,6 +122,16 @@ be mistaken for active certification. **None should gate active portal work.**
    (never swallow), the shared `QueryState` error + `Retry` UI, and the live
    Orders query wiring. `guard:frontend-failure-states` and
    `test:full-site-certification` now run the active guard.
+6. **Removed all dead legacy `web/` guards** — deleted 16 guard scripts (and
+   their `package.json` entries) that hard-read removed `web/src/components/Views/*`
+   files, so legacy guards can no longer be mistaken for active certification
+   (see "Legacy guards — removed").
+7. **Unified the discount-line predicate (CP-002 C2-6)** — `isDiscountLine` now
+   lives once in `dashboard-aggregate.ts` and is used by both the dashboard
+   aggregations (`safeItemQty`, `topSkuRows`) and the order DTO (`dto.ts`), so
+   daily unit counts and Top-SKU rollups exclude negative-price promo lines
+   exactly like the order item list — one source of truth for "a shippable
+   unit." Guarded by new assertions in `test:dashboard-bar-chart-top-skus`.
 
 ### CP-003 claim accuracy note
 
@@ -136,8 +144,6 @@ addressed above.
 
 ## Deferred (tracked follow-ups)
 
-- Re-point or legacy-scope the remaining stale guards above (the priority one,
-  `frontend-failure-states`, is done — see change #5).
 - Optional extraction of read-model-heavy blocks from the large
   `src/routes/client-portal.ts` into `src/lib/client-portal/read-models/*`
   (out of scope for this pass to avoid an unreviewable rewrite).

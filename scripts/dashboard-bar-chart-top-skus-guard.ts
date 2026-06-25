@@ -66,6 +66,29 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(daily[0].units === 25 && additive === 27, 'cumulative unit height (25) is distinct from the additive orders+units (27)');
 }
 
+// ── Discount/promo lines (negative unit price) are excluded from units ──
+{
+  const promoDaily = dailyOrderUnitsRows([
+    { orderDate: '2026-06-02T00:00:00Z', shippingAmount: '0', items: [
+      { sku: 'A', quantity: 3, unitPrice: 9.99 },
+      { sku: 'WELCOME10', quantity: 1, unitPrice: -10 },
+    ] },
+  ]);
+  assert(promoDaily[0]?.units === 3, 'daily units exclude negative-price discount lines (3, not 4)');
+
+  const promoSkus = topSkuRows([
+    { orderDate: '2026-06-02T00:00:00Z', shippingAmount: '6.00', items: [
+      { sku: 'A', quantity: 3, unitPrice: 9.99 },
+      { sku: 'WELCOME10', quantity: 1, unitPrice: -10 },
+    ] },
+  ], true);
+  assert(!promoSkus.some((r) => r.sku === 'WELCOME10'), 'Top SKUs omit discount/promo lines');
+  const aRow = promoSkus.find((r) => r.sku === 'A');
+  assert(aRow?.units30 === 3, 'a real SKU is not inflated by a discount line');
+  // $6 shipping over 3 shippable units (discount line excluded from the denominator) = $2/unit.
+  assert(aRow?.avgShippingPrice === 2, 'avg shipping allocates over shippable units only ($2), ignoring the discount line');
+}
+
 // ── UI: cumulative BAR chart, not an area/line chart ──
 {
   const charts = read('portal-client/src/components/charts/Charts.tsx');

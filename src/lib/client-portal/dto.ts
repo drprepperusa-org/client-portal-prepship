@@ -2,6 +2,7 @@ import type { Inventory } from '../../db/schema/inventory';
 import type { Order, OrderOverrides } from '../../db/schema/orders';
 import type { Shipment } from '../../db/schema/shipments';
 import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
+import { isDiscountLine } from './dashboard-aggregate';
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -97,17 +98,10 @@ function rateAmountFromRecord(record: Record<string, unknown> | null): number | 
   return total > 0 ? total : null;
 }
 
-/** A promo/discount line (e.g. "WELCOME10" at -$10.99) is not a shippable
- *  item — exclude it from the item list + quantity so the portal matches v4. */
-function isDiscountLine(row: Record<string, unknown>): boolean {
-  const price = Number(row.unitPrice ?? row.unit_price ?? row.price);
-  return Number.isFinite(price) && price < 0;
-}
-
 function safeItems(value: unknown, includeFinancials = false): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((item) => !isDiscountLine(item && typeof item === 'object' ? (item as Record<string, unknown>) : {}))
+    .filter((item) => !isDiscountLine(item))
     .slice(0, 30)
     .map((item) => {
     const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
