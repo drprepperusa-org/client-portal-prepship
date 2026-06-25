@@ -113,7 +113,7 @@ export interface PortalOrder {
   serviceCode: string | null;
   trackingNumber: string | null;
   weightOz: number | null;
-  shippingAccount: string | null;
+  shippingAccount?: string | null;
   shippingService?: string | null;
   selectedRate?: {
     carrierCode: string | null;
@@ -485,11 +485,11 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
   const daily = new Map<string, DashboardSummary['daily'][number]>();
   let revenue = 0;
   let units = 0;
-  let dailyRevenue: DashboardSummary['dailyRevenue'] = [];
+  const dailyRevenueByDay = new Map<string, number>();
   for (const p of pages) {
     revenue += Number(p.revenue ?? 0);
     units += Number(p.units ?? 0);
-    dailyRevenue = [...dailyRevenue, ...(p.dailyRevenue ?? [])];
+    for (const d of p.dailyRevenue ?? []) dailyRevenueByDay.set(d.day, (dailyRevenueByDay.get(d.day) ?? 0) + Number(d.revenue ?? 0));
     for (const s of p.bySku ?? []) {
       const cur = bySku.get(s.sku);
       if (!cur) {
@@ -515,7 +515,9 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
     units,
     bySku: [...bySku.values()].sort((a, b) => b.units30 - a.units30),
     daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),
-    dailyRevenue,
+    dailyRevenue: [...dailyRevenueByDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, revenue]) => ({ day, revenue })),
   };
 }
 

@@ -109,12 +109,16 @@ export function FileUpload({ label }: { label?: string }) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Track created object URLs so previews don't leak (revoked on remove + unmount).
+  const urlsRef = useRef<string[]>([]);
+  useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
   function add(files: FileList | null) {
     if (!files) return;
     Array.from(files).forEach((f) => {
       const id = Date.now() + Math.random();
       const url = f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined;
+      if (url) urlsRef.current.push(url);
       setItems((prev) => [...prev, { id, name: f.name, size: f.size, progress: 0, url, type: f.type }]);
       // simulate upload progress
       const tick = setInterval(() => {
@@ -160,7 +164,7 @@ export function FileUpload({ label }: { label?: string }) {
                 <motion.div className={cn('h-full rounded-full', it.progress >= 100 ? 'bg-emerald-500' : 'bg-gradient-to-r from-brand-400 to-brand-600')} animate={{ width: `${it.progress}%` }} transition={{ ease: 'easeOut' }} />
               </div>
             </div>
-            {it.progress >= 100 ? <Check size={16} className="text-emerald-500" /> : <button aria-label="Remove file" onClick={(e) => { e.stopPropagation(); setItems((p) => p.filter((x) => x.id !== it.id)); }} className="focus-ring cursor-pointer rounded p-1 text-ink-3 hover:text-rose-500"><X size={15} /></button>}
+            {it.progress >= 100 ? <Check size={16} className="text-emerald-500" /> : <button aria-label="Remove file" onClick={(e) => { e.stopPropagation(); if (it.url) URL.revokeObjectURL(it.url); setItems((p) => p.filter((x) => x.id !== it.id)); }} className="focus-ring cursor-pointer rounded p-1 text-ink-3 hover:text-rose-500"><X size={15} /></button>}
           </motion.div>
         ))}
       </AnimatePresence>

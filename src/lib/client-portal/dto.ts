@@ -254,12 +254,14 @@ export function toPortalOrderDto(
     trackingNumber: row.override?.trackingNumber ?? null,
     weightOz: row.weightOz,
     rateWeightOz: row.override?.rateWeightOz ?? null,
-    shippingAccount,
     shippingService,
     selectedRate: selectedRate,
     items: safeItems(row.items, options.includeFinancials),
     ...(options.includeFinancials
       ? {
+          // Carrier-account nickname is operator/internal — gated like the
+          // financial fields so the client-facing portal never exposes it (CP-001).
+          shippingAccount,
           orderTotal: row.orderTotal,
           shippingAmount: row.shippingAmount,
           bestRateJson,

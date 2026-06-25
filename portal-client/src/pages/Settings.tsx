@@ -71,7 +71,6 @@ export default function Settings() {
   const [tab, setTab] = useState<TabId>('profile');
   const savedProfile = loadJSON(LS_PROFILE, { name: '', bio: '' });
   const [name, setName] = useState(savedProfile.name || (authEmail ? authEmail.split('@')[0] : ''));
-  const [email, setEmail] = useState(authEmail ?? '');
   const [bio, setBio] = useState(savedProfile.bio);
   const [notif, setNotif] = useState<NotifPrefs>(() => loadJSON(LS_NOTIF, NOTIF_DEFAULTS));
   const [accessSearch, setAccessSearch] = useState('');
@@ -190,7 +189,7 @@ export default function Settings() {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <TextInput label="Full name" value={name} onChange={(e) => setName(e.target.value)} />
-                  <EmailInput label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <EmailInput label="Email" value={authEmail ?? ''} readOnly helper="Managed by your login — contact your operator to change it." />
                 </div>
                 <TextArea label="Bio" value={bio} onChange={(e) => setBio(e.target.value)} />
                 <div className="flex justify-end"><Button onClick={saveProfile}>Save changes</Button></div>

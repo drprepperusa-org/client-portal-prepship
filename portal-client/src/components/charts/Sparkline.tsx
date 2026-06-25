@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 /**
  * Ultra-light inline SVG sparkline. Used in the Analysis "Units Trend" column —
  * one per row, so a full Recharts instance per row would be far too heavy.
@@ -14,6 +16,7 @@ export function Sparkline({
   height?: number;
   color?: string;
 }) {
+  const uid = useId();
   if (!data || data.length === 0) return <span className="text-slate-300">—</span>;
   if (data.length === 1) data = [data[0], data[0]];
 
@@ -28,7 +31,9 @@ export function Sparkline({
   const area = `0,${height} ${line} ${width},${height}`;
   const trendUp = data[data.length - 1] >= data[0];
   const stroke = color ?? (trendUp ? '#10B981' : '#F43F5E');
-  const gid = `spark-${Math.round(min)}-${Math.round(max)}-${data.length}`;
+  // Unique per instance — a value-derived id collides across rows and cross-tints
+  // the area-fill gradient (the polyline stroke is set directly, so it's fine).
+  const gid = `spark-${uid.replace(/:/g, '')}`;
 
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible" aria-hidden>

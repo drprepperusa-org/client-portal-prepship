@@ -9,8 +9,9 @@ import { cn } from '@/lib/cn';
 /** Weight in oz → "1 lb 5 oz". Shared by the Orders table + detail panel. */
 export function fmtWeight(oz: number | null): string {
   if (oz == null || oz <= 0) return '—';
-  const lb = Math.floor(oz / 16);
-  const rem = Math.round((oz - lb * 16) * 10) / 10;
+  let lb = Math.floor(oz / 16);
+  let rem = Math.round((oz - lb * 16) * 10) / 10;
+  if (rem >= 16) { lb += 1; rem = 0; } // carry when the oz remainder rounds up to a full pound
   if (lb && rem) return `${lb} lb ${rem} oz`;
   if (lb) return `${lb} lb`;
   return `${rem} oz`;

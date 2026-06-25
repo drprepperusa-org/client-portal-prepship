@@ -17,8 +17,9 @@ import { cn } from '@/lib/cn';
 const trimNum = (n: number) => String(Number(n.toFixed(2))); // 11.0 -> "11"
 function fmtWeight(oz: number | null): string {
   if (oz == null || oz <= 0) return '—';
-  const lb = Math.floor(oz / 16);
-  const rem = Math.round(oz - lb * 16);
+  const whole = Math.round(oz); // round to whole oz first so the remainder can't overflow to 16
+  const lb = Math.floor(whole / 16);
+  const rem = whole - lb * 16;
   if (lb && rem) return `${lb} lb ${rem} oz`;
   if (lb) return `${lb} lb`;
   return `${rem} oz`;
