@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs';
 const helper = readFileSync('src/lib/walmart-order-dedupe.ts', 'utf8');
 const ordersRoute = readFileSync('src/routes/orders.ts', 'utf8');
 const initRoute = readFileSync('src/routes/init.ts', 'utf8');
-const inventoryRoute = readFileSync('src/routes/inventory.ts', 'utf8');
+// The sku-orders analytics pipeline moved to services/inventory-sku-orders.ts;
+// assert over the route + service together so the dedupe coverage follows it.
+const inventoryRoute =
+  readFileSync('src/routes/inventory.ts', 'utf8') +
+  '\n' +
+  readFileSync('src/services/inventory-sku-orders.ts', 'utf8');
 const ordersSchema = readFileSync('src/db/schema/orders.ts', 'utf8');
 const listCountIndexesMigration = readFileSync('drizzle/0033_orders_list_count_indexes.sql', 'utf8');
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
