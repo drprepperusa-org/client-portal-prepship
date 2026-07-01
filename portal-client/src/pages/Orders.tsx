@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Search, RefreshCw, Check, Zap, AlertCircle } from 'lucide-react';
-import { HoverZoomImage } from '@/components/ui/HoverZoomImage';
+import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { GlassPanel } from '@/components/ui/Glass';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
@@ -187,35 +187,14 @@ export default function Orders() {
       header: 'Item Name',
       defaultWidth: 260,
       minWidth: 180,
-      render: (o) => (
-        <div className="space-y-1">
-          {(o.items.length ? o.items.slice(0, 4) : [{ name: '—', sku: null, quantity: null, imageUrl: null }]).map((it, i) => (
-            <div key={i} className="flex min-w-0 items-center gap-2">
-              <HoverZoomImage src={it.imageUrl} alt={it.name ?? ''} size={28} zoom={240} />
-              <span className="min-w-0 flex-1 truncate text-ink-2" title={it.name ?? ''}>{it.name ?? '—'}</span>
-              {Number(it.quantity) > 1 && <span className="shrink-0 rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-3">×{it.quantity}</span>}
-            </div>
-          ))}
-          {o.items.length > 4 && <p className="text-[11px] text-ink-3">+{o.items.length - 4} more</p>}
-        </div>
-      ),
+      render: (o) => <ItemNameLines items={o.items} />,
       sortAccessor: (o) => o.items[0]?.name ?? '',
     },
     {
       key: 'sku',
       header: 'SKU',
       defaultWidth: 150,
-      render: (o) => (
-        <div className="space-y-1">
-          {(o.items.length ? o.items.slice(0, 4) : [{ sku: '—', quantity: null }]).map((it, i) => (
-            <div key={i} className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate font-mono text-[12px] text-ink-3" title={it.sku ?? ''}>{it.sku ?? '—'}</span>
-              {Number(it.quantity) > 1 && <span className="shrink-0 rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-3">x{it.quantity}</span>}
-            </div>
-          ))}
-          {o.items.length > 4 && <p className="text-[11px] text-ink-3">+{o.items.length - 4} more</p>}
-        </div>
-      ),
+      render: (o) => <SkuLines items={o.items} />,
       sortAccessor: (o) => o.items[0]?.sku ?? '',
     },
     { key: 'qty', header: 'Qty', defaultWidth: 80, className: 'text-center', render: (o) => <span className="inline-flex min-w-[24px] items-center justify-center rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-bold text-rose-600 tnum ring-1 ring-rose-200">{itemCount(o.items)}</span>, sortAccessor: (o) => itemCount(o.items) },

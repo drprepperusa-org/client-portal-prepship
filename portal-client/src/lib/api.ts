@@ -95,6 +95,13 @@ export const apiPut = <T>(token: string, path: string, body: unknown = {}) => ap
 export const apiDelete = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('DELETE', token, path, body);
 
 /* ---------- Portal DTO types (mirror src/lib/client-portal/dto.ts) ---------- */
+export interface PortalItemIdentity {
+  sku: string | null;
+  name: string | null;
+  quantity: number | null;
+  imageUrl?: string | null;
+}
+
 export interface PortalOrder {
   id: number;
   clientId: number | null;
@@ -122,7 +129,7 @@ export interface PortalOrder {
     amount: number | string | null;
     source: 'shipment' | 'selected_rate';
   } | null;
-  items: Array<{ sku: string | null; name: string | null; quantity: number | null; imageUrl?: string | null }>;
+  items: PortalItemIdentity[];
   orderTotal?: number | string | null;
   shippingAmount?: number | string | null;
   bestRateJson?: Record<string, unknown> | null;
@@ -135,11 +142,12 @@ export interface PortalShipment {
   clientName: string | null;
   storeName: string | null;
   carrierCode: string | null;
-  serviceCode: string | null;
   trackingNumber: string | null;
   labelTracking: string | null;
   shipDate: string | null;
   voided: boolean | null;
+  items: PortalItemIdentity[];
+  shippingCost?: number | string | null;
 }
 
 export interface PortalInventory {

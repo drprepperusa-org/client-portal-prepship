@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
+import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { GlassPanel } from '@/components/ui/Glass';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
@@ -12,7 +13,7 @@ import { CarrierBadge } from '@/components/store/CarrierBadge';
 import { useShipments, useClients } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
-import { shipmentStatusMeta, shortDate } from '@/lib/status';
+import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
 import type { PortalShipment } from '@/lib/api';
 
@@ -68,6 +69,21 @@ export default function Shipments() {
       { key: 'id', header: 'Shipment', defaultWidth: 110, render: (s) => <span className="font-semibold text-ink">#{s.id}</span>, sortAccessor: (s) => s.id },
       { key: 'order', header: 'Order', defaultWidth: 150, render: (s) => <span className="text-ink-3">{s.orderNumber ?? (s.orderId ? `#${s.orderId}` : '—')}</span>, sortAccessor: (s) => s.orderNumber ?? '' },
       {
+        key: 'items',
+        header: 'Item Name',
+        defaultWidth: 260,
+        minWidth: 180,
+        render: (s) => <ItemNameLines items={s.items} />,
+        sortAccessor: (s) => s.items?.[0]?.name ?? '',
+      },
+      {
+        key: 'sku',
+        header: 'SKU',
+        defaultWidth: 150,
+        render: (s) => <SkuLines items={s.items} />,
+        sortAccessor: (s) => s.items?.[0]?.sku ?? '',
+      },
+      {
         key: 'client',
         header: 'Client',
         defaultWidth: 150,
@@ -75,7 +91,14 @@ export default function Shipments() {
         sortAccessor: (s) => s.clientName ?? '',
       },
       { key: 'carrier', header: 'Carrier', defaultWidth: 110, className: 'text-center', render: (s) => (s.carrierCode ? <CarrierBadge code={s.carrierCode} /> : <span className="text-ink-3">—</span>), sortAccessor: (s) => s.carrierCode ?? '' },
-      { key: 'service', header: 'Service', defaultWidth: 160, render: (s) => <span className="text-ink-3">{s.serviceCode ?? '—'}</span>, sortAccessor: (s) => s.serviceCode ?? '' },
+      {
+        key: 'shippingCost',
+        header: 'Shipping Cost',
+        defaultWidth: 130,
+        className: 'text-right',
+        render: (s) => <span className="font-semibold text-ink tnum">{s.shippingCost != null ? money(s.shippingCost) : '—'}</span>,
+        sortAccessor: (s) => Number(s.shippingCost) || 0,
+      },
       {
         key: 'tracking',
         header: 'Tracking #',
@@ -178,6 +201,14 @@ export default function Shipments() {
               <span className="flex items-center gap-1 text-sm text-ink-3"><MapPin size={14} /> {selected.clientName ?? '—'}</span>
             </div>
 
+            <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+              <p className="text-xs font-medium text-ink-3">Items</p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.5fr)]">
+                <ItemNameLines items={selected.items} limit={6} />
+                <SkuLines items={selected.items} limit={6} />
+              </div>
+            </div>
+
             <div className="flex items-center justify-between rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
               <div className="min-w-0">
                 <p className="text-xs text-ink-3">Tracking number</p>
@@ -211,7 +242,7 @@ export default function Shipments() {
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Carrier" value={selected.carrierCode ?? '—'} />
-              <Field label="Service" value={selected.serviceCode ?? '—'} />
+              <Field label="Shipping Cost" value={selected.shippingCost != null ? money(selected.shippingCost) : '—'} />
               <Field label="Order" value={selected.orderNumber ?? (selected.orderId ? `#${selected.orderId}` : '—')} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
             </div>

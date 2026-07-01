@@ -758,6 +758,8 @@ app.get('/shipments', async (c) => {
       shipment: shipments,
       clientName: clients.name,
       storeId: orders.storeId,
+      orderItems: orders.items,
+      shippingCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text`,
     })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
@@ -775,7 +777,19 @@ app.get('/shipments', async (c) => {
   const count = countRows[0]?.count ?? rows.length;
   await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search });
   return c.json({
-    data: rows.map((row) => toPortalShipmentDto({ ...row.shipment, clientName: row.clientName, storeName: row.clientName, storeId: row.storeId })),
+    data: rows.map((row) =>
+      toPortalShipmentDto(
+        {
+          ...row.shipment,
+          clientName: row.clientName,
+          storeName: row.clientName,
+          storeId: row.storeId,
+          orderItems: row.orderItems,
+          shippingCost: row.shippingCost,
+        },
+        { includeFinancials: scope.canViewFinancials },
+      ),
+    ),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
   });
 });

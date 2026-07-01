@@ -270,7 +270,16 @@ export function toPortalOrderDto(
   };
 }
 
-export function toPortalShipmentDto(row: Shipment & { clientName?: string | null; storeName?: string | null; storeId?: number | null }) {
+export function toPortalShipmentDto(
+  row: Shipment & {
+    clientName?: string | null;
+    storeName?: string | null;
+    storeId?: number | null;
+    orderItems?: unknown;
+    shippingCost?: number | string | null;
+  },
+  options: { includeFinancials?: boolean } = {},
+) {
   return {
     id: row.id,
     orderId: row.orderId,
@@ -280,11 +289,12 @@ export function toPortalShipmentDto(row: Shipment & { clientName?: string | null
     storeId: row.storeId ?? null,
     storeName: row.storeName ?? row.clientName ?? null,
     carrierCode: row.carrierCode,
-    serviceCode: row.serviceCode,
     trackingNumber: row.trackingNumber,
     labelTracking: row.labelTracking,
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),
     voided: row.voided,
+    items: safeItems(row.orderItems, options.includeFinancials),
+    shippingCost: options.includeFinancials ? row.shippingCost ?? null : null,
   };
 }
 
