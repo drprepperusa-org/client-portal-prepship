@@ -146,8 +146,9 @@ addressed above.
 
 - Extraction of read-model-heavy blocks from the large
   `src/routes/client-portal.ts` into `src/lib/client-portal/*` — **in
-  progress**: part 1 shipped (scope/search predicates →
-  `lib/client-portal/predicates.ts`; invoice-detail rollup →
-  `lib/client-portal/read-models/invoice-details.ts`). Remaining candidates:
-  orders/inventory/shipments/integrations query bodies + the invoice HTML
-  renderer. Route handlers and their tokens stay in `routes/client-portal.ts`.
+  progress** (route 2,160 → 1,509 so far): part 1 shipped scope/search
+  predicates (`predicates.ts`) + the invoice-detail rollup; part 2 shipped the
+  orders (list/detail/awaiting-count), shipments, inventory, and integrations
+  read-models under `lib/client-portal/read-models/*`. Route handlers keep
+  param parsing, RBAC, audits, and their route tokens. Remaining candidates:
+  the invoice HTML renderer and the access-list/inbound bodies.

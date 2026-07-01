@@ -70,6 +70,14 @@ import {
   visibleAwaitingOrdersPredicate,
 } from '../lib/client-portal/predicates';
 import { portalInvoiceDetails } from '../lib/client-portal/read-models/invoice-details';
+import {
+  awaitingActiveOrderCount,
+  getPortalOrder,
+  listPortalOrders,
+} from '../lib/client-portal/read-models/orders';
+import { listPortalShipments } from '../lib/client-portal/read-models/shipments';
+import { listPortalInventory } from '../lib/client-portal/read-models/inventory';
+import { listPortalIntegrations } from '../lib/client-portal/read-models/integrations';
 
 const app = new Hono();
 
@@ -92,10 +100,6 @@ function parseDate(value: string | undefined): Date | null {
 
 function asTimestamp(value: Date) {
   return value.toISOString();
-}
-
-function liveAwaitingSince() {
-  return new Date(Date.now() - 30 * 86_400_000);
 }
 
 function normalizeMetadataIds(value: unknown): number[] {
@@ -232,133 +236,18 @@ app.get('/orders', async (c) => {
   const clientId = parsePositiveInt(c.req.query('clientId'));
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const search = requestedSearch(c);
-  const where = and(
-    orderScopePredicate(scope, { clientId, storeId }),
-    activeClientPredicate(),
-    status ? eq(orders.orderStatus, status) : undefined,
-    status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined,
-    orderSearchPredicate(search),
-  );
-  const rows = await db
-    .select({
-      order: orders,
-      override: orderOverrides,
-      clientName: clients.name,
-      storeIds: clients.storeIds,
-      // Active (non-voided) shipment's billed account for this order — drives
-      // the "Shipping Account" column for shipped/cancelled orders.
-      shipAcctNickname: sql<string | null>`(
-        select ${shipments.providerAccountNickname} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipAcctId: sql<number | null>`(
-        select ${shipments.providerAccountId} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-          and ${shipments.providerAccountId} is not null
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipCarrierCode: sql<string | null>`(
-        select coalesce(${shipments.labelCarrier}, ${shipments.carrierCode}) from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipServiceCode: sql<string | null>`(
-        select ${shipments.serviceCode} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipServiceName: sql<string | null>`(
-        select ${shipments.labelService} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipSelectedAmount: sql<string | null>`(
-        select coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipSelectedRateJson: sql<Record<string, unknown> | null>`(
-        select ${shipments.selectedRateJson} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-    })
-    .from(orders)
-    .leftJoin(clients, eq(clients.id, orders.clientId))
-    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
-    .where(where)
-    .orderBy(desc(orders.orderDate), desc(orders.id))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
-  const countRows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(orders)
-    .leftJoin(clients, eq(clients.id, orders.clientId))
-    .where(where);
-  const count = countRows[0]?.count ?? rows.length;
-  // Resolve numeric account ids → nicknames (cached carrier list + curated map).
-  const accountNicknames = await getProviderAccountNicknames().catch(() => new Map<number, string>());
+  const result = await listPortalOrders(scope, { page, pageSize, status, clientId, storeId, search });
   await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, search });
-  return c.json({
-    data: rows.map((row) => {
-      const shipmentAccount =
-        row.shipAcctNickname ?? (row.shipAcctId != null ? accountNicknames.get(row.shipAcctId) ?? null : null);
-      return toPortalOrderDto(
-        {
-          ...row.order,
-          clientName: row.clientName,
-          storeName: row.clientName,
-          override: row.override,
-          shipmentAccount,
-          latestShipment: {
-            carrierCode: row.shipCarrierCode,
-            serviceCode: row.shipServiceCode,
-            serviceName: row.shipServiceName,
-            amount: row.shipSelectedAmount,
-            selectedRateJson: row.shipSelectedRateJson,
-          },
-        },
-        { includeFinancials: scope.canViewFinancials },
-      );
-    }),
-    pagination: {
-      page,
-      pageSize,
-      total: Number(count),
-      totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)),
-    },
-  });
+  return c.json(result);
 });
 
 app.get('/orders/awaiting-active-count', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const where = and(
-    orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
-    activeClientPredicate(),
-    eq(orders.orderStatus, 'awaiting_shipment'),
-    visibleAwaitingOrdersPredicate(),
-    gte(orders.orderDate, liveAwaitingSince()),
-    eq(orders.externallyShipped, false),
-    sql`coalesce((${orders.raw}->>'externallyFulfilled')::boolean, false) = false`,
-    sql`jsonb_array_length(coalesce(${orders.items}, '[]'::jsonb)) > 0`,
-    sql`not exists (
-      select 1
-      from ${shipments} active_shipment
-      where active_shipment.order_id = ${orders.id}
-        and active_shipment.voided = false
-    )`,
-  );
-  const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
-  const count = Number(row?.count ?? 0);
+  const count = await awaitingActiveOrderCount(scope, {
+    clientId: requestedClientId(c),
+    storeId: requestedStoreId(c),
+  });
   await recordPortalAudit('portal.orders.awaiting_active_count', scope, { count });
   return c.json({ count });
 });
@@ -372,21 +261,10 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
   const id = Number(c.req.param('id'));
-  const [row] = await db
-    .select({ order: orders, override: orderOverrides, clientName: clients.name })
-    .from(orders)
-    .leftJoin(clients, eq(clients.id, orders.clientId))
-    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
-    .where(and(eq(orders.id, id), orderScopePredicate(scope), activeClientPredicate()))
-    .limit(1);
-  if (!row) return c.json({ error: 'Order not found' }, 404);
+  const data = await getPortalOrder(scope, id);
+  if (!data) return c.json({ error: 'Order not found' }, 404);
   await recordPortalAudit('portal.orders.detail.view', scope, { orderId: id });
-  return c.json({
-    data: toPortalOrderDto(
-      { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override },
-      { includeFinancials: scope.canViewFinancials },
-    ),
-  });
+  return c.json({ data });
 });
 
 app.get('/shipments', async (c) => {
@@ -395,50 +273,15 @@ app.get('/shipments', async (c) => {
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
-  const where = and(
-    eq(shipments.voided, false),
-    shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
-    shipmentSearchPredicate(search),
-  );
-  const rows = await db
-    .select({
-      shipment: shipments,
-      clientName: clients.name,
-      storeId: orders.storeId,
-      orderItems: orders.items,
-      shippingCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text`,
-    })
-    .from(shipments)
-    .leftJoin(clients, eq(clients.id, shipments.clientId))
-    .leftJoin(orders, eq(orders.id, shipments.orderId))
-    .where(where)
-    .orderBy(desc(shipments.shipDate), desc(shipments.id))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
-  const countRows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(shipments)
-    .leftJoin(clients, eq(clients.id, shipments.clientId))
-    .leftJoin(orders, eq(orders.id, shipments.orderId))
-    .where(where);
-  const count = countRows[0]?.count ?? rows.length;
-  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search });
-  return c.json({
-    data: rows.map((row) =>
-      toPortalShipmentDto(
-        {
-          ...row.shipment,
-          clientName: row.clientName,
-          storeName: row.clientName,
-          storeId: row.storeId,
-          orderItems: row.orderItems,
-          shippingCost: row.shippingCost,
-        },
-        { includeFinancials: scope.canViewFinancials },
-      ),
-    ),
-    pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
+  const result = await listPortalShipments(scope, {
+    page,
+    pageSize,
+    clientId: requestedClientId(c),
+    storeId: requestedStoreId(c),
+    search,
   });
+  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search });
+  return c.json(result);
 });
 
 app.get('/inventory', async (c) => {
@@ -447,71 +290,17 @@ app.get('/inventory', async (c) => {
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
-  // Low/Out-only filter (Stock Levels checkbox): out of stock, or at/below a set
-  // reorder threshold. Optional + additive — the default listing is unchanged.
   const lowStock = ['1', 'true', 'yes'].includes((c.req.query('lowStock') ?? '').toLowerCase());
-  const where = and(
-    eq(inventory.active, true),
-    inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
-    inventorySearchPredicate(search),
-    lowStock
-      ? sql`(${inventory.stockQty} <= 0 or (${inventory.reorderLevel} > 0 and ${inventory.stockQty} <= ${inventory.reorderLevel}))`
-      : undefined,
-  );
-  const rows = await db
-    .select({
-      item: inventory,
-      clientName: clients.name,
-      storeIds: clients.storeIds,
-      pkgName: packages.name,
-      pkgLength: packages.length,
-      pkgWidth: packages.width,
-      pkgHeight: packages.height,
-    })
-    .from(inventory)
-    .leftJoin(clients, eq(clients.id, inventory.clientId))
-    .leftJoin(packages, eq(packages.id, inventory.packageId))
-    .where(where)
-    .orderBy(desc(inventory.updatedAt), desc(inventory.id))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
-  const countRows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(inventory)
-    .leftJoin(clients, eq(clients.id, inventory.clientId))
-    .where(where);
-  const count = countRows[0]?.count ?? rows.length;
-
-  // Sold-30d per SKU is derived from the ledger ('Ship' rows are negative qty,
-  // so we negate the sum). One grouped query over just this page's rows.
-  const pageIds = rows.map((r) => r.item.id);
-  const soldById = new Map<number, number>();
-  if (pageIds.length) {
-    const soldRows = await db.execute<{ inventory_id: number; sold: number }>(sql`
-      select inventory_id, coalesce(-sum(qty), 0)::int as sold
-      from inventory_ledger
-      where inventory_id in (${sql.join(pageIds.map((id) => sql`${id}`), sql`, `)})
-        and lower(type) like 'ship%'
-        and created_at >= now() - interval '30 days'
-      group by inventory_id
-    `);
-    for (const r of soldRows) soldById.set(r.inventory_id, Number(r.sold) || 0);
-  }
-
-  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search, lowStock });
-  return c.json({
-    data: rows.map((row) =>
-      toPortalInventoryDto({
-        ...row.item,
-        clientName: row.clientName,
-        storeName: row.clientName,
-        storeIds: row.storeIds,
-        soldLast30Days: soldById.get(row.item.id) ?? 0,
-        pkg: row.pkgName != null || row.pkgLength != null ? { name: row.pkgName, length: row.pkgLength, width: row.pkgWidth, height: row.pkgHeight } : null,
-      }),
-    ),
-    pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
+  const result = await listPortalInventory(scope, {
+    page,
+    pageSize,
+    clientId: requestedClientId(c),
+    storeId: requestedStoreId(c),
+    search,
+    lowStock,
   });
+  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search, lowStock });
+  return c.json(result);
 });
 
 // Inventory movement history (audit trail) — ledger rows scoped to the
@@ -1620,36 +1409,9 @@ app.post('/inbound/import', async (c) => {
 app.get('/integrations', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const carrierRows = await db
-    .select({
-      id: carrierAccounts.id,
-      clientId: carrierAccounts.clientId,
-      provider: carrierAccounts.provider,
-      label: carrierAccounts.label,
-      accountIdentifier: carrierAccounts.accountIdentifier,
-      source: carrierAccounts.source,
-      active: carrierAccounts.active,
-      createdAt: carrierAccounts.createdAt,
-      updatedAt: carrierAccounts.updatedAt,
-      assignedClientId: carrierAccountClients.clientId,
-    })
-    .from(carrierAccounts)
-    .leftJoin(carrierAccountClients, eq(carrierAccountClients.carrierAccountId, carrierAccounts.id))
-    .where(and(eq(carrierAccounts.active, true), carrierScopePredicate(scope)));
-
-  const byId = new Map<number, ReturnType<typeof toPortalIntegrationDto>>();
-  for (const row of carrierRows) {
-    const existing = byId.get(row.id);
-    const assignedClientIds = [
-      ...(existing?.assignedClientIds ?? []),
-      ...(row.assignedClientId ? [row.assignedClientId] : []),
-    ];
-    byId.set(row.id, toPortalIntegrationDto({ ...row, type: 'carrier', assignedClientIds }));
-  }
-
-  const storeRows = await storeAccountRows(scope);
-  await recordPortalAudit('portal.integrations.list', scope, { carriers: byId.size, stores: storeRows.length });
-  return c.json({ data: [...storeRows, ...byId.values()] });
+  const { data, carrierCount, storeCount } = await listPortalIntegrations(scope);
+  await recordPortalAudit('portal.integrations.list', scope, { carriers: carrierCount, stores: storeCount });
+  return c.json({ data });
 });
 
 // Submit a store connection from the portal (M7). Admin-only. The account is
@@ -1743,50 +1505,5 @@ app.get('/activity', async (c) => {
   return c.json({ data: [] });
 });
 
-function carrierScopePredicate(scope: ClientPortalScope): SQL | undefined {
-  if (!scope.isRestricted) return undefined;
-  const predicates: SQL[] = [];
-  if (scope.clientIds.length) {
-    predicates.push(inArray(carrierAccounts.clientId, scope.clientIds));
-    predicates.push(inArray(carrierAccountClients.clientId, scope.clientIds));
-  }
-  if (!predicates.length) return sql`false`;
-  return or(...predicates) ?? sql`false`;
-}
-
-async function storeAccountRows(scope: ClientPortalScope) {
-  try {
-    const rows = await db.execute<{
-      id: number;
-      clientId: number | null;
-      provider: string | null;
-      label: string | null;
-      accountIdentifier: string | null;
-      source: string | null;
-      active: boolean | null;
-      createdAt: Date | string | null;
-      updatedAt: Date | string | null;
-    }>(sql`
-      select id,
-             client_id as "clientId",
-             provider,
-             label,
-             account_identifier as "accountIdentifier",
-             source,
-             active,
-             created_at as "createdAt",
-             updated_at as "updatedAt"
-      from store_accounts
-      where (coalesce(active, true) = true or source = 'portal')
-        ${scope.isRestricted && scope.clientIds.length ? sql`and client_id in (${sql.join(scope.clientIds.map((id) => sql`${id}`), sql`, `)})` : sql``}
-      order by created_at desc
-      limit 200
-    `);
-    return rows.map((row) => toPortalIntegrationDto({ ...row, type: 'store' }));
-  } catch (err) {
-    console.warn('[client-portal] store account list unavailable:', err);
-    return [];
-  }
-}
 
 export default app;

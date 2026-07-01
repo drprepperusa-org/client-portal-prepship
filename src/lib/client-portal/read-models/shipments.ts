@@ -1,0 +1,59 @@
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { db } from '../../../db/client';
+import { clients } from '../../../db/schema/clients';
+import { orders } from '../../../db/schema/orders';
+import { shipments } from '../../../db/schema/shipments';
+import { toPortalShipmentDto } from '../dto';
+import { shipmentScopePredicate, shipmentSearchPredicate } from '../predicates';
+import type { ClientPortalScope } from '../scope';
+
+/** Shipments read-model (extracted from routes/client-portal.ts). */
+export async function listPortalShipments(
+  scope: ClientPortalScope,
+  opts: { page: number; pageSize: number; clientId?: number | null; storeId?: number | null; search: string },
+) {
+  const { page, pageSize, clientId, storeId, search } = opts;
+  const where = and(
+    eq(shipments.voided, false),
+    shipmentScopePredicate(scope, { clientId, storeId }),
+    shipmentSearchPredicate(search),
+  );
+  const rows = await db
+    .select({
+      shipment: shipments,
+      clientName: clients.name,
+      storeId: orders.storeId,
+      orderItems: orders.items,
+      shippingCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text`,
+    })
+    .from(shipments)
+    .leftJoin(clients, eq(clients.id, shipments.clientId))
+    .leftJoin(orders, eq(orders.id, shipments.orderId))
+    .where(where)
+    .orderBy(desc(shipments.shipDate), desc(shipments.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+  const countRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(shipments)
+    .leftJoin(clients, eq(clients.id, shipments.clientId))
+    .leftJoin(orders, eq(orders.id, shipments.orderId))
+    .where(where);
+  const count = countRows[0]?.count ?? rows.length;
+  return {
+    data: rows.map((row) =>
+      toPortalShipmentDto(
+        {
+          ...row.shipment,
+          clientName: row.clientName,
+          storeName: row.clientName,
+          storeId: row.storeId,
+          orderItems: row.orderItems,
+          shippingCost: row.shippingCost,
+        },
+        { includeFinancials: scope.canViewFinancials },
+      ),
+    ),
+    pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
+  };
+}
