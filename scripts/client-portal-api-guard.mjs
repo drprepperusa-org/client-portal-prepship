@@ -15,6 +15,8 @@ const routePath = 'src/routes/client-portal.ts';
 const dtoPath = 'src/lib/client-portal/dto.ts';
 const scopePath = 'src/lib/client-portal/scope.ts';
 const auditPath = 'src/lib/client-portal/audit.ts';
+const predicatesPath = 'src/lib/client-portal/predicates.ts';
+const invoiceDetailsPath = 'src/lib/client-portal/read-models/invoice-details.ts';
 const apiPath = 'web/src/lib/api.ts';
 const queriesPath = 'web/src/lib/portalQueries.ts';
 const apiContractsPath = 'scripts/api-contracts-guard.mjs';
@@ -93,9 +95,12 @@ for (const forbidden of [
 assert(scope.includes('client_user') && scope.includes('read_only_support'), 'scope must treat external roles explicitly');
 assert(scope.includes('client portal scope required'), 'scope must deny unscoped external users');
 assert(audit.includes('password') && audit.includes('token') && audit.includes('credentials'), 'audit sanitizer must strip sensitive keys');
+// The scope/search predicates were extracted to lib/client-portal/predicates.ts;
+// the route file must still COMPOSE them per endpoint.
+const predicates = existsSync(predicatesPath) ? read(predicatesPath) : '';
 assert(
-  route.includes('function activeClientPredicate') &&
-    route.includes('where coalesce(active_client.active, true) = true') &&
+  predicates.includes('function activeClientPredicate') &&
+    predicates.includes('where coalesce(active_client.active, true) = true') &&
     route.includes('activeClientPredicate('),
   'client portal order/count routes must filter inactive clients the same way /clients does',
 );
@@ -111,9 +116,13 @@ assert(
   /billingSummary\(token: string, range = defaultRange\(\)\)[\s\S]*dateFrom[\s\S]*dateTo[\s\S]*'\/billing\/summary'/.test(api),
   'portalApi.clientPortal.billingSummary must send dateFrom/dateTo required by /billing/summary',
 );
+// portalInvoiceDetails now lives in the invoice-details read-model; the route
+// must still call it, and the read-model must keep Qty on canonical order_items.
+const invoiceDetails = existsSync(invoiceDetailsPath) ? read(invoiceDetailsPath) : '';
+assert(route.includes('portalInvoiceDetails('), 'client portal routes must use the portalInvoiceDetails read-model');
 assert(
-  /portalInvoiceDetails[\s\S]*select sum\(greatest\(0, coalesce\(oi\.quantity, 0\)\)[\s\S]*from \$\{orderItems\} oi[\s\S]*as qty/.test(route) &&
-    !/portalInvoiceDetails[\s\S]*coalesce\(sum\(b\.qty\), 0\)::text as qty/.test(route),
+  /portalInvoiceDetails[\s\S]*select sum\(greatest\(0, coalesce\(oi\.quantity, 0\)\)[\s\S]*from \$\{orderItems\} oi[\s\S]*as qty/.test(invoiceDetails) &&
+    !/portalInvoiceDetails[\s\S]*coalesce\(sum\(b\.qty\), 0\)::text as qty/.test(invoiceDetails),
   'client portal invoice details must use canonical order_items.quantity for Qty, not summed billing line quantities',
 );
 assert(

@@ -144,6 +144,10 @@ addressed above.
 
 ## Deferred (tracked follow-ups)
 
-- Optional extraction of read-model-heavy blocks from the large
-  `src/routes/client-portal.ts` into `src/lib/client-portal/read-models/*`
-  (out of scope for this pass to avoid an unreviewable rewrite).
+- Extraction of read-model-heavy blocks from the large
+  `src/routes/client-portal.ts` into `src/lib/client-portal/*` — **in
+  progress**: part 1 shipped (scope/search predicates →
+  `lib/client-portal/predicates.ts`; invoice-detail rollup →
+  `lib/client-portal/read-models/invoice-details.ts`). Remaining candidates:
+  orders/inventory/shipments/integrations query bodies + the invoice HTML
+  renderer. Route handlers and their tokens stay in `routes/client-portal.ts`.
