@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Search, History, Boxes } from 'lucide-react';
+import { History, Boxes } from 'lucide-react';
 import { Thumb } from '@/components/ui/Thumb';
 import { GlassPanel } from '@/components/ui/Glass';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
 import { Checkbox, Select } from '@/components/ui/Selection';
@@ -174,10 +175,12 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
     <>
       <GlassPanel className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="relative flex flex-1 items-center sm:max-w-md">
-            <Search size={16} className="absolute left-3 text-ink-3" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter SKU or name…" aria-label="Search inventory" className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90" />
-          </label>
+          <SearchInput
+            value={q}
+            onChange={setQ}
+            placeholder="Filter SKU or name…"
+            ariaLabel="Search inventory"
+          />
           <Checkbox label="Low/Out only" checked={lowOnly} onChange={setLowOnly} />
         </div>
       </GlassPanel>
@@ -238,10 +241,14 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
     <>
       <GlassPanel className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="relative flex flex-1 items-center sm:max-w-sm">
-            <Search size={16} className="absolute left-3 text-ink-3" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter SKU or name…" aria-label="Search history" className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90" />
-          </label>
+          <div className="sm:max-w-sm">
+            <SearchInput
+              value={q}
+              onChange={setQ}
+              placeholder="Filter SKU or name…"
+              ariaLabel="Search history"
+            />
+          </div>
           <Select options={TYPE_OPTS} value={type} onChange={setType} className="sm:w-44" />
           <span className="text-xs text-ink-3">Date range follows the top-bar selector.</span>
         </div>

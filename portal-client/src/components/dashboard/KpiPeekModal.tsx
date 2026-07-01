@@ -459,8 +459,16 @@ export function KpiPeekModal({
               {/* Footer CTA */}
               <div className="border-t border-white/60 p-3">
                 <button
-                  onClick={() => { onNavigate(cfg.cta.to); onClose(); }}
-                  className={cn('focus-ring group flex w-full items-center justify-center gap-2 rounded-glass-sm bg-gradient-to-br px-4 py-2.5 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95', ACCENTS[cfg.accent].grad)}
+                  onClick={() => {
+                    onNavigate(cfg.cta.to);
+                    onClose();
+                  }}
+                  className={cn(
+                    'focus-ring group flex w-full items-center justify-center gap-2 rounded-glass-sm',
+                    'bg-gradient-to-br px-4 py-2.5 text-sm font-semibold text-white shadow-glass',
+                    'transition-opacity hover:opacity-95',
+                    ACCENTS[cfg.accent].grad,
+                  )}
                 >
                   {cfg.cta.label}
                   <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />

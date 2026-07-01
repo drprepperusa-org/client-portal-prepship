@@ -2295,8 +2295,12 @@ export default async function handler(req: any, res: any): Promise<void> {
           res.status(200).json({
             ok: false,
             provider,
-            error:
-              'Walmart returned 0 rates for this order. The order may not be eligible for Walmart Shipping, or the box dimensions/weight fall outside any sponsored carrier limit. Confirm Ship With Walmart is enabled in Seller Center and try a different package size.',
+            error: [
+              'Walmart returned 0 rates for this order.',
+              'The order may not be eligible for Walmart Shipping, or the box dimensions/weight',
+              'fall outside any sponsored carrier limit.',
+              'Confirm Ship With Walmart is enabled in Seller Center and try a different package size.',
+            ].join(' '),
             meta: { orderId, externalOrderId, orderNumber, purchaseOrderId, purchaseOrderSource, hasRawOrder: rawOrder != null, rateCount: 0 },
           });
           return;

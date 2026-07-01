@@ -28,6 +28,40 @@ type ClientSummary = {
 };
 
 const moneyRight = 'text-right';
+type BillingTotals = Omit<ClientSummary, 'clientId' | 'clientName'>;
+const EMPTY_TOTALS: BillingTotals = {
+  orders: 0,
+  pickpack: 0,
+  additional: 0,
+  box: 0,
+  storage: 0,
+  shipping: 0,
+  fee: 0,
+};
+
+function addBillingTotals(acc: BillingTotals, summary: ClientSummary): BillingTotals {
+  return {
+    orders: acc.orders + summary.orders,
+    pickpack: acc.pickpack + summary.pickpack,
+    additional: acc.additional + summary.additional,
+    box: acc.box + summary.box,
+    storage: acc.storage + summary.storage,
+    shipping: acc.shipping + summary.shipping,
+    fee: acc.fee + summary.fee,
+  };
+}
+
+function InvoiceCarrierCell({ row }: { row: BillingInvoiceDetailRow }) {
+  return row.carrierCode ? <CarrierBadge code={row.carrierCode} /> : <span className="text-ink-3">—</span>;
+}
+
+function InvoiceItemCell({ row }: { row: BillingInvoiceDetailRow }) {
+  return (
+    <span className="block whitespace-pre-line break-words text-ink-2" title={row.itemNames ?? ''}>
+      {row.itemNames ?? row.recipientName ?? '—'}
+    </span>
+  );
+}
 
 export default function Invoices({ from, to }: { from: string; to: string }) {
   const toast = useToast();
@@ -79,10 +113,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       s.fee += num(r.rowTotal);
     }
     const list = [...byClient.values()].map((s) => ({ ...s, orders: s.orderSet.size }));
-    const t = list.reduce(
-      (acc, s) => ({ orders: acc.orders + s.orders, pickpack: acc.pickpack + s.pickpack, additional: acc.additional + s.additional, box: acc.box + s.box, storage: acc.storage + s.storage, shipping: acc.shipping + s.shipping, fee: acc.fee + s.fee }),
-      { orders: 0, pickpack: 0, additional: 0, box: 0, storage: 0, shipping: 0, fee: 0 },
-    );
+    const t = list.reduce(addBillingTotals, EMPTY_TOTALS);
     return { summary: list, totals: t };
   }, [rows]);
 
@@ -124,8 +155,21 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const lineCols: Column<BillingInvoiceDetailRow>[] = useMemo(() => [
     { key: 'order', header: 'Order #', defaultWidth: 130, render: (r) => <span className="font-semibold text-brand-700">{r.orderNumber ?? (r.orderId ? `#${r.orderId}` : '—')}</span>, sortAccessor: (r) => r.orderNumber ?? '' },
     { key: 'date', header: 'Ship Date', defaultWidth: 120, render: (r) => <span className="tnum text-ink-3">{shortDate(r.shipDate)}</span>, sortAccessor: (r) => r.shipDate ?? '' },
-    { key: 'carrier', header: 'Carrier', defaultWidth: 110, className: 'text-center', render: (r) => (r.carrierCode ? <CarrierBadge code={r.carrierCode} /> : <span className="text-ink-3">—</span>), sortAccessor: (r) => r.carrierCode ?? '' },
-    { key: 'item', header: 'Item Name', defaultWidth: 260, render: (r) => <span className="block whitespace-pre-line break-words text-ink-2" title={r.itemNames ?? ''}>{r.itemNames ?? r.recipientName ?? '—'}</span>, sortAccessor: (r) => r.itemNames ?? '' },
+    {
+      key: 'carrier',
+      header: 'Carrier',
+      defaultWidth: 110,
+      className: 'text-center',
+      render: (r) => <InvoiceCarrierCell row={r} />,
+      sortAccessor: (r) => r.carrierCode ?? '',
+    },
+    {
+      key: 'item',
+      header: 'Item Name',
+      defaultWidth: 260,
+      render: (r) => <InvoiceItemCell row={r} />,
+      sortAccessor: (r) => r.itemNames ?? '',
+    },
     { key: 'sku', header: 'SKU', defaultWidth: 130, render: (r) => <span className="block truncate font-mono text-xs text-ink-3" title={r.skus ?? ''}>{r.skus ?? '—'}</span>, sortAccessor: (r) => r.skus ?? '' },
     { key: 'qty', header: 'Qty', defaultWidth: 80, className: moneyRight, render: (r) => <span className="tnum">{num(r.qty)}</span>, sortAccessor: (r) => num(r.qty) },
     { key: 'pickpack', header: 'Pick & Pack', defaultWidth: 110, className: moneyRight, render: (r) => <span className="tnum text-ink-2">{money0(num(r.pickpackTotal))}</span>, sortAccessor: (r) => num(r.pickpackTotal) },

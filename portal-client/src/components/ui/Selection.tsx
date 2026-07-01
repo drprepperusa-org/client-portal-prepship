@@ -1,8 +1,36 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
+
+function SelectionMark({
+  active,
+  shape,
+  children,
+}: {
+  active: boolean;
+  shape: 'checkbox' | 'radio';
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        'focus-ring grid h-5 w-5 place-items-center border transition-all duration-200',
+        shape === 'checkbox' ? 'rounded-[7px]' : 'rounded-full',
+        active && shape === 'checkbox'
+          ? 'border-brand-500 bg-gradient-to-br from-brand-400 to-brand-600 shadow-[0_2px_8px_rgba(3,169,244,0.4)]'
+          : active
+            ? 'border-brand-500 bg-white/70'
+            : 'border-slate-300 bg-white/70',
+        'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-400/55',
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 /* ---------- Checkbox ---------- */
 export function Checkbox({
@@ -21,7 +49,7 @@ export function Checkbox({
     <label htmlFor={id} className={cn('inline-flex cursor-pointer select-none items-center gap-2.5', disabled && 'cursor-not-allowed opacity-50')}>
       <span className="relative inline-flex">
         <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
-        <span className={cn('focus-ring grid h-5 w-5 place-items-center rounded-[7px] border transition-all duration-200', checked ? 'border-brand-500 bg-gradient-to-br from-brand-400 to-brand-600 shadow-[0_2px_8px_rgba(3, 169, 244,0.4)]' : 'border-slate-300 bg-white/70', 'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-400/55')}>
+        <SelectionMark active={checked} shape="checkbox">
           <AnimatePresence>
             {checked && (
               <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 22 }}>
@@ -29,7 +57,7 @@ export function Checkbox({
               </motion.span>
             )}
           </AnimatePresence>
-        </span>
+        </SelectionMark>
       </span>
       <span className="text-sm text-ink-2">{label}</span>
     </label>
@@ -59,11 +87,19 @@ export function RadioGroup<T extends string>({
             <label key={o.value} className="inline-flex cursor-pointer select-none items-center gap-2.5">
               <span className="relative inline-flex">
                 <input type="radio" name={name} checked={active} onChange={() => onChange(o.value)} className="peer sr-only" />
-                <span className={cn('focus-ring grid h-5 w-5 place-items-center rounded-full border transition-all duration-200', active ? 'border-brand-500' : 'border-slate-300 bg-white/70', 'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-400/55')}>
+                <SelectionMark active={active} shape="radio">
                   <AnimatePresence>
-                    {active && <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 20 }} className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-brand-400 to-brand-600" />}
+                    {active && (
+                      <motion.span
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                        className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-brand-400 to-brand-600"
+                      />
+                    )}
                   </AnimatePresence>
-                </span>
+                </SelectionMark>
               </span>
               <span className="text-sm text-ink-2">{o.label}</span>
             </label>
@@ -161,7 +197,12 @@ export function Select({ label, options, placeholder = 'Select…', searchable =
           onClick={() => setOpen((o) => !o)}
           aria-haspopup="listbox"
           aria-expanded={open}
-          className={cn('focus-ring flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-glass-sm border border-white/80 bg-white/70 px-3.5 py-1.5 text-left text-[15px] ring-1 ring-slate-200/70 backdrop-blur-sm transition-colors hover:bg-white/90', open && 'border-brand-400 shadow-[0_0_0_3px_rgba(3, 169, 244,0.18)]')}
+          className={cn(
+            'focus-ring flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-glass-sm',
+            'border border-white/80 bg-white/70 px-3.5 py-1.5 text-left text-[15px]',
+            'ring-1 ring-slate-200/70 backdrop-blur-sm transition-colors hover:bg-white/90',
+            open && 'border-brand-400 shadow-[0_0_0_3px_rgba(3,169,244,0.18)]',
+          )}
         >
           <span className={cn('flex flex-1 flex-wrap items-center gap-1.5', selected.length === 0 && 'text-slate-400')}>
             {selected.length === 0 && placeholder}

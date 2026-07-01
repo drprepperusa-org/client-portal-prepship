@@ -63,8 +63,16 @@ async function main() {
   console.log('\n[2/2] Fetching shipments (all labels, all accounts)…');
   const shipT0 = Date.now();
   const shipRes = await syncShipments({ sinceMs: 0 });
+  const shipmentSummary = [
+    `fetched=${shipRes.fetched}`,
+    `inserted=${shipRes.inserted}`,
+    `updated=${shipRes.updated}`,
+    `matched=${shipRes.matchedOrders}`,
+    `orphaned=${shipRes.orphaned}`,
+    `ordersMarkedShipped=${shipRes.ordersMarkedShipped}`,
+  ].join(' ');
   console.log(
-    `      done in ${hh(Date.now() - shipT0)} — fetched=${shipRes.fetched} inserted=${shipRes.inserted} updated=${shipRes.updated} matched=${shipRes.matchedOrders} orphaned=${shipRes.orphaned} ordersMarkedShipped=${shipRes.ordersMarkedShipped}`,
+    `      done in ${hh(Date.now() - shipT0)} — ${shipmentSummary}`,
   );
 
   // After counts

@@ -86,12 +86,24 @@ export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean;
               exit={{ opacity: 0, y: 16, scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 240, damping: 26 }}
               onClick={(e) => e.stopPropagation()}
-              className={cn('glass-strong relative flex max-h-[88vh] w-full flex-col overflow-hidden rounded-glass-lg shadow-glass-lg', stage === 'list' ? 'max-w-4xl' : 'max-w-lg')}
+              className={cn(
+                'glass-strong relative flex max-h-[88vh] w-full flex-col overflow-hidden rounded-glass-lg',
+                'shadow-glass-lg',
+                stage === 'list' ? 'max-w-4xl' : 'max-w-lg',
+              )}
               role="dialog"
               aria-modal="true"
               aria-label="Connect a store"
             >
-              <button onClick={close} aria-label="Close" className="focus-ring absolute right-4 top-4 z-10 grid h-9 w-9 cursor-pointer place-items-center rounded-lg bg-white/80 text-ink-3 shadow-glass ring-1 ring-slate-200 transition-colors hover:text-ink">
+              <button
+                onClick={close}
+                aria-label="Close"
+                className={cn(
+                  'focus-ring absolute right-4 top-4 z-10 grid h-9 w-9 cursor-pointer place-items-center',
+                  'rounded-lg bg-white/80 text-ink-3 shadow-glass ring-1 ring-slate-200',
+                  'transition-colors hover:text-ink',
+                )}
+              >
                 <X size={18} />
               </button>
 
@@ -233,6 +245,10 @@ function CredsStage({
   onCancel: () => void;
   onReview: (e: FormEvent) => void;
 }) {
+  function toggleShown(key: string, reveal: boolean) {
+    setShown({ ...shown, [key]: !reveal });
+  }
+
   return (
     <form onSubmit={onReview} className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-white/60 p-5">
@@ -272,7 +288,12 @@ function CredsStage({
                   autoComplete="off"
                 />
                 {isPw && (
-                  <button type="button" onClick={() => setShown({ ...shown, [f.key]: !reveal })} aria-label={reveal ? 'Hide' : 'Show'} className="focus-ring absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1.5 text-ink-3 hover:text-brand-600">
+                  <button
+                    type="button"
+                    onClick={() => toggleShown(f.key, Boolean(reveal))}
+                    aria-label={reveal ? 'Hide' : 'Show'}
+                    className="focus-ring absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1.5 text-ink-3 hover:text-brand-600"
+                  >
                     {reveal ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 )}

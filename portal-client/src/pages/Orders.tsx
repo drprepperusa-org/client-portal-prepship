@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, RefreshCw, Check, Zap, AlertCircle } from 'lucide-react';
+import { RefreshCw, Check, Zap, AlertCircle } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { GlassPanel } from '@/components/ui/Glass';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
@@ -52,6 +53,22 @@ function selectedRateService(o: PortalOrder): string | null {
 function selectedRateAmount(o: PortalOrder): number | null {
   const amount = Number(o.selectedRate?.amount);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function QtyBadge({ value }: { value: number }) {
+  return (
+    <span className="inline-flex min-w-[24px] items-center justify-center rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-bold text-rose-600 tnum ring-1 ring-rose-200">
+      {value}
+    </span>
+  );
+}
+
+function OrderTotalCell({ value }: { value: number | string | null | undefined }) {
+  return (
+    <span className="font-semibold text-ink tnum">
+      {value != null ? money(value) : '—'}
+    </span>
+  );
 }
 
 export default function Orders() {
@@ -197,8 +214,22 @@ export default function Orders() {
       render: (o) => <SkuLines items={o.items} />,
       sortAccessor: (o) => o.items[0]?.sku ?? '',
     },
-    { key: 'qty', header: 'Qty', defaultWidth: 80, className: 'text-center', render: (o) => <span className="inline-flex min-w-[24px] items-center justify-center rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-bold text-rose-600 tnum ring-1 ring-rose-200">{itemCount(o.items)}</span>, sortAccessor: (o) => itemCount(o.items) },
-    { key: 'total', header: 'Order Total', defaultWidth: 120, className: 'text-right', render: (o) => <span className="font-semibold text-ink tnum">{o.orderTotal != null ? money(o.orderTotal) : '—'}</span>, sortAccessor: (o) => Number(o.orderTotal) || 0 },
+    {
+      key: 'qty',
+      header: 'Qty',
+      defaultWidth: 80,
+      className: 'text-center',
+      render: (o) => <QtyBadge value={itemCount(o.items)} />,
+      sortAccessor: (o) => itemCount(o.items),
+    },
+    {
+      key: 'total',
+      header: 'Order Total',
+      defaultWidth: 120,
+      className: 'text-right',
+      render: (o) => <OrderTotalCell value={o.orderTotal} />,
+      sortAccessor: (o) => Number(o.orderTotal) || 0,
+    },
     { key: 'weight', header: 'Weight', defaultWidth: 110, render: (o) => <span className="tnum text-ink-2">{fmtWeight(o.weightOz)}</span>, sortAccessor: (o) => o.weightOz ?? 0 },
     {
       key: 'selectedRate',
@@ -242,10 +273,12 @@ export default function Orders() {
       </GlassPanel>
 
       <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <label className="relative flex flex-1 items-center sm:max-w-md">
-          <Search size={16} className="absolute left-3 text-ink-3" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by order #, customer, SKU…" aria-label="Search orders" className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90" />
-        </label>
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Search by order #, customer, SKU…"
+          ariaLabel="Search orders"
+        />
 
         <div className="flex items-center gap-3 sm:shrink-0">
           <span className="hidden max-w-[22rem] truncate text-xs sm:inline" aria-live="polite">
@@ -267,7 +300,11 @@ export default function Orders() {
               onClick={handleFillRates}
               disabled={backfill.running || syncing}
               title="Fetch live carrier rate quotes for awaiting orders (no labels are purchased)"
-              className="focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm bg-white/70 px-4 text-sm font-semibold text-brand-700 ring-1 ring-brand-200 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className={cn(
+                'focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm',
+                'bg-white/70 px-4 text-sm font-semibold text-brand-700 ring-1 ring-brand-200',
+                'transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60',
+              )}
             >
               <Zap size={15} className={cn(backfill.running && 'animate-pulse')} />
               {backfill.running ? 'Filling' : 'Fill rates'}
@@ -278,7 +315,11 @@ export default function Orders() {
             onClick={handleSync}
             disabled={syncing || backfill.running}
             title="Re-pull the latest order data across every page of this tab"
-            className="focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm bg-gradient-to-br from-brand-400 to-brand-600 px-4 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+            className={cn(
+              'focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm',
+              'bg-gradient-to-br from-brand-400 to-brand-600 px-4 text-sm font-semibold text-white',
+              'shadow-glass transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60',
+            )}
           >
             <RefreshCw size={15} className={cn(syncing && 'animate-spin')} />
             {syncing ? 'Syncing' : 'Sync'}

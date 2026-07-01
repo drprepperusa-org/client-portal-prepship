@@ -156,7 +156,13 @@ export default async function handler(req: any, res: any): Promise<void> {
       correlationId,
       interpretation: carriersRes.ok
         ? 'OAuth + Shipping API access both working. The remaining 500 on /shipping-estimates is request-shape or ship-from-mismatch related.'
-        : `Shipping API returned ${carriersRes.status}. If 401/403 → the developer app is missing Shipping API permission (developer.walmart.com → My Apps → API Permissions). If 500 → seller account isn't enrolled in Walmart Shipping Solutions. Either way, the issue is on Walmart's side, not in our request.`,
+        : [
+          `Shipping API returned ${carriersRes.status}.`,
+          'If 401/403 → the developer app is missing Shipping API permission',
+          '(developer.walmart.com → My Apps → API Permissions).',
+          "If 500 → seller account isn't enrolled in Walmart Shipping Solutions.",
+          "Either way, the issue is on Walmart's side, not in our request.",
+        ].join(' '),
     });
   } catch (err) {
     sendInternalServerError(res, 'walmart-probe-carriers', err);

@@ -188,7 +188,14 @@ async function main() {
       liveMarketplaceCalled: false,
       readyForLiveRetry: true,
       audit,
-      nextCommand: `npm run marketplace:confirm:retry -- --outbox-id ${before.outbox_id} --order-number ${before.order_number ?? '<orderNumber>'} --shipment-id ${before.outbox_shipment_id ?? '<shipmentId>'} --provider walmart --live-approved`,
+      nextCommand: [
+        'npm run marketplace:confirm:retry --',
+        `--outbox-id ${before.outbox_id}`,
+        `--order-number ${before.order_number ?? '<orderNumber>'}`,
+        `--shipment-id ${before.outbox_shipment_id ?? '<shipmentId>'}`,
+        '--provider walmart',
+        '--live-approved',
+      ].join(' '),
     }, null, 2));
     return;
   }

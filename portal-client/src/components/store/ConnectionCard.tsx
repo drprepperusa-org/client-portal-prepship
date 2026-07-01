@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2, RefreshCw, Settings2, Unplug, Plug } from 'lucide-react';
 import { BrandMark } from './StoreLogo';
@@ -10,6 +10,31 @@ import { cn } from '@/lib/cn';
 const FACE = 'absolute inset-0 flex flex-col rounded-glass p-5';
 // backface-visibility hidden so only the forward-facing side is visible mid-flip.
 const backface = { backfaceVisibility: 'hidden' as const, WebkitBackfaceVisibility: 'hidden' as const };
+
+function ConnectionActionButton({
+  tone,
+  onClick,
+  children,
+}: {
+  tone: 'neutral' | 'danger';
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'focus-ring flex flex-1 cursor-pointer items-center justify-center gap-1.5',
+        'rounded-glass-sm py-2 text-xs font-semibold ring-1 transition-colors',
+        tone === 'danger'
+          ? 'bg-rose-50 text-rose-600 ring-rose-200 hover:bg-rose-100'
+          : 'bg-white/70 text-ink-2 ring-slate-200/70 hover:bg-white',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 /**
  * Connection tile that gently floats and flips on click to reveal connection
@@ -33,7 +58,7 @@ export function ConnectionCard({
   const c = integration;
   const name = c.label ?? c.provider ?? 'Integration';
   const typeLabel = c.type === 'carrier' ? 'Carrier' : 'Store';
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const stop = (e: MouseEvent) => e.stopPropagation();
 
   return (
     <motion.div variants={staggerItem}>
@@ -76,12 +101,24 @@ export function ConnectionCard({
             </div>
 
             <div className="mt-3 flex gap-2">
-              <button onClick={(e) => { stop(e); onReconfigure?.(c); }} className="focus-ring flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-glass-sm bg-white/70 py-2 text-xs font-semibold text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white">
+              <ConnectionActionButton
+                tone="neutral"
+                onClick={(e) => {
+                  stop(e);
+                  onReconfigure?.(c);
+                }}
+              >
                 <Settings2 size={14} /> Reconfigure
-              </button>
-              <button onClick={(e) => { stop(e); onDisconnect?.(c); }} className="focus-ring flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-glass-sm bg-rose-50 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200 transition-colors hover:bg-rose-100">
+              </ConnectionActionButton>
+              <ConnectionActionButton
+                tone="danger"
+                onClick={(e) => {
+                  stop(e);
+                  onDisconnect?.(c);
+                }}
+              >
                 <Unplug size={14} /> Disconnect
-              </button>
+              </ConnectionActionButton>
             </div>
           </div>
 

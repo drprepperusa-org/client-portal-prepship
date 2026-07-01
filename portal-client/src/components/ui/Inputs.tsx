@@ -21,6 +21,19 @@ function LeadingIcon({ icon }: { icon: ReactNode }) {
   );
 }
 
+function StepperButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="focus-ring cursor-pointer rounded bg-slate-100 px-1 py-0.5 text-ink-3 transition-colors hover:bg-brand-100 hover:text-brand-600"
+    >
+      {children}
+    </button>
+  );
+}
+
 /* ---------- Text ---------- */
 export function TextInput({ label, helper, error, success, required, icon, containerClassName, className, ...rest }: BaseProps & InputAttrs) {
   return (
@@ -136,12 +149,12 @@ export function NumberInput({ label, helper, error, success, required, container
           />
           {stepper && (
             <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-0.5">
-              <button type="button" aria-label="Increment" onClick={() => onValueChange?.(clamp(num + step))} className="focus-ring cursor-pointer rounded bg-slate-100 px-1 py-0.5 text-ink-3 transition-colors hover:bg-brand-100 hover:text-brand-600">
+              <StepperButton label="Increment" onClick={() => onValueChange?.(clamp(num + step))}>
                 <Plus size={12} />
-              </button>
-              <button type="button" aria-label="Decrement" onClick={() => onValueChange?.(clamp(num - step))} className="focus-ring cursor-pointer rounded bg-slate-100 px-1 py-0.5 text-ink-3 transition-colors hover:bg-brand-100 hover:text-brand-600">
+              </StepperButton>
+              <StepperButton label="Decrement" onClick={() => onValueChange?.(clamp(num - step))}>
                 <Minus size={12} />
-              </button>
+              </StepperButton>
             </div>
           )}
         </div>

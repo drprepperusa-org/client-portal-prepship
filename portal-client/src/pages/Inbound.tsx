@@ -32,6 +32,7 @@ function clientAccent(name: string | null): Accent {
 }
 
 const field = 'focus-ring h-10 w-full rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90';
+const CSV_COLUMNS = 'client, reference, supplier, status, expected_date, carrier, tracking, sku, name, qty';
 
 type DraftItem = { sku: string; name: string; expectedQty: string };
 type Draft = {
@@ -42,6 +43,62 @@ const emptyDraft = (): Draft => ({
   clientId: undefined, reference: '', supplier: '', status: 'expected',
   carrier: '', trackingNumber: '', expectedDate: '', notes: '', items: [{ sku: '', name: '', expectedQty: '' }],
 });
+
+function ClientCell({ name }: { name: string | null }) {
+  if (!name) return <span className="text-ink-3">—</span>;
+  return (
+    <Chip accent={clientAccent(name)} dot={false}>
+      {name}
+    </Chip>
+  );
+}
+
+function DraftItemRow({
+  item,
+  index,
+  onChange,
+  onRemove,
+}: {
+  item: DraftItem;
+  index: number;
+  onChange: (index: number, key: keyof DraftItem, value: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        className={field}
+        style={{ flex: 1 }}
+        value={item.sku}
+        onChange={(e) => onChange(index, 'sku', e.target.value)}
+        placeholder="SKU"
+      />
+      <input
+        className={field}
+        style={{ flex: 2 }}
+        value={item.name}
+        onChange={(e) => onChange(index, 'name', e.target.value)}
+        placeholder="Item name"
+      />
+      <input
+        className={field}
+        style={{ width: 80 }}
+        type="number"
+        min={0}
+        value={item.expectedQty}
+        onChange={(e) => onChange(index, 'expectedQty', e.target.value)}
+        placeholder="Qty"
+      />
+      <button
+        onClick={() => onRemove(index)}
+        aria-label="Remove item"
+        className="focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-rose-50 hover:text-rose-500"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
 
 /** CSV → grouped inbound shipments. Columns (any order, header row required):
  *  client, reference, supplier, status, expected_date, carrier, tracking, sku, name, qty */
@@ -142,7 +199,13 @@ export default function Inbound() {
     () => [
       { key: 'ref', header: 'Reference', defaultWidth: 150, render: (r) => <span className="font-semibold text-ink">{r.reference ?? `#${r.id}`}</span>, sortAccessor: (r) => r.reference ?? `#${r.id}` },
       { key: 'supplier', header: 'Supplier', defaultWidth: 160, render: (r) => <span className="text-ink-2">{r.supplier ?? '—'}</span>, sortAccessor: (r) => r.supplier ?? '' },
-      { key: 'client', header: 'Client', defaultWidth: 150, render: (r) => (r.clientName ? <Chip accent={clientAccent(r.clientName)} dot={false}>{r.clientName}</Chip> : <span className="text-ink-3">—</span>), sortAccessor: (r) => r.clientName ?? '' },
+      {
+        key: 'client',
+        header: 'Client',
+        defaultWidth: 150,
+        render: (r) => <ClientCell name={r.clientName} />,
+        sortAccessor: (r) => r.clientName ?? '',
+      },
       {
         key: 'status', header: 'Status', defaultWidth: 120,
         render: (r) => { const m = STATUS_META[r.status] ?? { label: r.status, accent: 'amber' as Accent }; return <Chip accent={m.accent}>{m.label}</Chip>; },
@@ -232,6 +295,8 @@ export default function Inbound() {
 
   const setField = (k: keyof Draft, v: unknown) => setDraft((d) => ({ ...d, [k]: v }) as Draft);
   const setItem = (i: number, k: keyof DraftItem, v: string) => setDraft((d) => ({ ...d, items: d.items.map((it, j) => (j === i ? { ...it, [k]: v } : it)) }));
+  const addItem = () => setDraft((d) => ({ ...d, items: [...d.items, { sku: '', name: '', expectedQty: '' }] }));
+  const removeItem = (i: number) => setDraft((d) => ({ ...d, items: d.items.filter((_, j) => j !== i) }));
 
   return (
     <div className="space-y-4">
@@ -247,7 +312,12 @@ export default function Inbound() {
           {showClientFilter && (
             <label className="relative flex items-center">
               <Building2 size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
-              <select value={clientFilter ?? ''} onChange={(e) => setClientFilter(e.target.value ? Number(e.target.value) : undefined)} aria-label="Filter by client" className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-8 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90">
+              <select
+                value={clientFilter ?? ''}
+                onChange={(event) => setClientFilter(event.target.value ? Number(event.target.value) : undefined)}
+                aria-label="Filter by client"
+                className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-8 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
+              >
                 <option value="">All clients</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name ?? `Client ${c.id}`}</option>)}
               </select>
@@ -367,15 +437,15 @@ export default function Inbound() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">Items</p>
             <div className="space-y-2">
               {draft.items.map((it, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input className={field} style={{ flex: 1 }} value={it.sku} onChange={(e) => setItem(i, 'sku', e.target.value)} placeholder="SKU" />
-                  <input className={field} style={{ flex: 2 }} value={it.name} onChange={(e) => setItem(i, 'name', e.target.value)} placeholder="Item name" />
-                  <input className={field} style={{ width: 80 }} type="number" min={0} value={it.expectedQty} onChange={(e) => setItem(i, 'expectedQty', e.target.value)} placeholder="Qty" />
-                  <button onClick={() => setDraft((d) => ({ ...d, items: d.items.filter((_, j) => j !== i) }))} aria-label="Remove item" className="focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-rose-50 hover:text-rose-500"><Trash2 size={15} /></button>
-                </div>
+                <DraftItemRow key={i} item={it} index={i} onChange={setItem} onRemove={removeItem} />
               ))}
             </div>
-            <button onClick={() => setDraft((d) => ({ ...d, items: [...d.items, { sku: '', name: '', expectedQty: '' }] }))} className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-600"><Plus size={14} /> Add item</button>
+            <button
+              onClick={addItem}
+              className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-600"
+            >
+              <Plus size={14} /> Add item
+            </button>
           </div>
           <Labeled label="Notes"><textarea className={field + ' h-20 py-2'} value={draft.notes} onChange={(e) => setField('notes', e.target.value)} /></Labeled>
           <div className="flex justify-end gap-2 pt-2">
@@ -389,7 +459,9 @@ export default function Inbound() {
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import inbound (CSV feed)" maxWidth={640}>
         <div className="space-y-4">
           <p className="text-sm text-ink-3">
-            Paste CSV with a header row. Columns (any order): <code className="rounded bg-slate-100 px-1 text-xs">client, reference, supplier, status, expected_date, carrier, tracking, sku, name, qty</code>. One row per item; rows sharing a reference are grouped into one shipment. <code className="rounded bg-slate-100 px-1 text-xs">client</code> matches a client name or id.
+            Paste CSV with a header row. Columns (any order): <CodeToken>{CSV_COLUMNS}</CodeToken>.
+            One row per item; rows sharing a reference are grouped into one shipment.
+            <CodeToken>client</CodeToken> matches a client name or id.
           </p>
           <textarea
             value={csv}
@@ -417,6 +489,10 @@ function Cell({ label, value }: { label: string; value: string }) {
       <p className="mt-1 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
     </div>
   );
+}
+
+function CodeToken({ children }: { children: React.ReactNode }) {
+  return <code className="rounded bg-slate-100 px-1 text-xs">{children}</code>;
 }
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {

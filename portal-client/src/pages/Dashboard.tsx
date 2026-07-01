@@ -106,7 +106,20 @@ export default function Dashboard() {
           <GlassPanel className="p-5">
             <SectionTitle title="Orders over time" subtitle={`Orders count vs. unit count (last ${days} days)`} />
             <div className="mt-4">
-              {loading ? <Skeleton className="h-[260px]" /> : ordersUnitsSeries.length ? <OrdersUnitsBarChart data={ordersUnitsSeries} onSelectDay={edit ? undefined : openDay('orders')} /> : <EmptyState icon={<Inbox size={24} />} title="No order activity" message="No orders in the selected period." />}
+              {loading ? (
+                <Skeleton className="h-[260px]" />
+              ) : ordersUnitsSeries.length ? (
+                <OrdersUnitsBarChart
+                  data={ordersUnitsSeries}
+                  onSelectDay={edit ? undefined : openDay('orders')}
+                />
+              ) : (
+                <EmptyState
+                  icon={<Inbox size={24} />}
+                  title="No order activity"
+                  message="No orders in the selected period."
+                />
+              )}
             </div>
           </GlassPanel>
         );
@@ -115,7 +128,20 @@ export default function Dashboard() {
           <GlassPanel className="p-5">
             <SectionTitle title="Shipment volume" subtitle="Daily shipments" />
             <div className="mt-4">
-              {loading ? <Skeleton className="h-[260px]" /> : volumeSeries.length ? <VolumeBarChart data={volumeSeries} onSelectDay={edit ? undefined : openDay('shipments')} /> : <EmptyState icon={<Inbox size={24} />} title="No shipments" message="No shipments in the selected period." />}
+              {loading ? (
+                <Skeleton className="h-[260px]" />
+              ) : volumeSeries.length ? (
+                <VolumeBarChart
+                  data={volumeSeries}
+                  onSelectDay={edit ? undefined : openDay('shipments')}
+                />
+              ) : (
+                <EmptyState
+                  icon={<Inbox size={24} />}
+                  title="No shipments"
+                  message="No shipments in the selected period."
+                />
+              )}
             </div>
           </GlassPanel>
         );
@@ -176,7 +202,11 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="focus-ring inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-glass-sm bg-gradient-to-br from-brand-400 to-brand-600 px-3.5 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95"
+                className={cn(
+                  'focus-ring inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-glass-sm',
+                  'bg-gradient-to-br from-brand-400 to-brand-600 px-3.5 text-sm font-semibold',
+                  'text-white shadow-glass transition-opacity hover:opacity-95',
+                )}
               >
                 <Check size={15} /> Done
               </button>

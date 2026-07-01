@@ -78,7 +78,12 @@ export function MarkupsEditor() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-ink-3">A markup is added to the carrier’s live rate to set your sell price. <span className="font-semibold">%</span> = percent of the rate; <span className="font-semibold">$</span> = flat amount. Applied to new quotes only — auto-saved on change.</p>
+      <p className="text-xs text-ink-3">
+        A markup is added to the carrier’s live rate to set your sell price.
+        <span className="font-semibold"> %</span> = percent of the rate;
+        <span className="font-semibold"> $</span> = flat amount.
+        Applied to new quotes only — auto-saved on change.
+      </p>
 
       {groups.map((g: MarkupGroup) => {
         const open = !collapsed[g.key];

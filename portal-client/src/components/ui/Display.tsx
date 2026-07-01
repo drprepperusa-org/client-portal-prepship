@@ -60,7 +60,13 @@ export function Tooltip({ label, children, side = 'right' }: { label: string; ch
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.14 }}
             role="tooltip"
-            className={cn('pointer-events-none absolute z-50 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-white shadow-lg', side === 'right' ? 'left-full top-1/2 ml-2.5 -translate-y-1/2' : 'bottom-full left-1/2 mb-2 -translate-x-1/2')}
+            className={cn(
+              'pointer-events-none absolute z-50 whitespace-nowrap rounded-lg bg-ink',
+              'px-2.5 py-1.5 text-xs font-medium text-white shadow-lg',
+              side === 'right'
+                ? 'left-full top-1/2 ml-2.5 -translate-y-1/2'
+                : 'bottom-full left-1/2 mb-2 -translate-x-1/2',
+            )}
           >
             {label}
           </motion.span>
@@ -73,9 +79,16 @@ export function Tooltip({ label, children, side = 'right' }: { label: string; ch
 /* ---------- Progress bar ---------- */
 export function ProgressBar({ value, accent = 'indigo' }: { value: number; accent?: Accent }) {
   const a = ACCENTS[accent];
+  const background = `linear-gradient(90deg, ${a.solid}cc, ${a.solid})`;
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/80">
-      <motion.div className="h-full rounded-full" style={{ background: `linear-gradient(90deg, ${a.solid}cc, ${a.solid})` }} initial={{ width: 0 }} animate={{ width: `${Math.min(100, value)}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
+      <motion.div
+        className="h-full rounded-full"
+        style={{ background }}
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.min(100, value)}%` }}
+        transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+      />
     </div>
   );
 }

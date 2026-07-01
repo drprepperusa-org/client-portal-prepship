@@ -988,7 +988,10 @@ async function runMergeJob(
     job.mergedPdfBase64 = Buffer.from(bytes).toString('base64');
 
     const now = new Date();
-    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const datePart = `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}`;
+    const timePart = `${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+    const ts = `${datePart}_${timePart}`;
     job.fileName = `batch_print_${ts}.pdf`;
 
     // PDF generation/open/download is not proof of physical printing. Entries

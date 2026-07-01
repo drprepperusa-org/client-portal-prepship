@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
+import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { GlassPanel } from '@/components/ui/Glass';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
@@ -90,7 +91,14 @@ export default function Shipments() {
         render: (s) => (s.clientName ? <Chip accent={clientAccent(s.clientName)} dot={false}>{s.clientName}</Chip> : <span className="text-ink-3">—</span>),
         sortAccessor: (s) => s.clientName ?? '',
       },
-      { key: 'carrier', header: 'Carrier', defaultWidth: 110, className: 'text-center', render: (s) => (s.carrierCode ? <CarrierBadge code={s.carrierCode} /> : <span className="text-ink-3">—</span>), sortAccessor: (s) => s.carrierCode ?? '' },
+      {
+        key: 'carrier',
+        header: 'Carrier',
+        defaultWidth: 110,
+        className: 'text-center',
+        render: (s) => (s.carrierCode ? <CarrierBadge code={s.carrierCode} /> : <span className="text-ink-3">—</span>),
+        sortAccessor: (s) => s.carrierCode ?? '',
+      },
       {
         key: 'shippingCost',
         header: 'Shipping Cost',
@@ -108,7 +116,14 @@ export default function Shipments() {
           const url = trackingUrl(s.carrierCode, tn);
           if (!tn) return <span className="text-ink-3">—</span>;
           return url ? (
-            <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="focus-ring inline-flex items-center gap-1 font-mono text-xs text-brand-700 hover:text-brand-600 hover:underline" title="Track on carrier site">
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="focus-ring inline-flex items-center gap-1 font-mono text-xs text-brand-700 hover:text-brand-600 hover:underline"
+              title="Track on carrier site"
+            >
               <span className="truncate">{tn}</span>
               <ExternalLink size={12} className="shrink-0" />
             </a>
@@ -136,10 +151,12 @@ export default function Shipments() {
   return (
     <div className="space-y-4">
       <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <label className="relative flex flex-1 items-center sm:max-w-md">
-          <Search size={16} className="absolute left-3 text-ink-3" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tracking, carrier, order…" aria-label="Search shipments" className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90" />
-        </label>
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Search tracking, carrier, order…"
+          ariaLabel="Search shipments"
+        />
 
         <div className="flex items-center gap-2 sm:shrink-0">
           <label className="relative flex items-center">

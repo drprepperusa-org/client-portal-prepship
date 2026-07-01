@@ -45,13 +45,32 @@ body { font-family: Arial, sans-serif; background: #f0f0f0; display: flex; justi
 .tracking-num { font-size: 16px; font-weight: bold; font-family: monospace; letter-spacing: 1px; margin: 6px 0; }
 .barcode-wrap { display: flex; justify-content: center; margin: 6px 0; overflow: hidden; }
 .order-row { display: flex; justify-content: space-between; padding: 6px 10px; font-size: 11px; }
-.test-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: rgba(255,0,0,0.08); pointer-events: none; white-space: nowrap; letter-spacing: 10px; z-index: 0; }
+.test-watermark {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 80px; font-weight: 900; color: rgba(255,0,0,0.08);
+  pointer-events: none; white-space: nowrap; letter-spacing: 10px; z-index: 0;
+}
 </style></head><body>
 <div class="label">
 <div class="test-watermark">TEST</div>
 <div class="void-banner">⚠ VOID — TEST LABEL — DO NOT SHIP ⚠</div>
-<div class="section"><div class="label-sm">Ship From</div><div class="label-val">${data.shipFrom.name}</div><div class="label-val small">${data.shipFrom.street1}</div><div class="label-val small">${data.shipFrom.city}, ${data.shipFrom.state} ${data.shipFrom.postalCode}</div></div>
-<div class="section"><div class="label-sm">Ship To</div><div class="label-val" style="font-size:16px">${data.shipTo.name}</div><div class="label-val small" style="font-size:13px">${data.shipTo.street1}</div><div class="label-val small" style="font-size:15px">${data.shipTo.city}, ${data.shipTo.state} ${data.shipTo.postalCode}</div></div>
+<div class="section">
+  <div class="label-sm">Ship From</div>
+  <div class="label-val">${data.shipFrom.name}</div>
+  <div class="label-val small">${data.shipFrom.street1}</div>
+  <div class="label-val small">
+    ${data.shipFrom.city}, ${data.shipFrom.state} ${data.shipFrom.postalCode}
+  </div>
+</div>
+<div class="section">
+  <div class="label-sm">Ship To</div>
+  <div class="label-val" style="font-size:16px">${data.shipTo.name}</div>
+  <div class="label-val small" style="font-size:13px">${data.shipTo.street1}</div>
+  <div class="label-val small" style="font-size:15px">
+    ${data.shipTo.city}, ${data.shipTo.state} ${data.shipTo.postalCode}
+  </div>
+</div>
 <div class="service-row"><div class="service-name">${data.serviceLabel}</div><div class="weight-box"><div style="font-size:9px;color:#555">WEIGHT</div><div style="font-weight:bold">${data.weightOz} oz</div></div></div>
 <div class="tracking-section"><div class="label-sm">Tracking Number</div><div class="tracking-num">${formattedTracking}</div><div class="barcode-wrap">${barcode}</div></div>
 <div class="order-row"><span><b>Order #:</b> ${data.orderNumber ?? '-'}</span><span><b>Ship Date:</b> ${data.shipDate}</span></div>

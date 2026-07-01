@@ -119,7 +119,12 @@ export default async function handler(req: any, res: any): Promise<void> {
       ok: true,
       walmart: { orders: ordersWalmart.length, store_orders: storeOrdersWalmart.length },
       ebay: { orders: ordersEbay.length, store_orders: storeOrdersEbay.length },
-      note: 'Order_date timestamps shifted from raw-UTC to PT-clockface-stamped-Z so the FE displays them at the correct Pacific time, matching ShipStation-derived rows. This endpoint is one-shot — running it twice will double-shift the timestamps. Disable it once verified.',
+      note: [
+        'Order_date timestamps shifted from raw-UTC to PT-clockface-stamped-Z',
+        'so the FE displays them at the correct Pacific time, matching ShipStation-derived rows.',
+        'This endpoint is one-shot — running it twice will double-shift the timestamps.',
+        'Disable it once verified.',
+      ].join(' '),
     });
   } catch (err) {
     sendInternalServerError(res, 'admin/fix-marketplace-timestamps', err);

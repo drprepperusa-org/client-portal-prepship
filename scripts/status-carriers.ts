@@ -154,8 +154,17 @@ if (jsonMode) {
 } else {
   printTable(rows);
   console.log('');
+  const summaryLine = [
+    `total=${summary.total}`,
+    `live=${summary.live}`,
+    `registered_stub=${summary.registered_stub}`,
+    `blocked_external_contract=${summary.blocked_external_contract}`,
+    `carrier_registry=${summary.registeredCarriers}`,
+    `store_registry=${summary.registeredStores}`,
+    `failures=${summary.failures}`,
+  ].join(' ');
   console.log(
-    `Summary: total=${summary.total} live=${summary.live} registered_stub=${summary.registered_stub} blocked_external_contract=${summary.blocked_external_contract} carrier_registry=${summary.registeredCarriers} store_registry=${summary.registeredStores} failures=${summary.failures}`,
+    `Summary: ${summaryLine}`,
   );
 }
 

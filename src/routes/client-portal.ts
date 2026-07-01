@@ -1159,6 +1159,77 @@ app.get('/invoice-details', async (c) => {
   return c.json({ data: rows, billingVisible: true });
 });
 
+const invoicePrintStyles = `
+    * { box-sizing: border-box; }
+    body {
+      margin: 0 auto;
+      max-width: 1120px;
+      padding: 40px 48px;
+      color: #111827;
+      background: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: 13px;
+    }
+    .print-tip {
+      margin-bottom: 24px;
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      border-bottom: 2px solid #e5e7eb;
+      padding-bottom: 20px;
+      margin-bottom: 22px;
+    }
+    .brand h1 { font-size: 28px; line-height: 1; margin: 0 0 6px; font-weight: 800; }
+    .muted { color: #6b7280; }
+    .client { text-align: right; }
+    .client strong { display: block; font-size: 18px; }
+    .summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 22px 0; }
+    .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+    .label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; font-weight: 800; }
+    .value { margin-top: 4px; font-size: 17px; font-weight: 800; }
+    .total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      color: #166534;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+    }
+    .total b { font-size: 24px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9fafb; color: #374151; text-transform: uppercase; font-size: 10px; letter-spacing: .06em; }
+    td, th { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
+    .item-name { white-space: pre-line; }
+    tbody tr:nth-child(even) { background: #fafafa; }
+    .num { text-align: right; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }
+    .bold { font-weight: 800; }
+    tfoot td { font-weight: 800; background: #f3f4f6; }
+    .footer {
+      border-top: 1px solid #e5e7eb;
+      color: #9ca3af;
+      margin-top: 24px;
+      padding-top: 12px;
+      text-align: center;
+      font-size: 11px;
+    }
+    @media print {
+      .print-tip { display: none; }
+      body { padding: 18px; max-width: none; }
+    }
+`;
+
 app.get('/invoice', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -1240,9 +1311,7 @@ app.get('/invoice', async (c) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PrepShip Invoice - ${escHtml(client.name)} - ${fromDisplay} to ${toDisplay}</title>
-  <style>
-    *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0 auto;max-width:1120px;padding:40px 48px;color:#111827;background:#fff;font-size:13px}.print-tip{margin-bottom:24px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:10px;padding:10px 14px}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:22px}.brand h1{font-size:28px;line-height:1;margin:0 0 6px;font-weight:800}.muted{color:#6b7280}.client{text-align:right}.client strong{display:block;font-size:18px}.summary{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:22px 0}.card{border:1px solid #e5e7eb;border-radius:10px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:800}.value{margin-top:4px;font-size:17px;font-weight:800}.total{display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:10px;padding:14px 18px;margin-bottom:24px}.total b{font-size:24px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;color:#374151;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}.item-name{white-space:pre-line}tbody tr:nth-child(even){background:#fafafa}.num{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#2563eb}.bold{font-weight:800}tfoot td{font-weight:800;background:#f3f4f6}.footer{border-top:1px solid #e5e7eb;color:#9ca3af;margin-top:24px;padding-top:12px;text-align:center;font-size:11px}@media print{.print-tip{display:none}body{padding:18px;max-width:none}}
-  </style>
+  <style>${invoicePrintStyles}</style>
 </head>
 <body>
   <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong>, then choose <strong>Save as PDF</strong>.</div>
@@ -1260,9 +1329,22 @@ app.get('/invoice', async (c) => {
   </div>
   <div class="total"><span>Total amount due</span><b>${money(invoiceTotals.grandTotal)}</b></div>
   <table>
-    <thead><tr><th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th><th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th><th class="num">Shipping</th><th class="num">Row total</th></tr></thead>
+    <thead><tr>
+      <th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th>
+      <th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th>
+      <th class="num">Shipping</th><th class="num">Row total</th>
+    </tr></thead>
     <tbody>${detailRows || '<tr><td colspan="10">No billable order rows found for this period.</td></tr>'}</tbody>
-    <tfoot><tr><td colspan="5">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td><td class="num">${money(invoiceTotals.pickPackTotal)}</td><td class="num">${money(invoiceTotals.additionalTotal)}</td><td class="num">${money(invoiceTotals.packageTotal)}</td><td class="num">${money(invoiceTotals.shippingTotal)}</td><td class="num">${money(invoiceTotals.grandTotal)}</td></tr></tfoot>
+    <tfoot>
+      <tr>
+        <td colspan="5">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td>
+        <td class="num">${money(invoiceTotals.pickPackTotal)}</td>
+        <td class="num">${money(invoiceTotals.additionalTotal)}</td>
+        <td class="num">${money(invoiceTotals.packageTotal)}</td>
+        <td class="num">${money(invoiceTotals.shippingTotal)}</td>
+        <td class="num">${money(invoiceTotals.grandTotal)}</td>
+      </tr>
+    </tfoot>
   </table>
   <div class="footer">PrepShip invoice generated ${escHtml(generated)} for ${escHtml(client.name)}.</div>
 </body>

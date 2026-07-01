@@ -79,7 +79,10 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
 
         {/* Date range */}
         <div className="relative hidden sm:block">
-          <button onClick={() => setRangeOpen((o) => !o)} className="focus-ring flex h-10 cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90">
+          <button
+            onClick={() => setRangeOpen((o) => !o)}
+            className="focus-ring flex h-10 cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90"
+          >
             {RANGES.find((r) => r.days === days)?.label ?? `${days}d`}
             <ChevronDown size={15} className={cn('text-ink-3 transition-transform', rangeOpen && 'rotate-180')} />
           </button>
@@ -87,9 +90,25 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
             {rangeOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setRangeOpen(false)} />
-                <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.14 }} className="glass-strong absolute right-0 z-20 mt-2 w-44 rounded-glass-sm p-1.5 shadow-glass-lg">
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.14 }}
+                  className="glass-strong absolute right-0 z-20 mt-2 w-44 rounded-glass-sm p-1.5 shadow-glass-lg"
+                >
                   {RANGES.map((r) => (
-                    <button key={r.days} onClick={() => { setDays(r.days); setRangeOpen(false); }} className={cn('flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors', r.days === days ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100')}>
+                    <button
+                      key={r.days}
+                      onClick={() => {
+                        setDays(r.days);
+                        setRangeOpen(false);
+                      }}
+                      className={cn(
+                        'flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors',
+                        r.days === days ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100',
+                      )}
+                    >
                       {r.label}
                       {r.days === days && <Check size={15} className="text-brand-600" />}
                     </button>
@@ -117,7 +136,13 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
             {bellOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setBellOpen(false)} />
-                <motion.div initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.16 }} className="glass-strong absolute right-0 z-20 mt-2 w-[min(90vw,320px)] rounded-glass p-3 shadow-glass-lg">
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  transition={{ duration: 0.16 }}
+                  className="glass-strong absolute right-0 z-20 mt-2 w-[min(90vw,320px)] rounded-glass p-3 shadow-glass-lg"
+                >
                   <p className="text-sm font-semibold text-ink">Sync status</p>
                   <p className="mt-1 text-[13px] text-ink-3">{lastSync ? `Last synced ${shortDate(lastSync)}` : 'Awaiting first sync…'}</p>
                   <p className="mt-2 text-[13px] text-ink-3">You're all caught up.</p>
@@ -153,7 +178,10 @@ function Dropdown({
 }) {
   return (
     <div className="relative hidden sm:block">
-      <button onClick={() => setOpen(!open)} className="focus-ring flex h-10 max-w-[160px] cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90">
+      <button
+        onClick={() => setOpen(!open)}
+        className="focus-ring flex h-10 max-w-[160px] cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90"
+      >
         <span className="truncate">{label}</span>
         <ChevronDown size={15} className={cn('shrink-0 text-ink-3 transition-transform', open && 'rotate-180')} />
       </button>
@@ -161,9 +189,25 @@ function Dropdown({
         {open && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.14 }} className="glass-strong absolute right-0 z-20 mt-2 max-h-72 w-56 overflow-auto rounded-glass-sm p-1.5 shadow-glass-lg">
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.14 }}
+              className="glass-strong absolute right-0 z-20 mt-2 max-h-72 w-56 overflow-auto rounded-glass-sm p-1.5 shadow-glass-lg"
+            >
               {items.map((c) => (
-                <button key={c.id ?? 'all'} onClick={() => { onPick(c.id); setOpen(false); }} className={cn('flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors', c.id === activeId ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100')}>
+                <button
+                  key={c.id ?? 'all'}
+                  onClick={() => {
+                    onPick(c.id);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors',
+                    c.id === activeId ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100',
+                  )}
+                >
                   <span className="truncate">{c.name ?? `Client #${c.id}`}</span>
                   {c.id === activeId && <Check size={15} className="shrink-0 text-brand-600" />}
                 </button>
