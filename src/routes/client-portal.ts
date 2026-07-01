@@ -78,6 +78,16 @@ import {
 import { listPortalShipments } from '../lib/client-portal/read-models/shipments';
 import { listPortalInventory } from '../lib/client-portal/read-models/inventory';
 import { listPortalIntegrations } from '../lib/client-portal/read-models/integrations';
+import {
+  accessAppMeta,
+  countActiveAdmins,
+  DEACTIVATE_BAN_DURATION,
+  listPortalAccessRoster,
+  normalizeMetadataIds,
+  stringArray,
+  userIsAdminLike,
+} from '../lib/client-portal/read-models/access';
+import { renderPortalInvoiceHtml } from '../lib/client-portal/invoice-html';
 
 const app = new Hono();
 
@@ -102,21 +112,6 @@ function asTimestamp(value: Date) {
   return value.toISOString();
 }
 
-function normalizeMetadataIds(value: unknown): number[] {
-  const raw = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? value : [];
-  return Array.from(
-    new Set(
-      raw
-        .map((item) => Number(item))
-        .filter((id) => Number.isInteger(id) && id > 0),
-    ),
-  );
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
 function requestedClientId(c: Context) {
   return parsePositiveInt(c.req.query('clientId'));
 }
@@ -133,16 +128,6 @@ function requestedSearch(c: Context) {
 function scopeOrResponse(c: Context) {
   const scope = assertClientPortalScope(c);
   return isClientPortalScope(scope) ? scope : scope;
-}
-
-function escHtml(value: string | number | null | undefined): string {
-  return value === null || value === undefined
-    ? ''
-    : String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
 
 app.get('/me', async (c) => {
@@ -595,77 +580,6 @@ app.get('/invoice-details', async (c) => {
   return c.json({ data: rows, billingVisible: true });
 });
 
-const invoicePrintStyles = `
-    * { box-sizing: border-box; }
-    body {
-      margin: 0 auto;
-      max-width: 1120px;
-      padding: 40px 48px;
-      color: #111827;
-      background: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-      font-size: 13px;
-    }
-    .print-tip {
-      margin-bottom: 24px;
-      border: 1px solid #bfdbfe;
-      background: #eff6ff;
-      color: #1d4ed8;
-      border-radius: 10px;
-      padding: 10px 14px;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      align-items: flex-start;
-      border-bottom: 2px solid #e5e7eb;
-      padding-bottom: 20px;
-      margin-bottom: 22px;
-    }
-    .brand h1 { font-size: 28px; line-height: 1; margin: 0 0 6px; font-weight: 800; }
-    .muted { color: #6b7280; }
-    .client { text-align: right; }
-    .client strong { display: block; font-size: 18px; }
-    .summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 22px 0; }
-    .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
-    .label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; font-weight: 800; }
-    .value { margin-top: 4px; font-size: 17px; font-weight: 800; }
-    .total {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #f0fdf4;
-      border: 1px solid #86efac;
-      color: #166534;
-      border-radius: 10px;
-      padding: 14px 18px;
-      margin-bottom: 24px;
-    }
-    .total b { font-size: 24px; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #f9fafb; color: #374151; text-transform: uppercase; font-size: 10px; letter-spacing: .06em; }
-    td, th { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
-    .item-name { white-space: pre-line; }
-    tbody tr:nth-child(even) { background: #fafafa; }
-    .num { text-align: right; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }
-    .bold { font-weight: 800; }
-    tfoot td { font-weight: 800; background: #f3f4f6; }
-    .footer {
-      border-top: 1px solid #e5e7eb;
-      color: #9ca3af;
-      margin-top: 24px;
-      padding-top: 12px;
-      text-align: center;
-      font-size: 11px;
-    }
-    @media print {
-      .print-tip { display: none; }
-      body { padding: 18px; max-width: none; }
-    }
-`;
-
 app.get('/invoice', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -689,7 +603,6 @@ app.get('/invoice', async (c) => {
     scopeRestricted: scope.isRestricted,
   });
   const row = summary.clients[0];
-  const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
   const details = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
   const detailTotals = details.reduce(
     (totals, detail) => ({
@@ -714,7 +627,7 @@ app.get('/invoice', async (c) => {
     },
   );
   const invoiceTotals = details.length > 0 ? detailTotals : {
-    orderCount: row?.orderCount ?? 0,
+    orderCount: Number(row?.orderCount ?? 0),
     qty: 0,
     pickPackTotal: Number(row?.pickPackTotal ?? 0),
     additionalTotal: Number(row?.additionalTotal ?? 0),
@@ -723,68 +636,7 @@ app.get('/invoice', async (c) => {
     storageTotal: Number(row?.storageTotal ?? 0),
     grandTotal: Number(row?.grandTotal ?? 0),
   };
-  const fromDisplay = dateFrom.slice(0, 10);
-  const toDisplay = dateTo.slice(0, 10);
-  const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const detailRows = details
-    .map((detail) => `
-      <tr>
-        <td>${escHtml(detail.shipDate)}</td>
-        <td class="mono">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
-        <td>${escHtml(detail.recipientName ?? '')}</td>
-        <td class="item-name">${escHtml(detail.itemNames ?? '')}</td>
-        <td class="num">${Number(detail.qty ?? 0)}</td>
-        <td class="num">${money(detail.pickpackTotal)}</td>
-        <td class="num">${Number(detail.additionalTotal ?? 0) > 0 ? money(detail.additionalTotal) : '-'}</td>
-        <td class="num">${Number(detail.packageTotal ?? 0) > 0 ? money(detail.packageTotal) : '-'}</td>
-        <td class="num">${Number(detail.shippingTotal ?? 0) > 0 ? money(detail.shippingTotal) : '-'}</td>
-        <td class="num bold">${money(detail.rowTotal)}</td>
-      </tr>`)
-    .join('');
-  return c.html(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PrepShip Invoice - ${escHtml(client.name)} - ${fromDisplay} to ${toDisplay}</title>
-  <style>${invoicePrintStyles}</style>
-</head>
-<body>
-  <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong>, then choose <strong>Save as PDF</strong>.</div>
-  <div class="header">
-    <div class="brand"><h1>PrepShip Invoice</h1><div class="muted">DR Prepper 3PL Services</div><div class="muted">Generated ${escHtml(generated)}</div></div>
-    <div class="client"><strong>${escHtml(client.name)}</strong><span class="muted">${fromDisplay} to ${toDisplay}</span></div>
-  </div>
-  <div class="summary">
-    <div class="card"><div class="label">Orders</div><div class="value">${invoiceTotals.orderCount}</div></div>
-    <div class="card"><div class="label">Qty</div><div class="value">${invoiceTotals.qty}</div></div>
-    <div class="card"><div class="label">Pick/pack</div><div class="value">${money(invoiceTotals.pickPackTotal)}</div></div>
-    <div class="card"><div class="label">Box fee</div><div class="value">${money(invoiceTotals.packageTotal)}</div></div>
-    <div class="card"><div class="label">Shipping</div><div class="value">${money(invoiceTotals.shippingTotal)}</div></div>
-    <div class="card"><div class="label">Storage</div><div class="value">${money(invoiceTotals.storageTotal)}</div></div>
-  </div>
-  <div class="total"><span>Total amount due</span><b>${money(invoiceTotals.grandTotal)}</b></div>
-  <table>
-    <thead><tr>
-      <th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th>
-      <th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th>
-      <th class="num">Shipping</th><th class="num">Row total</th>
-    </tr></thead>
-    <tbody>${detailRows || '<tr><td colspan="10">No billable order rows found for this period.</td></tr>'}</tbody>
-    <tfoot>
-      <tr>
-        <td colspan="5">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td>
-        <td class="num">${money(invoiceTotals.pickPackTotal)}</td>
-        <td class="num">${money(invoiceTotals.additionalTotal)}</td>
-        <td class="num">${money(invoiceTotals.packageTotal)}</td>
-        <td class="num">${money(invoiceTotals.shippingTotal)}</td>
-        <td class="num">${money(invoiceTotals.grandTotal)}</td>
-      </tr>
-    </tfoot>
-  </table>
-  <div class="footer">PrepShip invoice generated ${escHtml(generated)} for ${escHtml(client.name)}.</div>
-</body>
-</html>`);
+  return c.html(renderPortalInvoiceHtml({ clientName: client.name, dateFrom, dateTo, invoiceTotals, details }));
 });
 
 app.get('/clients', async (c) => {
@@ -806,132 +658,16 @@ app.get('/access-list', async (c) => {
   if (!scope.isGlobal && !scope.permissions.includes('users:manage')) {
     return c.json({ error: 'Admin access required' }, 403);
   }
-
-  const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  if (error) {
-    console.warn('[client-portal/access-list] listUsers failed:', error.message);
-    return c.json({ error: 'Failed to load access list' }, 500);
-  }
-
-  const clientRows = await db
-    .select({ id: clients.id, name: clients.name, email: clients.email, active: clients.active, storeIds: clients.storeIds })
-    .from(clients)
-    .orderBy(clients.name)
-    .limit(500);
-  const clientsById = new Map(clientRows.map((client) => [client.id, client]));
-
-  const users = (data.users ?? [])
-    .map((user) => {
-      const metadata =
-        user.app_metadata && typeof user.app_metadata === 'object' && !Array.isArray(user.app_metadata)
-          ? (user.app_metadata as Record<string, unknown>)
-          : {};
-      const clientIds = normalizeMetadataIds(
-        metadata.clientIds ?? metadata.client_ids ?? metadata.assignedClientIds ?? metadata.assigned_client_ids,
-      );
-      const storeIds = normalizeMetadataIds(
-        metadata.storeIds ?? metadata.store_ids ?? metadata.assignedStoreIds ?? metadata.assigned_store_ids,
-      );
-      const role = typeof metadata.role === 'string' ? metadata.role : null;
-      const permissions = stringArray(metadata.permissions);
-      const matchedClients = clientIds
-        .map((id) => clientsById.get(id))
-        .filter((client): client is (typeof clientRows)[number] => Boolean(client));
-      const matchedStoreClients = storeIds.length
-        ? clientRows.filter((client) => (client.storeIds ?? []).some((storeId) => storeIds.includes(Number(storeId))))
-        : [];
-      const mergedClients = [...matchedClients];
-      for (const client of matchedStoreClients) {
-        if (!mergedClients.some((existing) => existing.id === client.id)) mergedClients.push(client);
-      }
-
-      const userMeta =
-        user.user_metadata && typeof user.user_metadata === 'object' && !Array.isArray(user.user_metadata)
-          ? (user.user_metadata as Record<string, unknown>)
-          : {};
-      const displayName =
-        typeof userMeta.name === 'string'
-          ? userMeta.name
-          : typeof userMeta.display_name === 'string'
-            ? userMeta.display_name
-            : null;
-
-      // Global/admin logins (hardcoded operator email, role 'admin', or the
-      // scope:global permission) can see EVERY client store — not just whatever
-      // happens to be pinned in their metadata. So for them, "stores handled" is
-      // the full client roster; scoped client_users keep their assigned subset.
-      const globalAccess = isAdminEmail(user.email) || role === 'admin' || permissions.includes('scope:global');
-      const effectiveClients = globalAccess ? clientRows : mergedClients;
-
-      return {
-        id: user.id,
-        email: user.email ?? '',
-        name: displayName,
-        role,
-        permissions,
-        isAdmin: globalAccess,
-        isGlobal: globalAccess,
-        // Protected operator accounts (hardcoded admin emails) can't be
-        // deactivated/deleted; surface that so the UI can disable those actions.
-        isProtected: isAdminEmail(user.email),
-        active: !userIsBanned(user),
-        clientIds: globalAccess ? clientRows.map((client) => client.id) : clientIds,
-        storeIds,
-        clients: effectiveClients.map((client) => ({
-          id: client.id,
-          name: client.name,
-          email: client.email,
-          active: client.active,
-          storeIds: client.storeIds,
-        })),
-        createdAt: user.created_at ?? null,
-        lastSignInAt: user.last_sign_in_at ?? null,
-      };
-    })
-    .filter((user) => user.email)
-    .sort((a, b) => {
-      if (a.isAdmin && !b.isAdmin) return -1;
-      if (!a.isAdmin && b.isAdmin) return 1;
-      return a.email.localeCompare(b.email);
-    });
-
-  await recordPortalAudit('portal.access_list.view', scope, { users: users.length });
-  return c.json({ data: users });
+  const roster = await listPortalAccessRoster();
+  if ('error' in roster) return c.json({ error: roster.error }, 500);
+  await recordPortalAudit('portal.access_list.view', scope, { users: roster.users.length });
+  return c.json({ data: roster.users });
 });
 
 /* ---- Access roster admin mutations (deactivate/activate, edit, delete) ----
    All gated behind the same global/'users:manage' check as the GET above and
    guarded against lock-out: nobody can deactivate/delete their own login, a
    protected operator (hardcoded admin email), or the last remaining admin. */
-
-// ~100 years — Supabase has no "disable" flag, so a long ban is how we stop a
-// login from authenticating. Cleared with ban_duration: 'none' to reactivate.
-const DEACTIVATE_BAN_DURATION = '876600h';
-
-type AdminUserLike = { email?: string | null; app_metadata?: unknown; banned_until?: string | null };
-
-function accessAppMeta(user: { app_metadata?: unknown }): Record<string, unknown> {
-  return user.app_metadata && typeof user.app_metadata === 'object' && !Array.isArray(user.app_metadata)
-    ? (user.app_metadata as Record<string, unknown>)
-    : {};
-}
-
-function userIsBanned(user: { banned_until?: string | null }): boolean {
-  const until = user.banned_until ?? null;
-  return Boolean(until && new Date(until).getTime() > Date.now());
-}
-
-function userIsAdminLike(user: AdminUserLike): boolean {
-  const meta = accessAppMeta(user);
-  const role = typeof meta.role === 'string' ? meta.role : null;
-  return isAdminEmail(user.email) || role === 'admin' || stringArray(meta.permissions).includes('scope:global');
-}
-
-/** Number of admins who can still sign in — used to prevent locking everyone out. */
-async function countActiveAdmins(): Promise<number> {
-  const { data } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  return (data?.users ?? []).filter((u) => userIsAdminLike(u) && !userIsBanned(u)).length;
-}
 
 function requireUserManageAdmin(c: Context, scope: ClientPortalScope) {
   if (!scope.isGlobal && !scope.permissions.includes('users:manage')) {
