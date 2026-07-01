@@ -48,6 +48,24 @@ for (const routeToken of [
   assert(route.includes(routeToken), `client portal route missing ${routeToken}`);
 }
 
+// M7 — portal store-connection submissions: the POST route must exist, be
+// admin-gated, create pending accounts (source='portal' + inactive), and never
+// echo credential values back in the response.
+assert(route.includes("app.post('/integrations'"), "client portal route missing app.post('/integrations'");
+{
+  const start = route.indexOf("app.post('/integrations'");
+  const end = route.indexOf("app.get('/activity'");
+  const postIntegrations = start >= 0 && end > start ? route.slice(start, end) : '';
+  assert(postIntegrations.includes("'admin required'"), 'POST /integrations must be admin-gated');
+  assert(
+    postIntegrations.includes("'portal',") && postIntegrations.includes('false'),
+    "POST /integrations must insert source='portal' with active=false (pending until operator promotion)",
+  );
+  assert(!/returning[^`]*credentials/i.test(postIntegrations), 'POST /integrations must not return credential values');
+  assert(postIntegrations.includes('do nothing'), 'POST /integrations must not overwrite existing accounts on conflict');
+  assert(postIntegrations.includes('maskAccountIdentifier'), 'POST /integrations audit must mask the account identifier');
+}
+
 for (const fn of [
   'resolveClientPortalScope',
   'assertClientPortalScope',

@@ -355,7 +355,7 @@ function ReviewStage({
         </dl>
         <p className="flex items-start gap-2 rounded-glass-sm bg-brand-50/70 p-3 text-xs text-ink-3">
           <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brand-600" />
-          Credentials are stored encrypted and used only to sync this store's orders, inventory, and fulfillment.
+          Credentials are submitted securely for operator review and are only used to sync this store's orders, inventory, and fulfillment once activated.
         </p>
       </div>
 

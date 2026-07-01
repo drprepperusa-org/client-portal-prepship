@@ -203,6 +203,17 @@ export interface PortalIntegration {
   updatedAt: string | null;
 }
 
+/** Store-connection request submitted from Connections (admin-only). The
+ *  credential values are write-only: the API stores them pending operator
+ *  review and never returns them. */
+export interface NewIntegrationInput {
+  provider: string;
+  label: string;
+  accountIdentifier?: string;
+  clientId?: number;
+  credentials: Record<string, string>;
+}
+
 export interface DashboardSummary {
   revenue: number;
   units: number;
@@ -675,6 +686,10 @@ export const portalApi = {
   },
 
   integrations: (token: string) => apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
+  /** Submit a store connection request (admin-only). Created pending
+   *  (source='portal', inactive) until an operator promotes it. */
+  createIntegration: (token: string, body: NewIntegrationInput) =>
+    apiPost<{ data: PortalIntegration }>(token, '/api/client-portal/integrations', body),
   inbound: (token: string, clientId?: number) =>
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   createInbound: (token: string, body: NewInboundInput) =>

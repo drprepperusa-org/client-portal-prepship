@@ -25,9 +25,10 @@ function assert(condition, message) {
 const publicClient = read('src/lib/public-client.ts');
 const clientsRoute = read('src/routes/clients.ts');
 const initRoute = read('src/routes/init.ts');
-const clientModal = read('web/src/components/ClientModal.tsx');
-const v2Hooks = read('web/src/hooks/v2Hooks.ts');
-const v2ApiClient = read('web/src/lib/v2-apiClient.ts');
+// Active portal surfaces (the legacy web/ ClientModal/v2Hooks/v2-apiClient files
+// this guard used to read were removed with the legacy app).
+const portalApi = read('portal-client/src/lib/api.ts');
+const portalHooks = read('portal-client/src/lib/hooks.ts');
 
 assert(
   /const\s*\{\s*ssApiKey,\s*ssApiSecret,\s*ssApiKeyV2,\s*\.\.\.safe\s*\}\s*=\s*row/.test(
@@ -76,22 +77,15 @@ if (lightweightMatch) {
   }
 }
 
-const rawResponseDependencyChecks = [
-  ['ClientModal existing ssApiKey', clientModal, /existing\?\.ssApiKey/],
-  ['ClientModal existing ssApiSecret', clientModal, /existing\?\.ssApiSecret/],
-  ['ClientModal existing ssApiKeyV2', clientModal, /existing\?\.ssApiKeyV2/],
-  ['v2Hooks row.ssApiKey', v2Hooks, /row\.ssApiKey/],
-  ['v2Hooks row.ssApiSecret', v2Hooks, /row\.ssApiSecret/],
-  ['v2Hooks row.ssApiKeyV2', v2Hooks, /row\.ssApiKeyV2/],
-  ['v2-apiClient row?.ssApiKey', v2ApiClient, /row\?\.ssApiKey/],
-  ['v2-apiClient row?.ssApiSecret', v2ApiClient, /row\?\.ssApiSecret/],
-  ['v2-apiClient row?.ssApiKeyV2', v2ApiClient, /row\?\.ssApiKeyV2/],
-  ['v2-apiClient row?.ss_api_key', v2ApiClient, /row\?\.ss_api_key/],
-  ['v2-apiClient row?.ss_api_secret', v2ApiClient, /row\?\.ss_api_secret/],
-];
-
-for (const [label, source, pattern] of rawResponseDependencyChecks) {
-  assert(!pattern.test(source), `${label} is not used to infer credential presence`);
+// The active client portal must never reference raw ShipStation secret fields —
+// credential presence, when needed, comes from the backend's presence booleans.
+for (const [label, source] of [
+  ['portal-client api.ts', portalApi],
+  ['portal-client hooks.ts', portalHooks],
+]) {
+  for (const key of [...secretKeys, 'ss_api_key', 'ss_api_secret']) {
+    assert(!source.includes(key), `${label} does not reference ${key}`);
+  }
 }
 
 if (process.exitCode) {
