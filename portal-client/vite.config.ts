@@ -25,13 +25,25 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          motion: ['framer-motion'],
-          query: ['@tanstack/react-query'],
-          supabase: ['@supabase/supabase-js'],
-          icons: ['lucide-react'],
+        // vite 8 (rolldown) only supports the function form of manualChunks.
+        // Same grouping as the old object form; matches on the exact
+        // node_modules package boundary so e.g. react-icons/recharts never
+        // false-match the react chunk.
+        manualChunks(id: string) {
+          const groups: Record<string, string[]> = {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            charts: ['recharts'],
+            motion: ['framer-motion'],
+            query: ['@tanstack/react-query'],
+            supabase: ['@supabase/supabase-js'],
+            icons: ['lucide-react'],
+          };
+          for (const [name, pkgs] of Object.entries(groups)) {
+            if (pkgs.some((p) => id.includes(`node_modules/${p}/`) || id.includes(`node_modules\\${p}\\`))) {
+              return name;
+            }
+          }
+          return undefined;
         },
       },
     },
