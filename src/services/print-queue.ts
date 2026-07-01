@@ -1,323 +1,44 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
-import { clients } from '../db/schema/clients';
 import { printQueue, type PrintQueueEntry } from '../db/schema/print-queue';
-import { settings } from '../db/schema/settings';
-import { extractShipstationLabelUrl } from '../lib/shipstation/labels';
-import { createLabelV2, type CreateLabelInputDto } from './labels';
+import { createLabelV2 } from './labels';
+import type {
+  AddToQueueInput,
+  MergeJob,
+  PrintQueueListScope,
+  QueueSendJob,
+  QueueSendJobResult,
+  QueueSendOrderInput,
+} from './print-queue-types';
+import {
+  PrintQueueLabelUrlError,
+  collectInvalidLabelErrors,
+  formatLabelUrlError,
+  isMockLabelUrl,
+  normalizePrintQueueLabelUrl,
+  resolveLabelFetchUrl,
+} from './print-queue-labels';
+import {
+  persistMergeJobSnapshot,
+  persistQueueSendJobSnapshot,
+} from './print-queue-snapshots';
+import {
+  assertPrintQueueClientsVisible,
+  normalizeClientIds,
+  printQueueScopePredicate,
+} from './print-queue-scope';
 
-export type AddToQueueInput = {
-  clientId: number;
-  orderId: string;
-  orderNumber?: string | null;
-  labelUrl: unknown;
-  skuGroupId: string;
-  primarySku?: string | null;
-  itemDescription?: string | null;
-  orderQty?: number;
-  multiSkuData?: { sku: string; qty: number }[] | null;
-  scope?: PrintQueueListScope;
-};
-
-export type MergeJob = {
-  jobId: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-  clientIds: number[];
-  progress: number;
-  total: number;
-  current: number;
-  message: string;
-  mergedPdfBase64?: string;
-  fileName?: string;
-  errorMessage?: string;
-  labelErrors?: string[];
-  createdAt: number;
-};
-
-export type QueueSendOrderInput = {
-  orderId: number;
-  clientId: number;
-  orderNumber?: string | null;
-  labelUrl?: unknown | null;
-  label?: Omit<CreateLabelInputDto, 'orderId' | 'orderNumber'> & {
-    orderId?: number;
-    orderNumber?: string;
-  };
-  skuGroupId: string;
-  primarySku?: string | null;
-  itemDescription?: string | null;
-  orderQty?: number;
-  multiSkuData?: { sku: string; qty: number }[] | null;
-};
-
-export type QueueSendJobResult = {
-  orderId: number;
-  success: boolean;
-  queueEntryId?: string;
-  alreadyQueued?: boolean;
-  labelUrl?: string | null;
-  trackingNumber?: string | null;
-  error?: string;
-};
-
-export type QueueSendJob = {
-  jobId: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-  clientIds: number[];
-  progress: number;
-  total: number;
-  current: number;
-  queued: number;
-  failed: number;
-  message: string;
-  clientId?: number | null;
-  createdAt: number;
-  updatedAt: number;
-  results: QueueSendJobResult[];
-  queuedEntryIds: string[];
-  errorMessage?: string;
-};
-
-export const PRINT_QUEUE_SEND_STATUS_KEY = 'print_queue.batch_send.last_run';
-export const PRINT_QUEUE_MERGE_STATUS_KEY = 'print_queue.pdf_merge.last_run';
-
-type QueueSendResultSnapshot = {
-  orderId: number;
-  success: boolean;
-  queueEntryId?: string;
-  alreadyQueued?: boolean;
-  trackingNumber?: string | null;
-  error?: string;
-};
-
-export type QueueSendJobSnapshot = {
-  version: 1;
-  durableKey: typeof PRINT_QUEUE_SEND_STATUS_KEY;
-  jobId: string;
-  status: QueueSendJob['status'];
-  active: boolean;
-  clientIds: number[];
-  progress: number;
-  total: number;
-  current: number;
-  queued: number;
-  failed: number;
-  message: string;
-  clientId: number | null;
-  queuedEntryIds: string[];
-  errorMessage: string | null;
-  resultSamples: QueueSendResultSnapshot[];
-  createdAt: string;
-  updatedAt: string;
-  persistedAt: string;
-};
-
-export type MergeJobSnapshot = {
-  version: 1;
-  durableKey: typeof PRINT_QUEUE_MERGE_STATUS_KEY;
-  jobId: string;
-  status: MergeJob['status'];
-  active: boolean;
-  clientIds: number[];
-  progress: number;
-  total: number;
-  current: number;
-  message: string;
-  fileName: string | null;
-  errorMessage: string | null;
-  labelErrors: string[];
-  createdAt: string;
-  persistedAt: string;
-};
-
-export type PrintQueueListScope = {
-  scopeClientIds?: number[];
-  scopeStoreIds?: number[];
-  scopeRestricted?: boolean;
-};
+// The service entry point re-exports the full print-queue surface so existing
+// imports from '../services/print-queue' keep working unchanged.
+export * from './print-queue-types';
+export * from './print-queue-labels';
+export * from './print-queue-snapshots';
+export * from './print-queue-scope';
 
 const mergeJobs = new Map<string, MergeJob>();
 const queueSendJobs = new Map<string, QueueSendJob>();
 const QUEUE_SEND_ORDER_TIMEOUT_MS = 30_000;
-
-export class PrintQueueLabelUrlError extends Error {
-  status = 400 as const;
-  code = 'INVALID_LABEL_URL' as const;
-
-  constructor(message: string) {
-    super(message);
-    this.name = 'PrintQueueLabelUrlError';
-  }
-}
-
-export function isPrintQueueLabelUrlError(err: unknown): err is PrintQueueLabelUrlError {
-  return err instanceof PrintQueueLabelUrlError;
-}
-
-// Per user override unlock shipped data on 2026-05-23: shipped-label queue
-// handling unwraps known provider label URL objects while still rejecting empty/corrupt values.
-function normalizePrintQueueLabelUrl(labelUrl: unknown): string {
-  const normalized = typeof labelUrl === 'string'
-    ? labelUrl
-    : extractShipstationLabelUrl(labelUrl);
-  if (typeof normalized !== 'string') {
-    throw new PrintQueueLabelUrlError('Label URL must resolve to a string.');
-  }
-  const trimmed = normalized.trim();
-  if (trimmed.length === 0) {
-    throw new PrintQueueLabelUrlError('Label URL is required.');
-  }
-  if (trimmed === '[object Object]') {
-    throw new PrintQueueLabelUrlError('Label URL is invalid. Re-create the label and try again.');
-  }
-  return trimmed;
-}
-
-function formatLabelUrlError(entry: PrintQueueEntry, err: unknown): string {
-  const orderRef = entry.orderNumber ?? entry.orderId;
-  const message = isPrintQueueLabelUrlError(err)
-    ? err.message
-    : err instanceof Error
-      ? err.message
-      : 'Invalid label URL.';
-  return `Invalid label URL for order ${orderRef}: ${message}`;
-}
-
-function collectInvalidLabelErrors(entries: PrintQueueEntry[]): string[] {
-  const errors: string[] = [];
-  for (const entry of entries) {
-    try {
-      normalizePrintQueueLabelUrl(entry.labelUrl);
-    } catch (err) {
-      errors.push(formatLabelUrlError(entry, err));
-    }
-  }
-  return errors;
-}
-
-function toQueueSendSnapshot(job: QueueSendJob): QueueSendJobSnapshot {
-  return {
-    version: 1,
-    durableKey: PRINT_QUEUE_SEND_STATUS_KEY,
-    jobId: job.jobId,
-    status: job.status,
-    active: job.status === 'pending' || job.status === 'running',
-    clientIds: [...job.clientIds],
-    progress: job.progress,
-    total: job.total,
-    current: job.current,
-    queued: job.queued,
-    failed: job.failed,
-    message: job.message,
-    clientId: job.clientId ?? null,
-    queuedEntryIds: [...job.queuedEntryIds],
-    errorMessage: job.errorMessage ?? null,
-    resultSamples: job.results.slice(-10).map((result) => ({
-      orderId: result.orderId,
-      success: result.success,
-      queueEntryId: result.queueEntryId,
-      alreadyQueued: result.alreadyQueued,
-      trackingNumber: result.trackingNumber ?? null,
-      error: result.error,
-    })),
-    createdAt: new Date(job.createdAt).toISOString(),
-    updatedAt: new Date(job.updatedAt).toISOString(),
-    persistedAt: new Date().toISOString(),
-  };
-}
-
-function toMergeSnapshot(job: MergeJob): MergeJobSnapshot {
-  return {
-    version: 1,
-    durableKey: PRINT_QUEUE_MERGE_STATUS_KEY,
-    jobId: job.jobId,
-    status: job.status,
-    active: job.status === 'pending' || job.status === 'running',
-    clientIds: [...job.clientIds],
-    progress: job.progress,
-    total: job.total,
-    current: job.current,
-    message: job.message,
-    fileName: job.fileName ?? null,
-    errorMessage: job.errorMessage ?? null,
-    labelErrors: (job.labelErrors ?? []).slice(-10),
-    createdAt: new Date(job.createdAt).toISOString(),
-    persistedAt: new Date().toISOString(),
-  };
-}
-
-export async function persistQueueSendJobSnapshot(job: QueueSendJob): Promise<void> {
-  try {
-    const value = JSON.stringify(toQueueSendSnapshot(job));
-    await db
-      .insert(settings)
-      .values({ key: PRINT_QUEUE_SEND_STATUS_KEY, value })
-      .onConflictDoUpdate({
-        target: settings.key,
-        set: { value },
-      });
-  } catch (err) {
-    console.warn(
-      '[print-queue] failed to persist batch-send status:',
-      err instanceof Error ? err.message : err
-    );
-  }
-}
-
-export async function persistMergeJobSnapshot(job: MergeJob): Promise<void> {
-  try {
-    const value = JSON.stringify(toMergeSnapshot(job));
-    await db
-      .insert(settings)
-      .values({ key: PRINT_QUEUE_MERGE_STATUS_KEY, value })
-      .onConflictDoUpdate({
-        target: settings.key,
-        set: { value },
-      });
-  } catch (err) {
-    console.warn(
-      '[print-queue] failed to persist PDF-merge status:',
-      err instanceof Error ? err.message : err
-    );
-  }
-}
-
-export async function getLatestQueueSendJobSnapshot(): Promise<QueueSendJobSnapshot | null> {
-  try {
-    const [row] = await db
-      .select({ value: settings.value })
-      .from(settings)
-      .where(eq(settings.key, PRINT_QUEUE_SEND_STATUS_KEY))
-      .limit(1);
-    if (!row?.value) return null;
-    return JSON.parse(row.value) as QueueSendJobSnapshot;
-  } catch (err) {
-    console.warn(
-      '[print-queue] failed to read batch-send durable status:',
-      err instanceof Error ? err.message : err
-    );
-    return null;
-  }
-}
-
-export async function getLatestMergeJobSnapshot(): Promise<MergeJobSnapshot | null> {
-  try {
-    const [row] = await db
-      .select({ value: settings.value })
-      .from(settings)
-      .where(eq(settings.key, PRINT_QUEUE_MERGE_STATUS_KEY))
-      .limit(1);
-    if (!row?.value) return null;
-    return JSON.parse(row.value) as MergeJobSnapshot;
-  } catch (err) {
-    console.warn(
-      '[print-queue] failed to read PDF-merge durable status:',
-      err instanceof Error ? err.message : err
-    );
-    return null;
-  }
-}
 
 function shouldPersistProgress(current: number, total: number): boolean {
   return current === total || current % 10 === 0;
@@ -367,119 +88,6 @@ function getExistingLabelUrl(err: unknown): string | null {
   const details = (err as { details?: Record<string, unknown> })?.details;
   const labelUrl = details?.labelUrl;
   return typeof labelUrl === 'string' && labelUrl ? labelUrl : null;
-}
-
-function normalizeScopeIds(values: number[] | undefined): number[] {
-  if (!Array.isArray(values)) return [];
-  return Array.from(
-    new Set(
-      values
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value > 0)
-    )
-  );
-}
-
-function intArraySql(values: number[]): SQL {
-  return sql`array[${sql.join(values.map((value) => sql`${value}`), sql`, `)}]::int[]`;
-}
-
-function printQueueScopePredicate(scope: PrintQueueListScope): SQL {
-  const clientIds = normalizeScopeIds(scope.scopeClientIds);
-  const storeIds = normalizeScopeIds(scope.scopeStoreIds);
-  const predicates: SQL[] = [];
-
-  if (clientIds.length) {
-    predicates.push(sql`${printQueue.clientId} = any(${intArraySql(clientIds)})`);
-  }
-  if (storeIds.length) {
-    predicates.push(sql`exists (
-      select 1 from ${clients}
-      where ${clients.id} = ${printQueue.clientId}
-        and ${clients.storeIds} && ${intArraySql(storeIds)}
-    )`);
-  }
-  if (!predicates.length) {
-    return scope.scopeRestricted === true ? sql`false` : sql`true`;
-  }
-  if (predicates.length === 1) return predicates[0]!;
-  return sql`(${sql.join(predicates, sql` or `)})`;
-}
-
-function printQueueClientScopePredicate(scope: PrintQueueListScope): SQL {
-  const clientIds = normalizeScopeIds(scope.scopeClientIds);
-  const storeIds = normalizeScopeIds(scope.scopeStoreIds);
-  const predicates: SQL[] = [];
-
-  if (clientIds.length) {
-    predicates.push(sql`${clients.id} = any(${intArraySql(clientIds)})`);
-  }
-  if (storeIds.length) {
-    predicates.push(sql`${clients.storeIds} && ${intArraySql(storeIds)}`);
-  }
-  if (!predicates.length) {
-    return scope.scopeRestricted === true ? sql`false` : sql`true`;
-  }
-  if (predicates.length === 1) return predicates[0]!;
-  return sql`(${sql.join(predicates, sql` or `)})`;
-}
-
-function normalizeClientIds(values: number[]): number[] {
-  return Array.from(
-    new Set(
-      values
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value > 0)
-    )
-  );
-}
-
-export async function assertPrintQueueClientsVisible(
-  clientIds: number[],
-  scope: PrintQueueListScope = {}
-): Promise<void> {
-  const ids = normalizeClientIds(clientIds);
-  if (!ids.length) return;
-  if (
-    scope.scopeRestricted !== true &&
-    !normalizeScopeIds(scope.scopeClientIds).length &&
-    !normalizeScopeIds(scope.scopeStoreIds).length
-  ) {
-    return;
-  }
-
-  const rows = await db
-    .select({ id: clients.id })
-    .from(clients)
-    .where(and(inArray(clients.id, ids), printQueueClientScopePredicate(scope)));
-
-  if (rows.length !== ids.length) {
-    throw new Error('One or more print queue clients are not authorized');
-  }
-}
-
-export async function canViewQueueSendJob(
-  job: QueueSendJob,
-  scope: PrintQueueListScope = {}
-): Promise<boolean> {
-  try {
-    await assertPrintQueueClientsVisible(job.clientIds, scope);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function canViewMergeJob(
-  job: MergeJob,
-  scope: PrintQueueListScope = {}
-): Promise<boolean> {
-  try {
-    await assertPrintQueueClientsVisible(job.clientIds, scope);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function timeoutAfter(ms: number, message: string): Promise<never> {
@@ -1018,41 +626,6 @@ async function runMergeJob(
     job.message = `Error: ${job.errorMessage}`;
     await persistMergeJobSnapshot(job);
   }
-}
-
-function resolveApiOrigin(requestOrigin?: string): string {
-  const candidates = [
-    requestOrigin,
-    process.env.PUBLIC_API_URL,
-    process.env.RENDER_EXTERNAL_URL,
-    process.env.API_BASE_URL,
-    process.env.VITE_API_URL,
-  ];
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    try {
-      const url = new URL(candidate);
-      if (url.protocol === 'http:' || url.protocol === 'https:') return url.origin;
-    } catch {
-      // Try the next configured origin.
-    }
-  }
-  return `http://localhost:${process.env.PORT || '3000'}`;
-}
-
-function resolveLabelFetchUrl(labelUrl: unknown, requestOrigin?: string): string {
-  const trimmed = normalizePrintQueueLabelUrl(labelUrl);
-  try {
-    return new URL(trimmed).toString();
-  } catch {
-    const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-    return new URL(path, resolveApiOrigin(requestOrigin)).toString();
-  }
-}
-
-function isMockLabelUrl(labelUrl: unknown): boolean {
-  if (typeof labelUrl !== 'string') return false;
-  return /(?:^|\/)(?:api\/)?labels\/mock\/-?\d+(?:$|[?#/])/.test(labelUrl);
 }
 
 function safePdfText(value: unknown): string {

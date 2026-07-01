@@ -16,7 +16,14 @@ function assert(condition, message) {
   console.log(`PASS ${message}`);
 }
 
-const serviceSource = read('src/services/print-queue.ts');
+// Print-queue service split into sibling modules; assert over the concatenation.
+const serviceSource = [
+  'src/services/print-queue-types.ts',
+  'src/services/print-queue-labels.ts',
+  'src/services/print-queue-snapshots.ts',
+  'src/services/print-queue-scope.ts',
+  'src/services/print-queue.ts',
+].map(read).join('\n');
 const routeSource = read('src/routes/print-queue.ts');
 const packageJson = JSON.parse(read('package.json'));
 

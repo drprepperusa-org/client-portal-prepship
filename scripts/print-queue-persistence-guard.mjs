@@ -5,14 +5,24 @@ import path from 'node:path';
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-const service = read('src/services/print-queue.ts');
+// The print-queue service is split into sibling modules (types/labels/
+// snapshots/scope + the main entry); assert over the concatenation in
+// original-section order so assertions survive the file boundaries.
+const service = [
+  'src/services/print-queue-types.ts',
+  'src/services/print-queue-labels.ts',
+  'src/services/print-queue-snapshots.ts',
+  'src/services/print-queue-scope.ts',
+  'src/services/print-queue.ts',
+].map(read).join('\n');
 const route = read('src/routes/print-queue.ts');
 const labels = read('src/services/labels.ts');
 const orderSync = read('src/services/order-sync.ts');
 const cleanup = fs.existsSync(path.join(root, 'scripts/cleanup-stale-queue-entries.ts'))
   ? read('scripts/cleanup-stale-queue-entries.ts')
   : '';
-const apiClient = read('web/src/lib/v2-apiClient.ts');
+// The legacy web/ operator client was removed; the print-queue UI lives in the
+// internal PrepShip app repo, so frontend-side assertions are out of scope here.
 
 const failures = [];
 const pass = (condition, message) => {
@@ -26,10 +36,6 @@ pass(
 pass(
   route.includes('/confirm-printed') && route.includes('confirmPrintedQueueEntries'),
   'print queue routes must expose a scoped /confirm-printed endpoint'
-);
-pass(
-  apiClient.includes('confirmPrintedQueueEntries'),
-  'frontend API client must expose confirmPrintedQueueEntries'
 );
 pass(
   !/runMergeJob[\s\S]*\.set\(\{\s*status:\s*['"]printed['"]/m.test(service),
@@ -56,7 +62,7 @@ pass(
   'cleanup-stale-queue-entries must not delete active entries solely because orders are shipped/cancelled'
 );
 pass(
-  route.includes('REMOVE_UNPRINTED_LABELS') && apiClient.includes('REMOVE_UNPRINTED_LABELS'),
+  route.includes('REMOVE_UNPRINTED_LABELS'),
   'clear queue must require a strong explicit confirmation token'
 );
 
