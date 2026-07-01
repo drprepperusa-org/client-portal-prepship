@@ -19,7 +19,10 @@ function assert(condition, message) {
 }
 
 function protectedPrefixBlock() {
-  const start = mainSource.indexOf('const protectedPrefixes = [');
+  // main.ts declares the prefixes as a clientPortalOnly ternary:
+  //   const protectedPrefixes = clientPortalOnly ? [portal-only] : [full list];
+  // Slice from the declaration to the closing `];` so both branches are covered.
+  const start = mainSource.indexOf('const protectedPrefixes = ');
   const end = mainSource.indexOf('];', start);
   if (start === -1 || end === -1) return '';
   return mainSource.slice(start, end);
@@ -49,6 +52,11 @@ const prefixes = [
   '/carriers',
   '/users',
   '/worker',
+  '/api/client-portal',
+  '/observability',
+  '/workflows',
+  '/workflow-runs',
+  '/workflow-step-runs',
 ];
 
 const block = protectedPrefixBlock();
@@ -72,7 +80,7 @@ assert(
 
 const healthIndex = mainSource.indexOf("app.route('/health', health);");
 const cronIndex = mainSource.indexOf("app.route('/cron', cronRoute);");
-const authIndex = mainSource.indexOf('const protectedPrefixes = [');
+const authIndex = mainSource.indexOf('const protectedPrefixes = ');
 
 assert(healthIndex !== -1 && healthIndex < authIndex, '/health is routed before app auth gates');
 assert(cronIndex !== -1 && cronIndex < authIndex, '/cron is routed before app auth gates');
