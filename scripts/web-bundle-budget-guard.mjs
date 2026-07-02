@@ -3,7 +3,9 @@ import { gzipSync } from 'node:zlib'
 import path from 'node:path'
 
 const root = process.cwd()
-const assetsDir = path.join(root, 'web/dist/assets')
+// build:web builds the active portal-client app, so budget its output —
+// web/dist is the retired legacy build and only exists as a stale artifact.
+const assetsDir = path.join(root, 'portal-client/dist/assets')
 const packageJsonPath = path.join(root, 'package.json')
 const RAW_LIMIT = 1_000_000
 const GZIP_LIMIT = 110_000

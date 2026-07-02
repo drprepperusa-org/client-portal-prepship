@@ -64,8 +64,10 @@ assert(
   'init-data does not return raw clientsRows',
 );
 
+// CRLF-tolerant: autocrlf checkouts (fresh worktrees) smudge the working copy
+// to \r\n, which a bare \n}\n\n regex silently fails to match.
 const lightweightMatch = clientsRoute.match(
-  /function\s+lightweightClient[\s\S]*?\n}\n\nconst\s+body/,
+  /function\s+lightweightClient[\s\S]*?\r?\n}\r?\n\r?\nconst\s+body/,
 );
 assert(Boolean(lightweightMatch), 'lightweight client serializer is present');
 if (lightweightMatch) {
