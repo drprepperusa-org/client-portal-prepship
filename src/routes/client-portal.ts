@@ -579,15 +579,20 @@ app.put('/markups', async (c) => {
   return c.json({ ok: true, markup: { type, value } });
 });
 
-// When billing was last (re)generated via the portal.
+// When billing was last (re)generated — read from billing_line_items itself,
+// so the timestamp is truthful regardless of which app generated (the admin
+// system owns generation; it does not write this repo's settings marker).
 app.get('/billing/status', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) return c.json({ lastGenerated: null });
-  const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, BILLING_LAST_GENERATED_KEY)).limit(1);
   let lastGenerated: unknown = null;
   try {
-    lastGenerated = row?.value ? JSON.parse(row.value) : null;
+    const rows = await db.execute<{ at: string | null }>(
+      sql`select to_char(max(created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at from billing_line_items`,
+    );
+    const at = rows[0]?.at ?? null;
+    lastGenerated = at ? { at } : null;
   } catch {
     lastGenerated = null;
   }
