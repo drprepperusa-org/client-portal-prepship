@@ -27,6 +27,13 @@ export interface Column<T> {
    * sort last. Omit to make the column non-sortable.
    */
   sortAccessor?: (row: T) => string | number | null | undefined;
+  /**
+   * Footer cell content for this column (e.g. a totals value). When any
+   * column defines a footer, the table renders a totals row that follows the
+   * live column order and visibility — so reordering or hiding columns keeps
+   * every total under its own header.
+   */
+  footer?: ReactNode;
 }
 
 type SortState = { key: string; dir: 'asc' | 'desc' } | null;
@@ -323,11 +330,23 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
               ))}
             </motion.tbody>
 
-            {footer && (
+            {ordered.some((c) => c.footer !== undefined) ? (
+              // Column-aware totals row: follows the live column order and
+              // visibility so every total stays under its own header.
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-white/40 font-bold text-ink">
+                  {ordered.map((c) => (
+                    <td key={c.key} className={cn('px-4 py-3', c.className)}>
+                      {c.footer ?? null}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            ) : footer ? (
               <tfoot>
                 <tr className="border-t-2 border-slate-200 bg-white/40 font-bold text-ink">{footer}</tr>
               </tfoot>
-            )}
+            ) : null}
           </table>
         </div>
       </div>

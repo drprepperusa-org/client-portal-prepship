@@ -164,21 +164,78 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   }
 
   const summaryCols: Column<PeriodSummary>[] = [
-    { key: 'client', header: 'Client', defaultWidth: 170, render: (s) => <span className="font-semibold text-brand-700">{s.clientName}</span>, sortAccessor: (s) => s.clientName },
+    { key: 'client', header: 'Client', defaultWidth: 170, render: (s) => <span className="font-semibold text-brand-700">{s.clientName}</span>, sortAccessor: (s) => s.clientName, footer: 'Total' },
     {
       key: 'period',
       header: 'Billing Period',
       defaultWidth: 150,
       render: (s) => <span className="tnum font-medium text-ink">{periodLabel(s.periodStart, s.periodEnd)}</span>,
       sortAccessor: (s) => s.periodStart,
+      footer: '',
     },
-    { key: 'orders', header: 'Orders', defaultWidth: 100, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{s.orders.toLocaleString()}</span>, sortAccessor: (s) => s.orders },
-    { key: 'pickpack', header: 'Pick & Pack', defaultWidth: 120, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.pickpack)}</span>, sortAccessor: (s) => s.pickpack },
-    { key: 'addl', header: 'Addl Units', defaultWidth: 110, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.additional)}</span>, sortAccessor: (s) => s.additional },
-    { key: 'box', header: 'Box Cost', defaultWidth: 110, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.box)}</span>, sortAccessor: (s) => s.box },
-    { key: 'storage', header: 'Storage', defaultWidth: 110, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.storage)}</span>, sortAccessor: (s) => s.storage },
-    { key: 'shipping', header: 'Shipping', defaultWidth: 120, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.shipping)}</span>, sortAccessor: (s) => s.shipping },
-    { key: 'fee', header: 'Fulfillment Fee', defaultWidth: 140, className: moneyRight, render: (s) => <span className="font-bold tnum text-brand-700">{money(s.fee)}</span>, sortAccessor: (s) => s.fee },
+    {
+      key: 'orders',
+      header: 'Orders',
+      defaultWidth: 100,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{s.orders.toLocaleString()}</span>,
+      sortAccessor: (s) => s.orders,
+      footer: <span className="tnum">{totals.orders.toLocaleString()}</span>,
+    },
+    {
+      key: 'pickpack',
+      header: 'Pick & Pack',
+      defaultWidth: 120,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.pickpack)}</span>,
+      sortAccessor: (s) => s.pickpack,
+      footer: <span className="tnum">{money(totals.pickpack)}</span>,
+    },
+    {
+      key: 'addl',
+      header: 'Addl Units',
+      defaultWidth: 110,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.additional)}</span>,
+      sortAccessor: (s) => s.additional,
+      footer: <span className="tnum">{money(totals.additional)}</span>,
+    },
+    {
+      key: 'box',
+      header: 'Box Cost',
+      defaultWidth: 110,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.box)}</span>,
+      sortAccessor: (s) => s.box,
+      footer: <span className="tnum">{money0(totals.box)}</span>,
+    },
+    {
+      key: 'storage',
+      header: 'Storage',
+      defaultWidth: 110,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.storage)}</span>,
+      sortAccessor: (s) => s.storage,
+      footer: <span className="tnum">{money0(totals.storage)}</span>,
+    },
+    {
+      key: 'shipping',
+      header: 'Shipping',
+      defaultWidth: 120,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.shipping)}</span>,
+      sortAccessor: (s) => s.shipping,
+      footer: <span className="tnum">{money(totals.shipping)}</span>,
+    },
+    {
+      key: 'fee',
+      header: 'Fulfillment Fee',
+      defaultWidth: 140,
+      className: moneyRight,
+      render: (s) => <span className="font-bold tnum text-brand-700">{money(s.fee)}</span>,
+      sortAccessor: (s) => s.fee,
+      footer: <span className="tnum text-brand-700">{money(totals.fee)}</span>,
+    },
     {
       key: 'invoice',
       header: '',
@@ -273,8 +330,6 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     );
   }
 
-  const cell = 'px-4 py-3 text-right tnum';
-
   return (
     <div className="space-y-4">
       {selected == null ? (
@@ -330,20 +385,6 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
                 setDetailPage(1);
               }}
               defaultSort={{ key: 'period', dir: 'desc' }}
-              footer={
-                <>
-                  <td className="px-4 py-3">Total</td>
-                  <td className="px-4 py-3" />
-                  <td className={cell}>{totals.orders.toLocaleString()}</td>
-                  <td className={cell}>{money(totals.pickpack)}</td>
-                  <td className={cell}>{money(totals.additional)}</td>
-                  <td className={cell}>{money0(totals.box)}</td>
-                  <td className={cell}>{money0(totals.storage)}</td>
-                  <td className={cell}>{money(totals.shipping)}</td>
-                  <td className={cn(cell, 'text-brand-700')}>{money(totals.fee)}</td>
-                  <td className="px-4 py-3" />
-                </>
-              }
             />
           </QueryState>
         </GlassPanel>
