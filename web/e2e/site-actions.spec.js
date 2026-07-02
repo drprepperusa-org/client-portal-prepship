@@ -77,14 +77,12 @@ test.beforeEach(async ({ page }) => {
 test('client portal read boundary uses mocked APIs only', async ({ page }) => {
   const requestLedger = createRequestLedger(page);
 
-  await page.addInitScript(() => {
-    window.localStorage.setItem('clientPortal.demo', 'true');
-  });
+  // The active portal has no demo mode; the signed-out surface is what a
+  // browser can exercise without credentials. Even there, the read boundary
+  // holds: no live marketplace/carrier host may ever be contacted.
+  await page.goto(`${baseUrl}/login`);
 
-  await page.goto(`${baseUrl}/dashboard`);
-
-  await expect(page.getByRole('link', { name: /^Dashboard$/ })).toBeVisible();
-  await expect(page.getByText('Demo data')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 
   expect(apiContractCoverage).toContain('/api/client-portal/me');
   expect(apiContractCoverage).toContain('/api/client-portal/dashboard');
@@ -100,15 +98,13 @@ test('client portal read boundary uses mocked APIs only', async ({ page }) => {
 test('login and scoped access failure states are readable', async ({ page }) => {
   const requestLedger = createRequestLedger(page);
 
-  await page.addInitScript(() => {
-    window.localStorage.removeItem('clientPortal.demo');
-  });
+  await page.goto(`${baseUrl}/orders`);
 
-  await page.goto(`${baseUrl}/dashboard/orders`);
-
-  await expect(page).toHaveURL(/\/login\?redirect=/);
-  await expect(page.getByText(/provided by DR PREPPER USA/i)).toBeVisible();
-  await expect(page.getByText(/create one/i)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByText('Sign in to your fulfillment portal')).toBeVisible();
+  // Accounts are operator-provisioned — no self-signup affordance.
+  await expect(page.getByText(/create one|sign up/i)).toHaveCount(0);
+  await expect(page.getByText('Contact your account manager')).toBeVisible();
 
   // Scope and permission denied states are covered at the client-portal API layer.
   expect('scope permission denied').toContain('scope');

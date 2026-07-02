@@ -7,7 +7,10 @@ export default defineConfig({
     timeout: 5_000,
   },
   webServer: {
-    command: 'npm run dev:web -- --host 127.0.0.1 --port 5177',
+    // vite 8's CLI rejects flags forwarded through the double npm chain
+    // (root dev:web -> portal-client dev) as positional args, so the e2e
+    // server gets its own single-layer script with the flags baked in.
+    command: 'npm --prefix portal-client run dev:e2e',
     env: {
       ...process.env,
       VITE_ENABLE_DEMO: 'true',

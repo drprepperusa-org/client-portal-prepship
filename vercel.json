@@ -9,6 +9,7 @@
       "source": "/api/client-portal/:path*",
       "destination": "https://client-portal-prepship.onrender.com/api/client-portal/:path*"
     },
+    { "source": "/maintenance", "destination": "/maintenance.html" },
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ]
 }
