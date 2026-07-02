@@ -737,12 +737,25 @@ export const portalApi = {
       ...rangeToTimestamps(defaultRange(days)),
       clientId,
     }),
-  /** Invoice detail for an explicit date range (YYYY-MM-DD). Powers Billing. */
-  invoiceDetailsRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
-    apiGet<{ data: BillingInvoiceDetailRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-details', {
+  /** Invoice detail for an explicit date range (YYYY-MM-DD). Powers Billing.
+   *  Pass page/pageSize for the paginated drill-in; omit for the full set. */
+  invoiceDetailsRange: (
+    token: string,
+    dateFrom: string,
+    dateTo: string,
+    clientId?: number,
+    opts: { page?: number; pageSize?: number } = {},
+  ) =>
+    apiGet<{
+      data: BillingInvoiceDetailRow[];
+      billingVisible?: boolean;
+      pagination?: { page: number; pageSize: number; total: number; totalPages: number };
+    }>(token, '/api/client-portal/invoice-details', {
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       clientId,
+      page: opts.page,
+      pageSize: opts.pageSize,
     }),
 
   /** Per-client billing rollup for a range — SQL-aggregated, no row cap. */

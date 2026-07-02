@@ -15,7 +15,10 @@ import type { ClientPortalScope } from '../scope';
  * Invoice-detail read-model (extracted from routes/client-portal.ts): the
  * canonical per-order billing line rollup that powers /invoice-details and the
  * printable /invoice. Qty comes from canonical order_items quantities, never
- * from summed billing line quantities.
+ * from summed billing line quantities. Pass page+pageSize to paginate (the
+ * portal drill-in does — rendering thousands of rows at once is what made the
+ * Billing page lag); omit them for the full capped list (printable invoice,
+ * Excel export).
  */
 
 type PortalInvoiceSummaryRow = {
@@ -73,6 +76,38 @@ export async function portalInvoiceSummary(
   }));
 }
 
+/** Total per-order rows for a details query — powers the drill-in pagination. */
+export async function portalInvoiceDetailCount(
+  scope: ClientPortalScope,
+  input: { clientId?: number | null; dateFrom: string; dateTo: string },
+): Promise<number> {
+  if (input.clientId) {
+    const [client] = await db
+      .select({ id: clients.id, name: clients.name })
+      .from(clients)
+      .where(clientFilterPredicate(scope, input.clientId, null))
+      .limit(1);
+    if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
+      const overrideRows = heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo);
+      if (overrideRows.length > 0) return overrideRows.length;
+    }
+  }
+  const rows = await db.execute<{ count: string }>(sql`
+    select count(*)::text as count from (
+      select 1
+      from billing_line_items b
+      left join ${clients} c on c.id = b.client_id
+      where coalesce(c.active, true) = true
+        and b.ship_date >= ${input.dateFrom}::timestamptz
+        and b.ship_date <= ${input.dateTo}::timestamptz
+        ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
+        ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
+      group by b.client_id, c.name, b.order_id, b.order_number
+    ) t
+  `);
+  return Number(rows[0]?.count) || 0;
+}
+
 type PortalInvoiceDetailRow = {
   client_id: number;
   client_name: string | null;
@@ -96,7 +131,10 @@ type PortalInvoiceDetailRow = {
   row_total: string;
 };
 
-export async function portalInvoiceDetails(scope: ClientPortalScope, input: { clientId?: number | null; dateFrom: string; dateTo: string }) {
+export async function portalInvoiceDetails(
+  scope: ClientPortalScope,
+  input: { clientId?: number | null; dateFrom: string; dateTo: string; page?: number; pageSize?: number },
+) {
   if (input.clientId) {
     const [client] = await db
       .select({ id: clients.id, name: clients.name })
@@ -104,8 +142,12 @@ export async function portalInvoiceDetails(scope: ClientPortalScope, input: { cl
       .where(clientFilterPredicate(scope, input.clientId, null))
       .limit(1);
     if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
-      const overrideRows = heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo);
-      if (overrideRows.length > 0) {
+      const allOverrideRows = heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo);
+      const overrideRows =
+        input.page && input.pageSize
+          ? allOverrideRows.slice((input.page - 1) * input.pageSize, input.page * input.pageSize)
+          : allOverrideRows;
+      if (allOverrideRows.length > 0) {
         return overrideRows.map((row) => ({
           clientId: client.id,
           clientName: client.name,
@@ -174,7 +216,8 @@ export async function portalInvoiceDetails(scope: ClientPortalScope, input: { cl
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, b.order_id, b.order_number
     order by min(b.ship_date) desc, b.order_id desc
-    limit ${input.clientId ? 5000 : 1000}
+    limit ${input.pageSize ?? (input.clientId ? 5000 : 1000)}
+    ${input.page && input.pageSize ? sql`offset ${(input.page - 1) * input.pageSize}` : sql``}
   `);
 
   const dimsFromRaw = (l: string | null, w: string | null, h: string | null): string | null => {

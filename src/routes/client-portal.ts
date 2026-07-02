@@ -70,7 +70,11 @@ import {
   shipmentSearchPredicate,
   visibleAwaitingOrdersPredicate,
 } from '../lib/client-portal/predicates';
-import { portalInvoiceDetails, portalInvoiceSummary } from '../lib/client-portal/read-models/invoice-details';
+import {
+  portalInvoiceDetailCount,
+  portalInvoiceDetails,
+  portalInvoiceSummary,
+} from '../lib/client-portal/read-models/invoice-details';
 import {
   awaitingActiveOrderCount,
   getPortalOrder,
@@ -610,6 +614,24 @@ app.get('/invoice-details', async (c) => {
   const dateTo = c.req.query('dateTo');
   if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
   const clientId = requestedClientId(c);
+
+  // Paged mode (portal drill-in): page + pageSize present → return a slice
+  // plus pagination totals, so the table never renders thousands of rows.
+  if (c.req.query('page')) {
+    const page = parsePage(c.req.query('page'));
+    const pageSize = parsePageSize(c.req.query('pageSize'));
+    const [rows, total] = await Promise.all([
+      portalInvoiceDetails(scope, { clientId, dateFrom, dateTo, page, pageSize }),
+      portalInvoiceDetailCount(scope, { clientId, dateFrom, dateTo }),
+    ]);
+    await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length, page });
+    return c.json({
+      data: rows,
+      billingVisible: true,
+      pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+    });
+  }
+
   const rows = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
   await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length });
   return c.json({ data: rows, billingVisible: true });

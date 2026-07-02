@@ -74,15 +74,21 @@ export function useInvoiceDetails() {
   const { days, clientId } = usePortalFilters();
   return useTokenQuery(['invoice-details', days, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, days, clientId));
 }
-/** Invoice detail for an explicit YYYY-MM-DD range (Billing page). Auto-refetches
- *  so the view tracks the worker's automatic billing generation by default.
- *  Pass an explicit clientId for the per-client drill-in (higher row cap). */
-export function useInvoiceDetailsRange(dateFrom: string, dateTo: string, explicitClientId?: number | null) {
+/** Invoice detail for an explicit YYYY-MM-DD range (Billing page drill-in).
+ *  Server-paginated — rendering thousands of rows at once made Billing lag —
+ *  and auto-refetching so the view tracks billing generation. */
+export function useInvoiceDetailsRange(
+  dateFrom: string,
+  dateTo: string,
+  explicitClientId?: number | null,
+  page = 1,
+  pageSize = 100,
+) {
   const { clientId: globalClientId } = usePortalFilters();
   const clientId = explicitClientId ?? globalClientId;
   return useTokenQuery(
-    ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope'],
-    (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId),
+    ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope', page, pageSize],
+    (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId, { page, pageSize }),
     Boolean(dateFrom && dateTo) && (explicitClientId === undefined || explicitClientId != null),
     { refetchInterval: 60_000, refetchOnWindowFocus: true },
   );

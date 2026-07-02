@@ -3,6 +3,7 @@ import { Lock, ChevronLeft, FileText, FileSpreadsheet, Loader2 } from 'lucide-re
 import { GlassPanel } from '@/components/ui/Glass';
 import { EmptyState } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
+import { Pagination } from '@/components/ui/Pagination';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { CarrierBadge } from '@/components/store/CarrierBadge';
 import { useToast } from '@/components/ui/Toast';
@@ -71,6 +72,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const toast = useToast();
   const { accessToken } = useAuth();
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
+  const [detailPage, setDetailPage] = useState(1);
   const [opening, setOpening] = useState<number | null>(null);
   const [exporting, setExporting] = useState<number | null>(null);
 
@@ -116,9 +118,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   );
   const totals = useMemo(() => summary.reduce(addBillingTotals, EMPTY_TOTALS), [summary]);
 
-  // Line items load per selected client (higher row cap server-side).
-  const detailQuery = useInvoiceDetailsRange(from, to, selectedClient);
+  // Line items load per selected client, server-paginated (100/page) so the
+  // animated table never renders thousands of rows at once.
+  const detailQuery = useInvoiceDetailsRange(from, to, selectedClient, detailPage, 100);
   const lineItems = detailQuery.data?.data ?? [];
+  const detailPg = detailQuery.data?.pagination;
   const selectedName = summary.find((s) => s.clientId === selectedClient)?.clientName ?? '';
 
   // Excel export fetches the client's full row set for the range directly,
@@ -129,7 +133,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     const clientName = summary.find((s) => s.clientId === id)?.clientName || `client-${id}`;
     setExporting(id);
     try {
-      const res = await portalApi.invoiceDetailsRange(accessToken, from, to, id);
+      // Full (unpaginated) row set for the export, independent of table paging.
+      const res = await portalApi.invoiceDetailsRange(accessToken, from, to, id, { pageSize: 5000 });
       const clientRows = res.data ?? [];
       if (!clientRows.length) {
         toast.error('Nothing to export', 'No billable lines for this client in range.');
@@ -239,7 +244,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               columns={summaryCols}
               rows={summary}
               rowKey={(s) => String(s.clientId)}
-              onRowClick={(s) => setSelectedClient(s.clientId)}
+              onRowClick={(s) => { setSelectedClient(s.clientId); setDetailPage(1); }}
               defaultSort={{ key: 'fee', dir: 'desc' }}
               footer={
                 <>
@@ -265,7 +270,9 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             </button>
             <p className="min-w-0 flex-1 truncate text-center text-sm font-bold text-ink">Line items — {selectedName}</p>
             <div className="flex shrink-0 items-center gap-3">
-              <span className="hidden text-xs text-ink-3 sm:inline">{lineItems.length} line{lineItems.length === 1 ? '' : 's'}</span>
+              <span className="hidden text-xs text-ink-3 sm:inline">
+                {(detailPg?.total ?? lineItems.length).toLocaleString()} line{(detailPg?.total ?? lineItems.length) === 1 ? '' : 's'}
+              </span>
               <button
                 onClick={() => void exportExcel(selectedClient)}
                 disabled={exporting != null || lineItems.length === 0}
@@ -301,6 +308,9 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               rowKey={(r) => `${r.orderId}-${r.orderNumber}`}
               defaultSort={{ key: 'date', dir: 'desc' }}
             />
+            {detailPg && (
+              <Pagination page={detailPg.page} totalPages={detailPg.totalPages} total={detailPg.total} pageSize={detailPg.pageSize} onPage={setDetailPage} />
+            )}
           </QueryState>
         </GlassPanel>
       )}
