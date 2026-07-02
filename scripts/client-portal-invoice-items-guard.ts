@@ -26,16 +26,16 @@ function read(rel: string) {
   return fs.readFileSync(path.join(root, rel), 'utf8');
 }
 
-const route = read('src/routes/client-portal.ts');
 const invoiceItems = read('src/lib/client-portal/invoice-items.ts');
 const activeInvoices = read('portal-client/src/pages/Invoices.tsx');
 const legacyInvoices = read('web/src/pages/Invoices.tsx');
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 
-const invoiceDetailsBlock =
-  /async function portalInvoiceDetails[\s\S]*?function escHtml/.exec(route)?.[0] ?? '';
-const printableInvoiceBlock =
-  /app\.get\('\/invoice'[\s\S]*?app\.get\('\/clients'/.exec(route)?.[0] ?? '';
+// B1 moved the invoice-details read-model and the printable invoice HTML out
+// of routes/client-portal.ts; assert over their new homes so coverage follows
+// the code (the old route regexes matched nothing after the extraction).
+const invoiceDetailsBlock = read('src/lib/client-portal/read-models/invoice-details.ts');
+const printableInvoiceBlock = read('src/lib/client-portal/invoice-html.ts');
 
 assert(
   pkg.scripts?.['test:client-portal-invoice-items'] === 'tsx scripts/client-portal-invoice-items-guard.ts',
@@ -105,7 +105,7 @@ assert(
 );
 
 assert(
-  printableInvoiceBlock.includes('.item-name{white-space:pre-line}') &&
+  printableInvoiceBlock.includes('.item-name { white-space: pre-line; }') &&
     printableInvoiceBlock.includes('<td class="item-name">${escHtml(detail.itemNames ?? \'\')}</td>'),
   'backend printable invoice preserves itemNames line breaks',
 );

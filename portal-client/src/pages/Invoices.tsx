@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Lock, ChevronLeft, FileText, Loader2 } from 'lucide-react';
+import { Lock, ChevronLeft, FileText, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { EmptyState } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useInvoiceDetailsRange } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
+import { exportInvoiceExcel } from '@/lib/invoiceExcel';
 import { money, shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
 
@@ -68,6 +69,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const { accessToken } = useAuth();
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
   const [opening, setOpening] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Open the backend-rendered printable invoice for a client + range.
   async function viewInvoice(clientId?: number) {
@@ -122,6 +124,19 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     [rows, selectedClient],
   );
   const selectedName = summary.find((s) => s.clientId === selectedClient)?.clientName ?? '';
+
+  // Build the Excel invoice client-side from the rows already on screen.
+  async function exportExcel() {
+    if (!lineItems.length || exporting) return;
+    setExporting(true);
+    try {
+      await exportInvoiceExcel(lineItems, { clientName: selectedName || `client-${selectedClient}`, from, to });
+    } catch (err) {
+      toast.error('Excel export failed', err instanceof Error ? err.message : 'Could not build the Excel file.');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const summaryCols: Column<ClientSummary>[] = [
     { key: 'client', header: 'Client', defaultWidth: 200, render: (s) => <span className="font-semibold text-brand-700">{s.clientName}</span>, sortAccessor: (s) => s.clientName },
@@ -235,6 +250,18 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             <p className="min-w-0 flex-1 truncate text-center text-sm font-bold text-ink">Line items — {selectedName}</p>
             <div className="flex shrink-0 items-center gap-3">
               <span className="hidden text-xs text-ink-3 sm:inline">{lineItems.length} line{lineItems.length === 1 ? '' : 's'}</span>
+              <button
+                onClick={exportExcel}
+                disabled={exporting || lineItems.length === 0}
+                className={cn(
+                  'focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700',
+                  'transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50',
+                )}
+                title="Download line items as Excel (.xlsx)"
+              >
+                {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+                Excel
+              </button>
               <button
                 onClick={() => viewInvoice(selectedClient ?? undefined)}
                 className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
