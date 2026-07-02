@@ -1222,15 +1222,18 @@ These atoms exist in v4 but have no v2 counterpart. Either:
 - [ ] `service:createlabel` — createLabelV2(...) — **[V4_ONLY]**
       v4: src/services/labels.ts:L583
       Classification: INTENTIONALLY_CHANGED — v4 service-layer function backing v4 endpoint.
-- [x] `service:createlabelbatch` — createLabelBatch(...) — **[V4_ONLY] ADJUDICATED**
+- [x] `service:createlabelbatch` — createLabelBatch(...) — **[V4_ONLY] ADJUDICATED — DELETED**
       v4: src/services/labels.ts:L878
       Classification: INTENTIONALLY_CHANGED — adjudicated 2026-04-23: legacy batch helper (+ private createLabelFromOrderId). No active server callers (v2-apiClient method name at web/src/lib/v2-apiClient.ts:L930 is client-side, unrelated). User chose to keep (not delete) — noted as dead helper; safe to ignore.
-- [ ] `service:createlabelfromrate` — createLabelFromRate(...) — **[V4_ONLY]**
+      Superseded 2026-07-02: keep decision reversed — the whole dead cluster (createLabelBatch remnant, createLabelFromOrderId, createMockShipmentForOrder, toSSAddress) was deleted from src/services/labels.ts by ac858b2 (claude/modest-bell-5e1013) and equivalently by 70d18ea (claude/jovial-villani-85bad5); neither commit was merged to main when this note was written. On main, createLabelBatch had already been reduced to a commented-out stub by 6bae9f5 (B2.4 decomposition). parity/v4-atoms.jsonl is a frozen extract snapshot (see parity/README.md) — its entries for these atoms stay as-is and drop out at the next extract.mjs refresh.
+- [x] `service:createlabelfromrate` — createLabelFromRate(...) — **[V4_ONLY] DELETED**
       v4: src/services/labels.ts:L369
       Classification: INTENTIONALLY_CHANGED — v4 service-layer function backing v4 endpoint.
-- [ ] `service:createlabelfromshipment` — createLabelFromShipment(...) — **[V4_ONLY]**
+      Superseded 2026-07-02: deleted from src/services/labels.ts (together with private persistLabelFromRate) by dea2f83 (claude/jovial-villani-85bad5); not merged to main when this note was written. Original classification was inaccurate — no route ever called it (caller-less legacy helper). Its v4-atoms.jsonl entry is retained per snapshot convention.
+- [x] `service:createlabelfromshipment` — createLabelFromShipment(...) — **[V4_ONLY] DELETED**
       v4: src/services/labels.ts:L421
       Classification: INTENTIONALLY_CHANGED — v4 service-layer function backing v4 endpoint.
+      Superseded 2026-07-02: deleted from src/services/labels.ts by dea2f83 (claude/jovial-villani-85bad5); not merged to main when this note was written. Original classification was inaccurate — its only caller was createLabelFromOrderId, deleted in the same branch. Its v4-atoms.jsonl entry is retained per snapshot convention.
 - [ ] `service:createreturnlabel` — createReturnLabelV2(...) — **[V4_ONLY]**
       v4: src/services/labels.ts:L1128
       Classification: INTENTIONALLY_CHANGED — v4 service-layer function backing v4 endpoint.
