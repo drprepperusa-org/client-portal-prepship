@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
-import { CarrierBadge } from '@/components/store/CarrierBadge';
 import { useAuth } from '@/auth';
 import { useShipments, useClients } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -101,8 +100,7 @@ export default function Shipments() {
   const showClientFilter = clients.length > 1;
   const columns: Column<PortalShipment>[] = useMemo(
     () => [
-      { key: 'id', header: 'Shipment', defaultWidth: 110, render: (s) => <span className="font-semibold text-ink">#{s.id}</span>, sortAccessor: (s) => s.id },
-      { key: 'order', header: 'Order', defaultWidth: 150, render: (s) => <span className="text-ink-3">{s.orderNumber ?? (s.orderId ? `#${s.orderId}` : '—')}</span>, sortAccessor: (s) => s.orderNumber ?? '' },
+      { key: 'order', header: 'Order', defaultWidth: 150, render: (s) => <span className="font-semibold text-ink">{s.orderNumber ?? (s.orderId ? `#${s.orderId}` : '—')}</span>, sortAccessor: (s) => s.orderNumber ?? '' },
       {
         key: 'items',
         header: 'Item Name',
@@ -124,14 +122,6 @@ export default function Shipments() {
         defaultWidth: 150,
         render: (s) => (s.clientName ? <Chip accent={clientAccent(s.clientName)} dot={false}>{s.clientName}</Chip> : <span className="text-ink-3">—</span>),
         sortAccessor: (s) => s.clientName ?? '',
-      },
-      {
-        key: 'carrier',
-        header: 'Carrier',
-        defaultWidth: 110,
-        className: 'text-center',
-        render: (s) => (s.carrierCode ? <CarrierBadge code={s.carrierCode} /> : <span className="text-ink-3">—</span>),
-        sortAccessor: (s) => s.carrierCode ?? '',
       },
       {
         key: 'shippingCost',
