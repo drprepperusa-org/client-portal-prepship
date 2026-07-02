@@ -142,7 +142,7 @@ export function SpendPieChart({ data }: { data: { name: string; value: number }[
             <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
           ))}
         </Pie>
-        <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => `$${v.toLocaleString()}`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v) => `$${Number(v ?? 0).toLocaleString()}`} />
         <Legend iconType="circle" wrapperStyle={{ fontSize: 13 }} />
       </PieChart>
     </ResponsiveContainer>
@@ -174,7 +174,7 @@ export function RateLineChart({ data }: { data: { week: string; rate: number }[]
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
         <XAxis dataKey="week" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis domain={[92, 100]} tick={AXIS} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => `${v}%`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${Number(v ?? 0)}%`} />
         <Line type="monotone" dataKey="rate" stroke="#F43F5E" strokeWidth={3} dot={{ r: 4, fill: '#F43F5E' }} activeDot={{ r: 6 }} />
       </LineChart>
     </ResponsiveContainer>

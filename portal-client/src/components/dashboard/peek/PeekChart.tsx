@@ -15,8 +15,12 @@ export function PeekChart({ data, color, format }: { data: ChartPoint[]; color: 
   const total = values.reduce((n, v) => n + v, 0);
   const avg = values.length ? total / values.length : 0;
 
-  const pick = (state: { activePayload?: Array<{ payload?: ChartPoint }> } | null) => {
-    const p = state?.activePayload?.[0]?.payload;
+  /** Chart clicks carry the active index/label (Recharts 3 dropped the
+   *  activePayload array from click state) — map back to our own data row. */
+  const pick = (state: { activeTooltipIndex?: number | string | null; activeLabel?: string | number } | null) => {
+    const raw = state?.activeTooltipIndex;
+    const idx = raw == null || raw === '' ? NaN : Number(raw);
+    const p = Number.isInteger(idx) ? data[idx] : data.find((d) => d.label === state?.activeLabel);
     if (p) setSel((cur) => (cur?.day === p.day ? null : p));
   };
 
