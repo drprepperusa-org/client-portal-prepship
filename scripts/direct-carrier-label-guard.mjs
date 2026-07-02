@@ -2,7 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { tsImport } from 'tsx/esm/api';
 
-const labels = readFileSync('api/carriers/labels.ts', 'utf8');
+// The direct-label surface is the endpoint handler plus the per-provider
+// modules it was decomposed into (C2). Text pins apply to the whole surface.
+const labels = [
+  'api/carriers/labels.ts',
+  'api/_lib/carriers/labels/shared.ts',
+  'api/_lib/carriers/labels/outbox.ts',
+  'api/_lib/carriers/labels/address.ts',
+  'api/_lib/carriers/labels/ups.ts',
+  'api/_lib/carriers/labels/easypost.ts',
+  'api/_lib/carriers/labels/walmart.ts',
+  'api/_lib/carriers/labels/shipp.ts',
+].map((file) => readFileSync(file, 'utf8')).join('\n');
 
 assert(labels.includes('persistDirectCarrierLabel'), 'direct labels must use shared persistence helper');
 assert(!labels.includes('CREATE TABLE IF NOT EXISTS shipments'), 'direct labels must not create shipments table at request time');
