@@ -127,6 +127,13 @@
       "when": 1782961014508,
       "tag": "0017_known_eternals",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1782978073682,
+      "tag": "0018_giant_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

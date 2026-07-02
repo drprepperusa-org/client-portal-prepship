@@ -28,6 +28,16 @@ export const billingConfig = pgTable('billing_config', {
   packageCostMarkup: numeric({ precision: 5, scale: 2 }).default('0').notNull(),
   shippingMarkupPct: numeric({ precision: 5, scale: 2 }).default('0').notNull(),
   shippingMarkupFlat: numeric({ precision: 10, scale: 2 }).default('0').notNull(),
+  // PS-366: below-trigger customer shipping override. When the selected/
+  // purchased rate is below the trigger, the billed shipping line becomes the
+  // override amount (NOT a floor — rates at/above the trigger are untouched).
+  // 0 disables. HUGRAB: trigger 6.00, amount 7.73.
+  shippingRateOverrideTriggerBelow: numeric('shipping_rate_override_trigger_below', { precision: 10, scale: 2 })
+    .default('0')
+    .notNull(),
+  shippingRateOverrideAmount: numeric('shipping_rate_override_amount', { precision: 10, scale: 2 })
+    .default('0')
+    .notNull(),
   // Monthly storage fee in dollars per cubic-foot of inventory on hand.
   // v2 computed storage line items from inventory_ledger deltas × cuFtOverride
   // (or default L×W×H/1728). 0 disables storage billing entirely.

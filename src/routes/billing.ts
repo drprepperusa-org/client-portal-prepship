@@ -103,6 +103,8 @@ app.get('/config', async (c) => {
       packageCostMarkup: billingConfig.packageCostMarkup,
       shippingMarkupPct: billingConfig.shippingMarkupPct,
       shippingMarkupFlat: billingConfig.shippingMarkupFlat,
+      shippingRateOverrideTriggerBelow: billingConfig.shippingRateOverrideTriggerBelow,
+      shippingRateOverrideAmount: billingConfig.shippingRateOverrideAmount,
       storageFeePerCuFt: billingConfig.storageFeePerCuFt,
       billingMode: billingConfig.billingMode,
       active: billingConfig.active,
@@ -129,6 +131,8 @@ app.get('/config', async (c) => {
     packageCostMarkup: r.packageCostMarkup ?? '0.00',
     shippingMarkupPct: r.shippingMarkupPct ?? '0.00',
     shippingMarkupFlat: r.shippingMarkupFlat ?? '0.00',
+    shippingRateOverrideTriggerBelow: r.shippingRateOverrideTriggerBelow ?? '0.00',
+    shippingRateOverrideAmount: r.shippingRateOverrideAmount ?? '0.00',
     storageFeePerCuFt: r.storageFeePerCuFt ?? '0.0000',
     billingMode: r.billingMode ?? 'per_shipment',
     active: r.active ?? true,
@@ -145,6 +149,8 @@ const configBody = z.object({
   packageCostMarkup: z.coerce.number().nonnegative().optional(),
   shippingMarkupPct: z.coerce.number().nonnegative().optional(),
   shippingMarkupFlat: z.coerce.number().nonnegative().optional(),
+  shippingRateOverrideTriggerBelow: z.coerce.number().nonnegative().optional(),
+  shippingRateOverrideAmount: z.coerce.number().nonnegative().optional(),
   storageFeePerCuFt: z.coerce.number().nonnegative().optional(),
   billingMode: z
     .enum(['per_shipment', 'monthly', 'label_cost', 'ss_ref_rate', 'reference_rate'])
@@ -177,6 +183,14 @@ app.put(
       shippingMarkupFlat:
         body.shippingMarkupFlat !== undefined
           ? body.shippingMarkupFlat.toFixed(2)
+          : undefined,
+      shippingRateOverrideTriggerBelow:
+        body.shippingRateOverrideTriggerBelow !== undefined
+          ? body.shippingRateOverrideTriggerBelow.toFixed(2)
+          : undefined,
+      shippingRateOverrideAmount:
+        body.shippingRateOverrideAmount !== undefined
+          ? body.shippingRateOverrideAmount.toFixed(2)
           : undefined,
       storageFeePerCuFt:
         body.storageFeePerCuFt !== undefined

@@ -199,6 +199,32 @@ function totalUnitsFromItems(items: unknown[] | null | undefined): number {
   return n;
 }
 
+/**
+ * PS-366: customer-facing C. Shipping Rate resolver. If the client's
+ * below-trigger override is configured and the SELECTED/PURCHASED rate is
+ * below the trigger, the billable shipping becomes the override amount.
+ * NOT a floor — rates at/above the trigger keep the normal markup-derived
+ * amount (e.g. HUGRAB trigger $6.00 / amount $7.73: $5.99 bills $7.73, but
+ * $6.82 stays $6.82). The selected/purchased cost itself is never mutated;
+ * ship margin = C. Shipping Rate − selected cost.
+ */
+export function resolveCustomerShippingRate(input: {
+  /** Selected/purchased label cost — the pre-markup source of truth. */
+  selectedCost: number;
+  /** Shipping charge after billing-mode + markup rules. */
+  markedUpCost: number;
+  /** Trigger threshold; 0/negative disables. */
+  triggerBelow: number;
+  /** Override amount when triggered; 0/negative disables. */
+  overrideAmount: number;
+}): { cShippingRate: number; overrideApplied: boolean } {
+  const { selectedCost, markedUpCost, triggerBelow, overrideAmount } = input;
+  if (triggerBelow > 0 && overrideAmount > 0 && selectedCost > 0 && selectedCost < triggerBelow) {
+    return { cShippingRate: overrideAmount, overrideApplied: true };
+  }
+  return { cShippingRate: markedUpCost, overrideApplied: false };
+}
+
 export async function generateLineItems(input: GenerateInput) {
   const from = new Date(input.dateFrom);
   const to = new Date(input.dateTo);
@@ -216,6 +242,8 @@ export async function generateLineItems(input: GenerateInput) {
     packageCostMarkup: string;
     shippingMarkupPct: string;
     shippingMarkupFlat: string;
+    shippingRateOverrideTriggerBelow: string;
+    shippingRateOverrideAmount: string;
     storageFeePerCuFt: string;
     billingMode: string;
     active: boolean;
@@ -228,6 +256,8 @@ export async function generateLineItems(input: GenerateInput) {
       coalesce(b.package_cost_markup, '0'::numeric)::text as "packageCostMarkup",
       coalesce(b.shipping_markup_pct, '0'::numeric)::text as "shippingMarkupPct",
       coalesce(b.shipping_markup_flat, '0'::numeric)::text as "shippingMarkupFlat",
+      coalesce(b.shipping_rate_override_trigger_below, '0'::numeric)::text as "shippingRateOverrideTriggerBelow",
+      coalesce(b.shipping_rate_override_amount, '0'::numeric)::text as "shippingRateOverrideAmount",
       coalesce(b.storage_fee_per_cu_ft, '0'::numeric)::text as "storageFeePerCuFt",
       coalesce(b.billing_mode, 'per_shipment') as "billingMode",
       coalesce(b.active, true) as active
@@ -644,6 +674,15 @@ export async function generateLineItems(input: GenerateInput) {
       const pct = toNum(cfg.shippingMarkupPct);
       const flat = toNum(cfg.shippingMarkupFlat);
       const shipCost = billedCost * (1 + pct / 100) + flat;
+      // PS-366: below-trigger override — the trigger tests the actual
+      // selected/purchased cost (labelCost), never the marked-up amount.
+      const triggerBelow = toNum(cfg.shippingRateOverrideTriggerBelow);
+      const { cShippingRate, overrideApplied } = resolveCustomerShippingRate({
+        selectedCost: labelCost,
+        markedUpCost: shipCost,
+        triggerBelow,
+        overrideAmount: toNum(cfg.shippingRateOverrideAmount),
+      });
       rows.push({
         clientId,
         orderId: s.orderId,
@@ -651,10 +690,12 @@ export async function generateLineItems(input: GenerateInput) {
         shipmentId: s.id,
         shipDate: s.shipDate,
         lineType: 'shipping',
-        description: `Shipping${pct > 0 || flat > 0 ? ` (${pct}% + $${flat.toFixed(2)})` : ''} · order ${s.orderNumber ?? s.orderId}`,
+        description: overrideApplied
+          ? `Shipping (below-$${triggerBelow.toFixed(2)} override $${cShippingRate.toFixed(2)}) · order ${s.orderNumber ?? s.orderId}`
+          : `Shipping${pct > 0 || flat > 0 ? ` (${pct}% + $${flat.toFixed(2)})` : ''} · order ${s.orderNumber ?? s.orderId}`,
         qty: '1',
-        unitCost: shipCost.toFixed(2),
-        totalCost: shipCost.toFixed(2),
+        unitCost: cShippingRate.toFixed(2),
+        totalCost: cShippingRate.toFixed(2),
       });
     }
 
@@ -1217,6 +1258,8 @@ export async function upsertBillingConfig(
     packageCostMarkup: string;
     shippingMarkupPct: string;
     shippingMarkupFlat: string;
+    shippingRateOverrideTriggerBelow: string;
+    shippingRateOverrideAmount: string;
     storageFeePerCuFt: string;
     billingMode: string;
     active: boolean;
