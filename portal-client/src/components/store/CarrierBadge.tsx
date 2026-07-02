@@ -26,7 +26,7 @@ function classifyCarrier(code: string): Carrier {
   return 'other';
 }
 
-function formatCarrierLabel(code: string): string {
+export function formatCarrierLabel(code: string): string {
   const l = code.toLowerCase();
   if (l.includes('stamps') || l.includes('usps')) return 'USPS';
   if (l.includes('ups')) return 'UPS';

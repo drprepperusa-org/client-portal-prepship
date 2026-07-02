@@ -1,9 +1,11 @@
 import type { BillingInvoiceDetailRow } from '@/lib/api';
+import { formatCarrierLabel } from '@/components/store/CarrierBadge';
 
 // Excel (.xlsx) export for the per-client invoice line items. Column set and
-// order are fixed by the billing export spec:
-//   Ship Date | SKU | Order # | Box Size | Box Cost | Qty | Pick & Pack Fee |
-//   Additional Units | Shipping | Storage | Total
+// order mirror the billing line-items table (client-safe fields only — no
+// selected rate / shipping margin):
+//   Order # | Ship Date | Carrier | Item Name | SKU | Qty | Pick & Pack |
+//   Addl Units | Box Cost | Box Size | Shipping | Storage | Fulfillment Fee
 // Money cells are written as real numbers (2-decimal format) so Excel can sum
 // and pivot them; the final row is a bold totals row. write-excel-file is
 // loaded via dynamic import so the writer only ships when Export is clicked.
@@ -12,20 +14,22 @@ const num = (v: unknown) => Number(v ?? 0) || 0;
 const MONEY_FORMAT = '#,##0.00';
 
 const HEADERS = [
-  'Ship Date',
-  'SKU',
   'Order #',
-  'Box Size',
-  'Box Cost',
+  'Ship Date',
+  'Carrier',
+  'Item Name',
+  'SKU',
   'Qty',
-  'Pick & Pack Fee',
-  'Additional Units',
+  'Pick & Pack',
+  'Addl Units',
+  'Box Cost',
+  'Box Size',
   'Shipping',
   'Storage',
-  'Total',
+  'Fulfillment Fee',
 ] as const;
 
-const COLUMN_WIDTHS = [12, 30, 12, 18, 10, 7, 15, 16, 10, 10, 11];
+const COLUMN_WIDTHS = [10, 12, 10, 30, 26, 6, 12, 11, 10, 12, 10, 10, 14];
 
 function slugify(name: string): string {
   const slug = name
@@ -44,14 +48,16 @@ export async function exportInvoiceExcel(
   const header = HEADERS.map((value) => ({ value: value as string, fontWeight: 'bold' as const }));
 
   const dataRows = rows.map((r) => [
-    { type: String, value: r.shipDate ?? '' },
-    { type: String, value: r.skus ?? '', wrap: true },
     { type: String, value: r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
-    { type: String, value: r.boxSize ?? '' },
-    { type: Number, value: num(r.packageTotal), format: MONEY_FORMAT },
+    { type: String, value: r.shipDate ?? '' },
+    { type: String, value: r.carrierCode ? formatCarrierLabel(r.carrierCode) : '' },
+    { type: String, value: r.itemNames ?? '', wrap: true },
+    { type: String, value: r.skus ?? '', wrap: true },
     { type: Number, value: num(r.qty) },
     { type: Number, value: num(r.pickpackTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.additionalTotal), format: MONEY_FORMAT },
+    { type: Number, value: num(r.packageTotal), format: MONEY_FORMAT },
+    { type: String, value: r.boxSize ?? '' },
     { type: Number, value: num(r.shippingTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.storageTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.rowTotal), format: MONEY_FORMAT },
@@ -65,10 +71,12 @@ export async function exportInvoiceExcel(
     null,
     null,
     null,
-    { type: Number, value: sum((r) => r.packageTotal), format: MONEY_FORMAT, ...bold },
+    null,
     { type: Number, value: sum((r) => r.qty), ...bold },
     { type: Number, value: sum((r) => r.pickpackTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.additionalTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.packageTotal), format: MONEY_FORMAT, ...bold },
+    null,
     { type: Number, value: sum((r) => r.shippingTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.storageTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.rowTotal), format: MONEY_FORMAT, ...bold },
