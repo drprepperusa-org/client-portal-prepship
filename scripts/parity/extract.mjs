@@ -9,7 +9,7 @@
 // hooks, contexts, apiClient methods, CSS classes, ShipStation calls,
 // and frontend View feature atoms (columns/filters/modals/actions).
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Project, SyntaxKind } from 'ts-morph';
@@ -42,12 +42,19 @@ function walk(dir, out = []) {
   try { entries = readdirSync(dir); } catch { return out; }
   for (const name of entries) {
     if (name === 'node_modules' || name === 'dist' || name === '.git' ||
-        name === 'build' || name === 'coverage' || name === '.next') continue;
+        name === 'build' || name === 'coverage' || name === '.next' ||
+        name === '.claude') continue;
     const full = join(dir, name);
     let st;
     try { st = statSync(full); } catch { continue; }
-    if (st.isDirectory()) walk(full, out);
-    else if (/\.(ts|tsx|css)$/.test(name)) out.push(full);
+    if (st.isDirectory()) {
+      // A `.git` entry marks a nested checkout (dir for clones/submodules,
+      // file for linked worktrees) — foreign trees whose code must not
+      // contribute atoms. Only children are tested, so the scan root itself
+      // may be a worktree.
+      if (existsSync(join(full, '.git'))) continue;
+      walk(full, out);
+    } else if (/\.(ts|tsx|css)$/.test(name)) out.push(full);
   }
   return out;
 }
