@@ -64,7 +64,15 @@ export async function listPortalShipments(
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
-      shippingCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text`,
+      // BILLED shipping (the customer-facing C. Shipping Rate from billing
+      // line items) — never the internal label cost, so the Shipments page
+      // always matches Billing. Null (—) until the period is billed.
+      shippingCost: sql<string | null>`(
+        select sum(bli.total_cost)
+        from billing_line_items bli
+        where bli.shipment_id = ${shipments.id}
+          and bli.line_type = 'shipping'
+      )::text`,
     })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))

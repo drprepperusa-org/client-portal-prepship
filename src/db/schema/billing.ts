@@ -72,6 +72,8 @@ export const billingLineItems = pgTable(
   (t) => [
     index('billing_li_client_idx').on(t.clientId),
     index('billing_li_date_idx').on(t.shipDate),
+    // Billed-shipping lookups by shipment (Shipments page parity with Billing).
+    index('billing_li_shipment_idx').on(t.shipmentId),
     unique('billing_li_unique').on(t.orderId, t.lineType, t.description),
   ]
 );

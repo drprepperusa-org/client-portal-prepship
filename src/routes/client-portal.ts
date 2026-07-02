@@ -272,7 +272,14 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
-      shippingCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text`,
+      // Billed shipping only (matches the Billing surfaces) — never the
+      // internal label cost.
+      shippingCost: sql<string | null>`(
+        select sum(bli.total_cost)
+        from billing_line_items bli
+        where bli.shipment_id = ${shipments.id}
+          and bli.line_type = 'shipping'
+      )::text`,
     })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
