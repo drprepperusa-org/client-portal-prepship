@@ -107,9 +107,16 @@ export function useInvoiceSummaryRange(dateFrom: string, dateTo: string) {
 }
 
 /** Billing periods per client — 'half' (1st–15th / 16th–EOM) or 'month'
- *  (combined full-month rows). */
-export function useInvoicePeriodSummaryRange(dateFrom: string, dateTo: string, granularity: 'half' | 'month' = 'half') {
-  const { clientId } = usePortalFilters();
+ *  (combined full-month rows). Pass explicitClientId for the on-page client
+ *  filter; otherwise the global topbar switcher applies. */
+export function useInvoicePeriodSummaryRange(
+  dateFrom: string,
+  dateTo: string,
+  granularity: 'half' | 'month' = 'half',
+  explicitClientId?: number,
+) {
+  const { clientId: globalClientId } = usePortalFilters();
+  const clientId = explicitClientId ?? globalClientId;
   return useTokenQuery(
     ['invoice-period-summary-range', dateFrom, dateTo, granularity, clientId ?? 'scope'],
     (t) => portalApi.invoicePeriodSummaryRange(t, dateFrom, dateTo, clientId, granularity),

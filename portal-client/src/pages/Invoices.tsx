@@ -9,7 +9,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useInvoiceDetailsRange, useInvoicePeriodSummaryRange, useOrderShipments } from '@/lib/hooks';
+import { useClients, useInvoiceDetailsRange, useInvoicePeriodSummaryRange, useOrderShipments } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
 import { exportInvoiceExcel } from '@/lib/invoiceExcel';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
@@ -110,9 +110,12 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
 
   // One row per client per billing period — semi-monthly halves by default,
   // or combined full months (May 1 – 31) via the toggle. Aggregated in SQL
-  // server-side (no row cap) so counts and totals are exact.
+  // server-side (no row cap) so counts and totals are exact. Admins can scope
+  // the table to one client with the on-page filter (like Orders/Shipments).
   const [granularity, setGranularity] = useState<'half' | 'month'>('half');
-  const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity);
+  const clients = useClients().data?.data ?? [];
+  const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
+  const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity, clientFilter);
   const billingVisible = summaryQuery.data?.billingVisible !== false;
   const summary: PeriodSummary[] = useMemo(
     () =>
@@ -279,6 +282,19 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           <div className="flex items-center justify-between gap-3 px-2 pb-2">
             <p className="text-sm font-bold text-ink">Billing periods</p>
             <div className="flex items-center gap-1.5">
+              {clients.length > 1 && (
+                <select
+                  value={clientFilter ?? ''}
+                  onChange={(e) => setClientFilter(e.target.value ? Number(e.target.value) : undefined)}
+                  aria-label="Filter billing periods by client"
+                  className="focus-ring mr-1.5 h-8 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 px-2.5 pr-7 text-xs font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
+                >
+                  <option value="">All clients</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name ?? `Client ${c.id}`}</option>
+                  ))}
+                </select>
+              )}
               {([['half', 'Semi-Monthly'], ['month', 'Monthly']] as const).map(([value, label]) => (
                 <button
                   key={value}
