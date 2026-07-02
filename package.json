@@ -59,6 +59,7 @@
     "test:raw-error-response-audit": "node scripts/raw-error-response-audit-guard.mjs",
     "test:rbac-permissions": "node scripts/rbac-permissions-guard.mjs",
     "test:client-store-scope": "node scripts/client-store-scope-guard.mjs",
+    "test:client-portal-shipments-status": "tsx scripts/client-portal-shipments-status-guard.ts",
     "test:marketplace-order-auth-cors": "node scripts/marketplace-order-auth-cors-guard.mjs",
     "test:dashboard-client-scope": "node scripts/dashboard-client-store-scope-guard.mjs",
     "test:dashboard-bar-chart-top-skus": "tsx scripts/dashboard-bar-chart-top-skus-guard.ts",
