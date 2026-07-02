@@ -61,6 +61,7 @@
     "test:client-store-scope": "node scripts/client-store-scope-guard.mjs",
     "test:client-portal-shipments-status": "tsx scripts/client-portal-shipments-status-guard.ts",
     "test:client-portal-billing-item-identity": "tsx scripts/client-portal-billing-item-identity-guard.ts",
+    "test:client-portal-billing-shipment-modal": "tsx scripts/client-portal-billing-shipment-modal-guard.ts",
     "test:marketplace-order-auth-cors": "node scripts/marketplace-order-auth-cors-guard.mjs",
     "test:dashboard-client-scope": "node scripts/dashboard-client-store-scope-guard.mjs",
     "test:dashboard-bar-chart-top-skus": "tsx scripts/dashboard-bar-chart-top-skus-guard.ts",

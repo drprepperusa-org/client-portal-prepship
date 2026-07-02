@@ -1,0 +1,91 @@
+// CP-008 guard: Billing Order # opens a scoped shipment-information modal.
+// Shipment truth comes from the backend shipments read path (scope-checked,
+// DTO-redacted); the modal never exposes label URLs, provider payloads, or
+// account identities, and shipping cost stays behind financial visibility.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = process.cwd();
+let failed = false;
+
+function check(condition: boolean, message: string) {
+  if (!condition) {
+    console.error(`FAIL: ${message}`);
+    failed = true;
+  } else {
+    console.log(`ok: ${message}`);
+  }
+}
+
+function read(rel: string) {
+  return fs.readFileSync(path.join(root, rel), 'utf8');
+}
+
+// 1) Focused scoped endpoint reusing the canonical shipment DTO shaping.
+const route = read('src/routes/client-portal.ts');
+const routeBlock = /app\.get\('\/orders\/:id\{\[0-9\]\+\}\/shipments'[\s\S]*?\n\}\);/.exec(route)?.[0] ?? '';
+check(routeBlock.length > 0, 'GET /orders/:id/shipments route exists for the Billing shipment modal');
+check(
+  routeBlock.includes('shipmentScopePredicate(scope)') && routeBlock.includes('eq(shipments.voided, false)'),
+  'order-shipments route is scope-checked and hides voided rows',
+);
+check(
+  routeBlock.includes('toPortalShipmentDto') && routeBlock.includes('includeFinancials: scope.canViewFinancials'),
+  'order-shipments route reuses toPortalShipmentDto with financial gating',
+);
+check(
+  routeBlock.includes("recordPortalAudit('portal.billing.order_shipments.view'"),
+  'order-shipments route is audited',
+);
+
+// 2) The shipment DTO stays redaction-safe: no label URLs, provider payloads,
+//    or account identities; shipping cost gated by financial visibility.
+const dto = read('src/lib/client-portal/dto.ts');
+const dtoBlock = /export function toPortalShipmentDto[\s\S]*?\n\}/.exec(dto)?.[0] ?? '';
+check(dtoBlock.length > 0, 'toPortalShipmentDto block found');
+check(
+  !dtoBlock.includes('labelUrl') &&
+    !dtoBlock.includes('providerAccountNickname') &&
+    !dtoBlock.includes('carrierAccountId') &&
+    !dtoBlock.includes('selectedRateJson') &&
+    !dtoBlock.includes('row.raw'),
+  'shipment DTO exposes no label URLs / provider payloads / account identities',
+);
+check(
+  dtoBlock.includes('options.includeFinancials ? row.shippingCost'),
+  'shipment DTO gates shipping cost behind financial visibility',
+);
+
+// 3) Portal API + modal wiring.
+const api = read('portal-client/src/lib/api.ts');
+check(api.includes('/api/client-portal/orders/${orderId}/shipments'), 'portal API exposes orderShipments');
+
+const invoicesPage = read('portal-client/src/pages/Invoices.tsx');
+check(
+  invoicesPage.includes('aria-label={`View shipment information for order') && invoicesPage.includes('setShipmentModal({ orderId:'),
+  'Billing Order # renders as an accessible button that opens the shipment modal',
+);
+check(
+  invoicesPage.includes('useOrderShipments(shipmentModal?.orderId ?? null)') && invoicesPage.includes('<Drawer'),
+  'shipment modal fetches via the scoped hook and renders in a drawer',
+);
+check(
+  invoicesPage.includes('No shipment record found for this billing line.'),
+  'missing shipment data shows the clear empty state',
+);
+check(
+  invoicesPage.includes('shipmentStatusMeta(s)') && invoicesPage.includes('s.deliveredAt'),
+  'modal renders backend tracking status and delivered date (no tracking-number-derived guesses)',
+);
+
+// 4) package.json exposes this guard.
+const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
+assert(
+  pkg.scripts?.['test:client-portal-billing-shipment-modal'] === 'tsx scripts/client-portal-billing-shipment-modal-guard.ts',
+  'package.json exposes test:client-portal-billing-shipment-modal',
+);
+console.log('ok: package.json exposes test:client-portal-billing-shipment-modal');
+
+if (failed) process.exit(1);
+console.log('\nCP-008 client portal billing shipment modal guard passed.');

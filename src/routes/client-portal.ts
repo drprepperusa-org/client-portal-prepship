@@ -257,6 +257,46 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
   return c.json({ data });
 });
 
+// CP-008: shipment information for one order — powers the Billing line-item
+// Order # modal. Scope-checked; DTO redaction (no label URLs / provider
+// payloads / account identities) and financial gating come from
+// toPortalShipmentDto like every other shipment surface.
+app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const orderId = Number(c.req.param('id'));
+  const rows = await db
+    .select({
+      shipment: shipments,
+      clientName: clients.name,
+      storeId: orders.storeId,
+      orderItems: orders.items,
+      shippingCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text`,
+    })
+    .from(shipments)
+    .leftJoin(clients, eq(clients.id, shipments.clientId))
+    .leftJoin(orders, eq(orders.id, shipments.orderId))
+    .where(and(eq(shipments.orderId, orderId), eq(shipments.voided, false), shipmentScopePredicate(scope)))
+    .orderBy(desc(shipments.id))
+    .limit(20);
+  await recordPortalAudit('portal.billing.order_shipments.view', scope, { orderId, rows: rows.length });
+  return c.json({
+    data: rows.map((row) =>
+      toPortalShipmentDto(
+        {
+          ...row.shipment,
+          clientName: row.clientName,
+          storeName: row.clientName,
+          storeId: row.storeId,
+          orderItems: row.orderItems,
+          shippingCost: row.shippingCost,
+        },
+        { includeFinancials: scope.canViewFinancials },
+      ),
+    ),
+  });
+});
+
 app.get('/shipments', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;

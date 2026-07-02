@@ -142,6 +142,7 @@ export interface PortalShipment {
   clientName: string | null;
   storeName: string | null;
   carrierCode: string | null;
+  serviceCode?: string | null;
   trackingNumber: string | null;
   labelTracking: string | null;
   shipDate: string | null;
@@ -682,6 +683,10 @@ export const portalApi = {
       clientId: opts.clientId,
       status: opts.status || undefined,
     }),
+
+  /** Shipment information for one order — powers the Billing Order # modal. */
+  orderShipments: (token: string, orderId: number) =>
+    apiGet<{ data: PortalShipment[] }>(token, `/api/client-portal/orders/${orderId}/shipments`),
 
   /** Live carrier tracking refresh for the shipments on screen (read-only lookup). */
   refreshShipmentTracking: (token: string, shipmentIds: number[]) =>

@@ -289,6 +289,7 @@ export function toPortalShipmentDto(
     storeId: row.storeId ?? null,
     storeName: row.storeName ?? row.clientName ?? null,
     carrierCode: row.carrierCode,
+    serviceCode: row.serviceCode,
     trackingNumber: row.trackingNumber,
     labelTracking: row.labelTracking,
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),

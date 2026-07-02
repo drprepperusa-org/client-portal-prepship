@@ -127,6 +127,14 @@ export function useShipments(opts: ListOpts = {}) {
     (t) => portalApi.shipments(t, merged),
   );
 }
+/** Shipments for one order — powers the Billing Order # shipment modal. */
+export function useOrderShipments(orderId: number | null) {
+  return useTokenQuery(
+    ['order-shipments', orderId ?? 'none'],
+    (t) => portalApi.orderShipments(t, orderId as number),
+    orderId != null,
+  );
+}
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };

@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Lock, ChevronLeft, FileText, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
-import { EmptyState } from '@/components/ui/Display';
+import { EmptyState, Chip } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Drawer } from '@/components/ui/Drawer';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useInvoiceDetailsRange, useInvoiceSummaryRange } from '@/lib/hooks';
+import { useInvoiceDetailsRange, useInvoiceSummaryRange, useOrderShipments } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
 import { exportInvoiceExcel } from '@/lib/invoiceExcel';
-import { money, shortDate } from '@/lib/status';
+import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
@@ -63,6 +64,9 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const [detailPage, setDetailPage] = useState(1);
   const [opening, setOpening] = useState<number | null>(null);
   const [exporting, setExporting] = useState<number | null>(null);
+  // CP-008: Billing Order # click opens the shipment-information drawer.
+  const [shipmentModal, setShipmentModal] = useState<{ orderId: number; orderNumber: string | null } | null>(null);
+  const orderShipmentsQuery = useOrderShipments(shipmentModal?.orderId ?? null);
 
   // Open the backend-rendered printable invoice for a client + range.
   async function viewInvoice(clientId?: number) {
@@ -177,7 +181,26 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   ];
 
   const lineCols: Column<BillingInvoiceDetailRow>[] = useMemo(() => [
-    { key: 'order', header: 'Order #', defaultWidth: 130, render: (r) => <span className="font-semibold text-brand-700">{r.orderNumber ?? (r.orderId ? `#${r.orderId}` : '—')}</span>, sortAccessor: (r) => r.orderNumber ?? '' },
+    {
+      key: 'order',
+      header: 'Order #',
+      defaultWidth: 130,
+      render: (r) => (
+        <button
+          type="button"
+          onClick={() => {
+            if (r.orderId != null) setShipmentModal({ orderId: Number(r.orderId), orderNumber: r.orderNumber ?? null });
+          }}
+          disabled={r.orderId == null}
+          className="focus-ring cursor-pointer font-semibold text-brand-700 hover:underline disabled:cursor-default disabled:no-underline"
+          title="View shipment information"
+          aria-label={`View shipment information for order ${r.orderNumber ?? r.orderId ?? ''}`}
+        >
+          {r.orderNumber ?? (r.orderId ? `#${r.orderId}` : '—')}
+        </button>
+      ),
+      sortAccessor: (r) => r.orderNumber ?? '',
+    },
     { key: 'date', header: 'Ship Date', defaultWidth: 120, render: (r) => <span className="tnum text-ink-3">{shortDate(r.shipDate)}</span>, sortAccessor: (r) => r.shipDate ?? '' },
     {
       key: 'item',
@@ -301,6 +324,61 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           </QueryState>
         </GlassPanel>
       )}
+
+      <Drawer
+        open={!!shipmentModal}
+        onClose={() => setShipmentModal(null)}
+        title={shipmentModal ? `Shipments — Order ${shipmentModal.orderNumber ?? `#${shipmentModal.orderId}`}` : ''}
+      >
+        {shipmentModal && (
+          <QueryState
+            isLoading={orderShipmentsQuery.isLoading}
+            isError={orderShipmentsQuery.isError}
+            error={orderShipmentsQuery.error}
+            isEmpty={(orderShipmentsQuery.data?.data ?? []).length === 0}
+            onRetry={() => orderShipmentsQuery.refetch()}
+            emptyTitle="No shipment yet"
+            emptyMessage="No shipment record found for this billing line."
+          >
+            <div className="space-y-4">
+              {(orderShipmentsQuery.data?.data ?? []).map((s) => (
+                <div key={s.id} className="space-y-3 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+                  <div className="flex items-center justify-between">
+                    <Chip accent={shipmentStatusMeta(s).accent}>{shipmentStatusMeta(s).label}</Chip>
+                    <span className="text-xs text-ink-3">Shipment #{s.id}</span>
+                  </div>
+                  <div className="rounded-glass-sm bg-white/70 p-3 ring-1 ring-slate-200/70">
+                    <p className="text-xs text-ink-3">Tracking number</p>
+                    <p className="truncate font-mono text-sm text-ink">{s.trackingNumber ?? s.labelTracking ?? '—'}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <ShipmentField label="Carrier" value={s.carrierCode ?? '—'} />
+                    <ShipmentField label="Service" value={s.serviceCode ?? '—'} />
+                    <ShipmentField label="Ship date" value={shortDate(s.shipDate)} />
+                    <ShipmentField label="Delivered" value={s.deliveredAt ? shortDate(s.deliveredAt) : '—'} />
+                    {s.shippingCost != null && <ShipmentField label="Shipping Cost" value={money(s.shippingCost)} />}
+                  </div>
+                  {(s.items?.length ?? 0) > 0 && (
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.5fr)]">
+                      <ItemNameLines items={s.items} limit={6} />
+                      <SkuLines items={s.items} limit={6} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </QueryState>
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
+function ShipmentField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+      <p className="text-xs font-medium text-ink-3">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
     </div>
   );
 }
