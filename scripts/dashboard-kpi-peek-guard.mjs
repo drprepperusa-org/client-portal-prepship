@@ -34,18 +34,37 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(dash.includes('counts: countRows') && dash.includes('daily: dash.data?.daily'), 'peek modal is fed already-cached dashboard/daily data (no new fetch)');
 }
 
-// ── The modal: grow-from-card morph, count-up, self-drawing sparkline ──
+// ── The modal shell: grow-from-card morph, composed from peek/ submodules ──
+// (count-up, chart, live list, and per-metric configs were extracted into
+//  portal-client/src/components/dashboard/peek/ — each is pinned in its new home below)
 {
   const modal = read('portal-client/src/components/dashboard/KpiPeekModal.tsx');
   assert(modal.includes('function originTransform'), 'modal computes a grow-from-card origin transform');
-  assert(modal.includes('requestAnimationFrame') && modal.includes('useCountUp'), 'headline value counts up via rAF');
   assert(modal.includes('useReducedMotion'), 'animations respect prefers-reduced-motion');
-  assert(modal.includes('function PeekChart') && modal.includes("from 'recharts'"), 'trend uses an interactive Recharts chart');
-  assert(modal.includes('<Tooltip') && modal.includes('activeDot'), 'chart shows on-hover indicators (tooltip + active dot)');
-  assert(modal.includes('onClick={pick}') && modal.includes('Tap any day for detail'), 'clicking a day pins a detail readout');
-  assert(modal.includes('function OpenOrdersPeek') && modal.includes("useOrders({ status: 'awaiting_shipment'"), 'Open-orders peek lazy-loads a short live list');
+  assert(modal.includes("from './peek/atoms'") && modal.includes("from './peek/PeekChart'") && modal.includes("from './peek/buildConfig'"), 'modal composes the peek/ submodules (atoms, chart, config)');
+}
+
+// ── peek/atoms: count-up headline ──
+{
+  const atoms = read('portal-client/src/components/dashboard/peek/atoms.tsx');
+  assert(atoms.includes('requestAnimationFrame') && atoms.includes('useCountUp'), 'headline value counts up via rAF');
+}
+
+// ── peek/PeekChart: interactive trend with click-to-pin detail ──
+{
+  const chart = read('portal-client/src/components/dashboard/peek/PeekChart.tsx');
+  assert(chart.includes('function PeekChart') && chart.includes("from 'recharts'"), 'trend uses an interactive Recharts chart');
+  assert(chart.includes('<Tooltip') && chart.includes('activeDot'), 'chart shows on-hover indicators (tooltip + active dot)');
+  assert(chart.includes('onClick={pick}') && chart.includes('Tap any day for detail'), 'clicking a day pins a detail readout');
+}
+
+// ── peek/OpenOrdersPeek + peek/buildConfig: live list and per-metric configs ──
+{
+  const live = read('portal-client/src/components/dashboard/peek/OpenOrdersPeek.tsx');
+  assert(live.includes('function OpenOrdersPeek') && live.includes("useOrders({ status: 'awaiting_shipment'"), 'Open-orders peek lazy-loads a short live list');
+  const config = read('portal-client/src/components/dashboard/peek/buildConfig.tsx');
   for (const key of ['open', 'shipped', 'units', 'revenue']) {
-    assert(modal.includes(`case '${key}'`), `modal builds a config for the ${key} peek`);
+    assert(config.includes(`case '${key}'`), `modal builds a config for the ${key} peek`);
   }
 }
 
