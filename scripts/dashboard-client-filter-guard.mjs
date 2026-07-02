@@ -48,10 +48,16 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 // so the switcher was a no-op for global admins. They must now return the
 // explicit (narrowing-only) predicate instead.
 {
-  const route = read('src/routes/client-portal.ts');
+  // The scope predicates moved from routes/client-portal.ts to
+  // lib/client-portal/predicates.ts in the B1 read-model extraction; slice
+  // each function body to the next export so the negative assertion can't
+  // bleed into a neighboring function.
+  const predicates = read('src/lib/client-portal/predicates.ts');
   const fnBody = (name) => {
-    const start = route.indexOf(`function ${name}(`);
-    return start === -1 ? '' : route.slice(start, start + 1400);
+    const start = predicates.indexOf(`export function ${name}(`);
+    if (start === -1) return '';
+    const next = predicates.indexOf('\nexport function ', start + 1);
+    return predicates.slice(start, next === -1 ? undefined : next);
   };
   for (const fn of ['orderScopePredicate', 'shipmentScopePredicate']) {
     const body = fnBody(fn);

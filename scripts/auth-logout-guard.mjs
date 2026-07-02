@@ -1,11 +1,17 @@
+// Sign-out correctness for the ACTIVE client portal (portal-client/).
+// Repointed from the legacy web/ app when it was retired. What must hold:
+// sign-out clears the Supabase session AND the React Query cache (so the
+// next sign-in can never read the previous tenant's cached data), sign-in
+// applies the returned session immediately, and signed-out visitors are
+// structurally routed to /login by the auth wall.
 import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const authPath = 'web/src/lib/auth.tsx';
-const sidebarPath = 'web/src/components/Sidebar/variants/useSidebarController.ts';
+const authPath = 'portal-client/src/auth.tsx';
+const appPath = 'portal-client/src/App.tsx';
 const authSource = fs.readFileSync(path.join(root, authPath), 'utf8');
-const sidebarSource = fs.readFileSync(path.join(root, sidebarPath), 'utf8');
+const appSource = fs.readFileSync(path.join(root, appPath), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 function assert(condition, message) {
@@ -18,52 +24,36 @@ function assert(condition, message) {
 }
 
 const signOutStart = authSource.indexOf('signOut: async () => {');
-const signOutEnd = signOutStart === -1 ? -1 : authSource.indexOf('resetPasswordForEmail:', signOutStart);
+const signOutEnd = signOutStart === -1 ? -1 : authSource.indexOf('},', signOutStart);
 const signOutBlock =
-  signOutStart === -1 || signOutEnd === -1
-    ? ''
-    : authSource.slice(signOutStart, signOutEnd);
+  signOutStart === -1 || signOutEnd === -1 ? '' : authSource.slice(signOutStart, signOutEnd);
 
 assert(signOutBlock.length > 0, 'auth provider exposes signOut implementation');
 assert(
-  !authSource.includes('LOGOUT_REMOTE_TIMEOUT_MS'),
-  'logout does not keep a background remote sign-out timer',
+  signOutBlock.includes('supabase.auth.signOut()'),
+  'sign-out revokes the Supabase session',
 );
 assert(
-  signOutBlock.includes('setSession(null)') && signOutBlock.includes('setLoading(false)'),
-  'logout clears React auth state immediately',
+  signOutBlock.includes('queryClient.clear()') && signOutBlock.includes('setSession(null)'),
+  'sign-out wipes the React Query cache and local auth state (no cross-tenant leftovers)',
 );
 assert(
-  signOutBlock.includes('setSession(null)') &&
-    signOutBlock.includes('clearLocalSession()') &&
-    signOutBlock.indexOf('setSession(null)') < signOutBlock.indexOf('clearLocalSession()'),
-  'local auth state clears before local Supabase cleanup',
+  authSource.includes('function syncCacheForUser') &&
+    authSource.includes('queryClient.clear()') &&
+    authSource.includes('cachedUserId'),
+  'auth provider wipes cached query data whenever the signed-in identity changes',
 );
 assert(
-  !authSource.includes('supabase.auth.signOut'),
-  'logout never calls Supabase signOut because it can leave a pending logout request',
+  /if\s*\(data\.session\)\s*\{/.test(authSource) && authSource.includes('setSession(data.session)'),
+  'sign-in applies the returned Supabase session immediately',
 );
 assert(
-  authSource.includes('removeSupabaseSessionKeys(window.localStorage)') &&
-    authSource.includes('removeSupabaseSessionKeys(window.sessionStorage)') &&
-    signOutBlock.includes('clearLocalSession()'),
-  'logout clears Supabase session keys from browser storage directly',
+  authSource.includes('supabase.auth.onAuthStateChange'),
+  'auth provider tracks Supabase auth state changes',
 );
 assert(
-  !signOutBlock.includes('remoteSignOut') && !signOutBlock.includes('Promise.race'),
-  'logout does not leave a late remote sign-out that can clear the next login',
-);
-assert(
-  /signIn:\s*async\s*\(email,\s*password\)\s*=>\s*{[\s\S]*const\s+{\s*data,\s*error\s*}\s*=\s*await\s+supabase\.auth\.signInWithPassword/.test(authSource),
-  'sign-in captures the returned Supabase session',
-);
-assert(
-  /if\s*\(data\.session\)\s*setSession\(data\.session\)/.test(authSource),
-  'sign-in applies the returned session immediately',
-);
-assert(
-  sidebarSource.includes("navigate('/login', { replace: true })"),
-  'sidebar still navigates to login after sign-out',
+  appSource.includes('<Navigate to="/login" replace state={{ from: location.pathname }} />'),
+  'auth wall routes signed-out visitors to /login (sign-out lands on login structurally)',
 );
 assert(
   packageJson.scripts?.['test:auth-logout'] === 'node scripts/auth-logout-guard.mjs',

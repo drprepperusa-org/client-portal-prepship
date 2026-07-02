@@ -21,11 +21,13 @@ function assert(condition, message) {
   else fail(message);
 }
 
+// The legacy web/ Rate Browser client (v2-apiClient.ts) was retired with the
+// legacy app; the backend rate-hardening surface below is what remains live,
+// and the diagnostics it produces are consumed by the admin app.
 const service = read('src/services/rates.ts');
 const route = read('src/routes/rates.ts');
 const schema = read('src/db/schema/rates.ts');
 const migration = read('drizzle/0028_rate_cache_diagnostics.sql');
-const client = read('web/src/lib/v2-apiClient.ts');
 
 assert(
   service.includes('export function rateCacheKey'),
@@ -72,13 +74,6 @@ assert(
     route.includes('approximate: false') &&
     route.includes('approximate: true'),
   '/rates/cached/bulk supports exact cache keys and marks rough matches approximate',
-);
-
-assert(
-  client.includes('carrierDiagnostics') &&
-    client.includes("source: 'direct'") &&
-    client.includes("source: 'shipstation'"),
-  'Rate Browser client returns normalized ShipStation and direct-carrier diagnostics',
 );
 
 if (process.exitCode) {

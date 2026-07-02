@@ -22,6 +22,9 @@ function read(rel: string) {
 
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 const route = read('src/routes/client-portal.ts');
+// The shipments query moved to the read-model during the B-series extraction;
+// the route is a thin delegate, so query-shape pins live against this file.
+const shipmentsReadModel = read('src/lib/client-portal/read-models/shipments.ts');
 const dto = read('src/lib/client-portal/dto.ts');
 const api = read('portal-client/src/lib/api.ts');
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
@@ -64,17 +67,20 @@ assert(
   shipmentDtoBlock.includes('options: { includeFinancials?: boolean }') &&
     shipmentDtoBlock.includes('items: safeItems(row.orderItems') &&
     shipmentDtoBlock.includes('shippingCost: options.includeFinancials ? row.shippingCost ?? null : null') &&
-    !shipmentDtoBlock.includes('serviceCode:'),
-  'toPortalShipmentDto maps order items and gates shipment cost behind financial visibility',
+    shipmentDtoBlock.includes('carrierCode: options.includeFinancials ? row.carrierCode : null') &&
+    shipmentDtoBlock.includes('serviceCode: options.includeFinancials ? row.serviceCode : null'),
+  'toPortalShipmentDto maps order items and gates shipment cost and carrier/service identity behind financial visibility (CP-005 + CP-009)',
 );
 
 assert(
-  shipmentsRouteBlock.includes('orderItems: orders.items') &&
-    shipmentsRouteBlock.includes('shippingCost:') &&
-    shipmentsRouteBlock.includes('coalesce(${shipments.labelCost}') &&
-    shipmentsRouteBlock.includes('${shipments.otherCost}') &&
-    shipmentsRouteBlock.includes('{ includeFinancials: scope.canViewFinancials }'),
-  'shipments route selects order items, backend-owned shipment cost, and passes financial visibility to DTO',
+  shipmentsRouteBlock.includes('listPortalShipments(') &&
+    shipmentsReadModel.includes('orderItems: orders.items') &&
+    shipmentsReadModel.includes('shippingCost:') &&
+    shipmentsReadModel.includes('from billing_line_items bli') &&
+    shipmentsReadModel.includes("bli.line_type = 'shipping'") &&
+    !shipmentsReadModel.includes('coalesce(${shipments.labelCost}') &&
+    shipmentsReadModel.includes('{ includeFinancials: scope.canViewFinancials }'),
+  'shipments read model selects order items and BILLED (never label-cost) shipping, and passes financial visibility to the DTO',
 );
 
 assert(
