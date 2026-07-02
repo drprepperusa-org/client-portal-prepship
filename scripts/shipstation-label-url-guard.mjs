@@ -26,12 +26,21 @@ assert.equal(
   'unrecognized label download objects must not leak into text columns',
 );
 
+// The live label-purchase path (createLabelV2 → carrierConnectors.shipstation
+// .createLabel → ssCreateLabel) normalizes label_download inside the ShipStation
+// lib; the service then persists that already-plain URL. Pin both halves so
+// neither side regresses to writing raw label_download objects into shipments.
+const shipstationLib = readFileSync('src/lib/shipstation/labels.ts', 'utf8');
+assert(
+  shipstationLib.includes('const labelUrl = extractShipstationLabelUrl(labelDownload)') &&
+    shipstationLib.includes('labelUrl: extractShipstationLabelUrl(labelDownload)'),
+  'ssCreateLabel and the return/list/v1-details mappers must normalize ShipStation label_download into a plain URL',
+);
+
 const labelsService = readFileSync('src/services/labels.ts', 'utf8');
 assert(
-  labelsService.includes('extractShipstationLabelUrl') &&
-    labelsService.includes('const labelUrl = extractShipstationLabelUrl(label.label_download)') &&
-    labelsService.includes('labelUrl,'),
-  'persistLabelFromRate must normalize ShipStation label_download into a plain URL before writing shipments',
+  labelsService.includes('labelUrl: created.labelUrl'),
+  'persistCreatedLabel must persist the connector-normalized label URL on the live path',
 );
 
 console.log('PASS shipstation label URL guard');

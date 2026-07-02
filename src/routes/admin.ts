@@ -560,9 +560,9 @@ app.post('/seed-test-orders', zValidator('json', seedBody), async (c) => {
         testing: true,
         note: 'TESTING ORDER — sandbox data, do not ship',
         seedBatch: new Date().toISOString(),
-        // Label creation reads ship-to from raw.shipTo. Without street1 the
-        // createLabelFromOrderId validator rejects the order with
-        // "ship-to missing street".
+        // Label creation reads ship-to from raw.shipTo (orderShipToFromRaw in
+        // services/labels.ts). street1 exists only here — orders has no street
+        // column — so omitting it stamps labels with a blank street address.
         shipTo: {
           name,
           street1: `${100 + i} Testing St`,

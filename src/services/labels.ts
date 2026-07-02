@@ -4,9 +4,7 @@ import { db } from '../db/client';
 import { shipments } from '../db/schema/shipments';
 import { orders, orderOverrides } from '../db/schema/orders';
 import { clients } from '../db/schema/clients';
-import { ssRequest } from '../lib/shipstation/client';
 import {
-  extractShipstationLabelUrl,
   ssCreateReturnLabel,
   ssGetShipmentV1,
   ssListRecentLabels,
@@ -14,7 +12,6 @@ import {
   type CreatedExternalLabel,
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
-import type { Address, Label, Parcel, Shipment as SSShipment } from '../lib/shipstation/types';
 import { getDefaultShipFrom } from '../lib/ship-from';
 import {
   generateFakeShipmentId,
@@ -340,98 +337,7 @@ async function loadClientCredentials(clientId: number | null | undefined): Promi
   return loadClientCredentialsImpl(clientId);
 }
 
-// ── Legacy helpers kept for any internal callers ──────────────────────────────
-
-export type CreateFromRateInput = {
-  rateId: string;
-  orderId: number;
-  clientId?: number;
-};
-
-export async function createLabelFromRate(input: CreateFromRateInput) {
-  const label = await ssRequest<Label>(`/v2/labels/rates/${input.rateId}`, {
-    method: 'POST',
-    body: { validate_address: 'no_validation' },
-    dedupeKey: `label:rate:${input.rateId}`,
-  });
-  return persistLabelFromRate(label, input.orderId, input.clientId);
-}
-
-async function persistLabelFromRate(label: Label, orderId: number, clientId?: number) {
-  const shipDate = label.ship_date ? new Date(label.ship_date) : null;
-  const createdAt = label.created_at ? new Date(label.created_at) : new Date();
-  const ssShipmentId = Number(String(label.shipment_id ?? '').replace(/^se-/, ''));
-  // Per user override unlock shipped data on 2026-05-23: normalize nested ShipStation label downloads before shipment persistence so queue recovery receives a plain URL string.
-  const labelUrl = extractShipstationLabelUrl(label.label_download);
-  const [row] = await db
-    .insert(shipments)
-    .values({
-      orderId,
-      clientId: clientId ?? null,
-      carrierCode: label.carrier_code,
-      serviceCode: label.service_code,
-      trackingNumber: label.tracking_number,
-      shipDate,
-      createDate: createdAt,
-      labelUrl,
-      labelCreatedAt: createdAt,
-      labelFormat: label.label_format ?? 'pdf',
-      labelCarrier: label.carrier_code,
-      labelService: label.service_code,
-      labelTracking: label.tracking_number,
-      labelCost: label.shipment_cost.amount.toFixed(2),
-      labelShipDate: shipDate,
-      labelShipmentId: Number.isFinite(ssShipmentId) ? ssShipmentId : null,
-      voided: !!label.voided,
-      source: 'v4',
-      isReturn: !!label.is_return_label,
-    })
-    .returning();
-  if (!row) throw new Error('Failed to persist shipment row');
-  return row;
-}
-
-export type CreateFromShipmentInput = {
-  orderId: number;
-  clientId?: number;
-  weightOz: number;
-  dimensions?: { length: number; width: number; height: number };
-  shipTo: Address;
-  shipFrom?: Address;
-  serviceCode: string;
-  residential?: boolean;
-};
-
-export async function createLabelFromShipment(input: CreateFromShipmentInput) {
-  const shipFrom = input.shipFrom ?? (await getDefaultShipFrom());
-  const parcel: Parcel = { weight: { value: input.weightOz, unit: 'ounce' } };
-  if (input.dimensions) {
-    parcel.dimensions = {
-      unit: 'inch',
-      length: input.dimensions.length,
-      width: input.dimensions.width,
-      height: input.dimensions.height,
-    };
-  }
-
-  const shipment: SSShipment & { service_code: string } = {
-    service_code: input.serviceCode,
-    validate_address: 'no_validation',
-    ship_to: {
-      ...input.shipTo,
-      address_residential_indicator:
-        input.residential === true ? 'yes' : input.residential === false ? 'no' : 'unknown',
-    },
-    ship_from: shipFrom,
-    packages: [parcel],
-  };
-
-  const label = await ssRequest<Label>('/v2/labels', {
-    method: 'POST',
-    body: { shipment },
-  });
-  return persistLabelFromRate(label, input.orderId, input.clientId);
-}
+// ── Label lookup ──────────────────────────────────────────────────────────────
 
 export async function lookupLabel(lookup: string) {
   const asNum = Number(lookup);
