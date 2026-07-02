@@ -27,7 +27,9 @@ export function Layout() {
     <div className="relative min-h-screen">
       <LiquidBackground />
 
-      <div className="relative z-10 flex gap-3 p-3 sm:gap-4 sm:p-4">
+      {/* Capped + centered: pages hug a readable width on wide monitors
+          instead of stretching w-full with dead white space. */}
+      <div className="relative z-10 mx-auto flex w-full max-w-[1680px] gap-3 p-3 sm:gap-4 sm:p-4">
         {/* Desktop sidebar */}
         <aside className={cn('relative hidden shrink-0 lg:block', collapsed ? 'w-[76px]' : 'w-64', 'transition-[width] duration-300')}>
           <div className="sticky top-4 h-[calc(100vh-2rem)]">
