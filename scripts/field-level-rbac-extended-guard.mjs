@@ -22,7 +22,9 @@ function assert(condition, message) {
 }
 
 const packageJson = JSON.parse(read('package.json'));
-const ordersSource = read('src/routes/orders.ts');
+// The orders-list row mapper (with its per-field financials gating) moved to
+// services/orders-list.ts; assert over route + service so coverage follows it.
+const ordersSource = read('src/routes/orders.ts') + '\n' + read('src/services/orders-list.ts');
 const manifestsSource = read('src/routes/manifests.ts');
 const packagesSource = read('src/routes/packages.ts');
 const ratesSource = read('src/routes/rates.ts');

@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const helper = readFileSync('src/lib/walmart-order-dedupe.ts', 'utf8');
-const ordersRoute = readFileSync('src/routes/orders.ts', 'utf8');
+// The orders-list enrichment + row mapper (walmart source-link + duplicate
+// lookup) moved to services/orders-list.ts; assert over route + service.
+const ordersRoute =
+  readFileSync('src/routes/orders.ts', 'utf8') +
+  '\n' +
+  readFileSync('src/services/orders-list.ts', 'utf8');
 const initRoute = readFileSync('src/routes/init.ts', 'utf8');
 // The sku-orders analytics pipeline moved to services/inventory-sku-orders.ts;
 // assert over the route + service together so the dedupe coverage follows it.
