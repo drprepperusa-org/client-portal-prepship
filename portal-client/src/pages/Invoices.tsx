@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { CarrierBadge } from '@/components/store/CarrierBadge';
+import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useInvoiceDetailsRange, useInvoiceSummaryRange } from '@/lib/hooks';
@@ -54,18 +54,6 @@ function addBillingTotals(acc: BillingTotals, summary: ClientSummary): BillingTo
     shipping: acc.shipping + summary.shipping,
     fee: acc.fee + summary.fee,
   };
-}
-
-function InvoiceCarrierCell({ row }: { row: BillingInvoiceDetailRow }) {
-  return row.carrierCode ? <CarrierBadge code={row.carrierCode} /> : <span className="text-ink-3">—</span>;
-}
-
-function InvoiceItemCell({ row }: { row: BillingInvoiceDetailRow }) {
-  return (
-    <span className="block whitespace-pre-line break-words text-ink-2" title={row.itemNames ?? ''}>
-      {row.itemNames ?? row.recipientName ?? '—'}
-    </span>
-  );
 }
 
 export default function Invoices({ from, to }: { from: string; to: string }) {
@@ -192,21 +180,20 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     { key: 'order', header: 'Order #', defaultWidth: 130, render: (r) => <span className="font-semibold text-brand-700">{r.orderNumber ?? (r.orderId ? `#${r.orderId}` : '—')}</span>, sortAccessor: (r) => r.orderNumber ?? '' },
     { key: 'date', header: 'Ship Date', defaultWidth: 120, render: (r) => <span className="tnum text-ink-3">{shortDate(r.shipDate)}</span>, sortAccessor: (r) => r.shipDate ?? '' },
     {
-      key: 'carrier',
-      header: 'Carrier',
-      defaultWidth: 110,
-      className: 'text-center',
-      render: (r) => <InvoiceCarrierCell row={r} />,
-      sortAccessor: (r) => r.carrierCode ?? '',
-    },
-    {
       key: 'item',
       header: 'Item Name',
       defaultWidth: 260,
-      render: (r) => <InvoiceItemCell row={r} />,
-      sortAccessor: (r) => r.itemNames ?? '',
+      minWidth: 180,
+      render: (r) => <ItemNameLines items={r.items} />,
+      sortAccessor: (r) => r.items?.[0]?.name ?? r.itemNames ?? '',
     },
-    { key: 'sku', header: 'SKU', defaultWidth: 130, render: (r) => <span className="block truncate font-mono text-xs text-ink-3" title={r.skus ?? ''}>{r.skus ?? '—'}</span>, sortAccessor: (r) => r.skus ?? '' },
+    {
+      key: 'sku',
+      header: 'SKU',
+      defaultWidth: 160,
+      render: (r) => <SkuLines items={r.items} />,
+      sortAccessor: (r) => r.items?.[0]?.sku ?? r.skus ?? '',
+    },
     { key: 'qty', header: 'Qty', defaultWidth: 80, className: moneyRight, render: (r) => <span className="tnum">{num(r.qty)}</span>, sortAccessor: (r) => num(r.qty) },
     { key: 'pickpack', header: 'Pick & Pack', defaultWidth: 110, className: moneyRight, render: (r) => <span className="tnum text-ink-2">{money0(num(r.pickpackTotal))}</span>, sortAccessor: (r) => num(r.pickpackTotal) },
     { key: 'addl', header: 'Addl Units', defaultWidth: 100, className: moneyRight, render: (r) => <span className="tnum text-ink-2">{money0(num(r.additionalTotal))}</span>, sortAccessor: (r) => num(r.additionalTotal) },

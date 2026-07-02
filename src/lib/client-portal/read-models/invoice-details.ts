@@ -7,9 +7,21 @@ import {
   HERITAGE_PREP_FEE_CLIENT_NAME,
   heritagePrepFeeRowsForRange,
 } from '../../heritage-prep-fee-overrides';
+import { safeItems } from '../dto';
 import { invoiceItemNameLinesSql } from '../invoice-items';
 import { clientFilterPredicate, invoiceLineScopePredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
+
+/** orders.items jsonb (aggregated as text per order group) → structured
+ *  item-identity lines (name/sku/quantity/imageUrl) via the shared shaper. */
+function parseItemsJson(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Invoice-detail read-model (extracted from routes/client-portal.ts): the
@@ -115,6 +127,7 @@ type PortalInvoiceDetailRow = {
   order_number: string | null;
   recipient_name: string | null;
   item_names: string | null;
+  items_json: string | null;
   skus: string | null;
   carrier_code: string | null;
   best_rate_dims: string | null;
@@ -155,6 +168,7 @@ export async function portalInvoiceDetails(
           orderNumber: row.orderNumber,
           recipientName: row.recipientName,
           itemNames: row.itemNames,
+          items: [] as ReturnType<typeof safeItems>,
           skus: null,
           carrierCode: null,
           boxSize: null,
@@ -179,6 +193,7 @@ export async function portalInvoiceDetails(
       b.order_number,
       max(o.ship_to_name) as recipient_name,
       ${invoiceItemNameLinesSql(sql`b.order_id`)} as item_names,
+      max(o.items::text) as items_json,
       (
         select string_agg(distinct oi.sku, ', ')
         from ${orderItems} oi
@@ -235,6 +250,7 @@ export async function portalInvoiceDetails(
     orderNumber: row.order_number,
     recipientName: row.recipient_name,
     itemNames: row.item_names,
+    items: safeItems(parseItemsJson(row.items_json), scope.canViewFinancials),
     skus: row.skus,
     carrierCode: row.carrier_code,
     boxSize: row.best_rate_dims ?? dimsFromRaw(row.dim_l, row.dim_w, row.dim_h),

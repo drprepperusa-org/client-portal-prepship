@@ -98,7 +98,7 @@ function rateAmountFromRecord(record: Record<string, unknown> | null): number | 
   return total > 0 ? total : null;
 }
 
-function safeItems(value: unknown, includeFinancials = false): Array<Record<string, unknown>> {
+export function safeItems(value: unknown, includeFinancials = false): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item) => !isDiscountLine(item))

@@ -110,10 +110,13 @@ assert(
   'backend printable invoice preserves itemNames line breaks',
 );
 
+// CP-007: the Billing line-items table renders structured item lines via the
+// shared ItemIdentityLines components (qty-aware, one line per item/SKU) —
+// the successor to the pre-line itemNames string cell.
 assert(
-  activeInvoices.includes('whitespace-pre-line') &&
-    !/key: 'item'[\s\S]*?sortAccessor: \(r\) => r\.itemNames \?\? ''[\s\S]*?},/.exec(activeInvoices)?.[0].includes('truncate'),
-  'active portal invoice item cell preserves line breaks instead of truncating itemNames',
+  activeInvoices.includes('<ItemNameLines items={r.items}') &&
+    activeInvoices.includes('<SkuLines items={r.items}'),
+  'active portal invoice item cells render structured qty-aware item/SKU lines',
 );
 
 assert(

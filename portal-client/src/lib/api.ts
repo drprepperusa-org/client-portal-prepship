@@ -312,6 +312,9 @@ export interface BillingInvoiceDetailRow {
   orderNumber?: string | null;
   recipientName?: string | null;
   itemNames?: string | null;
+  /** Structured item identity lines (name/sku/qty/imageUrl) — the Billing
+   *  line-items display standard; itemNames/skus stay for exports. */
+  items?: PortalItemIdentity[];
   skus?: string | null;
   carrierCode?: string | null;
   boxSize?: string | null;
