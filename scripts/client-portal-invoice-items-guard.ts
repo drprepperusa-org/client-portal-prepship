@@ -106,7 +106,7 @@ assert(
 
 assert(
   printableInvoiceBlock.includes('.item-name { white-space: pre-line; }') &&
-    printableInvoiceBlock.includes('<td class="item-name">${escHtml(detail.itemNames ?? \'\')}</td>'),
+    printableInvoiceBlock.includes('<td class="mono item-name">${escHtml(detail.itemNames ?? detail.skus ?? \'\')}</td>'),
   'backend printable invoice preserves itemNames line breaks',
 );
 

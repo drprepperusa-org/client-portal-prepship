@@ -4,6 +4,11 @@ import type { portalInvoiceDetails } from './read-models/invoice-details';
  * Printable invoice HTML renderer (extracted from routes/client-portal.ts).
  * Pure string rendering — the route stays responsible for scope/financial
  * gating, the client lookup, and computing the totals it passes in.
+ *
+ * Layout mirrors the admin app's invoice (Bill To header, seven summary
+ * cards, green Total Amount Due bar, SKU-based line table) — but the numbers
+ * come from this repo's pure per-component totals (the admin template's
+ * Pick & Pack card double-counts additional units; this one does not).
  */
 
 export function escHtml(value: string | number | null | undefined): string {
@@ -61,7 +66,8 @@ const invoicePrintStyles = `
     .muted { color: #6b7280; }
     .client { text-align: right; }
     .client strong { display: block; font-size: 18px; }
-    .summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 22px 0; }
+    .client .gen { font-size: 11px; color: #9ca3af; }
+    .summary { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin: 22px 0; }
     .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
     .label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; font-weight: 800; }
     .value { margin-top: 4px; font-size: 17px; font-weight: 800; }
@@ -83,7 +89,8 @@ const invoicePrintStyles = `
     .item-name { white-space: pre-line; }
     tbody tr:nth-child(even) { background: #fafafa; }
     .num { text-align: right; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .order-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }
     .bold { font-weight: 800; }
     tfoot td { font-weight: 800; background: #f3f4f6; }
     .footer {
@@ -100,6 +107,21 @@ const invoicePrintStyles = `
     }
 `;
 
+/** 'YYYY-MM-DD' → 'May 01, 2026' (parsed as plain date, no timezone shift). */
+function longDate(ymd: string): string {
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return ymd.slice(0, 10);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' });
+}
+
+/** 'YYYY-MM-DD' → 'M/D/YYYY' for line rows. */
+function shortDate(ymd: string | null): string {
+  if (!ymd) return '';
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return ymd.slice(0, 10);
+  return `${m}/${d}/${y}`;
+}
+
 export function renderPortalInvoiceHtml(input: {
   clientName: string | null;
   dateFrom: string;
@@ -109,21 +131,23 @@ export function renderPortalInvoiceHtml(input: {
 }): string {
   const { clientName, dateFrom, dateTo, invoiceTotals, details } = input;
   const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
-  const fromDisplay = dateFrom.slice(0, 10);
-  const toDisplay = dateTo.slice(0, 10);
+  const moneyOrDash = (value: unknown) => (Number(value ?? 0) > 0 ? money(value) : '&mdash;');
+  const periodFrom = longDate(dateFrom);
+  const periodTo = longDate(dateTo);
   const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const detailRows = details
     .map((detail) => `
       <tr>
-        <td>${escHtml(detail.shipDate)}</td>
-        <td class="mono">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
-        <td>${escHtml(detail.recipientName ?? '')}</td>
-        <td class="item-name">${escHtml(detail.itemNames ?? '')}</td>
+        <td>${escHtml(shortDate(detail.shipDate))}</td>
+        <td class="order-link">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
+        <td class="mono item-name">${escHtml(detail.itemNames ?? detail.skus ?? '')}</td>
+        <td>${escHtml(detail.boxSize ?? '')}</td>
+        <td class="num">${moneyOrDash(detail.packageTotal)}</td>
         <td class="num">${Number(detail.qty ?? 0)}</td>
         <td class="num">${money(detail.pickpackTotal)}</td>
-        <td class="num">${Number(detail.additionalTotal ?? 0) > 0 ? money(detail.additionalTotal) : '-'}</td>
-        <td class="num">${Number(detail.packageTotal ?? 0) > 0 ? money(detail.packageTotal) : '-'}</td>
-        <td class="num">${Number(detail.shippingTotal ?? 0) > 0 ? money(detail.shippingTotal) : '-'}</td>
+        <td class="num">${moneyOrDash(detail.additionalTotal)}</td>
+        <td class="num">${moneyOrDash(detail.shippingTotal)}</td>
+        <td class="num">${moneyOrDash(detail.storageTotal)}</td>
         <td class="num bold">${money(detail.rowTotal)}</td>
       </tr>`)
     .join('');
@@ -132,38 +156,46 @@ export function renderPortalInvoiceHtml(input: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PrepShip Invoice - ${escHtml(clientName)} - ${fromDisplay} to ${toDisplay}</title>
+  <title>PrepShip Invoice - ${escHtml(clientName)} - ${periodFrom} to ${periodTo}</title>
   <style>${invoicePrintStyles}</style>
 </head>
 <body>
-  <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong>, then choose <strong>Save as PDF</strong>.</div>
+  <div class="print-tip">To save as PDF: press <strong>Ctrl+P</strong> or <strong>&#8984;P</strong>, then choose <strong>Save as PDF</strong>.</div>
   <div class="header">
-    <div class="brand"><h1>PrepShip Invoice</h1><div class="muted">DR Prepper 3PL Services</div><div class="muted">Generated ${escHtml(generated)}</div></div>
-    <div class="client"><strong>${escHtml(clientName)}</strong><span class="muted">${fromDisplay} to ${toDisplay}</span></div>
+    <div class="brand"><h1>Invoice</h1><div class="muted">DR Prepper 3PL Services &middot; 14924 S Figueroa St, Gardena CA 90248</div></div>
+    <div class="client">
+      <strong>Bill To: ${escHtml(clientName)}</strong>
+      <span class="muted">Period: ${periodFrom} &rarr; ${periodTo}</span><br>
+      <span class="gen">Generated ${escHtml(generated)}</span>
+    </div>
   </div>
   <div class="summary">
     <div class="card"><div class="label">Orders</div><div class="value">${invoiceTotals.orderCount}</div></div>
-    <div class="card"><div class="label">Qty</div><div class="value">${invoiceTotals.qty}</div></div>
-    <div class="card"><div class="label">Pick/pack</div><div class="value">${money(invoiceTotals.pickPackTotal)}</div></div>
-    <div class="card"><div class="label">Box fee</div><div class="value">${money(invoiceTotals.packageTotal)}</div></div>
-    <div class="card"><div class="label">Shipping</div><div class="value">${money(invoiceTotals.shippingTotal)}</div></div>
-    <div class="card"><div class="label">Storage</div><div class="value">${money(invoiceTotals.storageTotal)}</div></div>
+    <div class="card"><div class="label">Pick &amp; Pack</div><div class="value">${money(invoiceTotals.pickPackTotal)}</div></div>
+    <div class="card"><div class="label">Add'l Units</div><div class="value">${moneyOrDash(invoiceTotals.additionalTotal)}</div></div>
+    <div class="card"><div class="label">Packages</div><div class="value">${moneyOrDash(invoiceTotals.packageTotal)}</div></div>
+    <div class="card"><div class="label">Shipping</div><div class="value">${moneyOrDash(invoiceTotals.shippingTotal)}</div></div>
+    <div class="card"><div class="label">Storage</div><div class="value">${moneyOrDash(invoiceTotals.storageTotal)}</div></div>
+    <div class="card"><div class="label">Fulfillment Fee</div><div class="value">${money(invoiceTotals.grandTotal)}</div></div>
   </div>
-  <div class="total"><span>Total amount due</span><b>${money(invoiceTotals.grandTotal)}</b></div>
+  <div class="total"><span>Total Amount Due &mdash; ${periodFrom} &rarr; ${periodTo}</span><b>${money(invoiceTotals.grandTotal)}</b></div>
   <table>
     <thead><tr>
-      <th>Ship date</th><th>Order</th><th>Recipient</th><th>Item name</th><th class="num">Qty</th>
-      <th class="num">Pick/pack</th><th class="num">Additional</th><th class="num">Box fee</th>
-      <th class="num">Shipping</th><th class="num">Row total</th>
+      <th>Ship Date (Los Angeles)</th><th>Order #</th><th>SKU(s)</th><th>Box Size</th>
+      <th class="num">Box Cost</th><th class="num">Qty</th><th class="num">Pick &amp; Pack</th>
+      <th class="num">Add'l Units</th><th class="num">Shipping</th><th class="num">Storage</th>
+      <th class="num">Fulfillment Fee</th>
     </tr></thead>
-    <tbody>${detailRows || '<tr><td colspan="10">No billable order rows found for this period.</td></tr>'}</tbody>
+    <tbody>${detailRows || '<tr><td colspan="11">No billable order rows found for this period.</td></tr>'}</tbody>
     <tfoot>
       <tr>
-        <td colspan="5">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td>
+        <td colspan="4">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td>
+        <td class="num">${money(invoiceTotals.packageTotal)}</td>
+        <td class="num">${invoiceTotals.qty}</td>
         <td class="num">${money(invoiceTotals.pickPackTotal)}</td>
         <td class="num">${money(invoiceTotals.additionalTotal)}</td>
-        <td class="num">${money(invoiceTotals.packageTotal)}</td>
         <td class="num">${money(invoiceTotals.shippingTotal)}</td>
+        <td class="num">${money(invoiceTotals.storageTotal)}</td>
         <td class="num">${money(invoiceTotals.grandTotal)}</td>
       </tr>
     </tfoot>
