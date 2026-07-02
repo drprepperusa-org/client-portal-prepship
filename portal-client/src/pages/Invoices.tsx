@@ -29,6 +29,9 @@ type ClientSummary = {
 };
 
 const moneyRight = 'text-right';
+const actionBtn =
+  'focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 ' +
+  'transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50';
 type BillingTotals = Omit<ClientSummary, 'clientId' | 'clientName'>;
 const EMPTY_TOTALS: BillingTotals = {
   orders: 0,
@@ -69,7 +72,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const { accessToken } = useAuth();
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
   const [opening, setOpening] = useState<number | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<number | null>(null);
 
   // Open the backend-rendered printable invoice for a client + range.
   async function viewInvoice(clientId?: number) {
@@ -125,16 +128,24 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   );
   const selectedName = summary.find((s) => s.clientId === selectedClient)?.clientName ?? '';
 
-  // Build the Excel invoice client-side from the rows already on screen.
-  async function exportExcel() {
-    if (!lineItems.length || exporting) return;
-    setExporting(true);
+  // Build the Excel invoice client-side from the rows already fetched —
+  // callable from a summary row or the opened line-items view.
+  async function exportExcel(clientId: number | null | undefined) {
+    const id = Number(clientId);
+    if (!Number.isFinite(id) || exporting != null) return;
+    const clientRows = rows.filter((r) => Number(r.clientId) === id);
+    if (!clientRows.length) {
+      toast.error('Nothing to export', 'No billable lines for this client in range.');
+      return;
+    }
+    const clientName = summary.find((s) => s.clientId === id)?.clientName || `client-${id}`;
+    setExporting(id);
     try {
-      await exportInvoiceExcel(lineItems, { clientName: selectedName || `client-${selectedClient}`, from, to });
+      await exportInvoiceExcel(clientRows, { clientName, from, to });
     } catch (err) {
       toast.error('Excel export failed', err instanceof Error ? err.message : 'Could not build the Excel file.');
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
@@ -150,19 +161,30 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     {
       key: 'invoice',
       header: '',
-      defaultWidth: 120,
+      defaultWidth: 200,
       draggable: false,
       resizable: false,
       className: 'text-right',
       render: (s) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); viewInvoice(s.clientId); }}
-          className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
-          title="Open printable invoice"
-        >
-          {opening === s.clientId ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-          Invoice
-        </button>
+        <span className="inline-flex items-center gap-1.5">
+          <button
+            onClick={(e) => { e.stopPropagation(); void exportExcel(s.clientId); }}
+            disabled={exporting != null}
+            className={actionBtn}
+            title="Download line items as Excel (.xlsx)"
+          >
+            {exporting === s.clientId ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+            Excel
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); viewInvoice(s.clientId); }}
+            className={actionBtn}
+            title="Open printable invoice"
+          >
+            {opening === s.clientId ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+            Invoice
+          </button>
+        </span>
       ),
     },
   ];
@@ -251,20 +273,17 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             <div className="flex shrink-0 items-center gap-3">
               <span className="hidden text-xs text-ink-3 sm:inline">{lineItems.length} line{lineItems.length === 1 ? '' : 's'}</span>
               <button
-                onClick={exportExcel}
-                disabled={exporting || lineItems.length === 0}
-                className={cn(
-                  'focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700',
-                  'transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50',
-                )}
+                onClick={() => void exportExcel(selectedClient)}
+                disabled={exporting != null || lineItems.length === 0}
+                className={actionBtn}
                 title="Download line items as Excel (.xlsx)"
               >
-                {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+                {exporting === selectedClient ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
                 Excel
               </button>
               <button
                 onClick={() => viewInvoice(selectedClient ?? undefined)}
-                className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
+                className={actionBtn}
                 title="Open printable invoice"
               >
                 {opening === selectedClient ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
