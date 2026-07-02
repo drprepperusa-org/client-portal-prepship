@@ -28,6 +28,10 @@ const schema = z.object({
   SUPABASE_JWT_SECRET: z.string().min(1),
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  // Deployed commit SHA surfaced by /health. Render injects RENDER_GIT_COMMIT
+  // on every deploy; GIT_SHA is the manual fallback for other environments.
+  RENDER_GIT_COMMIT: z.string().optional(),
+  GIT_SHA: z.string().optional(),
   WEB_ORIGIN: z.string().optional(),
   // Public base URL of this API. Used when we need to emit an absolute link
   // back to the frontend (e.g. mock label PDFs opened via window.open).

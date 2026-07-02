@@ -9,6 +9,7 @@ const DB_HEALTH_STATEMENT_TIMEOUT_MS = Math.max(1_000, DB_HEALTH_TIMEOUT_MS - 1_
 const DB_HEALTH_CONNECT_TIMEOUT_SECONDS = Math.max(1, Math.ceil(DB_HEALTH_TIMEOUT_MS / 1_000));
 const EVENT_LOOP_HEALTH_TIMEOUT_MS = 500;
 const EVENT_LOOP_DELAY_BUDGET_MS = 250;
+const DEPLOYED_COMMIT = env.RENDER_GIT_COMMIT?.trim() || env.GIT_SHA?.trim() || 'unknown';
 
 const healthSql = postgres(env.DATABASE_URL, {
   prepare: false,
@@ -122,6 +123,7 @@ async function checkDeepReadiness() {
 function readinessResponseBody(readiness: Awaited<ReturnType<typeof checkDeepReadiness>>) {
   return {
     status: readiness.ok ? 'ready' : 'degraded',
+    commit: DEPLOYED_COMMIT,
     components: readiness.components,
     ts: new Date().toISOString(),
   };
@@ -130,6 +132,7 @@ function readinessResponseBody(readiness: Awaited<ReturnType<typeof checkDeepRea
 app.get('/', (c) =>
   c.json({
     status: 'ok',
+    commit: DEPLOYED_COMMIT,
     ts: new Date().toISOString(),
   })
 );
