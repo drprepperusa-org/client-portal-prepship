@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { portalApi, type PortalClientRow } from '@/lib/api';
+import { DatePicker } from '@/components/ui/datetime';
 import { STATUSES, STATUS_META, field, Labeled } from './shared';
 
 type DraftItem = { sku: string; name: string; expectedQty: string };
@@ -121,7 +122,7 @@ export function InboundCreateModal({ open, onClose, clients }: { open: boolean; 
           </Labeled>
           <Labeled label="Reference / PO #"><input className={field} value={draft.reference} onChange={(e) => setField('reference', e.target.value)} placeholder="PO-1024" /></Labeled>
           <Labeled label="Supplier"><input className={field} value={draft.supplier} onChange={(e) => setField('supplier', e.target.value)} placeholder="Acme Wholesale" /></Labeled>
-          <Labeled label="Expected date"><input type="date" className={field} value={draft.expectedDate} onChange={(e) => setField('expectedDate', e.target.value)} /></Labeled>
+          <Labeled label="Expected date"><DatePicker value={draft.expectedDate || null} onChange={(v) => setField('expectedDate', v)} /></Labeled>
           <Labeled label="Carrier"><input className={field} value={draft.carrier} onChange={(e) => setField('carrier', e.target.value)} placeholder="UPS Freight" /></Labeled>
           <Labeled label="Tracking #"><input className={field} value={draft.trackingNumber} onChange={(e) => setField('trackingNumber', e.target.value)} /></Labeled>
         </div>

@@ -4,7 +4,7 @@ import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { TextInput, TextArea, PasswordInput, EmailInput, UrlInput, NumberInput } from '@/components/ui/Inputs';
 import { Checkbox, RadioGroup, Select } from '@/components/ui/Selection';
-import { DatePicker } from '@/components/ui/DatePicker';
+import { DatePicker, DateRangePicker, MonthPicker, TimePicker } from '@/components/ui/datetime';
 import { FileUpload } from '@/components/ui/FileUpload';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { Chip, Skeleton, SkeletonRows, ProgressBar, Tooltip, EmptyState } from '@/components/ui/Display';
@@ -41,7 +41,10 @@ export default function Components() {
   const [radio, setRadio] = useState('ground');
   const [single, setSingle] = useState<string | string[]>('ups');
   const [multi, setMulti] = useState<string | string[]>(['ups', 'fedex']);
-  const [date, setDate] = useState<{ start: Date | null; end: Date | null }>({ start: new Date(2026, 4, 29), end: null });
+  const [date, setDate] = useState<string | null>('2026-05-29');
+  const [range, setRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
+  const [month, setMonth] = useState<string | null>(null);
+  const [time, setTime] = useState<string | null>('14:30');
   const [color, setColor] = useState('#03A9F4');
 
   return (
@@ -119,7 +122,9 @@ export default function Components() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="space-y-4">
             <DatePicker label="Date" value={date} onChange={setDate} />
-            <DatePicker label="Date range" range value={date} onChange={setDate} />
+            <DateRangePicker label="Date range" start={range.start} end={range.end} onChange={setRange} />
+            <MonthPicker label="Month" value={month} onChange={setMonth} />
+            <TimePicker label="Time" value={time} onChange={setTime} />
             <ColorPicker label="Color" value={color} onChange={setColor} />
           </div>
           <FileUpload label="File upload (drag & drop)" />
