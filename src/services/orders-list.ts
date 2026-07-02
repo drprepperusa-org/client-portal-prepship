@@ -82,15 +82,43 @@ export function redactRateMoneyFields<T>(value: T): T {
   return out as T;
 }
 
+// CP-009: carrier/shipping-service identity is internal operational data.
+// Non-financial viewers get these keys nulled alongside the money fields —
+// this also closes the previously ungated selectedRate.providerAccountNickname.
+export const CARRIER_IDENTITY_FIELD_KEYS = new Set([
+  'carrierCode',
+  'serviceCode',
+  'serviceName',
+  'providerAccountNickname',
+  'carrierNickname',
+  'shippingProviderId',
+  'providerAccountId',
+]);
+
+function redactCarrierIdentityFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactCarrierIdentityFields(item)) as T;
+  }
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = CARRIER_IDENTITY_FIELD_KEYS.has(key)
+      ? null
+      : redactCarrierIdentityFields(nested);
+  }
+  return out as T;
+}
+
 export function redactOrderFinancials<T extends Record<string, unknown>>(row: T, canViewFinancials: boolean): T {
   if (canViewFinancials) return row;
+  const redact = <V,>(value: V): V => redactCarrierIdentityFields(redactRateMoneyFields(value));
   return {
     ...row,
-    label: redactRateMoneyFields(row.label),
-    selectedRate: redactRateMoneyFields(row.selectedRate),
-    bestRate: redactRateMoneyFields(row.bestRate),
-    shipping: redactRateMoneyFields(row.shipping),
-    canonicalOrder: redactRateMoneyFields(row.canonicalOrder),
+    label: redact(row.label),
+    selectedRate: redact(row.selectedRate),
+    bestRate: redact(row.bestRate),
+    shipping: redact(row.shipping),
+    canonicalOrder: redact(row.canonicalOrder),
   };
 }
 

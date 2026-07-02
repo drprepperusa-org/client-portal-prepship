@@ -249,13 +249,18 @@ export function toPortalOrderDto(
     shipToName: row.shipToName,
     shipToCity: row.shipToCity,
     shipToState: row.shipToState,
-    carrierCode,
-    serviceCode: row.serviceCode,
+    // CP-009: carrier/shipping-service identity is internal operational data —
+    // gated exactly like shippingAccount/money fields. Clients keep tracking
+    // numbers but never see which carrier/service was used.
+    carrierCode: options.includeFinancials ? carrierCode : null,
+    serviceCode: options.includeFinancials ? row.serviceCode : null,
     trackingNumber: row.override?.trackingNumber ?? null,
     weightOz: row.weightOz,
     rateWeightOz: row.override?.rateWeightOz ?? null,
-    shippingService,
-    selectedRate: selectedRate,
+    shippingService: options.includeFinancials ? shippingService : null,
+    selectedRate: options.includeFinancials
+      ? selectedRate
+      : selectedRate && { ...selectedRate, carrierCode: null, serviceCode: null, serviceName: null },
     items: safeItems(row.items, options.includeFinancials),
     ...(options.includeFinancials
       ? {
@@ -288,8 +293,10 @@ export function toPortalShipmentDto(
     clientName: row.clientName ?? row.storeName ?? null,
     storeId: row.storeId ?? null,
     storeName: row.storeName ?? row.clientName ?? null,
-    carrierCode: row.carrierCode,
-    serviceCode: row.serviceCode,
+    // CP-009: carrier/service identity gated like the financial fields —
+    // client users track packages by number, not by carrier.
+    carrierCode: options.includeFinancials ? row.carrierCode : null,
+    serviceCode: options.includeFinancials ? row.serviceCode : null,
     trackingNumber: row.trackingNumber,
     labelTracking: row.labelTracking,
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),
