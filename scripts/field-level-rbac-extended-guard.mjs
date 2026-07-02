@@ -23,8 +23,12 @@ function assert(condition, message) {
 
 const packageJson = JSON.parse(read('package.json'));
 // The orders-list row mapper (with its per-field financials gating) moved to
-// services/orders-list.ts; assert over route + service so coverage follows it.
-const ordersSource = read('src/routes/orders.ts') + '\n' + read('src/services/orders-list.ts');
+// services/orders-list.ts, and the CSV export shaping (with its financials
+// blanking) to services/orders-export.ts; assert over route + services so
+// coverage follows the moved code.
+const ordersSource = read('src/routes/orders.ts')
+  + '\n' + read('src/services/orders-list.ts')
+  + '\n' + read('src/services/orders-export.ts');
 const manifestsSource = read('src/routes/manifests.ts');
 const packagesSource = read('src/routes/packages.ts');
 const ratesSource = read('src/routes/rates.ts');
