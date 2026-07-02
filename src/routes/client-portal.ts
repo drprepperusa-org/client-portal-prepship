@@ -20,6 +20,7 @@ import {
 } from '../lib/heritage-prep-fee-overrides';
 import { getSyncStatus } from '../services/order-sync';
 import { getShipmentSyncStatus } from '../services/shipment-sync';
+import { refreshShipmentTracking } from '../services/shipment-tracking';
 import { getPersistedWorkerStatus } from '../services/worker-status';
 import {
   startBackfillBestRates,
@@ -266,6 +267,32 @@ app.get('/shipments', async (c) => {
     search,
   });
   await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search });
+  return c.json(result);
+});
+
+// Live tracking refresh for shipments on screen. Read-only against the
+// carrier (ShipStation /v2/tracking) — looks up delivery state and persists
+// the snapshot. Scope-checked: callers can only refresh shipments they can
+// already see; the service itself re-polls each shipment at most once per
+// half hour and treats delivered as terminal.
+app.post('/shipments/refresh-tracking', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const body = (await c.req.json().catch(() => null)) as { shipmentIds?: unknown } | null;
+  const requested = Array.isArray(body?.shipmentIds)
+    ? body.shipmentIds.map(Number).filter((id) => Number.isFinite(id) && id > 0).slice(0, 100)
+    : [];
+  if (!requested.length) return c.json({ checked: 0, updated: [] });
+  const visible = await db
+    .select({ id: shipments.id })
+    .from(shipments)
+    .where(and(inArray(shipments.id, requested), shipmentScopePredicate(scope)));
+  const result = await refreshShipmentTracking(visible.map((row) => row.id));
+  await recordPortalAudit('portal.shipments.refresh_tracking', scope, {
+    requested: requested.length,
+    checked: result.checked,
+    updated: result.updated.length,
+  });
   return c.json(result);
 });
 

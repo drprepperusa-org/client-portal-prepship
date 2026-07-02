@@ -120,6 +120,13 @@
       "when": 1782948118256,
       "tag": "0016_eager_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1782961014508,
+      "tag": "0017_known_eternals",
+      "breakpoints": true
     }
   ]
 }

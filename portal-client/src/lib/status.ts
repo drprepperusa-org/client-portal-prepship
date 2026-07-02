@@ -21,9 +21,13 @@ export function orderStatusMeta(status: string | null): { label: string; accent:
   }
 }
 
-/** Derive a display status for a shipment (the DTO has no explicit status). */
+/** Derive a display status for a shipment. Live carrier state (persisted
+ *  from ShipStation tracking lookups) wins over the derived label. */
 export function shipmentStatusMeta(s: PortalShipment): { label: string; accent: Accent } {
   if (s.voided) return { label: 'Voided', accent: 'rose' };
+  if (s.trackingStatus === 'delivered') return { label: 'Delivered', accent: 'emerald' };
+  if (s.trackingStatus === 'exception') return { label: 'Exception', accent: 'amber' };
+  if (s.trackingStatus === 'attempted') return { label: 'Attempted', accent: 'amber' };
   if (s.trackingNumber || s.labelTracking) return { label: 'In Transit', accent: 'sky' };
   return { label: 'Label Created', accent: 'violet' };
 }

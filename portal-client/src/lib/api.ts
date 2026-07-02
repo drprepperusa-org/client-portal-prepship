@@ -145,6 +145,9 @@ export interface PortalShipment {
   trackingNumber: string | null;
   labelTracking: string | null;
   shipDate: string | null;
+  trackingStatus?: string | null;
+  trackingStatusDetail?: string | null;
+  deliveredAt?: string | null;
   voided: boolean | null;
   items: PortalItemIdentity[];
   shippingCost?: number | string | null;
@@ -663,6 +666,14 @@ export const portalApi = {
       search: opts.search,
       clientId: opts.clientId,
     }),
+
+  /** Live carrier tracking refresh for the shipments on screen (read-only lookup). */
+  refreshShipmentTracking: (token: string, shipmentIds: number[]) =>
+    apiPost<{ checked: number; updated: Array<{ id: number; trackingStatus: string; deliveredAt: string | null }> }>(
+      token,
+      '/api/client-portal/shipments/refresh-tracking',
+      { shipmentIds },
+    ),
 
   inventory: (token: string, opts: ListOpts = {}) =>
     scopedList<PortalInventory>(token, '/api/client-portal/inventory', {

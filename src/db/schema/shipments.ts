@@ -58,6 +58,14 @@ export const shipments = pgTable(
     confirmationAttempts: integer().default(0).notNull(),
     confirmationLastError: text(),
     marketplaceConfirmedAt: timestamp({ withTimezone: true }),
+    // Live carrier tracking snapshot, refreshed on demand from ShipStation
+    // /v2/tracking. trackingStatus is normalized (delivered / in_transit /
+    // exception / attempted / accepted / unknown); detail keeps the carrier's
+    // own wording. deliveredAt comes from the carrier's actual_delivery_date.
+    trackingStatus: text(),
+    trackingStatusDetail: text(),
+    trackingCheckedAt: timestamp({ withTimezone: true }),
+    deliveredAt: timestamp({ withTimezone: true }),
     voided: boolean().default(false).notNull(),
     source: text(),
     isReturn: boolean().default(false).notNull(),

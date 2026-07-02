@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { GlassPanel } from '@/components/ui/Glass';
@@ -11,12 +11,13 @@ import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { CarrierBadge } from '@/components/store/CarrierBadge';
+import { useAuth } from '@/auth';
 import { useShipments, useClients } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
-import type { PortalShipment } from '@/lib/api';
+import { portalApi, type PortalShipment } from '@/lib/api';
 
 const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
 function clientAccent(name: string | null): Accent {
@@ -39,7 +40,7 @@ function trackingUrl(carrierCode: string | null | undefined, tracking: string | 
   return `https://t.17track.net/en#nums=${t}`;
 }
 
-const STATUS_OPTIONS = ['In Transit', 'Label Created', 'Voided'] as const;
+const STATUS_OPTIONS = ['Delivered', 'In Transit', 'Exception', 'Label Created', 'Voided'] as const;
 
 export default function Shipments() {
   const toast = useToast();
@@ -59,10 +60,37 @@ export default function Shipments() {
 
   const query = useShipments({ search: debouncedQ, page, clientId: effectiveClientId });
   const allRows = query.data?.data ?? [];
-  // Delivery status is derived (Voided / In Transit / Label Created), so this
-  // filters the loaded page client-side.
+  // Status mixes live carrier state (Delivered / Exception) with derived
+  // labels (In Transit / Label Created), so this filters the loaded page
+  // client-side.
   const rows = statusFilter ? allRows.filter((s) => shipmentStatusMeta(s).label === statusFilter) : allRows;
   const pg = query.data?.pagination;
+
+  // Live tracking: when a page of shipments loads, ask the backend to refresh
+  // carrier tracking for the undelivered ones (the server skips anything it
+  // checked in the last 30 minutes, so this is cheap on reloads). If anything
+  // changed, refetch once to pick up the new statuses.
+  const { accessToken } = useAuth();
+  const lastTrackingKey = useRef('');
+  useEffect(() => {
+    if (!accessToken || !allRows.length) return;
+    const ids = allRows
+      .filter((s) => !s.voided && s.trackingStatus !== 'delivered' && (s.trackingNumber || s.labelTracking))
+      .map((s) => s.id);
+    if (!ids.length) return;
+    const key = ids.join(',');
+    if (lastTrackingKey.current === key) return;
+    lastTrackingKey.current = key;
+    portalApi
+      .refreshShipmentTracking(accessToken, ids)
+      .then((res) => {
+        if (res.updated.length) query.refetch();
+      })
+      .catch(() => {
+        // Non-fatal: the table still shows the last persisted status.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, accessToken]);
 
   const showClientFilter = clients.length > 1;
   const columns: Column<PortalShipment>[] = useMemo(
@@ -262,6 +290,10 @@ export default function Shipments() {
               <Field label="Shipping Cost" value={selected.shippingCost != null ? money(selected.shippingCost) : '—'} />
               <Field label="Order" value={selected.orderNumber ?? (selected.orderId ? `#${selected.orderId}` : '—')} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
+              {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
+              {selected.trackingStatusDetail && !selected.deliveredAt && (
+                <Field label="Carrier status" value={selected.trackingStatusDetail} />
+              )}
             </div>
           </div>
         )}
