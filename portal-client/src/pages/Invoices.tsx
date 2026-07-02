@@ -65,7 +65,14 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const [opening, setOpening] = useState<number | null>(null);
   const [exporting, setExporting] = useState<number | null>(null);
   // CP-008: Billing Order # click opens the shipment-information drawer.
-  const [shipmentModal, setShipmentModal] = useState<{ orderId: number; orderNumber: string | null } | null>(null);
+  // shippingTotal is the BILLED shipping from the clicked billing row — the
+  // drawer shows that (matching the table), never the shipment record's
+  // internal label cost, which would expose margin to clients.
+  const [shipmentModal, setShipmentModal] = useState<{
+    orderId: number;
+    orderNumber: string | null;
+    shippingTotal: number | string | null;
+  } | null>(null);
   const orderShipmentsQuery = useOrderShipments(shipmentModal?.orderId ?? null);
 
   // Open the backend-rendered printable invoice for a client + range.
@@ -189,7 +196,13 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
         <button
           type="button"
           onClick={() => {
-            if (r.orderId != null) setShipmentModal({ orderId: Number(r.orderId), orderNumber: r.orderNumber ?? null });
+            if (r.orderId != null) {
+              setShipmentModal({
+                orderId: Number(r.orderId),
+                orderNumber: r.orderNumber ?? null,
+                shippingTotal: r.shippingTotal ?? null,
+              });
+            }
           }}
           disabled={r.orderId == null}
           className="focus-ring cursor-pointer font-semibold text-brand-700 hover:underline disabled:cursor-default disabled:no-underline"
@@ -331,6 +344,10 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
         title={shipmentModal ? `Shipments — Order ${shipmentModal.orderNumber ?? `#${shipmentModal.orderId}`}` : ''}
       >
         {shipmentModal && (
+          <div className="space-y-4">
+          {shipmentModal.shippingTotal != null && Number(shipmentModal.shippingTotal) > 0 && (
+            <ShipmentField label="Shipping (billed)" value={money(shipmentModal.shippingTotal)} />
+          )}
           <QueryState
             isLoading={orderShipmentsQuery.isLoading}
             isError={orderShipmentsQuery.isError}
@@ -356,7 +373,6 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
                     <ShipmentField label="Service" value={s.serviceCode ?? '—'} />
                     <ShipmentField label="Ship date" value={shortDate(s.shipDate)} />
                     <ShipmentField label="Delivered" value={s.deliveredAt ? shortDate(s.deliveredAt) : '—'} />
-                    {s.shippingCost != null && <ShipmentField label="Shipping Cost" value={money(s.shippingCost)} />}
                   </div>
                   {(s.items?.length ?? 0) > 0 && (
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.5fr)]">
@@ -368,6 +384,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               ))}
             </div>
           </QueryState>
+          </div>
         )}
       </Drawer>
     </div>

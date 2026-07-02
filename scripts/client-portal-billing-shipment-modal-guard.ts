@@ -78,6 +78,15 @@ check(
   invoicesPage.includes('shipmentStatusMeta(s)') && invoicesPage.includes('s.deliveredAt'),
   'modal renders backend tracking status and delivered date (no tracking-number-derived guesses)',
 );
+// The billing modal shows the BILLED shipping (from the billing row, matching
+// the table) — never the shipment record's internal label cost, which would
+// expose margin to clients.
+check(
+  invoicesPage.includes("label=\"Shipping (billed)\"") &&
+    invoicesPage.includes('shipmentModal.shippingTotal') &&
+    !invoicesPage.includes('s.shippingCost'),
+  'modal shows billed shipping from the billing row, not the shipment label cost',
+);
 
 // 4) package.json exposes this guard.
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
