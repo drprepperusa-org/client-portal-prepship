@@ -63,7 +63,9 @@ check(api.includes('/api/client-portal/orders/${orderId}/shipments'), 'portal AP
 
 const invoicesPage = read('portal-client/src/pages/Invoices.tsx');
 check(
-  invoicesPage.includes('aria-label={`View shipment information for order') && invoicesPage.includes('setShipmentModal({ orderId:'),
+  invoicesPage.includes('aria-label={`View shipment information for order') &&
+    invoicesPage.includes('setShipmentModal({') &&
+    invoicesPage.includes('orderId: Number(r.orderId),'),
   'Billing Order # renders as an accessible button that opens the shipment modal',
 );
 check(

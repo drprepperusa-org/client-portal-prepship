@@ -65,6 +65,7 @@ export default function Billing() {
       qc.invalidateQueries({ queryKey: ['reports-range'] }),
       qc.invalidateQueries({ queryKey: ['invoice-details-range'] }),
       qc.invalidateQueries({ queryKey: ['invoice-summary-range'] }),
+      qc.invalidateQueries({ queryKey: ['invoice-period-summary-range'] }),
       qc.invalidateQueries({ queryKey: ['billing-status'] }),
     ]);
   }

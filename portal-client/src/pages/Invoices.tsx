@@ -9,7 +9,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useInvoiceDetailsRange, useInvoiceSummaryRange, useOrderShipments } from '@/lib/hooks';
+import { useInvoiceDetailsRange, useInvoicePeriodSummaryRange, useOrderShipments } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
 import { exportInvoiceExcel } from '@/lib/invoiceExcel';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
@@ -34,6 +34,16 @@ const moneyRight = 'text-right';
 const actionBtn =
   'focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 ' +
   'transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50';
+/** One row per client per semi-monthly billing period (1st–15th / 16th–EOM). */
+type PeriodSummary = ClientSummary & { periodStart: string; periodEnd: string };
+
+/** 'YYYY-MM-DD' period bounds → 'Jul 1 – 15, 2026'. */
+function periodLabel(start: string, end: string): string {
+  const [y, m, d] = start.split('-').map(Number);
+  const month = new Date(y, (m ?? 1) - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+  return `${month} ${d} – ${Number(end.slice(8, 10))}, ${y}`;
+}
+
 type BillingTotals = Omit<ClientSummary, 'clientId' | 'clientName'>;
 const EMPTY_TOTALS: BillingTotals = {
   orders: 0,
@@ -60,10 +70,12 @@ function addBillingTotals(acc: BillingTotals, summary: ClientSummary): BillingTo
 export default function Invoices({ from, to }: { from: string; to: string }) {
   const toast = useToast();
   const { accessToken } = useAuth();
-  const [selectedClient, setSelectedClient] = useState<number | null>(null);
+  // Drill-in selection: a client + its semi-monthly billing period.
+  const [selected, setSelected] = useState<{ clientId: number; clientName: string; from: string; to: string } | null>(null);
   const [detailPage, setDetailPage] = useState(1);
-  const [opening, setOpening] = useState<number | null>(null);
-  const [exporting, setExporting] = useState<number | null>(null);
+  // Busy keys are `${clientId}-${periodStart}` so each period row spins alone.
+  const [opening, setOpening] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
   // CP-008: Billing Order # click opens the shipment-information drawer.
   // shippingTotal is the BILLED shipping from the clicked billing row — the
   // drawer shows that (matching the table), never the shipment record's
@@ -75,15 +87,15 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   } | null>(null);
   const orderShipmentsQuery = useOrderShipments(shipmentModal?.orderId ?? null);
 
-  // Open the backend-rendered printable invoice for a client + range.
-  async function viewInvoice(clientId?: number) {
+  // Open the backend-rendered printable invoice for a client + billing period.
+  async function viewInvoice(clientId: number | undefined, rangeFrom: string, rangeTo: string, busyKey: string) {
     if (!clientId || !accessToken) {
       toast.error('Cannot open invoice', 'Missing client id.');
       return;
     }
-    setOpening(clientId);
+    setOpening(busyKey);
     try {
-      const html = await portalApi.invoiceHtmlRange(accessToken, clientId, from, to);
+      const html = await portalApi.invoiceHtmlRange(accessToken, clientId, rangeFrom, rangeTo);
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       const win = window.open(url, '_blank');
@@ -96,15 +108,17 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     }
   }
 
-  // Summary is aggregated in SQL server-side (no row cap), so order counts
-  // and totals are exact regardless of how many billing lines the range has.
-  const summaryQuery = useInvoiceSummaryRange(from, to);
+  // One row per client per SEMI-MONTHLY billing period (1st–15th / 16th–EOM),
+  // aggregated in SQL server-side (no row cap) so counts and totals are exact.
+  const summaryQuery = useInvoicePeriodSummaryRange(from, to);
   const billingVisible = summaryQuery.data?.billingVisible !== false;
-  const summary: ClientSummary[] = useMemo(
+  const summary: PeriodSummary[] = useMemo(
     () =>
       (summaryQuery.data?.data ?? []).map((r) => ({
         clientId: r.clientId,
         clientName: r.clientName ?? `Client ${r.clientId}`,
+        periodStart: r.periodStart,
+        periodEnd: r.periodEnd,
         orders: r.orders,
         pickpack: num(r.pickpackTotal),
         additional: num(r.additionalTotal),
@@ -117,29 +131,26 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   );
   const totals = useMemo(() => summary.reduce(addBillingTotals, EMPTY_TOTALS), [summary]);
 
-  // Line items load per selected client, server-paginated (100/page) so the
-  // animated table never renders thousands of rows at once.
-  const detailQuery = useInvoiceDetailsRange(from, to, selectedClient, detailPage, 100);
+  // Line items load for the selected client + billing period, server-paginated
+  // (100/page) so the animated table never renders thousands of rows at once.
+  const detailQuery = useInvoiceDetailsRange(selected?.from ?? from, selected?.to ?? to, selected?.clientId ?? null, detailPage, 100);
   const lineItems = detailQuery.data?.data ?? [];
   const detailPg = detailQuery.data?.pagination;
-  const selectedName = summary.find((s) => s.clientId === selectedClient)?.clientName ?? '';
 
-  // Excel export fetches the client's full row set for the range directly,
+  // Excel export fetches the full row set for the client + period directly,
   // so it is complete no matter which view the button was clicked from.
-  async function exportExcel(clientId: number | null | undefined) {
-    const id = Number(clientId);
-    if (!Number.isFinite(id) || exporting != null || !accessToken) return;
-    const clientName = summary.find((s) => s.clientId === id)?.clientName || `client-${id}`;
-    setExporting(id);
+  async function exportExcel(clientId: number, clientName: string, rangeFrom: string, rangeTo: string, busyKey: string) {
+    if (exporting != null || !accessToken) return;
+    setExporting(busyKey);
     try {
       // Full (unpaginated) row set for the export, independent of table paging.
-      const res = await portalApi.invoiceDetailsRange(accessToken, from, to, id, { pageSize: 5000 });
+      const res = await portalApi.invoiceDetailsRange(accessToken, rangeFrom, rangeTo, clientId, { pageSize: 5000 });
       const clientRows = res.data ?? [];
       if (!clientRows.length) {
-        toast.error('Nothing to export', 'No billable lines for this client in range.');
+        toast.error('Nothing to export', 'No billable lines for this client in this period.');
         return;
       }
-      await exportInvoiceExcel(clientRows, { clientName, from, to });
+      await exportInvoiceExcel(clientRows, { clientName, from: rangeFrom, to: rangeTo });
     } catch (err) {
       toast.error('Excel export failed', err instanceof Error ? err.message : 'Could not build the Excel file.');
     } finally {
@@ -147,8 +158,15 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     }
   }
 
-  const summaryCols: Column<ClientSummary>[] = [
-    { key: 'client', header: 'Client', defaultWidth: 200, render: (s) => <span className="font-semibold text-brand-700">{s.clientName}</span>, sortAccessor: (s) => s.clientName },
+  const summaryCols: Column<PeriodSummary>[] = [
+    { key: 'client', header: 'Client', defaultWidth: 170, render: (s) => <span className="font-semibold text-brand-700">{s.clientName}</span>, sortAccessor: (s) => s.clientName },
+    {
+      key: 'period',
+      header: 'Billing Period',
+      defaultWidth: 150,
+      render: (s) => <span className="tnum font-medium text-ink">{periodLabel(s.periodStart, s.periodEnd)}</span>,
+      sortAccessor: (s) => s.periodStart,
+    },
     { key: 'orders', header: 'Orders', defaultWidth: 100, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{s.orders.toLocaleString()}</span>, sortAccessor: (s) => s.orders },
     { key: 'pickpack', header: 'Pick & Pack', defaultWidth: 120, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.pickpack)}</span>, sortAccessor: (s) => s.pickpack },
     { key: 'addl', header: 'Addl Units', defaultWidth: 110, className: moneyRight, render: (s) => <span className="tnum text-ink-2">{money0(s.additional)}</span>, sortAccessor: (s) => s.additional },
@@ -163,27 +181,30 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       draggable: false,
       resizable: false,
       className: 'text-right',
-      render: (s) => (
-        <span className="inline-flex items-center gap-1.5">
-          <button
-            onClick={(e) => { e.stopPropagation(); void exportExcel(s.clientId); }}
-            disabled={exporting != null}
-            className={actionBtn}
-            title="Download line items as Excel (.xlsx)"
-          >
-            {exporting === s.clientId ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
-            Excel
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); viewInvoice(s.clientId); }}
-            className={actionBtn}
-            title="Open printable invoice"
-          >
-            {opening === s.clientId ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-            Invoice
-          </button>
-        </span>
-      ),
+      render: (s) => {
+        const busyKey = `${s.clientId}-${s.periodStart}`;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); void exportExcel(s.clientId, s.clientName, s.periodStart, s.periodEnd, busyKey); }}
+              disabled={exporting != null}
+              className={actionBtn}
+              title="Download this billing period as Excel (.xlsx)"
+            >
+              {exporting === busyKey ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+              Excel
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); viewInvoice(s.clientId, s.periodStart, s.periodEnd, busyKey); }}
+              className={actionBtn}
+              title="Open printable invoice for this billing period"
+            >
+              {opening === busyKey ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+              Invoice
+            </button>
+          </span>
+        );
+      },
     },
   ];
 
@@ -251,7 +272,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
 
   return (
     <div className="space-y-4">
-      {selectedClient == null ? (
+      {selected == null ? (
         <GlassPanel className="p-2 sm:p-3">
           <QueryState
             isLoading={summaryQuery.isLoading}
@@ -266,12 +287,16 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               tableId="invoices-summary"
               columns={summaryCols}
               rows={summary}
-              rowKey={(s) => String(s.clientId)}
-              onRowClick={(s) => { setSelectedClient(s.clientId); setDetailPage(1); }}
-              defaultSort={{ key: 'fee', dir: 'desc' }}
+              rowKey={(s) => `${s.clientId}-${s.periodStart}`}
+              onRowClick={(s) => {
+                setSelected({ clientId: s.clientId, clientName: s.clientName, from: s.periodStart, to: s.periodEnd });
+                setDetailPage(1);
+              }}
+              defaultSort={{ key: 'period', dir: 'desc' }}
               footer={
                 <>
                   <td className="px-4 py-3">Total</td>
+                  <td className="px-4 py-3" />
                   <td className={cell}>{totals.orders.toLocaleString()}</td>
                   <td className={cell}>{money(totals.pickpack)}</td>
                   <td className={cell}>{money(totals.additional)}</td>
@@ -288,29 +313,31 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       ) : (
         <GlassPanel className="p-2 sm:p-3">
           <div className="flex items-center justify-between gap-3 px-2 pb-2">
-            <button onClick={() => setSelectedClient(null)} className="focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-glass-sm px-2 py-1 text-sm font-medium text-ink-2 hover:bg-slate-100">
-              <ChevronLeft size={16} /> <span className="hidden sm:inline">All clients</span>
+            <button onClick={() => setSelected(null)} className="focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-glass-sm px-2 py-1 text-sm font-medium text-ink-2 hover:bg-slate-100">
+              <ChevronLeft size={16} /> <span className="hidden sm:inline">All periods</span>
             </button>
-            <p className="min-w-0 flex-1 truncate text-center text-sm font-bold text-ink">Line items — {selectedName}</p>
+            <p className="min-w-0 flex-1 truncate text-center text-sm font-bold text-ink">
+              Line items — {selected.clientName} · {periodLabel(selected.from, selected.to)}
+            </p>
             <div className="flex shrink-0 items-center gap-3">
               <span className="hidden text-xs text-ink-3 sm:inline">
                 {(detailPg?.total ?? lineItems.length).toLocaleString()} line{(detailPg?.total ?? lineItems.length) === 1 ? '' : 's'}
               </span>
               <button
-                onClick={() => void exportExcel(selectedClient)}
+                onClick={() => void exportExcel(selected.clientId, selected.clientName, selected.from, selected.to, `${selected.clientId}-${selected.from}`)}
                 disabled={exporting != null || lineItems.length === 0}
                 className={actionBtn}
-                title="Download line items as Excel (.xlsx)"
+                title="Download this billing period as Excel (.xlsx)"
               >
-                {exporting === selectedClient ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+                {exporting === `${selected.clientId}-${selected.from}` ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
                 Excel
               </button>
               <button
-                onClick={() => viewInvoice(selectedClient ?? undefined)}
+                onClick={() => viewInvoice(selected.clientId, selected.from, selected.to, `${selected.clientId}-${selected.from}`)}
                 className={actionBtn}
-                title="Open printable invoice"
+                title="Open printable invoice for this billing period"
               >
-                {opening === selectedClient ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                {opening === `${selected.clientId}-${selected.from}` ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                 Invoice
               </button>
             </div>
@@ -322,7 +349,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             isEmpty={lineItems.length === 0}
             onRetry={() => detailQuery.refetch()}
             emptyTitle="No line items"
-            emptyMessage="No billable lines for this client in range."
+            emptyMessage="No billable lines for this client in this billing period."
           >
             <DataTable
               tableId="invoices-lines"

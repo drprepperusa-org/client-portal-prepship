@@ -120,6 +120,74 @@ export async function portalInvoiceDetailCount(
   return Number(rows[0]?.count) || 0;
 }
 
+type PortalInvoicePeriodSummaryRow = {
+  client_id: number;
+  client_name: string | null;
+  month_start: string;
+  half: string;
+  orders: string;
+  pickpack_total: string;
+  additional_total: string;
+  package_total: string;
+  shipping_total: string;
+  storage_total: string;
+  row_total: string;
+};
+
+/**
+ * Per-client SEMI-MONTHLY billing rollup: one row per client per billing
+ * period (1st–15th and 16th–end of month, UTC ship-date boundaries — the
+ * same boundaries the range filters use). SQL-aggregated, no row cap.
+ */
+export async function portalInvoicePeriodSummary(
+  scope: ClientPortalScope,
+  input: { clientId?: number | null; dateFrom: string; dateTo: string },
+) {
+  const rows = await db.execute<PortalInvoicePeriodSummaryRow>(sql`
+    select
+      b.client_id,
+      c.name as client_name,
+      to_char(date_trunc('month', b.ship_date at time zone 'UTC'), 'YYYY-MM-DD') as month_start,
+      (case when extract(day from b.ship_date at time zone 'UTC') <= 15 then 1 else 2 end)::text as half,
+      count(distinct b.order_id)::text as orders,
+      coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
+      coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
+      coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
+      coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
+      coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      coalesce(sum(b.total_cost), 0)::text as row_total
+    from billing_line_items b
+    left join ${clients} c on c.id = b.client_id
+    where coalesce(c.active, true) = true
+      and b.ship_date >= ${input.dateFrom}::timestamptz
+      and b.ship_date <= ${input.dateTo}::timestamptz
+      ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
+      ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
+    group by b.client_id, c.name, 3, 4
+    order by 3 desc, 4 desc, sum(b.total_cost) desc
+  `);
+  return rows.map((row) => {
+    const monthPrefix = row.month_start.slice(0, 8); // 'YYYY-MM-'
+    const year = Number(row.month_start.slice(0, 4));
+    const month = Number(row.month_start.slice(5, 7));
+    const half = Number(row.half);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return {
+      clientId: row.client_id,
+      clientName: row.client_name,
+      periodStart: half === 1 ? `${monthPrefix}01` : `${monthPrefix}16`,
+      periodEnd: half === 1 ? `${monthPrefix}15` : `${monthPrefix}${String(lastDay).padStart(2, '0')}`,
+      orders: Number(row.orders) || 0,
+      pickpackTotal: row.pickpack_total,
+      additionalTotal: row.additional_total,
+      packageTotal: row.package_total,
+      shippingTotal: row.shipping_total,
+      storageTotal: row.storage_total,
+      rowTotal: row.row_total,
+    };
+  });
+}
+
 type PortalInvoiceDetailRow = {
   client_id: number;
   client_name: string | null;

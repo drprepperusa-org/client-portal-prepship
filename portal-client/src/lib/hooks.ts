@@ -106,6 +106,17 @@ export function useInvoiceSummaryRange(dateFrom: string, dateTo: string) {
   );
 }
 
+/** Semi-monthly billing periods (one row per client per 1st–15th / 16th–EOM). */
+export function useInvoicePeriodSummaryRange(dateFrom: string, dateTo: string) {
+  const { clientId } = usePortalFilters();
+  return useTokenQuery(
+    ['invoice-period-summary-range', dateFrom, dateTo, clientId ?? 'scope'],
+    (t) => portalApi.invoicePeriodSummaryRange(t, dateFrom, dateTo, clientId),
+    Boolean(dateFrom && dateTo),
+    { refetchInterval: 60_000, refetchOnWindowFocus: true },
+  );
+}
+
 export function useOrders(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };

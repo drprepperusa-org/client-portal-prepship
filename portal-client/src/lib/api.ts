@@ -306,6 +306,12 @@ export interface BillingInvoiceSummaryRow {
   rowTotal: number | string;
 }
 
+export interface BillingInvoicePeriodSummaryRow extends BillingInvoiceSummaryRow {
+  /** Semi-monthly billing period bounds (1st–15th / 16th–EOM), YYYY-MM-DD. */
+  periodStart: string;
+  periodEnd: string;
+}
+
 export interface BillingInvoiceDetailRow {
   clientId?: number;
   clientName?: string | null;
@@ -772,6 +778,15 @@ export const portalApi = {
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       clientId,
+    }),
+
+  /** Semi-monthly billing periods: one row per client per 1st–15th / 16th–EOM. */
+  invoicePeriodSummaryRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
+    apiGet<{ data: BillingInvoicePeriodSummaryRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
+      dateFrom: `${dateFrom}T00:00:00.000Z`,
+      dateTo: `${dateTo}T23:59:59.999Z`,
+      clientId,
+      groupBy: 'period',
     }),
 
   /** Returns the invoice HTML (the backend renders a printable page). */

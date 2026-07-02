@@ -73,6 +73,7 @@ import {
 import {
   portalInvoiceDetailCount,
   portalInvoiceDetails,
+  portalInvoicePeriodSummary,
   portalInvoiceSummary,
 } from '../lib/client-portal/read-models/invoice-details';
 import {
@@ -691,7 +692,12 @@ app.get('/invoice-summary', async (c) => {
   const dateTo = c.req.query('dateTo');
   if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
   const clientId = requestedClientId(c);
-  const rows = await portalInvoiceSummary(scope, { clientId, dateFrom, dateTo });
+  // groupBy=period → one row per client per semi-monthly billing period
+  // (1st–15th / 16th–EOM); default stays the plain per-client rollup.
+  const rows =
+    c.req.query('groupBy') === 'period'
+      ? await portalInvoicePeriodSummary(scope, { clientId, dateFrom, dateTo })
+      : await portalInvoiceSummary(scope, { clientId, dateFrom, dateTo });
   await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
   return c.json({ data: rows, billingVisible: true });
 });
