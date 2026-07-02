@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FileBarChart, RefreshCw, Sparkles, Clock } from 'lucide-react';
+import { FileBarChart, RefreshCw, Sparkles, Clock, Check } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
@@ -34,19 +34,35 @@ export default function Billing() {
   const billingStatus = useBillingStatus();
   const lastGen = billingStatus.data?.lastGenerated ?? null;
 
-  // Shared date range drives the billing view and Generate.
+  // Shared date range drives the billing view and Generate. Custom dates are
+  // staged in a draft first — the query only refires on "Apply range", never
+  // on each individual date change (a half-picked range would otherwise load
+  // immediately). Presets apply instantly since one click selects both dates.
   const initial = presetRange('90');
   const [preset, setPreset] = useState<Preset>('90');
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
+  const [draftFrom, setDraftFrom] = useState(initial.from);
+  const [draftTo, setDraftTo] = useState(initial.to);
   const [generating, setGenerating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const rangeDirty = draftFrom !== from || draftTo !== to;
+  const rangeValid = Boolean(draftFrom) && Boolean(draftTo) && draftFrom <= draftTo;
 
   function applyPreset(p: Exclude<Preset, 'custom'>) {
     const r = presetRange(p);
     setPreset(p);
+    setDraftFrom(r.from);
+    setDraftTo(r.to);
     setFrom(r.from);
     setTo(r.to);
+  }
+
+  function applyRange() {
+    if (!rangeValid) return;
+    setFrom(draftFrom);
+    setTo(draftTo);
   }
 
   function invalidateBilling() {
@@ -94,13 +110,26 @@ export default function Billing() {
             </span>
             <Button variant="secondary" size="sm" leadingIcon={<RefreshCw size={15} className={cn(refreshing && 'animate-spin')} />} onClick={refresh}>Refresh</Button>
             {isAdmin && (
-              <Button size="sm" leadingIcon={<Sparkles size={15} className={cn(generating && 'animate-pulse')} />} onClick={generate} disabled={generating}>
+              <Button
+                size="sm"
+                leadingIcon={<Sparkles size={15} className={cn(generating && 'animate-pulse')} />}
+                onClick={generate}
+                disabled={generating || rangeDirty}
+                title={rangeDirty ? 'Apply the date range first' : undefined}
+              >
                 {generating ? 'Generating…' : 'Generate billing'}
               </Button>
             )}
           </div>
         </div>
-        <DateRangePicker from={from} to={to} preset={preset} onPreset={applyPreset} onFrom={(v) => { setFrom(v); setPreset('custom'); }} onTo={(v) => { setTo(v); setPreset('custom'); }} />
+        <div className="flex flex-wrap items-center gap-3">
+          <DateRangePicker from={draftFrom} to={draftTo} preset={preset} onPreset={applyPreset} onFrom={(v) => { setDraftFrom(v); setPreset('custom'); }} onTo={(v) => { setDraftTo(v); setPreset('custom'); }} />
+          {rangeDirty && (
+            <Button size="sm" leadingIcon={<Check size={15} />} onClick={applyRange} disabled={!rangeValid} title={rangeValid ? 'Filter billing to this range' : 'Pick a start date on or before the end date'}>
+              Apply range
+            </Button>
+          )}
+        </div>
         {isAdmin && <p className="text-[11px] text-ink-3">“Generate billing” (re)computes fulfillment charges for the selected range from shipped orders. It’s idempotent — safe to re-run.</p>}
       </GlassPanel>
 
