@@ -54,6 +54,74 @@ export type TrackingRefreshResult = {
   updated: Array<{ id: number; trackingStatus: string; deliveredAt: string | null }>;
 };
 
+// ── Background sweep (worker) ─────────────────────────────────────────────────
+// Walks recent undelivered shipments oldest-check-first so tracking state
+// populates without anyone loading pages. 60 lookups per run every 3 minutes
+// clears a multi-thousand backlog in a few hours; steady-state re-polls each
+// active shipment roughly every 6 hours.
+
+const SWEEP_INTERVAL_MS = 3 * 60 * 1000;
+const SWEEP_RECHECK_MS = 6 * 60 * 60 * 1000;
+const SWEEP_WINDOW_DAYS = 60;
+const SWEEP_BATCH = 60;
+
+export async function sweepShipmentTracking(): Promise<TrackingRefreshResult> {
+  const recheckBefore = new Date(Date.now() - SWEEP_RECHECK_MS);
+  const candidates = await db
+    .select({ id: shipments.id })
+    .from(shipments)
+    .where(
+      and(
+        eq(shipments.voided, false),
+        sql`coalesce(${shipments.source}, '') <> 'test_offline'`,
+        sql`coalesce(${shipments.trackingStatus}, '') <> 'delivered'`,
+        or(sql`${shipments.trackingNumber} is not null`, sql`${shipments.labelTracking} is not null`),
+        sql`${shipments.carrierCode} is not null`,
+        sql`${shipments.shipDate} > now() - interval '${sql.raw(String(SWEEP_WINDOW_DAYS))} days'`,
+        or(isNull(shipments.trackingCheckedAt), lt(shipments.trackingCheckedAt, recheckBefore)),
+      ),
+    )
+    .orderBy(sql`${shipments.trackingCheckedAt} asc nulls first`, sql`${shipments.shipDate} desc`)
+    .limit(SWEEP_BATCH);
+  return refreshShipmentTracking(candidates.map((row) => row.id));
+}
+
+let sweepTimer: NodeJS.Timeout | null = null;
+let sweepRunning = false;
+
+async function runSweepOnce(): Promise<void> {
+  if (sweepRunning) return;
+  sweepRunning = true;
+  try {
+    const result = await sweepShipmentTracking();
+    if (result.checked > 0) {
+      console.info('[shipment-tracking] sweep', {
+        checked: result.checked,
+        updated: result.updated.length,
+        delivered: result.updated.filter((u) => u.trackingStatus === 'delivered').length,
+      });
+    }
+  } catch (err) {
+    console.warn('[shipment-tracking] sweep failed:', err instanceof Error ? err.message : err);
+  } finally {
+    sweepRunning = false;
+  }
+}
+
+export function startShipmentTrackingSweep(): void {
+  if (sweepTimer) return;
+  console.log('[worker] starting shipment tracking sweep (every 3m, batch 60)');
+  sweepTimer = setInterval(() => void runSweepOnce(), SWEEP_INTERVAL_MS);
+  void runSweepOnce();
+}
+
+export function stopShipmentTrackingSweep(): void {
+  if (sweepTimer) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
+}
+
 export async function refreshShipmentTracking(shipmentIds: number[]): Promise<TrackingRefreshResult> {
   const ids = [...new Set(shipmentIds)].filter((id) => Number.isFinite(id) && id > 0).slice(0, MAX_PER_REFRESH);
   if (!ids.length) return { checked: 0, updated: [] };

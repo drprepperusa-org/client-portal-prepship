@@ -76,7 +76,7 @@ import {
   getPortalOrder,
   listPortalOrders,
 } from '../lib/client-portal/read-models/orders';
-import { listPortalShipments } from '../lib/client-portal/read-models/shipments';
+import { listPortalShipments, SHIPMENT_STATUS_FILTERS } from '../lib/client-portal/read-models/shipments';
 import { listPortalInventory } from '../lib/client-portal/read-models/inventory';
 import { listPortalIntegrations } from '../lib/client-portal/read-models/integrations';
 import {
@@ -259,14 +259,17 @@ app.get('/shipments', async (c) => {
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
+  const statusParam = c.req.query('status');
+  const status = statusParam && SHIPMENT_STATUS_FILTERS.has(statusParam) ? statusParam : undefined;
   const result = await listPortalShipments(scope, {
     page,
     pageSize,
     clientId: requestedClientId(c),
     storeId: requestedStoreId(c),
     search,
+    status,
   });
-  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search });
+  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search, status: status ?? null });
   return c.json(result);
 });
 

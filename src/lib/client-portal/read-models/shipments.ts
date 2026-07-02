@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orders } from '../../../db/schema/orders';
@@ -7,14 +7,54 @@ import { toPortalShipmentDto } from '../dto';
 import { shipmentScopePredicate, shipmentSearchPredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
 
+export const SHIPMENT_STATUS_FILTERS = new Set([
+  'delivered',
+  'in_transit',
+  'exception',
+  'attempted',
+  'label_created',
+  'voided',
+]);
+
+/** Server-side status filter matching the portal's shipmentStatusMeta derivation. */
+function shipmentStatusFilterPredicate(status?: string | null): SQL | undefined {
+  const hasTracking = or(
+    sql`${shipments.trackingNumber} is not null`,
+    sql`${shipments.labelTracking} is not null`,
+  );
+  switch (status) {
+    case 'delivered':
+      return eq(shipments.trackingStatus, 'delivered');
+    case 'exception':
+      return eq(shipments.trackingStatus, 'exception');
+    case 'attempted':
+      return eq(shipments.trackingStatus, 'attempted');
+    case 'in_transit':
+      return and(hasTracking, sql`coalesce(${shipments.trackingStatus}, '') not in ('delivered', 'exception', 'attempted')`);
+    case 'label_created':
+      return and(sql`${shipments.trackingNumber} is null`, sql`${shipments.labelTracking} is null`);
+    default:
+      return undefined;
+  }
+}
+
 /** Shipments read-model (extracted from routes/client-portal.ts). */
 export async function listPortalShipments(
   scope: ClientPortalScope,
-  opts: { page: number; pageSize: number; clientId?: number | null; storeId?: number | null; search: string },
+  opts: {
+    page: number;
+    pageSize: number;
+    clientId?: number | null;
+    storeId?: number | null;
+    search: string;
+    status?: string | null;
+  },
 ) {
-  const { page, pageSize, clientId, storeId, search } = opts;
+  const { page, pageSize, clientId, storeId, search, status } = opts;
   const where = and(
-    eq(shipments.voided, false),
+    // Voided shipments are hidden unless explicitly filtered for.
+    status === 'voided' ? eq(shipments.voided, true) : eq(shipments.voided, false),
+    shipmentStatusFilterPredicate(status),
     shipmentScopePredicate(scope, { clientId, storeId }),
     shipmentSearchPredicate(search),
   );

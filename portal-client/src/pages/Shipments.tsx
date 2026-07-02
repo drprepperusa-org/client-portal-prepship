@@ -40,7 +40,16 @@ function trackingUrl(carrierCode: string | null | undefined, tracking: string | 
   return `https://t.17track.net/en#nums=${t}`;
 }
 
-const STATUS_OPTIONS = ['Delivered', 'In Transit', 'Exception', 'Label Created', 'Voided'] as const;
+// Server-side status filter: values match the backend's SHIPMENT_STATUS_FILTERS,
+// so "Delivered" searches all shipments — not just the loaded page.
+const STATUS_OPTIONS = [
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'in_transit', label: 'In Transit' },
+  { value: 'exception', label: 'Exception' },
+  { value: 'attempted', label: 'Attempted' },
+  { value: 'label_created', label: 'Label Created' },
+  { value: 'voided', label: 'Voided' },
+] as const;
 
 export default function Shipments() {
   const toast = useToast();
@@ -56,14 +65,11 @@ export default function Shipments() {
   const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
 
-  useEffect(() => setPage(1), [debouncedQ, effectiveClientId]);
+  useEffect(() => setPage(1), [debouncedQ, effectiveClientId, statusFilter]);
 
-  const query = useShipments({ search: debouncedQ, page, clientId: effectiveClientId });
+  const query = useShipments({ search: debouncedQ, page, clientId: effectiveClientId, status: statusFilter || undefined });
   const allRows = query.data?.data ?? [];
-  // Status mixes live carrier state (Delivered / Exception) with derived
-  // labels (In Transit / Label Created), so this filters the loaded page
-  // client-side.
-  const rows = statusFilter ? allRows.filter((s) => shipmentStatusMeta(s).label === statusFilter) : allRows;
+  const rows = allRows;
   const pg = query.data?.pagination;
 
   // Live tracking: when a page of shipments loads, ask the backend to refresh
@@ -197,7 +203,7 @@ export default function Shipments() {
             >
               <option value="">All statuses</option>
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
             <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
@@ -230,8 +236,12 @@ export default function Shipments() {
           error={query.error}
           isEmpty={rows.length === 0}
           onRetry={() => query.refetch()}
-          emptyTitle="No shipments yet"
-          emptyMessage="Outbound shipments will appear here once orders ship."
+          emptyTitle={statusFilter ? 'No matching shipments' : 'No shipments yet'}
+          emptyMessage={
+            statusFilter
+              ? `No shipments with status “${STATUS_OPTIONS.find((s) => s.value === statusFilter)?.label ?? statusFilter}” in this view — tracking refreshes in the background, so check back shortly.`
+              : 'Outbound shipments will appear here once orders ship.'
+          }
         >
           <DataTable tableId="shipments" columns={columns} rows={rows} rowKey={(s) => String(s.id)} onRowClick={setSelected} />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}

@@ -96,7 +96,10 @@ export function useOrders(opts: ListOpts = {}) {
 export function useShipments(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(['shipments', merged.search ?? '', merged.page ?? 1, merged.clientId ?? 'scope'], (t) => portalApi.shipments(t, merged));
+  return useTokenQuery(
+    ['shipments', merged.search ?? '', merged.page ?? 1, merged.status ?? 'all', merged.clientId ?? 'scope'],
+    (t) => portalApi.shipments(t, merged),
+  );
 }
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();

@@ -17,6 +17,10 @@ import {
 } from './services/workflows/queue';
 import { ensureOrdersPerformanceIndexes } from './services/orders-performance-maintenance';
 import { ensureReportingMetricsTables } from './services/reporting-metrics';
+import {
+  startShipmentTrackingSweep,
+  stopShipmentTrackingSweep,
+} from './services/shipment-tracking';
 
 let keepAliveTimer: NodeJS.Timeout | null = null;
 
@@ -29,6 +33,7 @@ function startKeepAliveHeartbeat(): void {
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`[worker] received ${signal}; shutting down`);
+  stopShipmentTrackingSweep();
   await stopWorkflowWorkerQueue();
   if (env.USE_PG_BOSS_SCHEDULER) {
     await stopQueuedSyncScheduler();
@@ -112,6 +117,10 @@ async function main(): Promise<void> {
   }
 
   await startWorkflowWorkerQueue();
+
+  // Live tracking sweep: read-only ShipStation lookups that keep
+  // shipments.tracking_status fresh so Delivered filters work everywhere.
+  startShipmentTrackingSweep();
 }
 
 void main();

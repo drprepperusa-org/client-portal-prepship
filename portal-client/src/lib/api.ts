@@ -665,6 +665,7 @@ export const portalApi = {
       pageSize: opts.pageSize ?? 50,
       search: opts.search,
       clientId: opts.clientId,
+      status: opts.status || undefined,
     }),
 
   /** Live carrier tracking refresh for the shipments on screen (read-only lookup). */
