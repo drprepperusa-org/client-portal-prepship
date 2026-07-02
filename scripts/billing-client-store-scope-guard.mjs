@@ -22,7 +22,9 @@ function assert(condition, message) {
 }
 
 const routeSource = read('src/routes/billing.ts');
-const serviceSource = read('src/services/billing.ts');
+// billingSummary/billingDetails (with their scope-predicate call sites) moved
+// to services/billing-summaries.ts (C4); assert over both so coverage follows.
+const serviceSource = read('src/services/billing.ts') + '\n' + read('src/services/billing-summaries.ts');
 const reportingSource = read('src/services/reporting-metrics.ts');
 const packageJson = JSON.parse(read('package.json'));
 

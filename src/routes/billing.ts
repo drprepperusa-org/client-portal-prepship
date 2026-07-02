@@ -10,12 +10,9 @@ import {
   clientPackagePrices,
 } from '../db/schema/billing';
 import { clients } from '../db/schema/clients';
-import {
-  billingDetails,
-  billingSummary,
-  generateLineItems,
-  upsertBillingConfig,
-} from '../services/billing';
+import { generateLineItems } from '../services/billing';
+import { billingDetails, billingSummary } from '../services/billing-summaries';
+import { upsertBillingConfig } from '../services/billing-config';
 import { refreshBillingSummaryMetrics } from '../services/reporting-metrics';
 import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-scope';
 import { requirePermission } from '../middleware/auth';

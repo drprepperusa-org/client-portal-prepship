@@ -11,7 +11,8 @@ import { inboundShipments, inboundItems } from '../db/schema/inbound';
 import { applyMovement } from '../services/inventory';
 import { settings } from '../db/schema/settings';
 import { shipments } from '../db/schema/shipments';
-import { billingSummary, generateLineItems } from '../services/billing';
+import { generateLineItems } from '../services/billing';
+import { billingSummary } from '../services/billing-summaries';
 import { getSkuOrdersForSku } from '../services/sku-orders';
 import { getSkuBreakdownFromOrderItems } from './analysis';
 import {

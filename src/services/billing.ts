@@ -1,21 +1,13 @@
-import { and, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
-import {
-  billingConfig,
-  billingLineItems,
-  clientPackagePrices,
-} from '../db/schema/billing';
+import { billingLineItems, clientPackagePrices } from '../db/schema/billing';
 import { shipments } from '../db/schema/shipments';
 import { orderOverrides, orders } from '../db/schema/orders';
 import { packages } from '../db/schema/packages';
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
 import { SS_BASELINE_CARRIER_CODES } from './rates';
-import { resolveCarrierNickname } from './labels';
-import {
-  getFreshBillingSummaryMetrics,
-  refreshBillingSummaryMetrics,
-} from './reporting-metrics';
+import { refreshBillingSummaryMetrics } from './reporting-metrics';
 
 export type GenerateInput = {
   clientId?: number;
@@ -35,23 +27,10 @@ export type GenerateInput = {
 // (legacy rows or newly-created clients). Matches v2's hardcoded constant.
 const PICK_PACK_MAX_UNITS_DEFAULT = 1;
 
-function toNum(v: string | null | undefined) {
+export function toNum(v: string | null | undefined) {
   if (v === null || v === undefined) return 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
-}
-
-function billingSummaryHasValues(summary: { clients: BillingSummaryRow[] }): boolean {
-  return summary.clients.some(
-    (row) =>
-      row.orderCount > 0 ||
-      row.pickPackTotal > 0 ||
-      row.additionalTotal > 0 ||
-      row.packageTotal > 0 ||
-      row.shippingTotal > 0 ||
-      row.storageTotal > 0 ||
-      row.grandTotal > 0
-  );
 }
 
 function normalizeScopeIds(values: number[] | undefined): number[] {
@@ -69,7 +48,7 @@ function intArraySql(values: number[]): SQL {
   return sql`array[${sql.join(values.map((value) => sql`${value}`), sql`, `)}]::int[]`;
 }
 
-function billingClientScopePredicate(input: GenerateInput): SQL {
+export function billingClientScopePredicate(input: GenerateInput): SQL {
   const predicates: SQL[] = [];
   const clientIds = normalizeScopeIds(input.scopeClientIds);
   const storeIds = normalizeScopeIds(input.scopeStoreIds);
@@ -87,7 +66,7 @@ function billingClientScopePredicate(input: GenerateInput): SQL {
   return sql`(${sql.join(predicates, sql` or `)})`;
 }
 
-function billingLineItemScopePredicate(input: GenerateInput): SQL {
+export function billingLineItemScopePredicate(input: GenerateInput): SQL {
   const predicates: SQL[] = [];
   const clientIds = normalizeScopeIds(input.scopeClientIds);
   const storeIds = normalizeScopeIds(input.scopeStoreIds);
@@ -109,7 +88,7 @@ function billingLineItemScopePredicate(input: GenerateInput): SQL {
   return sql`(${sql.join(predicates, sql` or `)})`;
 }
 
-function stringOrNull(value: unknown): string | null {
+export function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
@@ -124,7 +103,7 @@ function itemSkuOrFallback(record: Record<string, unknown>): string | null {
   return productId != null ? String(Math.trunc(productId)) : null;
 }
 
-function providerAccountIdOrNull(value: unknown): number | null {
+export function providerAccountIdOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const normalized =
     typeof value === 'string' ? value.replace(/^se-/i, '') : value;
@@ -132,13 +111,13 @@ function providerAccountIdOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toFiniteNumber(value: unknown): number | null {
+export function toFiniteNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function itemSummary(items: unknown) {
+export function itemSummary(items: unknown) {
   if (!Array.isArray(items)) {
     return { itemNames: null, itemSkus: null, totalQty: null };
   }
@@ -168,7 +147,7 @@ function itemSummary(items: unknown) {
   };
 }
 
-function dimsKey(length: unknown, width: unknown, height: unknown) {
+export function dimsKey(length: unknown, width: unknown, height: unknown) {
   const l = toFiniteNumber(length);
   const w = toFiniteNumber(width);
   const h = toFiniteNumber(height);
@@ -178,7 +157,7 @@ function dimsKey(length: unknown, width: unknown, height: unknown) {
   return `${l}x${w}x${h}`;
 }
 
-function dimsLabel(length: unknown, width: unknown, height: unknown) {
+export function dimsLabel(length: unknown, width: unknown, height: unknown) {
   const key = dimsKey(length, width, height);
   return key ? `${key} in` : null;
 }
@@ -858,420 +837,4 @@ export async function generateLineItems(input: GenerateInput) {
     billingSummaryMetricsRows,
     message: `Generated ${generated} line items from ${billableRows.length} billable shipments/orders.`,
   };
-}
-
-export type BillingSummaryRow = {
-  clientId: number;
-  clientName: string;
-  pickPackTotal: number;
-  additionalTotal: number;
-  packageTotal: number;
-  shippingTotal: number;
-  storageTotal: number;
-  orderCount: number;
-  grandTotal: number;
-  // Back-compat fields for legacy callers of the old shape.
-  total: number;
-  count: number;
-  byType: Record<string, number>;
-};
-
-async function hasBillingLineItemsForSummary(input: GenerateInput): Promise<boolean> {
-  const [row] = await db.execute<{ exists: boolean }>(sql`
-    select exists (
-      select 1
-      from billing_line_items
-      where ship_date >= ${input.dateFrom}::timestamptz
-        and ship_date <= ${input.dateTo}::timestamptz
-        ${input.clientId !== undefined ? sql`and client_id = ${input.clientId}` : sql``}
-        and ${billingLineItemScopePredicate(input)}
-      limit 1
-    ) as exists
-  `);
-  return row?.exists === true;
-}
-
-export async function billingSummary(
-  input: GenerateInput
-): Promise<{ clients: BillingSummaryRow[]; grandTotal: number }> {
-  let hasGeneratedRows: boolean | null = null;
-  const hasLineItems = async () => {
-    if (hasGeneratedRows === null) {
-      hasGeneratedRows = await hasBillingLineItemsForSummary(input);
-    }
-    return hasGeneratedRows;
-  };
-
-  const metrics = await getFreshBillingSummaryMetrics({
-    dateFrom: input.dateFrom,
-    dateTo: input.dateTo,
-    clientId: input.clientId,
-    scopeClientIds: input.scopeClientIds,
-    scopeStoreIds: input.scopeStoreIds,
-    scopeRestricted: input.scopeRestricted,
-    maxAgeMinutes: 45,
-  }).catch((err) => {
-    console.warn(
-      '[billing] summary reporting metrics unavailable:',
-      err instanceof Error ? err.message : err
-    );
-    return null;
-  });
-  if (metrics && billingSummaryHasValues(metrics)) return metrics;
-
-  if (metrics && !(await hasLineItems())) return metrics;
-
-  if (!metrics || !billingSummaryHasValues(metrics)) {
-    if (await hasLineItems()) {
-      try {
-        await refreshBillingSummaryMetrics(
-          new Date(input.dateFrom),
-          new Date(input.dateTo)
-        );
-        const refreshedMetrics = await getFreshBillingSummaryMetrics({
-          dateFrom: input.dateFrom,
-          dateTo: input.dateTo,
-          clientId: input.clientId,
-          scopeClientIds: input.scopeClientIds,
-          scopeStoreIds: input.scopeStoreIds,
-          scopeRestricted: input.scopeRestricted,
-          maxAgeMinutes: 45,
-        });
-        if (refreshedMetrics) return refreshedMetrics;
-      } catch (err) {
-        console.warn(
-          '[billing] failed to refresh stale summary metrics:',
-          err instanceof Error ? err.message : err
-        );
-      }
-    }
-  }
-
-  const useLiveFallback =
-    process.env.BILLING_SUMMARY_LIVE_FALLBACK === 'true' || (await hasLineItems());
-  if (!useLiveFallback) {
-    const clientRows = await db.execute<{
-      client_id: number;
-      client_name: string;
-    }>(sql`
-      select
-        c.id as client_id,
-        c.name as client_name
-      from clients c
-      where c.active = true
-        and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
-        ${input.clientId !== undefined ? sql`and c.id = ${input.clientId}` : sql``}
-        and ${billingClientScopePredicate(input)}
-      order by c.name asc
-    `);
-
-    return {
-      clients: clientRows.map((row) => ({
-        clientId: row.client_id,
-        clientName: row.client_name,
-        pickPackTotal: 0,
-        additionalTotal: 0,
-        packageTotal: 0,
-        shippingTotal: 0,
-        storageTotal: 0,
-        orderCount: 0,
-        grandTotal: 0,
-        total: 0,
-        count: 0,
-        byType: {
-          pick_pack: 0,
-          additional_unit: 0,
-          package_cost: 0,
-          shipping: 0,
-          storage: 0,
-        },
-      })),
-      grandTotal: 0,
-    };
-  }
-
-  // v2-parity aggregation. Starts from `clients` with a LEFT JOIN to
-  // billing_line_items so every active, non-system client surfaces — even
-  // those with zero volume in the window (HUGRAB, KimlyParc, IntegrationTest,
-  // the TEST_* sandboxes). The previous version aggregated from
-  // billing_line_items alone, dropping zero-volume clients entirely and
-  // causing the Summary grid to look half-empty vs. v2.
-  //
-  // Totals are filtered SUMs per line_type; orderCount counts distinct billed
-  // orders from any order-backed line so clients with $0 pick/pack defaults
-  // still show order volume when shipping lines were generated.
-  const rows = await db.execute<{
-    client_id: number;
-    client_name: string;
-    pickpack_total: string;
-    additional_total: string;
-    package_total: string;
-    shipping_total: string;
-    storage_total: string;
-    order_count: number;
-    grand_total: string;
-  }>(sql`
-    select
-      c.id as client_id,
-      c.name as client_name,
-      coalesce(sum(case when b.line_type = 'pick_pack' then b.total_cost else 0 end), 0)::text as pickpack_total,
-      coalesce(sum(case when b.line_type = 'additional_unit' then b.total_cost else 0 end), 0)::text as additional_total,
-      coalesce(sum(case when b.line_type = 'package_cost' then b.total_cost else 0 end), 0)::text as package_total,
-      coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
-      coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
-      count(distinct b.order_id)::int as order_count,
-      coalesce(sum(b.total_cost), 0)::text as grand_total
-    from clients c
-    left join billing_line_items b
-      on b.client_id = c.id
-      and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date <= ${input.dateTo}::timestamptz
-    where c.active = true
-      and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
-      ${input.clientId !== undefined ? sql`and c.id = ${input.clientId}` : sql``}
-      and ${billingClientScopePredicate(input)}
-    group by c.id, c.name
-    order by c.name asc
-  `);
-
-  const clientsOut: BillingSummaryRow[] = rows.map((r) => {
-    const pickPackTotal = toNum(r.pickpack_total);
-    const additionalTotal = toNum(r.additional_total);
-    const packageTotal = toNum(r.package_total);
-    const shippingTotal = toNum(r.shipping_total);
-    const storageTotal = toNum(r.storage_total);
-    const grandTotal = toNum(r.grand_total);
-    return {
-      clientId: r.client_id,
-      clientName: r.client_name,
-      pickPackTotal,
-      additionalTotal,
-      packageTotal,
-      shippingTotal,
-      storageTotal,
-      orderCount: Number(r.order_count ?? 0),
-      grandTotal,
-      total: grandTotal,
-      count: Number(r.order_count ?? 0),
-      byType: {
-        pick_pack: pickPackTotal,
-        additional_unit: additionalTotal,
-        package_cost: packageTotal,
-        shipping: shippingTotal,
-        storage: storageTotal,
-      },
-    };
-  });
-
-  return {
-    clients: clientsOut,
-    grandTotal: clientsOut.reduce((sum, c) => sum + c.grandTotal, 0),
-  };
-}
-
-export async function billingDetails(input: GenerateInput & { limit?: number }) {
-  const from = new Date(input.dateFrom);
-  const to = new Date(input.dateTo);
-  const rows = await db
-    .select({
-      id: billingLineItems.id,
-      clientId: billingLineItems.clientId,
-      orderId: billingLineItems.orderId,
-      orderNumber: billingLineItems.orderNumber,
-      shipmentId: billingLineItems.shipmentId,
-      shipDate: billingLineItems.shipDate,
-      lineType: billingLineItems.lineType,
-      description: billingLineItems.description,
-      qty: billingLineItems.qty,
-      unitCost: billingLineItems.unitCost,
-      totalCost: billingLineItems.totalCost,
-      invoiced: billingLineItems.invoiced,
-      createdAt: billingLineItems.createdAt,
-      carrierCode: shipments.carrierCode,
-      providerAccountId: shipments.providerAccountId,
-      labelProvider: shipments.labelProvider,
-      trackingNumber: shipments.trackingNumber,
-      providerAccountNickname: shipments.providerAccountNickname,
-      selectedRateJson: shipments.selectedRateJson,
-      selectedPackageId: shipments.selectedPackageId,
-      selectedPid: shipments.selectedPid,
-      dimsL: shipments.dimsL,
-      dimsW: shipments.dimsW,
-      dimsH: shipments.dimsH,
-      labelCost: shipments.labelCost,
-      cost: shipments.cost,
-      otherCost: shipments.otherCost,
-      orderItems: orders.items,
-      refUspsRate: orderOverrides.refUspsRate,
-      refUpsRate: orderOverrides.refUpsRate,
-    })
-    .from(billingLineItems)
-    .leftJoin(shipments, eq(billingLineItems.shipmentId, shipments.id))
-    .leftJoin(orders, eq(billingLineItems.orderId, orders.id))
-    .leftJoin(orderOverrides, eq(billingLineItems.orderId, orderOverrides.orderId))
-    .where(
-      and(
-        gte(billingLineItems.shipDate, from),
-        lte(billingLineItems.shipDate, to),
-        input.clientId !== undefined
-          ? eq(billingLineItems.clientId, input.clientId)
-          : undefined,
-        billingLineItemScopePredicate(input)
-      )
-    )
-    .orderBy(billingLineItems.shipDate)
-    .limit(input.limit ?? 500);
-
-  const packageRows = await db
-    .select({
-      id: packages.id,
-      name: packages.name,
-      packageCode: packages.packageCode,
-      length: packages.length,
-      width: packages.width,
-      height: packages.height,
-    })
-    .from(packages);
-  const packagesById = new Map(packageRows.map((pkg) => [pkg.id, pkg]));
-  const packagesByCode = new Map(
-    packageRows
-      .filter((pkg) => pkg.packageCode)
-      .map((pkg) => [pkg.packageCode!, pkg])
-  );
-  const packagesByDims = new Map(
-    packageRows
-      .map((pkg) => [dimsKey(pkg.length, pkg.width, pkg.height), pkg] as const)
-      .filter((entry): entry is [string, (typeof packageRows)[number]] => Boolean(entry[0]))
-  );
-  const nicknameCache = new Map<string, Promise<string | null>>();
-
-  return Promise.all(
-    rows.map(async (row) => {
-      const selectedRate =
-        row.selectedRateJson && typeof row.selectedRateJson === 'object'
-          ? (row.selectedRateJson as Record<string, unknown>)
-          : null;
-
-      const providerAccountId =
-        row.providerAccountId ??
-        row.labelProvider ??
-        providerAccountIdOrNull(
-          selectedRate?.providerAccountId ??
-            selectedRate?.shippingProviderId ??
-            selectedRate?.carrier_id
-        );
-      const carrierCode =
-        row.carrierCode ??
-        stringOrNull(selectedRate?.carrierCode ?? selectedRate?.carrier_code);
-      const storedNickname =
-        row.providerAccountNickname ??
-        stringOrNull(
-          selectedRate?.providerAccountNickname ??
-            selectedRate?.carrierNickname ??
-            selectedRate?.carrier_nickname
-        );
-
-      let carrierNickname = storedNickname;
-      if (!carrierNickname && carrierCode) {
-        const cacheKey = `${providerAccountId ?? 'none'}:${carrierCode}`;
-        let pending = nicknameCache.get(cacheKey);
-        if (!pending) {
-          pending = resolveCarrierNickname(
-            providerAccountId ?? null,
-            carrierCode,
-            row.trackingNumber,
-            row.clientId
-          );
-          nicknameCache.set(cacheKey, pending);
-        }
-        carrierNickname = await pending;
-      }
-
-      const items = itemSummary(row.orderItems);
-      const lineType = row.lineType ?? '';
-      const isShippingLine = lineType === 'shipping';
-      const labelCost =
-        toFiniteNumber(row.labelCost) ??
-        (() => {
-          const cost = toFiniteNumber(row.cost);
-          if (cost == null) return null;
-          return cost + (toFiniteNumber(row.otherCost) ?? 0);
-        })();
-      const refUspsRate = toFiniteNumber(row.refUspsRate);
-      const refUpsRate = toFiniteNumber(row.refUpsRate);
-      const selectedPackageNumericId = providerAccountIdOrNull(row.selectedPackageId);
-      const selectedPackage =
-        (row.selectedPid != null ? packagesById.get(row.selectedPid) : undefined) ??
-        (selectedPackageNumericId != null ? packagesById.get(selectedPackageNumericId) : undefined) ??
-        (row.selectedPackageId ? packagesByCode.get(row.selectedPackageId) : undefined) ??
-        (dimsKey(row.dimsL, row.dimsW, row.dimsH)
-          ? packagesByDims.get(dimsKey(row.dimsL, row.dimsW, row.dimsH)!)
-          : undefined);
-      const packageName =
-        selectedPackage?.name ??
-        row.description.match(/^Box\s+\((.+)\)$/i)?.[1] ??
-        dimsLabel(row.dimsL, row.dimsW, row.dimsH);
-
-      const {
-        selectedRateJson: _selectedRateJson,
-        labelProvider: _labelProvider,
-        orderItems: _orderItems,
-        labelCost: _labelCost,
-        cost: _cost,
-        otherCost: _otherCost,
-        selectedPackageId: _selectedPackageId,
-        selectedPid: _selectedPid,
-        dimsL: _dimsL,
-        dimsW: _dimsW,
-        dimsH: _dimsH,
-        refUspsRate: _refUspsRate,
-        refUpsRate: _refUpsRate,
-        ...rest
-      } = row;
-      return {
-        ...rest,
-        carrierCode,
-        providerAccountId,
-        providerAccountNickname: carrierNickname,
-        carrierNickname: carrierNickname ?? carrierCode,
-        itemNames: items.itemNames,
-        itemSkus: items.itemSkus,
-        totalQty: items.totalQty,
-        packageName,
-        actualLabelCost: isShippingLine ? labelCost : null,
-        actual_label_cost: isShippingLine ? labelCost : null,
-        refUspsRate: isShippingLine ? refUspsRate : null,
-        ref_usps_rate: isShippingLine ? refUspsRate : null,
-        refUpsRate: isShippingLine ? refUpsRate : null,
-        ref_ups_rate: isShippingLine ? refUpsRate : null,
-      };
-    })
-  );
-}
-
-export async function upsertBillingConfig(
-  clientId: number,
-  patch: Partial<{
-    pickPackFee: string;
-    pickPackMaxUnits: number;
-    additionalUnitFee: string;
-    packageCostMarkup: string;
-    shippingMarkupPct: string;
-    shippingMarkupFlat: string;
-    shippingRateOverrideTriggerBelow: string;
-    shippingRateOverrideAmount: string;
-    storageFeePerCuFt: string;
-    billingMode: string;
-    active: boolean;
-  }>
-) {
-  const [row] = await db
-    .insert(billingConfig)
-    .values({ clientId, ...patch })
-    .onConflictDoUpdate({
-      target: billingConfig.clientId,
-      set: { ...patch, updatedAt: new Date() },
-    })
-    .returning();
-  return row;
 }
