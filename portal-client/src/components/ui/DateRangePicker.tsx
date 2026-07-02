@@ -1,13 +1,12 @@
 import { PRESETS, type Preset } from '@/lib/dateRange';
-import { DateRangePicker as DateRangeCalendar } from '@/components/ui/datetime';
+import { DatePicker } from '@/components/ui/datetime';
 import { cn } from '@/lib/cn';
 
 /**
  * Preset + custom date-range picker. Presentational: the parent owns the
- * `from`/`to`/`preset` state and the query that uses it. Custom ranges use
- * the datetime family's calendar popover, which keeps the in-progress start
- * internal and reports onFrom + onTo together only when the user completes
- * the range — parents never observe a half-picked range.
+ * `from`/`to`/`preset` state and the query that uses it. Custom dates are two
+ * separate calendar fields — Start on the left, End on the right — each
+ * constrained by the other so the end can never precede the start.
  */
 export function DateRangePicker({
   from,
@@ -38,15 +37,10 @@ export function DateRangePicker({
           {p.label}
         </button>
       ))}
-      <DateRangeCalendar
-        start={from}
-        end={to}
-        onChange={({ start, end }) => {
-          onFrom(start);
-          onTo(end);
-        }}
-        className="w-64"
-      />
+      <span className="mx-1 text-sm text-ink-3">From</span>
+      <DatePicker value={from || null} onChange={onFrom} max={to || null} placeholder="Start date" className="w-40" />
+      <span className="text-sm text-ink-3">To</span>
+      <DatePicker value={to || null} onChange={onTo} min={from || null} placeholder="End date" className="w-40" />
       {preset === 'custom' && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">Custom</span>}
     </div>
   );
