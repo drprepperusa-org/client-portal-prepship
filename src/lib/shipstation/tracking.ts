@@ -1,55 +1,71 @@
-import { ssRequest, ShipStationError } from './client';
+import { ssRequest } from './client';
 
 /**
- * ShipStation v2 tracking lookup (GET /v2/tracking?carrier_code&tracking_number).
- * Read-only against the carrier — no labels, postage, or notifications are
- * ever triggered from this path.
+ * Label-based tracking state from ShipStation. The dedicated /v2/tracking
+ * endpoint is gated behind a higher billing plan (returns 401 on this
+ * account), but /v2/labels — which this account already uses for label-URL
+ * recovery — carries a `tracking_status` per label ('delivered' /
+ * 'in_transit' / 'error' / 'unknown') that ShipStation keeps updated. Paging
+ * the recent labels gives us bulk tracking state in a handful of read-only
+ * requests instead of one gated call per shipment.
+ *
+ * Note: the call shape deliberately matches the proven ssListRecentLabels
+ * request (no created_at_start filter — that filter makes ShipStation time
+ * out). We page newest-first and stop once labels fall outside the window.
  */
-export type SsTrackingInfo = {
-  statusCode: string | null;
-  statusDescription: string | null;
-  carrierStatusDescription: string | null;
-  estimatedDeliveryDate: string | null;
-  actualDeliveryDate: string | null;
-};
-
-type TrackingResponse = {
-  status_code?: unknown;
-  status_description?: unknown;
-  carrier_status_description?: unknown;
-  estimated_delivery_date?: unknown;
-  actual_delivery_date?: unknown;
-};
-
-const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
-
-export async function ssGetTracking(args: {
-  carrierCode: string;
+export type LabelTrackingEntry = {
   trackingNumber: string;
+  trackingStatus: string | null;
+  createdAt: string | null;
+};
+
+const PAGE_SIZE = 500;
+
+export async function ssListLabelTracking(args: {
   apiKey?: string;
-}): Promise<SsTrackingInfo | null> {
-  const qs = new URLSearchParams({
-    carrier_code: args.carrierCode,
-    tracking_number: args.trackingNumber,
-  });
-  try {
-    const res = await ssRequest<TrackingResponse>(`/v2/tracking?${qs.toString()}`, {
-      apiKey: args.apiKey,
-      dedupeKey: `tracking:${args.carrierCode}:${args.trackingNumber}`,
-      maxRetries: 2,
-      timeoutMs: 20_000,
+  /** Max pages to fetch (PAGE_SIZE labels each), newest first. */
+  pages?: number;
+  /** Stop paging once labels are older than this many days. */
+  windowDays?: number;
+} = {}): Promise<LabelTrackingEntry[]> {
+  const maxPages = args.pages ?? 5;
+  const cutoff = args.windowDays ? Date.now() - args.windowDays * 86_400_000 : null;
+  const out: LabelTrackingEntry[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const qs = new URLSearchParams({
+      page_size: String(PAGE_SIZE),
+      sort_dir: 'desc',
+      page: String(page),
     });
-    return {
-      statusCode: str(res.status_code),
-      statusDescription: str(res.status_description),
-      carrierStatusDescription: str(res.carrier_status_description),
-      estimatedDeliveryDate: str(res.estimated_delivery_date),
-      actualDeliveryDate: str(res.actual_delivery_date),
-    };
-  } catch (err) {
-    // Unknown/invalid tracking numbers come back 400/404 — treat as "no data"
-    // so one bad number never fails a whole refresh batch.
-    if (err instanceof ShipStationError && (err.status === 400 || err.status === 404)) return null;
-    throw err;
+    const payload = await ssRequest<{ labels?: Array<Record<string, unknown>>; pages?: unknown }>(
+      `/v2/labels?${qs.toString()}`,
+      {
+        apiKey: args.apiKey,
+        dedupeKey: `labels:tracking:${args.apiKey ? 'client' : 'default'}:${page}`,
+        maxRetries: 2,
+      },
+    );
+    const labels = payload.labels ?? [];
+    let pastWindow = false;
+    for (const label of labels) {
+      const trackingNumber = label.tracking_number ? String(label.tracking_number) : '';
+      const createdAt = label.created_at ? String(label.created_at) : null;
+      if (cutoff && createdAt) {
+        const ts = Date.parse(createdAt);
+        if (Number.isFinite(ts) && ts < cutoff) {
+          pastWindow = true;
+          continue;
+        }
+      }
+      if (!trackingNumber) continue;
+      out.push({
+        trackingNumber,
+        trackingStatus: label.tracking_status ? String(label.tracking_status) : null,
+        createdAt,
+      });
+    }
+    const totalPages = Number(payload.pages);
+    if (pastWindow || labels.length < PAGE_SIZE || (Number.isFinite(totalPages) && page >= totalPages)) break;
   }
+  return out;
 }
