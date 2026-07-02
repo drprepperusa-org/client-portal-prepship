@@ -21,6 +21,10 @@ import {
   startShipmentTrackingSweep,
   stopShipmentTrackingSweep,
 } from './services/shipment-tracking';
+import {
+  startBillingAutoGenerate,
+  stopBillingAutoGenerate,
+} from './services/billing-auto-generate';
 
 let keepAliveTimer: NodeJS.Timeout | null = null;
 
@@ -34,6 +38,7 @@ function startKeepAliveHeartbeat(): void {
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`[worker] received ${signal}; shutting down`);
   stopShipmentTrackingSweep();
+  stopBillingAutoGenerate();
   await stopWorkflowWorkerQueue();
   if (env.USE_PG_BOSS_SCHEDULER) {
     await stopQueuedSyncScheduler();
@@ -121,6 +126,10 @@ async function main(): Promise<void> {
   // Live tracking sweep: read-only ShipStation lookups that keep
   // shipments.tracking_status fresh so Delivered filters work everywhere.
   startShipmentTrackingSweep();
+
+  // Billing stays current by default: regenerate the recent window on an
+  // interval (idempotent); the portal button is the manual override.
+  startBillingAutoGenerate();
 }
 
 void main();

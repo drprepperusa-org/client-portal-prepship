@@ -115,9 +115,9 @@ export default function Billing() {
                 leadingIcon={<Sparkles size={15} className={cn(generating && 'animate-pulse')} />}
                 onClick={generate}
                 disabled={generating || rangeDirty}
-                title={rangeDirty ? 'Apply the date range first' : undefined}
+                title={rangeDirty ? 'Apply the date range first' : 'Recompute billing for the selected range now'}
               >
-                {generating ? 'Generating…' : 'Generate billing'}
+                {generating ? 'Updating…' : 'Update billing'}
               </Button>
             )}
           </div>
@@ -130,7 +130,12 @@ export default function Billing() {
             </Button>
           )}
         </div>
-        {isAdmin && <p className="text-[11px] text-ink-3">“Generate billing” (re)computes fulfillment charges for the selected range from shipped orders. It’s idempotent — safe to re-run.</p>}
+        {isAdmin && (
+          <p className="text-[11px] text-ink-3">
+            Billing updates automatically (the worker recomputes recent charges every 15 minutes and this page refreshes itself).
+            “Update billing” forces a recompute for the selected range right now — idempotent, safe to re-run.
+          </p>
+        )}
       </GlassPanel>
 
       <BillingClients from={from} to={to} />

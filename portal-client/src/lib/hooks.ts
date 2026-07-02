@@ -61,8 +61,12 @@ export function useReports() {
 export function useReportsRange(dateFrom: string, dateTo: string) {
   return useTokenQuery(['reports-range', dateFrom, dateTo], (t) => portalApi.reportsRange(t, dateFrom, dateTo), Boolean(dateFrom && dateTo));
 }
-/** When billing line items were last (re)generated via the portal. */
-export const useBillingStatus = () => useTokenQuery(['billing-status'], portalApi.billingStatus);
+/** When billing line items were last (re)generated (manual or worker auto-run). */
+export const useBillingStatus = () =>
+  useTokenQuery(['billing-status'], portalApi.billingStatus, true, {
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
 
 /** Carrier rate markups (Settings → Markups). */
 export const useMarkups = () => useTokenQuery(['markups'], portalApi.markups);
@@ -70,13 +74,15 @@ export function useInvoiceDetails() {
   const { days, clientId } = usePortalFilters();
   return useTokenQuery(['invoice-details', days, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, days, clientId));
 }
-/** Invoice detail for an explicit YYYY-MM-DD range (Billing page). */
+/** Invoice detail for an explicit YYYY-MM-DD range (Billing page). Auto-refetches
+ *  so the view tracks the worker's automatic billing generation by default. */
 export function useInvoiceDetailsRange(dateFrom: string, dateTo: string) {
   const { clientId } = usePortalFilters();
   return useTokenQuery(
     ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope'],
     (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId),
     Boolean(dateFrom && dateTo),
+    { refetchInterval: 60_000, refetchOnWindowFocus: true },
   );
 }
 
