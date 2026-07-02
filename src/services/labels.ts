@@ -30,10 +30,11 @@ import { carrierConnectors } from '../connectors/registry';
 import {
   enqueueShipmentConfirmation,
   ensureFulfillmentSchema,
-  inferStoreProvider,
   processFulfillmentOutboxOnce,
 } from './fulfillment/outbox';
 import { addMockLabelSignature } from '../lib/mock-label-access';
+import { confirmationProviderForOrder, marketplaceConfirmationPayload } from './labels-confirmation';
+import { saveMockLabel } from './mock-label-store';
 
 // Batch-label callers don't carry a panel-selected package, so customPackageId
 // is often null. When dims are present, fall back to the same ±0.1" tolerance
@@ -166,90 +167,10 @@ async function withConcurrency<T>(
   }
 }
 
-// ── Mock label store (DB-backed, with in-memory fast path) ────────────────────
-// v2-parity: mock labels persist to the `mock_labels` table so dev labels
-// survive server restarts. Keep a Map as a read-through cache so /mock/:id
-// doesn't hit the DB on every render in dev.
-
-const mockLabelStore = new Map<number, MockLabelData>();
-
-export function getMockLabel(shipmentId: number): MockLabelData | null {
-  return mockLabelStore.get(shipmentId) ?? null;
-}
-
-export async function getMockLabelAsync(shipmentId: number): Promise<MockLabelData | null> {
-  const cached = mockLabelStore.get(shipmentId);
-  if (cached) return cached;
-  try {
-    const { mockLabels } = await import('../db/schema/mock-labels');
-    const [row] = await db
-      .select()
-      .from(mockLabels)
-      .where(eq(mockLabels.shipmentId, shipmentId))
-      .limit(1);
-    if (!row) return null;
-    const parse = <T>(v: string | null, fallback: T): T => {
-      if (v == null) return fallback;
-      try { return JSON.parse(v) as T; } catch { return fallback; }
-    };
-    const empty = { name: '', street1: '', city: '', state: '', postalCode: '' };
-    const hydrated: MockLabelData = {
-      shipmentId: row.shipmentId,
-      orderNumber: row.orderNumber,
-      trackingNumber: row.trackingNumber,
-      serviceLabel: row.serviceLabel ?? '',
-      weightOz: row.weightOz ? Number(row.weightOz) : 0,
-      shipFrom: parse(row.shipFrom, empty),
-      shipTo: parse(row.shipTo, empty),
-      shipDate: row.shipDate ?? '',
-      pdfBase64: row.pdfBase64 ?? undefined,
-    };
-    mockLabelStore.set(shipmentId, hydrated);
-    return hydrated;
-  } catch (err) {
-    console.warn('[labels] getMockLabelAsync DB fetch failed:', err);
-    return null;
-  }
-}
-
-export function saveMockLabel(shipmentId: number, data: MockLabelData): void {
-  mockLabelStore.set(shipmentId, data);
-  // Fire-and-forget: persist to DB for restart-survival. The in-memory map
-  // is authoritative for the current process; DB is the durable mirror.
-  void (async () => {
-    try {
-      const { mockLabels } = await import('../db/schema/mock-labels');
-      await db
-        .insert(mockLabels)
-        .values({
-          shipmentId,
-          orderNumber: data.orderNumber,
-          trackingNumber: data.trackingNumber,
-          serviceLabel: data.serviceLabel,
-          weightOz: String(data.weightOz),
-          shipFrom: JSON.stringify(data.shipFrom),
-          shipTo: JSON.stringify(data.shipTo),
-          shipDate: data.shipDate,
-          pdfBase64: data.pdfBase64 ?? null,
-        })
-        .onConflictDoUpdate({
-          target: mockLabels.shipmentId,
-          set: {
-            orderNumber: data.orderNumber,
-            trackingNumber: data.trackingNumber,
-            serviceLabel: data.serviceLabel,
-            weightOz: String(data.weightOz),
-            shipFrom: JSON.stringify(data.shipFrom),
-            shipTo: JSON.stringify(data.shipTo),
-            shipDate: data.shipDate,
-            pdfBase64: data.pdfBase64 ?? null,
-          },
-        });
-    } catch (err) {
-      console.warn('[labels] saveMockLabel DB persist failed:', err);
-    }
-  })();
-}
+// ── Mock label store ──────────────────────────────────────────────────────────
+// Moved to ./mock-label-store (DB-backed with in-memory fast path). Re-exported
+// so routes/labels.ts keeps importing from this service.
+export { getMockLabel, getMockLabelAsync, saveMockLabel } from './mock-label-store';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -560,124 +481,6 @@ async function loadOrderRecord(orderId: number) {
     .where(eq(orders.id, orderId))
     .limit(1);
   return order ?? null;
-}
-
-type MarketplaceConfirmationProvider = 'shipstation' | 'walmart' | 'ebay';
-
-function firstText(...values: unknown[]): string {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  }
-  return '';
-}
-
-function normalizeConfirmationProvider(value: unknown): MarketplaceConfirmationProvider | null {
-  const text = firstText(value).toLowerCase().replace(/[\s-]+/g, '_');
-  if (!text) return null;
-  if (text.includes('walmart')) return 'walmart';
-  if (text.includes('ebay')) return 'ebay';
-  if (text.includes('shipstation')) return 'shipstation';
-  return null;
-}
-
-function stripProviderPrefix(externalOrderId: string | null | undefined, provider: string): string {
-  const text = firstText(externalOrderId);
-  const prefix = `${provider}-`;
-  return text.toLowerCase().startsWith(prefix) ? text.slice(prefix.length) : '';
-}
-
-function confirmationProviderForOrder(order: typeof orders.$inferSelect): MarketplaceConfirmationProvider {
-  const raw = order.raw ?? {};
-  const fromRaw = normalizeConfirmationProvider(
-    raw.source_provider ??
-    raw.sourceProvider ??
-    raw.source ??
-    raw.provider ??
-    raw.marketplace ??
-    raw.platform
-  );
-  if (fromRaw) return fromRaw;
-
-  const fromExternalId = normalizeConfirmationProvider(inferStoreProvider(order.externalOrderId));
-  return fromExternalId ?? 'shipstation';
-}
-
-function carrierNameForMarketplace(carrierCode: string | null | undefined): string {
-  const code = firstText(carrierCode).toLowerCase();
-  if (code.includes('fedex')) return 'FedEx';
-  if (code.includes('ups')) return 'UPS';
-  if (code.includes('usps') || code.includes('stamps')) return 'USPS';
-  return firstText(carrierCode, 'Other');
-}
-
-function trackingUrlForCarrier(carrierCode: string | null | undefined, trackingNumber: string | null | undefined): string {
-  const tracking = firstText(trackingNumber);
-  if (!tracking) return '';
-  const carrier = carrierNameForMarketplace(carrierCode).toLowerCase();
-  if (carrier === 'fedex') return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(tracking)}`;
-  if (carrier === 'ups') return `https://www.ups.com/track?tracknum=${encodeURIComponent(tracking)}`;
-  if (carrier === 'usps') return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(tracking)}`;
-  return '';
-}
-
-function marketplaceConfirmationPayload(
-  order: typeof orders.$inferSelect,
-  created: CreatedExternalLabel,
-  provider: MarketplaceConfirmationProvider,
-): Record<string, unknown> {
-  const raw = order.raw ?? {};
-  const payload: Record<string, unknown> = {
-    carrierProvider: 'shipstation',
-    carrierAccountId: created.providerAccountId,
-    shipStationShipmentId: created.shipmentId,
-    notifyCustomer: false,
-    notifyMarketplace: true,
-  };
-
-  if (provider === 'walmart') {
-    payload.storeAccountId = firstText(
-      raw.accountId,
-      raw.storeAccountId,
-      raw.sourceAccountId,
-      raw.marketplaceAccountId
-    ) || undefined;
-    payload.purchaseOrderId = firstText(
-      raw.purchaseOrderId,
-      stripProviderPrefix(order.externalOrderId, 'walmart'),
-      raw.orderId,
-      raw.id
-    ) || undefined;
-    payload.rawOrder = raw;
-    payload.carrierName = carrierNameForMarketplace(created.carrierCode);
-    payload.trackingUrl = trackingUrlForCarrier(created.carrierCode, created.trackingNumber) || undefined;
-    payload.serviceCode = created.serviceCode;
-  }
-
-  if (provider === 'ebay') {
-    payload.storeAccountId = firstText(
-      raw.accountId,
-      raw.storeAccountId,
-      raw.sourceAccountId,
-      raw.marketplaceAccountId
-    ) || undefined;
-    payload.ebayOrderId = firstText(
-      raw.orderId,
-      stripProviderPrefix(order.externalOrderId, 'ebay'),
-      raw.id
-    ) || undefined;
-    payload.rawOrder = raw;
-    payload.lineItems = Array.isArray(raw.lineItems)
-      ? raw.lineItems.map((line: any) => ({
-          lineItemId: firstText(line?.lineItemId, line?.line_item_id),
-          quantity: Number(line?.quantity ?? 1) || 1,
-        })).filter((line: any) => line.lineItemId)
-      : undefined;
-    payload.shippingCarrierCode = carrierNameForMarketplace(created.carrierCode);
-    payload.serviceCode = created.serviceCode;
-  }
-
-  return payload;
 }
 
 async function loadOrderDimsOverride(orderId: number) {
@@ -1575,125 +1378,6 @@ export { generateMockLabelHtml } from './mock-label-generator';
 export type { MockLabelData } from './mock-label-generator';
 
 // ── Carrier nickname resolver ─────────────────────────────────────────────────
-// Ported from v2's apps/api/src/modules/orders/application/carrier-resolver.ts.
-// v2 resolves against a hardcoded CARRIER_ACCOUNTS_V2 map. v4 doesn't have that
-// map — we resolve against:
-//   1. shipments.providerAccountNickname (set when PrepShip creates the label)
-//   2. ShipStation's dynamic /v2/carriers response (providerAccountId match,
-//      UPS 1Z tracking decode, single-carrier fallback)
-//   3. Human-readable fallback from CARRIER_DISPLAY_NAMES below.
-
-import type { Carrier, CarriersResponse } from '../lib/shipstation/types';
-
-const CARRIER_DISPLAY_NAMES: Record<string, string> = {
-  stamps_com: 'USPS',
-  ups: 'UPS',
-  ups_walleted: 'UPS',
-  fedex: 'FedEx',
-  fedex_walleted: 'FedEx One Balance',
-  dhl_express: 'DHL Express',
-  amazon_buy_shipping: 'Amazon',
-  amazon_shipping_us: 'Amazon',
-  sendle: 'Sendle',
-  tusk: 'Tusk',
-};
-
-// In-process TTL cache for /v2/carriers — ShipStation rate limits and the
-// list rarely changes. 5 minute TTL is plenty for nickname resolution.
-const CARRIERS_CACHE_TTL_MS = 5 * 60 * 1000;
-let carriersCache: { at: number; data: Carrier[] } | null = null;
-
-async function loadCarriersList(): Promise<Carrier[]> {
-  const now = Date.now();
-  if (carriersCache && now - carriersCache.at < CARRIERS_CACHE_TTL_MS) {
-    return carriersCache.data;
-  }
-  try {
-    const res = await ssRequest<CarriersResponse>('/v2/carriers', {
-      dedupeKey: 'carriers:list',
-    });
-    carriersCache = { at: now, data: res.carriers };
-    return res.carriers;
-  } catch {
-    // Stale cache > no data: if SS is down, keep returning what we had.
-    return carriersCache?.data ?? [];
-  }
-}
-
-function carrierIdToProviderAccountId(carrierId: string | null | undefined): number | null {
-  if (!carrierId) return null;
-  const num = Number(String(carrierId).replace(/^se-/, ''));
-  return Number.isFinite(num) ? num : null;
-}
-
-/**
- * Resolve a human-readable carrier label (e.g. "ORION", "USPS Chase x7439")
- * for a shipment. Mirrors v2's resolveCarrierNickname() resolution order:
- *
- *   1. providerAccountId exact match — first against any DB-persisted
- *      shipments.providerAccountNickname for this account, then against
- *      ShipStation's /v2/carriers response.
- *   2. UPS 1Z tracking decode: chars 3-8 = UPS account code → match
- *      Carrier.account_number.
- *   3. Only one carrier for carrierCode → use that carrier's nickname.
- *   4. Human-readable fallback from CARRIER_DISPLAY_NAMES.
- *
- * The clientId arg is accepted for v2 signature parity — v4 has no client-
- * scoped carrier accounts in the dynamic SS list, so it's currently unused
- * beyond logging context.
- */
-export async function resolveCarrierNickname(
-  providerAccountId: number | null,
-  carrierCode: string | null,
-  trackingNumber?: string | null,
-  _clientId?: number | null,
-): Promise<string | null> {
-  if (!carrierCode) return null;
-
-  // 1a. DB-persisted per-shipment nickname (set when PrepShip creates the label)
-  if (providerAccountId) {
-    try {
-      const [row] = await db
-        .select({ nickname: shipments.providerAccountNickname })
-        .from(shipments)
-        .where(eq(shipments.providerAccountId, providerAccountId))
-        .limit(1);
-      if (row?.nickname) return row.nickname;
-    } catch {
-      // non-fatal; fall through to SS-dynamic resolution
-    }
-  }
-
-  const carriers = await loadCarriersList();
-
-  // 1b. Exact match by providerAccountId against SS's carriers list
-  if (providerAccountId) {
-    const exact = carriers.find((c) => carrierIdToProviderAccountId(c.carrier_id) === providerAccountId);
-    if (exact) return exact.nickname || exact.friendly_name || exact.carrier_code;
-  }
-
-  // 2. UPS: decode account code from tracking number
-  //    Format: 1Z [acct:6] [service:2] [seq:8] [check:1]
-  if ((carrierCode === 'ups' || carrierCode === 'ups_walleted') && trackingNumber) {
-    const tn = trackingNumber.replace(/\s/g, '').toUpperCase();
-    if (tn.startsWith('1Z') && tn.length >= 8) {
-      const acctCode = tn.slice(2, 8);
-      const matched = carriers.find(
-        (c) =>
-          (c.carrier_code === 'ups' || c.carrier_code === 'ups_walleted') &&
-          c.account_number?.toUpperCase() === acctCode,
-      );
-      if (matched) return matched.nickname || matched.friendly_name || matched.carrier_code;
-    }
-  }
-
-  // 3. Single-match fallback by carrierCode
-  const matching = carriers.filter((c) => c.carrier_code === carrierCode);
-  if (matching.length === 1) {
-    const m = matching[0]!;
-    return m.nickname || m.friendly_name || m.carrier_code;
-  }
-
-  // 4. Human-readable fallback
-  return CARRIER_DISPLAY_NAMES[carrierCode] ?? carrierCode.replace(/_/g, ' ').toUpperCase();
-}
+// Moved to ./labels-carrier-nickname. Re-exported for existing importers
+// (services/billing.ts).
+export { resolveCarrierNickname } from './labels-carrier-nickname';

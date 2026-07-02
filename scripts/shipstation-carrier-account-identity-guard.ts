@@ -10,7 +10,15 @@ function read(path: string): string {
   return readFileSync(path, 'utf8');
 }
 
-const labels = read('src/services/labels.ts');
+// The marketplace-confirmation payload builders and carrier-nickname resolver
+// moved to sibling modules (B2.4); assert over all three so identity coverage
+// follows the code.
+const labels =
+  read('src/services/labels.ts') +
+  '\n' +
+  read('src/services/labels-confirmation.ts') +
+  '\n' +
+  read('src/services/labels-carrier-nickname.ts');
 const rates = read('src/services/rates.ts');
 // The V2 carrier-account ref table moved to services/order-canonical.ts;
 // assert over route + service together so identity coverage follows the code.
