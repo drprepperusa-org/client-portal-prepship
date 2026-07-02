@@ -780,13 +780,21 @@ export const portalApi = {
       clientId,
     }),
 
-  /** Semi-monthly billing periods: one row per client per 1st–15th / 16th–EOM. */
-  invoicePeriodSummaryRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
+  /** Billing periods per client: 'half' = 1st–15th / 16th–EOM rows,
+   *  'month' = one combined full-month row (1st–EOM). */
+  invoicePeriodSummaryRange: (
+    token: string,
+    dateFrom: string,
+    dateTo: string,
+    clientId?: number,
+    granularity: 'half' | 'month' = 'half',
+  ) =>
     apiGet<{ data: BillingInvoicePeriodSummaryRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       clientId,
       groupBy: 'period',
+      granularity,
     }),
 
   /** Returns the invoice HTML (the backend renders a printable page). */

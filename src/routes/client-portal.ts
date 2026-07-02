@@ -699,11 +699,17 @@ app.get('/invoice-summary', async (c) => {
   const dateTo = c.req.query('dateTo');
   if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
   const clientId = requestedClientId(c);
-  // groupBy=period → one row per client per semi-monthly billing period
-  // (1st–15th / 16th–EOM); default stays the plain per-client rollup.
+  // groupBy=period → one row per client per billing period; granularity
+  // 'half' (default, 1st–15th / 16th–EOM) or 'month' (combined 1st–EOM).
+  // Without groupBy the plain per-client rollup is returned.
   const rows =
     c.req.query('groupBy') === 'period'
-      ? await portalInvoicePeriodSummary(scope, { clientId, dateFrom, dateTo })
+      ? await portalInvoicePeriodSummary(scope, {
+          clientId,
+          dateFrom,
+          dateTo,
+          granularity: c.req.query('granularity') === 'month' ? 'month' : 'half',
+        })
       : await portalInvoiceSummary(scope, { clientId, dateFrom, dateTo });
   await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
   return c.json({ data: rows, billingVisible: true });

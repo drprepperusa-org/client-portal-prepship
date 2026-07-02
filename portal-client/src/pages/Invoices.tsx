@@ -108,9 +108,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     }
   }
 
-  // One row per client per SEMI-MONTHLY billing period (1st–15th / 16th–EOM),
-  // aggregated in SQL server-side (no row cap) so counts and totals are exact.
-  const summaryQuery = useInvoicePeriodSummaryRange(from, to);
+  // One row per client per billing period — semi-monthly halves by default,
+  // or combined full months (May 1 – 31) via the toggle. Aggregated in SQL
+  // server-side (no row cap) so counts and totals are exact.
+  const [granularity, setGranularity] = useState<'half' | 'month'>('half');
+  const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity);
   const billingVisible = summaryQuery.data?.billingVisible !== false;
   const summary: PeriodSummary[] = useMemo(
     () =>
@@ -274,6 +276,25 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     <div className="space-y-4">
       {selected == null ? (
         <GlassPanel className="p-2 sm:p-3">
+          <div className="flex items-center justify-between gap-3 px-2 pb-2">
+            <p className="text-sm font-bold text-ink">Billing periods</p>
+            <div className="flex items-center gap-1.5">
+              {([['half', 'Semi-Monthly'], ['month', 'Monthly']] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setGranularity(value)}
+                  className={cn(
+                    'focus-ring cursor-pointer rounded-glass-sm px-3 py-1.5 text-xs font-semibold transition-colors',
+                    granularity === value
+                      ? 'bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-glass'
+                      : 'bg-white/60 text-ink-2 ring-1 ring-slate-200/70 hover:bg-white',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <QueryState
             isLoading={summaryQuery.isLoading}
             isError={summaryQuery.isError}

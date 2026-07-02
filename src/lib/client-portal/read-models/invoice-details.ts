@@ -135,20 +135,26 @@ type PortalInvoicePeriodSummaryRow = {
 };
 
 /**
- * Per-client SEMI-MONTHLY billing rollup: one row per client per billing
- * period (1st–15th and 16th–end of month, UTC ship-date boundaries — the
- * same boundaries the range filters use). SQL-aggregated, no row cap.
+ * Per-client billing-period rollup: one row per client per period. Default
+ * granularity is SEMI-MONTHLY (1st–15th and 16th–end of month); 'month'
+ * combines both halves into one full-month row (1st–EOM). UTC ship-date
+ * boundaries — the same boundaries the range filters use. SQL-aggregated,
+ * no row cap.
  */
 export async function portalInvoicePeriodSummary(
   scope: ClientPortalScope,
-  input: { clientId?: number | null; dateFrom: string; dateTo: string },
+  input: { clientId?: number | null; dateFrom: string; dateTo: string; granularity?: 'half' | 'month' },
 ) {
+  const halfExpr =
+    input.granularity === 'month'
+      ? sql`'0'`
+      : sql`(case when extract(day from b.ship_date at time zone 'UTC') <= 15 then 1 else 2 end)::text`;
   const rows = await db.execute<PortalInvoicePeriodSummaryRow>(sql`
     select
       b.client_id,
       c.name as client_name,
       to_char(date_trunc('month', b.ship_date at time zone 'UTC'), 'YYYY-MM-DD') as month_start,
-      (case when extract(day from b.ship_date at time zone 'UTC') <= 15 then 1 else 2 end)::text as half,
+      ${halfExpr} as half,
       count(distinct b.order_id)::text as orders,
       coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
       coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
@@ -170,12 +176,12 @@ export async function portalInvoicePeriodSummary(
     const monthPrefix = row.month_start.slice(0, 8); // 'YYYY-MM-'
     const year = Number(row.month_start.slice(0, 4));
     const month = Number(row.month_start.slice(5, 7));
-    const half = Number(row.half);
+    const half = Number(row.half); // 0 = full month, 1 = 1st–15th, 2 = 16th–EOM
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     return {
       clientId: row.client_id,
       clientName: row.client_name,
-      periodStart: half === 1 ? `${monthPrefix}01` : `${monthPrefix}16`,
+      periodStart: half === 2 ? `${monthPrefix}16` : `${monthPrefix}01`,
       periodEnd: half === 1 ? `${monthPrefix}15` : `${monthPrefix}${String(lastDay).padStart(2, '0')}`,
       orders: Number(row.orders) || 0,
       pickpackTotal: row.pickpack_total,
