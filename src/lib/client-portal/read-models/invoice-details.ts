@@ -18,6 +18,61 @@ import type { ClientPortalScope } from '../scope';
  * from summed billing line quantities.
  */
 
+type PortalInvoiceSummaryRow = {
+  client_id: number;
+  client_name: string | null;
+  orders: string;
+  pickpack_total: string;
+  additional_total: string;
+  package_total: string;
+  shipping_total: string;
+  storage_total: string;
+  row_total: string;
+};
+
+/**
+ * Per-client billing rollup computed entirely in SQL — no row cap, so the
+ * Billing summary shows true order counts and totals no matter how many
+ * line rows the range contains (the detail query is capped; this is not).
+ */
+export async function portalInvoiceSummary(
+  scope: ClientPortalScope,
+  input: { clientId?: number | null; dateFrom: string; dateTo: string },
+) {
+  const rows = await db.execute<PortalInvoiceSummaryRow>(sql`
+    select
+      b.client_id,
+      c.name as client_name,
+      count(distinct b.order_id)::text as orders,
+      coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
+      coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
+      coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
+      coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
+      coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      coalesce(sum(b.total_cost), 0)::text as row_total
+    from billing_line_items b
+    left join ${clients} c on c.id = b.client_id
+    where coalesce(c.active, true) = true
+      and b.ship_date >= ${input.dateFrom}::timestamptz
+      and b.ship_date <= ${input.dateTo}::timestamptz
+      ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
+      ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
+    group by b.client_id, c.name
+    order by sum(b.total_cost) desc
+  `);
+  return rows.map((row) => ({
+    clientId: row.client_id,
+    clientName: row.client_name,
+    orders: Number(row.orders) || 0,
+    pickpackTotal: row.pickpack_total,
+    additionalTotal: row.additional_total,
+    packageTotal: row.package_total,
+    shippingTotal: row.shipping_total,
+    storageTotal: row.storage_total,
+    rowTotal: row.row_total,
+  }));
+}
+
 type PortalInvoiceDetailRow = {
   client_id: number;
   client_name: string | null;
@@ -119,7 +174,7 @@ export async function portalInvoiceDetails(scope: ClientPortalScope, input: { cl
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, b.order_id, b.order_number
     order by min(b.ship_date) desc, b.order_id desc
-    limit 1000
+    limit ${input.clientId ? 5000 : 1000}
   `);
 
   const dimsFromRaw = (l: string | null, w: string | null, h: string | null): string | null => {

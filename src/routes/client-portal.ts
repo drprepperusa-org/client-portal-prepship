@@ -70,7 +70,7 @@ import {
   shipmentSearchPredicate,
   visibleAwaitingOrdersPredicate,
 } from '../lib/client-portal/predicates';
-import { portalInvoiceDetails } from '../lib/client-portal/read-models/invoice-details';
+import { portalInvoiceDetails, portalInvoiceSummary } from '../lib/client-portal/read-models/invoice-details';
 import {
   awaitingActiveOrderCount,
   getPortalOrder,
@@ -607,6 +607,25 @@ app.get('/invoice-details', async (c) => {
   const clientId = requestedClientId(c);
   const rows = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
   await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length });
+  return c.json({ data: rows, billingVisible: true });
+});
+
+// Per-client billing rollup, aggregated in SQL with no row cap — the Billing
+// summary's source of truth (the row-capped /invoice-details is for the
+// per-client drill-in and exports).
+app.get('/invoice-summary', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials) {
+    await recordPortalAudit('portal.invoice_summary.denied', scope);
+    return c.json({ data: [], billingVisible: false }, 403);
+  }
+  const dateFrom = c.req.query('dateFrom');
+  const dateTo = c.req.query('dateTo');
+  if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const clientId = requestedClientId(c);
+  const rows = await portalInvoiceSummary(scope, { clientId, dateFrom, dateTo });
+  await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
   return c.json({ data: rows, billingVisible: true });
 });
 

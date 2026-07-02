@@ -293,6 +293,18 @@ export interface BillingSummaryRow {
   grandTotal?: number | string;
 }
 
+export interface BillingInvoiceSummaryRow {
+  clientId: number;
+  clientName: string | null;
+  orders: number;
+  pickpackTotal: number | string;
+  additionalTotal: number | string;
+  packageTotal: number | string;
+  shippingTotal: number | string;
+  storageTotal: number | string;
+  rowTotal: number | string;
+}
+
 export interface BillingInvoiceDetailRow {
   clientId?: number;
   clientName?: string | null;
@@ -728,6 +740,14 @@ export const portalApi = {
   /** Invoice detail for an explicit date range (YYYY-MM-DD). Powers Billing. */
   invoiceDetailsRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
     apiGet<{ data: BillingInvoiceDetailRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-details', {
+      dateFrom: `${dateFrom}T00:00:00.000Z`,
+      dateTo: `${dateTo}T23:59:59.999Z`,
+      clientId,
+    }),
+
+  /** Per-client billing rollup for a range — SQL-aggregated, no row cap. */
+  invoiceSummaryRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
+    apiGet<{ data: BillingInvoiceSummaryRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       clientId,

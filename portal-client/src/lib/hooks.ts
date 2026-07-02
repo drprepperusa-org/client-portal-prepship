@@ -75,12 +75,26 @@ export function useInvoiceDetails() {
   return useTokenQuery(['invoice-details', days, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, days, clientId));
 }
 /** Invoice detail for an explicit YYYY-MM-DD range (Billing page). Auto-refetches
- *  so the view tracks the worker's automatic billing generation by default. */
-export function useInvoiceDetailsRange(dateFrom: string, dateTo: string) {
-  const { clientId } = usePortalFilters();
+ *  so the view tracks the worker's automatic billing generation by default.
+ *  Pass an explicit clientId for the per-client drill-in (higher row cap). */
+export function useInvoiceDetailsRange(dateFrom: string, dateTo: string, explicitClientId?: number | null) {
+  const { clientId: globalClientId } = usePortalFilters();
+  const clientId = explicitClientId ?? globalClientId;
   return useTokenQuery(
     ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope'],
     (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId),
+    Boolean(dateFrom && dateTo) && (explicitClientId === undefined || explicitClientId != null),
+    { refetchInterval: 60_000, refetchOnWindowFocus: true },
+  );
+}
+
+/** Per-client billing rollup for a range — SQL-aggregated server-side, no row
+ *  cap, so order counts and totals are exact regardless of range size. */
+export function useInvoiceSummaryRange(dateFrom: string, dateTo: string) {
+  const { clientId } = usePortalFilters();
+  return useTokenQuery(
+    ['invoice-summary-range', dateFrom, dateTo, clientId ?? 'scope'],
+    (t) => portalApi.invoiceSummaryRange(t, dateFrom, dateTo, clientId),
     Boolean(dateFrom && dateTo),
     { refetchInterval: 60_000, refetchOnWindowFocus: true },
   );

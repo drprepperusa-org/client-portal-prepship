@@ -7,7 +7,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { CarrierBadge } from '@/components/store/CarrierBadge';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useInvoiceDetailsRange } from '@/lib/hooks';
+import { useInvoiceDetailsRange, useInvoiceSummaryRange } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
 import { exportInvoiceExcel } from '@/lib/invoiceExcel';
 import { money, shortDate } from '@/lib/status';
@@ -95,52 +95,46 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     }
   }
 
-  const query = useInvoiceDetailsRange(from, to);
-  const billingVisible = query.data?.billingVisible !== false;
-  const rows = query.data?.data ?? [];
-
-  const { summary, totals } = useMemo(() => {
-    const byClient = new Map<number, ClientSummary & { orderSet: Set<number> }>();
-    for (const r of rows) {
-      const id = Number(r.clientId);
-      if (!Number.isFinite(id)) continue;
-      let s = byClient.get(id);
-      if (!s) {
-        s = { clientId: id, clientName: r.clientName ?? `Client ${id}`, orders: 0, pickpack: 0, additional: 0, box: 0, storage: 0, shipping: 0, fee: 0, orderSet: new Set() };
-        byClient.set(id, s);
-      }
-      if (r.orderId != null) s.orderSet.add(Number(r.orderId));
-      s.pickpack += num(r.pickpackTotal);
-      s.additional += num(r.additionalTotal);
-      s.box += num(r.packageTotal);
-      s.storage += num(r.storageTotal);
-      s.shipping += num(r.shippingTotal);
-      s.fee += num(r.rowTotal);
-    }
-    const list = [...byClient.values()].map((s) => ({ ...s, orders: s.orderSet.size }));
-    const t = list.reduce(addBillingTotals, EMPTY_TOTALS);
-    return { summary: list, totals: t };
-  }, [rows]);
-
-  const lineItems = useMemo(
-    () => (selectedClient == null ? [] : rows.filter((r) => Number(r.clientId) === selectedClient)),
-    [rows, selectedClient],
+  // Summary is aggregated in SQL server-side (no row cap), so order counts
+  // and totals are exact regardless of how many billing lines the range has.
+  const summaryQuery = useInvoiceSummaryRange(from, to);
+  const billingVisible = summaryQuery.data?.billingVisible !== false;
+  const summary: ClientSummary[] = useMemo(
+    () =>
+      (summaryQuery.data?.data ?? []).map((r) => ({
+        clientId: r.clientId,
+        clientName: r.clientName ?? `Client ${r.clientId}`,
+        orders: r.orders,
+        pickpack: num(r.pickpackTotal),
+        additional: num(r.additionalTotal),
+        box: num(r.packageTotal),
+        storage: num(r.storageTotal),
+        shipping: num(r.shippingTotal),
+        fee: num(r.rowTotal),
+      })),
+    [summaryQuery.data],
   );
+  const totals = useMemo(() => summary.reduce(addBillingTotals, EMPTY_TOTALS), [summary]);
+
+  // Line items load per selected client (higher row cap server-side).
+  const detailQuery = useInvoiceDetailsRange(from, to, selectedClient);
+  const lineItems = detailQuery.data?.data ?? [];
   const selectedName = summary.find((s) => s.clientId === selectedClient)?.clientName ?? '';
 
-  // Build the Excel invoice client-side from the rows already fetched —
-  // callable from a summary row or the opened line-items view.
+  // Excel export fetches the client's full row set for the range directly,
+  // so it is complete no matter which view the button was clicked from.
   async function exportExcel(clientId: number | null | undefined) {
     const id = Number(clientId);
-    if (!Number.isFinite(id) || exporting != null) return;
-    const clientRows = rows.filter((r) => Number(r.clientId) === id);
-    if (!clientRows.length) {
-      toast.error('Nothing to export', 'No billable lines for this client in range.');
-      return;
-    }
+    if (!Number.isFinite(id) || exporting != null || !accessToken) return;
     const clientName = summary.find((s) => s.clientId === id)?.clientName || `client-${id}`;
     setExporting(id);
     try {
+      const res = await portalApi.invoiceDetailsRange(accessToken, from, to, id);
+      const clientRows = res.data ?? [];
+      if (!clientRows.length) {
+        toast.error('Nothing to export', 'No billable lines for this client in range.');
+        return;
+      }
       await exportInvoiceExcel(clientRows, { clientName, from, to });
     } catch (err) {
       toast.error('Excel export failed', err instanceof Error ? err.message : 'Could not build the Excel file.');
@@ -232,11 +226,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       {selectedClient == null ? (
         <GlassPanel className="p-2 sm:p-3">
           <QueryState
-            isLoading={query.isLoading}
-            isError={query.isError}
-            error={query.error}
+            isLoading={summaryQuery.isLoading}
+            isError={summaryQuery.isError}
+            error={summaryQuery.error}
             isEmpty={summary.length === 0}
-            onRetry={() => query.refetch()}
+            onRetry={() => summaryQuery.refetch()}
             emptyTitle="No billing in this range"
             emptyMessage="Pick a different date range to see billable activity."
           >
@@ -292,11 +286,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             </div>
           </div>
           <QueryState
-            isLoading={query.isLoading}
-            isError={query.isError}
-            error={query.error}
+            isLoading={detailQuery.isLoading}
+            isError={detailQuery.isError}
+            error={detailQuery.error}
             isEmpty={lineItems.length === 0}
-            onRetry={() => query.refetch()}
+            onRetry={() => detailQuery.refetch()}
             emptyTitle="No line items"
             emptyMessage="No billable lines for this client in range."
           >
