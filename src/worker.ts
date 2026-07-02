@@ -127,9 +127,13 @@ async function main(): Promise<void> {
   // shipments.tracking_status fresh so Delivered filters work everywhere.
   startShipmentTrackingSweep();
 
-  // Billing stays current by default: regenerate the recent window on an
-  // interval (idempotent); the portal button is the manual override.
-  startBillingAutoGenerate();
+  // PARKED: automatic billing generation. The admin app (prepship-v4-stable)
+  // owns billing generation with richer box-cost logic (shipment-box matching
+  // + needs-review queue); this repo's simpler generator overwrote its curated
+  // box costs when run on a loop. Re-enable only if the generators are
+  // unified or the portal is made the single billing authority.
+  // startBillingAutoGenerate();
+  void startBillingAutoGenerate;
 }
 
 void main();
