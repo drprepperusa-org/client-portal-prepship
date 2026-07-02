@@ -6,7 +6,10 @@ const planPath = 'OBSERVABILITY_ALERTING_PLAN.md';
 const plan = fs.readFileSync(path.join(root, planPath), 'utf8');
 const main = fs.readFileSync(path.join(root, 'src/main.ts'), 'utf8');
 const ordersRoute = fs.readFileSync(path.join(root, 'src/routes/orders.ts'), 'utf8');
-const browserApi = fs.readFileSync(path.join(root, 'web/src/lib/api.ts'), 'utf8');
+// The legacy web/ operator client (which carried the X-Request-Id / timing
+// plumbing these checks covered) was retired; the operator UI lives in the
+// internal PrepShip app repo. Browser-side assertions are out of scope here —
+// if request-ID propagation is wanted in portal-client, add it deliberately.
 const corsHelper = fs.readFileSync(path.join(root, 'src/lib/http/cors.ts'), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
@@ -87,10 +90,5 @@ assert(ordersRoute.includes('requestIdFromContext'), 'orders list timing logs re
 assert(ordersRoute.includes("'[orders:list] completed'"), 'orders list has structured completed log marker');
 assert(ordersRoute.includes("'[orders:list] failed'"), 'orders list has structured failed log marker');
 assert(ordersRoute.includes('requestId: requestId'), 'orders list logs include request ID');
-assert(browserApi.includes('class ApiRequestError'), 'browser API errors preserve request IDs');
-assert(browserApi.includes("finalHeaders['X-Request-Id']"), 'browser API sends X-Request-Id');
-assert(browserApi.includes("res.headers.get('x-request-id')"), 'browser API reads response request ID');
-assert(browserApi.includes("localStorage.getItem('prepship:apiTiming')"), 'browser API has opt-in timing diagnostics');
-assert(browserApi.includes("'[api:client-timing]'"), 'browser API emits opt-in timing log marker');
 assert(corsHelper.includes('X-Request-Id'), 'shared CORS helper allows request ID header');
 assert(corsHelper.includes('Access-Control-Expose-Headers'), 'shared CORS helper exposes response request ID header');

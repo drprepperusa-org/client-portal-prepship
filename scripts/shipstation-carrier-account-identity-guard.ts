@@ -12,7 +12,9 @@ function read(path: string): string {
 
 const labels = read('src/services/labels.ts');
 const rates = read('src/services/rates.ts');
-const ordersRoute = read('src/routes/orders.ts');
+// The V2 carrier-account ref table moved to services/order-canonical.ts;
+// assert over route + service together so identity coverage follows the code.
+const ordersRoute = read('src/routes/orders.ts') + '\n' + read('src/services/order-canonical.ts');
 const shipmentsSchema = read('src/db/schema/shipments.ts');
 const ordersSchema = read('src/db/schema/orders.ts');
 const packageJson = JSON.parse(read('package.json')) as {
