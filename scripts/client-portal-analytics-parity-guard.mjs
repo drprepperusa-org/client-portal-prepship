@@ -31,7 +31,9 @@ function assert(condition, message) {
 
 const analysis = read('src/routes/analysis.ts');
 const analysisFlat = flat(analysis);
-const route = read('src/routes/client-portal.ts');
+// Split across two sub-routers now: /dashboard lives in dashboard.ts, /analysis
+// in analysis.ts. Concatenate both so the parity pins resolve in one string.
+const route = read('src/routes/client-portal/dashboard.ts') + '\n' + read('src/routes/client-portal/analysis.ts');
 const routeFlat = flat(route);
 const analysisPage = read('portal-client/src/pages/Analysis.tsx');
 const analysisPageFlat = flat(analysisPage);

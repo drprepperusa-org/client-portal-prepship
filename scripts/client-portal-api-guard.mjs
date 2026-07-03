@@ -26,7 +26,16 @@ for (const path of [routePath, dtoPath, scopePath, auditPath]) {
   assert(existsSync(path), `${path} must exist`);
 }
 
-const route = existsSync(routePath) ? read(routePath) : '';
+// Post-decomposition, client-portal.ts is a thin aggregator; the route handlers
+// live in the 11 per-domain sub-routers. Concatenate them so every route-literal
+// and call-site pin below resolves in one string; keep the aggregator separately
+// for the mount-reachability check.
+const subRouteFiles = [
+  'dashboard', 'orders', 'shipments', 'inventory', 'analysis', 'billing',
+  'invoices', 'access', 'integrations', 'inbound', 'sync',
+];
+const route = subRouteFiles.map((f) => read(`src/routes/client-portal/${f}.ts`)).join('\n');
+const aggregator = existsSync(routePath) ? read(routePath) : '';
 const dto = existsSync(dtoPath) ? read(dtoPath) : '';
 const scope = existsSync(scopePath) ? read(scopePath) : '';
 const audit = existsSync(auditPath) ? read(auditPath) : '';
@@ -50,14 +59,31 @@ for (const routeToken of [
   assert(route.includes(routeToken), `client portal route missing ${routeToken}`);
 }
 
+// Post-split coverage: a route literal existing in a sub-file no longer implies
+// it is reachable. Assert the aggregator imports + mounts each sub-router — a
+// written-but-unmounted router would pass every static pin yet 404 at runtime.
+for (const f of subRouteFiles) {
+  assert(
+    aggregator.includes(`./client-portal/${f}`) &&
+      new RegExp(`app\\.route\\('/',\\s*${f}Route\\)`).test(aggregator),
+    `aggregator must import + mount the ${f} sub-router`,
+  );
+}
+
 // M7 — portal store-connection submissions: the POST route must exist, be
 // admin-gated, create pending accounts (source='portal' + inactive), and never
 // echo credential values back in the response.
 assert(route.includes("app.post('/integrations'"), "client portal route missing app.post('/integrations'");
 {
-  const start = route.indexOf("app.post('/integrations'");
-  const end = route.indexOf("app.get('/activity'");
-  const postIntegrations = start >= 0 && end > start ? route.slice(start, end) : '';
+  // /integrations POST lives in integrations.ts; bound the handler with its own
+  // col-0 `});` sentinel (the old end-marker app.get('/activity' moved to
+  // dashboard.ts) so the negative credential/returning assertions keep a tight
+  // window that appended routes can't loosen.
+  const integrationsSrc = read('src/routes/client-portal/integrations.ts');
+  const start = integrationsSrc.indexOf("app.post('/integrations'");
+  const m = start >= 0 ? integrationsSrc.slice(start).match(/[\s\S]*?\n\}\);/) : null;
+  const postIntegrations = m ? m[0] : '';
+  assert(postIntegrations.length > 0, 'POST /integrations handler not found in integrations.ts');
   assert(postIntegrations.includes("'admin required'"), 'POST /integrations must be admin-gated');
   assert(
     postIntegrations.includes("'portal',") && postIntegrations.includes('false'),

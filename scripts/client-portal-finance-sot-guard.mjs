@@ -19,7 +19,7 @@ function assert(condition, message) {
   }
 }
 
-const route = flat(read('src/routes/client-portal.ts'));
+const route = flat(read('src/routes/client-portal/billing.ts'));
 const finance = flat(read('portal-client/src/pages/Finance.tsx'));
 const api = read('portal-client/src/lib/api.ts');
 const pkg = JSON.parse(read('package.json'));

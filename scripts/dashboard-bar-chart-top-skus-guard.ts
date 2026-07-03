@@ -130,7 +130,9 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(api.includes('shipAlloc') && api.includes('shipUnits'), 'DashboardSummary.bySku exposes shipAlloc/shipUnits for the calculation tooltip');
   assert(/daily:\s*Array<\{\s*day:\s*string;\s*orders:\s*number;\s*units:\s*number/.test(api), 'DashboardSummary exposes a daily orders/units series');
 
-  const route = read('src/routes/client-portal.ts');
+  // /dashboard moved to its own sub-router; flatten so the pins tolerate the
+  // physical move + any reformatting.
+  const route = read('src/routes/client-portal/dashboard.ts').replace(/\s+/g, ' ');
   assert(route.includes('dailyOrderUnitsRows') && route.includes('topSkuRows'), 'client-portal route uses the shared dashboard aggregations');
   assert(route.includes('daily: dailyOrderUnitsRows(rows)'), '/dashboard response includes the daily orders/units series');
 

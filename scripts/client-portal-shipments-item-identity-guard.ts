@@ -21,7 +21,7 @@ function read(rel: string) {
 }
 
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
-const route = read('src/routes/client-portal.ts');
+const route = read('src/routes/client-portal/shipments.ts');
 // The shipments query moved to the read-model during the B-series extraction;
 // the route is a thin delegate, so query-shape pins live against this file.
 const shipmentsReadModel = read('src/lib/client-portal/read-models/shipments.ts');
@@ -31,7 +31,10 @@ const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
 const itemIdentity = read('portal-client/src/components/ItemIdentityLines.tsx');
 
-const shipmentsRouteBlock = /app\.get\('\/shipments'[\s\S]*?app\.get\('\/inventory'/.exec(route)?.[0] ?? '';
+// End-sentinel is now the handler's own col-0 `});` (the old `app.get('/inventory'`
+// marker moved to inventory.ts). Comma after '/shipments' excludes the POST
+// /shipments/refresh-tracking route.
+const shipmentsRouteBlock = /app\.get\('\/shipments',[\s\S]*?\n\}\);/.exec(route)?.[0] ?? '';
 const shipmentDtoBlock =
   /export function toPortalShipmentDto[\s\S]*?export function toPortalInventoryDto/.exec(dto)?.[0] ?? '';
 const portalShipmentBlock = /export interface PortalShipment \{[\s\S]*?\n\}/.exec(api)?.[0] ?? '';
@@ -73,7 +76,8 @@ assert(
 );
 
 assert(
-  shipmentsRouteBlock.includes('listPortalShipments(') &&
+  shipmentsRouteBlock.length > 0 &&
+    shipmentsRouteBlock.includes('listPortalShipments(') &&
     shipmentsReadModel.includes('orderItems: orders.items') &&
     shipmentsReadModel.includes('shippingCost:') &&
     shipmentsReadModel.includes('from billing_line_items bli') &&

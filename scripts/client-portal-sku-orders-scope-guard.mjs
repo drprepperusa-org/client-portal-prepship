@@ -25,7 +25,7 @@ function assert(condition, message) {
 }
 
 const analysis = flat(read('src/routes/analysis.ts'));
-const route = flat(read('src/routes/client-portal.ts'));
+const route = flat(read('src/routes/client-portal/analysis.ts'));
 const pkg = JSON.parse(read('package.json'));
 
 // ── A) breakdown resolves an openable inv_sku_id (prefers in-scope rows) ──

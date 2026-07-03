@@ -29,7 +29,9 @@ assert(
     analysis.includes('export async function getClientPortalDailyRevenue'),
   'the canonical sales-metrics owner (getClientPortalSalesTotals + daily) exists',
 );
-const route = read('src/routes/client-portal.ts').replace(/\s+/g, ' ');
+// /dashboard (getClientPortalSalesTotals) and /analysis (totalRevenue) live in
+// separate sub-routers post-decomposition — concat both into one scan string.
+const route = (read('src/routes/client-portal/dashboard.ts') + '\n' + read('src/routes/client-portal/analysis.ts')).replace(/\s+/g, ' ');
 assert(
   route.includes('getClientPortalSalesTotals(salesQuery)') && route.includes('totalRevenue: result.totalRevenue'),
   '/dashboard + /analysis routes consume the canonical owner (no route-local revenue reduction)',

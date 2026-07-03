@@ -22,7 +22,7 @@ function assert(condition, message) {
 
 const readModelRaw = read('src/lib/client-portal/read-models/invoice-details.ts');
 const readModel = flat(readModelRaw);
-const route = flat(read('src/routes/client-portal.ts'));
+const route = flat(read('src/routes/client-portal/invoices.ts'));
 const api = flat(read('portal-client/src/lib/api.ts'));
 const hooks = flat(read('portal-client/src/lib/hooks.ts'));
 const invoices = flat(read('portal-client/src/pages/Invoices.tsx'));

@@ -23,7 +23,7 @@ function read(rel: string) {
 }
 
 // 1) Focused scoped endpoint reusing the canonical shipment DTO shaping.
-const route = read('src/routes/client-portal.ts');
+const route = read('src/routes/client-portal/orders.ts');
 const routeBlock = /app\.get\('\/orders\/:id\{\[0-9\]\+\}\/shipments'[\s\S]*?\n\}\);/.exec(route)?.[0] ?? '';
 check(routeBlock.length > 0, 'GET /orders/:id/shipments route exists for the Billing shipment modal');
 check(
