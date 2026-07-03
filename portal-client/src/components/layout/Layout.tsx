@@ -57,35 +57,6 @@ export function Layout() {
           </div>
         </aside>
 
-        {/* Mobile drawer — backdrop + panel are separate KEYED children so
-            AnimatePresence tracks each one's exit and unmounts them cleanly
-            (a Fragment child can't be exit-animated, which could strand the
-            backdrop and block the page). */}
-        <AnimatePresence>
-          {drawer && (
-            <motion.div
-              key="drawer-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setDrawer(false)}
-              className="fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm lg:hidden"
-            />
-          )}
-          {drawer && (
-            <motion.div
-              key="drawer-panel"
-              initial={{ x: '-110%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-110%' }}
-              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-              className="fixed left-3 top-3 z-50 h-[calc(100vh-1.5rem)] w-64 max-w-[calc(100vw-1.5rem)] lg:hidden"
-            >
-              <Sidebar collapsed={false} onToggle={() => {}} onNavigate={() => setDrawer(false)} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Main column */}
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:gap-4">
           <Topbar title={title} onOpenMenu={() => setDrawer(true)} />
@@ -103,6 +74,37 @@ export function Layout() {
           </main>
         </div>
       </div>
+
+      {/* Mobile drawer — hoisted OUT of the z-10 content column to the page root
+          so it stacks ABOVE the fixed bottom tab bar. (Nested inside z-10 its
+          z-40/z-50 were trapped in that stacking context, so the bottom bar — a
+          root sibling at z-30 — painted over the drawer's lower items and ate
+          the taps.) backdrop + panel are separate KEYED AnimatePresence children
+          so each exit-animates and unmounts cleanly. */}
+      <AnimatePresence>
+        {drawer && (
+          <motion.div
+            key="drawer-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setDrawer(false)}
+            className="fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm lg:hidden"
+          />
+        )}
+        {drawer && (
+          <motion.div
+            key="drawer-panel"
+            initial={{ x: '-110%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-110%' }}
+            transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+            className="fixed left-3 top-3 z-50 h-[calc(100vh-1.5rem)] w-64 max-w-[calc(100vw-1.5rem)] lg:hidden"
+          >
+            <Sidebar collapsed={false} onToggle={() => {}} onNavigate={() => setDrawer(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Mobile bottom tab bar — primary destinations + a center create action.
           The full nav (overflow destinations) opens from the top-left menu.
