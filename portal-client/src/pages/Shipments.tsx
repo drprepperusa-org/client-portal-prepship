@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
+import { OrderDetailPanel } from '@/components/OrderDetailPanel';
 import { GlassPanel } from '@/components/ui/Glass';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Chip } from '@/components/ui/Display';
+import { Chip, Skeleton } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useShipments, useClients } from '@/lib/hooks';
+import { useShipments, useClients, useOrder } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
@@ -246,14 +247,6 @@ export default function Shipments() {
               <span className="flex items-center gap-1 text-sm text-ink-3"><MapPin size={14} /> {selected.clientName ?? '—'}</span>
             </div>
 
-            <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-              <p className="text-xs font-medium text-ink-3">Items</p>
-              <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.5fr)]">
-                <ItemNameLines items={selected.items} limit={6} />
-                <SkuLines items={selected.items} limit={6} />
-              </div>
-            </div>
-
             <div className="flex items-center justify-between rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
               <div className="min-w-0">
                 <p className="text-xs text-ink-3">Tracking number</p>
@@ -285,16 +278,33 @@ export default function Shipments() {
               </a>
             )}
 
+            {/* CP-009: customer-facing — the carrier identity is never shown.
+                Only the customer-safe shipping cost + dates + tracking status. */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Carrier" value={selected.carrierCode ?? '—'} />
               <Field label="Shipping Cost" value={selected.shippingCost != null ? money(selected.shippingCost) : '—'} />
-              <Field label="Order" value={selected.orderNumber ?? (selected.orderId ? `#${selected.orderId}` : '—')} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
               {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
               {selected.trackingStatusDetail && !selected.deliveredAt && (
-                <Field label="Carrier status" value={selected.trackingStatusDetail} />
+                <Field label="Tracking status" value={selected.trackingStatusDetail} />
               )}
             </div>
+
+            {/* Full order details + ship-to address. Reuses the order detail
+                panel (backend-owned money fields; carrier/service redacted). */}
+            {selected.orderId != null ? (
+              <div className="space-y-3 border-t border-slate-200/70 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Order details</p>
+                <ShipmentOrderDetail orderId={selected.orderId} />
+              </div>
+            ) : (
+              <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+                <p className="text-xs font-medium text-ink-3">Items</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.5fr)]">
+                  <ItemNameLines items={selected.items} limit={6} />
+                  <SkuLines items={selected.items} limit={6} />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Drawer>
@@ -309,4 +319,13 @@ function Field({ label, value }: { label: string; value: string }) {
       <p className="mt-1 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
     </div>
   );
+}
+
+/** Loads the shipment's order and renders the full order detail (ship-to
+ *  address, line items with prices, cost summary) — carrier/service redacted. */
+function ShipmentOrderDetail({ orderId }: { orderId: number }) {
+  const q = useOrder(orderId);
+  if (q.isLoading) return <div className="space-y-3"><Skeleton className="h-20 rounded-glass-sm" /><Skeleton className="h-40 rounded-glass-sm" /></div>;
+  if (q.isError || !q.data?.data) return <p className="text-sm text-ink-3">Couldn’t load the order details.</p>;
+  return <OrderDetailPanel o={q.data.data} />;
 }

@@ -105,5 +105,17 @@ assert(
   'Shipments drawer shows shipping cost and never renders Service',
 );
 
+// CP-009: the customer-facing Shipments drawer must not display the carrier
+// identity, and it surfaces the full order (ship-to address + line items + cost
+// summary) by reusing the redacted OrderDetailPanel.
+assert(
+  !shipmentsPage.includes('Field label="Carrier"'),
+  'CP-009: Shipments drawer no longer renders the Carrier field',
+);
+assert(
+  shipmentsPage.includes('OrderDetailPanel') && shipmentsPage.includes('ShipmentOrderDetail'),
+  'Shipments drawer shows the full order detail (address + items + cost) via OrderDetailPanel',
+);
+
 if (failed) process.exit(1);
 console.log('\nCP-005 client portal shipments item identity guard passed.');
