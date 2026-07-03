@@ -1,39 +1,39 @@
-import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, type LucideIcon } from 'lucide-react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Plus, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { NAV } from '@/nav';
 import { useAwaitingCount } from '@/lib/hooks';
 import { prefetchRoute } from '@/lib/routePrefetch';
 
 // Native-app style bottom tab bar for phones/tablets (hidden at lg+, where the
-// sidebar takes over). Shows the primary client destinations; everything else
-// lives behind "More" (the full sidebar drawer).
-const PRIMARY_ROUTES = ['/', '/orders', '/shipments', '/billing'] as const;
-const PRIMARY = PRIMARY_ROUTES.map((to) => NAV.find((n) => n.to === to)).filter(
-  (n): n is (typeof NAV)[number] => Boolean(n),
-);
+// sidebar takes over): two primary tabs, a raised center "+" create action,
+// then two more tabs. Everything else stays reachable via the top-left menu
+// (the full sidebar drawer).
+const LEFT_ROUTES = ['/', '/orders'] as const;
+const RIGHT_ROUTES = ['/shipments', '/billing'] as const;
+const byRoute = (routes: readonly string[]) =>
+  routes.map((to) => NAV.find((n) => n.to === to)).filter((n): n is (typeof NAV)[number] => Boolean(n));
+const LEFT = byRoute(LEFT_ROUTES);
+const RIGHT = byRoute(RIGHT_ROUTES);
 
 function isActive(to: string, pathname: string): boolean {
   return to === '/' ? pathname === '/' : pathname.startsWith(to);
 }
 
-function Tab({
-  to,
-  label,
-  icon: Icon,
-  active,
-  badge,
-  onClick,
-}: {
-  to?: string;
+function Tab({ to, label, icon: Icon, active, badge }: {
+  to: string;
   label: string;
   icon: LucideIcon;
   active: boolean;
   badge?: number;
-  onClick?: () => void;
 }) {
-  const inner = (
-    <>
+  return (
+    <NavLink
+      to={to}
+      onTouchStart={() => prefetchRoute(to)}
+      aria-current={active ? 'page' : undefined}
+      className="focus-ring flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1"
+    >
       <span className={cn('grid h-7 w-14 place-items-center rounded-full transition-colors', active && 'bg-brand-50')}>
         <span className="relative">
           <Icon size={20} strokeWidth={active ? 2.3 : 2} className={active ? 'text-brand-600' : 'text-ink-3'} />
@@ -45,41 +45,39 @@ function Tab({
         </span>
       </span>
       <span className={cn('max-w-full truncate text-[11px] font-medium', active ? 'text-brand-700' : 'text-ink-3')}>{label}</span>
-    </>
-  );
-  const cls = 'focus-ring flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1';
-  return to ? (
-    <NavLink to={to} onClick={onClick} onTouchStart={() => prefetchRoute(to)} aria-current={active ? 'page' : undefined} className={cls}>
-      {inner}
     </NavLink>
-  ) : (
-    <button type="button" onClick={onClick} aria-label={label} className={cls}>
-      {inner}
-    </button>
   );
 }
 
-export function BottomNav({ onOpenMore }: { onOpenMore: () => void }) {
+export function BottomNav() {
   const { pathname } = useLocation();
+  const nav = useNavigate();
   const awaiting = useAwaitingCount().data?.count ?? 0;
-  // "More" reads as active whenever the current page isn't one of the primary tabs.
-  const moreActive = !PRIMARY.some((n) => isActive(n.to, pathname));
   return (
     <nav
       aria-label="Primary"
-      className="glass-strong fixed inset-x-0 bottom-0 z-30 flex items-stretch gap-0.5 border-t border-white/60 px-1.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] lg:hidden"
+      className="glass-strong fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-white/60 px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] lg:hidden"
     >
-      {PRIMARY.map((item) => (
-        <Tab
-          key={item.to}
-          to={item.to}
-          label={item.label}
-          icon={item.icon}
-          active={isActive(item.to, pathname)}
-          badge={item.to === '/orders' ? awaiting : 0}
-        />
+      {LEFT.map((item) => (
+        <Tab key={item.to} to={item.to} label={item.label} icon={item.icon} active={isActive(item.to, pathname)} badge={item.to === '/orders' ? awaiting : 0} />
       ))}
-      <Tab label="More" icon={Menu} active={moreActive} onClick={onOpenMore} />
+
+      {/* Raised center create action → New inbound (admin-gated on the page). */}
+      <div className="flex flex-1 items-start justify-center">
+        <button
+          type="button"
+          onClick={() => nav('/inbound?new=1')}
+          onTouchStart={() => prefetchRoute('/inbound')}
+          aria-label="New inbound"
+          className="focus-ring -mt-5 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-glass-lg ring-4 ring-white transition-transform active:scale-95"
+        >
+          <Plus size={26} strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {RIGHT.map((item) => (
+        <Tab key={item.to} to={item.to} label={item.label} icon={item.icon} active={isActive(item.to, pathname)} />
+      ))}
     </nav>
   );
 }

@@ -64,10 +64,11 @@ assert(
   'sidebar nav items call onNavigate on tap',
 );
 
-// ── Mobile bottom tab bar ──
+// ── Mobile bottom tab bar (tabs + center create action) ──
+const inbound = read('portal-client/src/pages/Inbound.tsx');
 assert(
-  layout.includes('<BottomNav onOpenMore={() => setDrawer(true)} />'),
-  'Layout renders the bottom tab bar; its More tab opens the full drawer',
+  layout.includes('<BottomNav />'),
+  'Layout renders the mobile bottom tab bar',
 );
 assert(
   layout.includes('pb-24 lg:pb-0'),
@@ -78,12 +79,16 @@ assert(
   'bottom tab bar is a fixed, mobile-only (lg:hidden) bar pinned to the bottom',
 );
 assert(
-  bottomNav.includes('onClick={onOpenMore}') && bottomNav.includes("label=\"More\""),
-  'bottom bar has a More tab that opens the drawer for the overflow destinations',
+  bottomNav.includes('aria-label="New inbound"') && bottomNav.includes("nav('/inbound?new=1')"),
+  'bottom bar has a raised center + create action that routes to New inbound',
 );
 assert(
   bottomNav.includes('env(safe-area-inset-bottom)'),
   'bottom bar respects the iOS home-indicator safe area',
+);
+assert(
+  inbound.includes("searchParams.get('new')") && inbound.includes('if (isAdmin) setModalOpen(true)'),
+  'Inbound auto-opens the create modal for admins arriving via the + (?new=1); clients just see the list',
 );
 
 assert(

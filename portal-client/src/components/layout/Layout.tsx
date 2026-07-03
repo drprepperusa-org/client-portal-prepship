@@ -104,9 +104,10 @@ export function Layout() {
         </div>
       </div>
 
-      {/* Mobile bottom tab bar — primary destinations; "More" opens the full
-          drawer. Hidden at lg+ where the sidebar is the nav. */}
-      <BottomNav onOpenMore={() => setDrawer(true)} />
+      {/* Mobile bottom tab bar — primary destinations + a center create action.
+          The full nav (overflow destinations) opens from the top-left menu.
+          Hidden at lg+ where the sidebar is the nav. */}
+      <BottomNav />
     </div>
   );
 }

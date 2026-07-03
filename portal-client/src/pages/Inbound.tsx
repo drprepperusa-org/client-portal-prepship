@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PackageOpen, Plus, Building2, Upload } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -41,6 +42,19 @@ export default function Inbound() {
   const [selected, setSelected] = useState<PortalInbound | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+
+  // The mobile bottom-bar "+" lands here with ?new=1. Auto-open the create
+  // modal for users who can create (admins; inbound is operator-recorded), then
+  // strip the param so a refresh/back doesn't reopen it. Non-admins just see
+  // their inbound list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return;
+    if (isAdmin) setModalOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('new');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, isAdmin, setSearchParams]);
 
   const effectiveClientId = clientFilter ?? globalClientId;
   const query = useInbound(effectiveClientId);
