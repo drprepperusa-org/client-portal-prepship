@@ -307,6 +307,25 @@ export interface BillingSummaryRow {
   grandTotal?: number | string;
 }
 
+// CP-012: Finance's charge breakdown + KPIs are backend-owned (the /reports
+// route computes them). The frontend renders these; it no longer reduces the
+// per-client rows into charge totals, an order count, or an average.
+export interface PortalReportsBreakdownRow {
+  key: string;
+  label: string;
+  amount: number;
+}
+export interface PortalReports {
+  data: BillingSummaryRow[];
+  clients?: BillingSummaryRow[];
+  grandTotal?: number | string;
+  billingVisible?: boolean;
+  breakdown?: PortalReportsBreakdownRow[];
+  billableOrders?: number;
+  totalCharges?: number | string;
+  avgCostPerOrder?: number | string;
+}
+
 export interface BillingInvoiceSummaryRow {
   clientId: number;
   clientName: string | null;
@@ -621,17 +640,16 @@ async function scopedDailyCounts(token: string, days: number, clientId?: number)
   return { data: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)) };
 }
 
-async function scopedReports(token: string, days: number) {
+async function scopedReports(token: string, days: number): Promise<PortalReports> {
   const scope = portalScopeFromToken(token);
   const range = rangeToTimestamps(defaultRange(days));
-  type Resp = { data: BillingSummaryRow[]; clients?: BillingSummaryRow[]; grandTotal?: number | string; billingVisible?: boolean };
-  if (!scope.isRestricted || scope.clientIds.length <= 1) {
-    return apiGet<Resp>(token, '/api/client-portal/reports', { ...range, clientId: scope.isRestricted ? scope.clientIds[0] : undefined });
-  }
-  const pages = await Promise.all(scope.clientIds.map((clientId) => apiGet<Resp>(token, '/api/client-portal/reports', { ...range, clientId })));
-  const data = pages.flatMap((p) => p.data ?? p.clients ?? []);
-  const grandTotal = data.reduce((n, r) => n + Number(r.grandTotal ?? 0), 0);
-  return { data, clients: data, grandTotal, billingVisible: pages[0]?.billingVisible ?? true };
+  // CP-012: the backend scopes /reports by the caller's full client/store scope
+  // AND owns the Finance aggregates (breakdown, billable orders, avg cost/order),
+  // so ONE request returns everything — no per-client fan-out or frontend merge
+  // that could recompute totals. A restricted single-client session still pins
+  // its one client; everyone else lets the backend apply the scope.
+  const clientId = scope.isRestricted && scope.clientIds.length === 1 ? scope.clientIds[0] : undefined;
+  return apiGet<PortalReports>(token, '/api/client-portal/reports', { ...range, clientId });
 }
 
 async function scopedReportsRange(token: string, dateFrom: string, dateTo: string) {

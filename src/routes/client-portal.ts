@@ -546,7 +546,7 @@ app.get('/reports', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) {
     await recordPortalAudit('portal.reports.denied', scope);
-    return c.json({ data: [], grandTotal: 0, billingVisible: false });
+    return c.json({ data: [], grandTotal: 0, billingVisible: false, breakdown: [], billableOrders: 0, totalCharges: 0, avgCostPerOrder: 0 });
   }
   const dateFrom = c.req.query('dateFrom') ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
   const dateTo = c.req.query('dateTo') ?? new Date().toISOString();
@@ -559,7 +559,31 @@ app.get('/reports', async (c) => {
     scopeRestricted: scope.isRestricted,
   });
   await recordPortalAudit('portal.reports.view', scope, { rows: summary.clients.length });
-  return c.json({ data: summary.clients, clients: summary.clients, grandTotal: summary.grandTotal, billingVisible: true });
+  // CP-012: Finance's charge breakdown, billable-order count, and avg cost/order
+  // are backend-owned — computed once here from the canonical per-client billing
+  // rows so Finance renders them instead of reducing rows itself (and can't
+  // drift from Billing).
+  const clientRows = summary.clients;
+  const sumBy = (pick: (r: (typeof clientRows)[number]) => number) => clientRows.reduce((n, r) => n + pick(r), 0);
+  const breakdown = [
+    { key: 'pick_pack', label: 'Pick & Pack', amount: sumBy((r) => Number(r.pickPackTotal ?? 0)) },
+    { key: 'package', label: 'Box / Packaging', amount: sumBy((r) => Number(r.packageTotal ?? 0)) },
+    { key: 'shipping', label: 'Shipping / Postage', amount: sumBy((r) => Number(r.shippingTotal ?? 0)) },
+    { key: 'storage', label: 'Storage', amount: sumBy((r) => Number(r.storageTotal ?? 0)) },
+  ];
+  const billableOrders = sumBy((r) => Number(r.orderCount ?? 0));
+  const totalCharges = Number(summary.grandTotal) || 0;
+  const avgCostPerOrder = billableOrders > 0 ? totalCharges / billableOrders : 0;
+  return c.json({
+    data: clientRows,
+    clients: clientRows,
+    grandTotal: summary.grandTotal,
+    billingVisible: true,
+    breakdown,
+    billableOrders,
+    totalCharges,
+    avgCostPerOrder,
+  });
 });
 
 // Generate / regenerate billing line items for a date range (admin-only).

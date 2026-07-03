@@ -15,16 +15,16 @@ export default function Finance() {
   const { days } = usePortalFilters();
   const query = useReports();
   const billingVisible = query.data?.billingVisible !== false;
-  const rows = query.data?.data ?? query.data?.clients ?? [];
 
-  const charges: { label: string; amount: number; accent: Accent }[] = [
-    { label: 'Pick & Pack', amount: rows.reduce((n, r) => n + num(r.pickPackTotal ?? r.pickpackTotal), 0), accent: 'indigo' },
-    { label: 'Box / Packaging', amount: rows.reduce((n, r) => n + num(r.packageTotal), 0), accent: 'amber' },
-    { label: 'Shipping / Postage', amount: rows.reduce((n, r) => n + num(r.shippingTotal), 0), accent: 'sky' },
-    { label: 'Storage', amount: rows.reduce((n, r) => n + num(r.storageTotal), 0), accent: 'teal' },
-  ];
-  const totalCharges = num(query.data?.grandTotal) || charges.reduce((n, c) => n + c.amount, 0);
-  const orders = rows.reduce((n, r) => n + num(r.orderCount), 0);
+  // CP-012: the charge breakdown, totals, billable-order count, and avg
+  // cost/order are backend-owned (the /reports route computes them). Finance
+  // renders those values — it no longer reduces the per-client rows. The accent
+  // (a presentation-only concern) is mapped from the backend breakdown key.
+  const ACCENT_BY_KEY: Record<string, Accent> = { pick_pack: 'indigo', package: 'amber', shipping: 'sky', storage: 'teal' };
+  const charges = (query.data?.breakdown ?? []).map((b) => ({ label: b.label, amount: num(b.amount), accent: ACCENT_BY_KEY[b.key] ?? 'indigo' }));
+  const totalCharges = num(query.data?.totalCharges ?? query.data?.grandTotal);
+  const orders = num(query.data?.billableOrders);
+  const avgCostPerOrder = num(query.data?.avgCostPerOrder);
 
   if (!billingVisible) {
     return (
@@ -44,7 +44,7 @@ export default function Finance() {
           <>
             <StatCard label={`Charges (${days}d)`} value={money(totalCharges)} icon={Wallet} accent="amber" hint="Across all clients" />
             <StatCard label={`Billable orders (${days}d)`} value={orders.toLocaleString()} icon={Boxes} accent="indigo" />
-            <StatCard label="Avg. cost / order" value={money(orders ? totalCharges / orders : 0)} icon={TrendingUp} accent="emerald" />
+            <StatCard label="Avg. cost / order" value={money(avgCostPerOrder)} icon={TrendingUp} accent="emerald" />
           </>
         )}
       </motion.div>
