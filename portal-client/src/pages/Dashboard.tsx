@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, Reorder } from 'framer-motion';
-import { ShoppingCart, Truck, Boxes, Wallet, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square } from 'lucide-react';
+import { ShoppingCart, Truck, Boxes, Wallet, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square, Info } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
-import { Skeleton, EmptyState } from '@/components/ui/Display';
+import { Skeleton, EmptyState, Tooltip } from '@/components/ui/Display';
 import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
 import { ChartDayModal, type DayPeekSource } from '@/components/dashboard/ChartDayModal';
@@ -27,6 +27,14 @@ import {
 /** Width class for a widget: half collapses to full below `lg` so it never gets
  *  cramped on small screens. gap-4 = 1rem, so half = (100% - gap) / 2. */
 const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.5rem)]' : 'w-full');
+
+// Top SKUs column explainers — mirror the actual math in
+// src/lib/client-portal/dashboard-aggregate.ts (topSkuRows).
+const UNITS_TOOLTIP =
+  'Sum of item quantities on your orders in the selected date range. Discount lines are excluded.';
+const AVG_SHIPPING_TOOLTIP =
+  "Each order's shipping charge is split across its items by quantity share, then averaged per unit for this SKU — " +
+  'multi-SKU orders are never double-counted. Orders without a shipping charge are excluded; a dash means no shipping data.';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
@@ -160,8 +168,22 @@ export default function Dashboard() {
                     <thead>
                       <tr className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-ink-3">
                         <th className="py-2 pr-4">SKU</th>
-                        <th className="py-2 px-4 text-right">Unit Count Last 30 Days</th>
-                        <th className="py-2 pl-4 text-right">Avg Shipping Price</th>
+                        <th className="py-2 px-4 text-right">
+                          <Tooltip side="top" multiline label={UNITS_TOOLTIP}>
+                            <span tabIndex={0} className="focus-ring inline-flex cursor-help items-center gap-1 rounded">
+                              Unit Count Last 30 Days
+                              <Info size={12} className="shrink-0" />
+                            </span>
+                          </Tooltip>
+                        </th>
+                        <th className="py-2 pl-4 text-right">
+                          <Tooltip side="top" multiline label={AVG_SHIPPING_TOOLTIP}>
+                            <span tabIndex={0} className="focus-ring inline-flex cursor-help items-center gap-1 rounded">
+                              Avg Shipping Price
+                              <Info size={12} className="shrink-0" />
+                            </span>
+                          </Tooltip>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
