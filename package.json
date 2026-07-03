@@ -74,6 +74,8 @@
     "test:analysis-table-columns": "node scripts/client-portal-analysis-columns-guard.mjs",
     "test:client-portal-sku-orders-scope": "node scripts/client-portal-sku-orders-scope-guard.mjs",
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",
+    "test:client-portal-integration": "tsx scripts/integration/client-portal.integration.ts",
+    "test:client-portal-integration:setup": "tsx scripts/integration/setup.ts",
     "test:client-portal-inventory-status": "tsx scripts/client-portal-inventory-status-guard.ts",
     "test:inventory-client-scope": "node scripts/inventory-client-store-scope-guard.mjs",    "test:inventory-auto-deduct": "node scripts/inventory-auto-deduct-guard.mjs",    "test:inventory-reconciliation-dry-run": "node scripts/inventory-reconciliation-dry-run-guard.mjs",
     "test:inventory-repair-plan": "node scripts/inventory-repair-plan-guard.mjs",
