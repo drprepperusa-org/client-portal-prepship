@@ -13,7 +13,10 @@ jobs:
     steps:
       - name: Ping health endpoint
         env:
-          API_URL: ${{ vars.SYNC_API_URL || 'https://prepshipv4-api-l5xc.onrender.com' }}
+          # The client-portal API (matches render-watchdog.yml's PORTAL_API_URL).
+          # Schedule stays disabled — Render always-on owns uptime — this is only
+          # the manual emergency health ping, so it must hit the RIGHT service.
+          API_URL: ${{ vars.PORTAL_API_URL || 'https://client-portal-prepship.onrender.com' }}
         run: |
           url="${API_URL%/}/health"
           echo "GET $url"
