@@ -73,13 +73,10 @@ export default function Analysis() {
       render: (r) => (num(r.pending) > 0 ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-600 tnum">{num(r.pending)} pend</span> : <span className="text-ink-3">—</span>),
       sortAccessor: (r) => num(r.pending),
     },
-    {
-      key: 'ext',
-      header: 'Ext. Shipped',
-      defaultWidth: 120,
-      render: (r) => (num(r.ext_shipped) > 0 ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-ink-3 tnum">{num(r.ext_shipped)} ext</span> : <span className="text-ink-3">—</span>),
-      sortAccessor: (r) => num(r.ext_shipped),
-    },
+    // CP-011: the internal external-shipped classification (order shipped with
+    // no local shipment row) is an operator/debug metric, not a customer-facing
+    // one — its column was removed from the client Analysis table. The backend
+    // may still compute ext_shipped internally; it just isn't surfaced here.
     { key: 'totalQty', header: 'Total Qty', defaultWidth: 100, className: 'text-right', render: (r) => <span className="tnum font-semibold text-ink">{num(r.total_qty)}</span>, sortAccessor: (r) => num(r.total_qty) },
     {
       key: 'trend',
