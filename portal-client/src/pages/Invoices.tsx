@@ -551,9 +551,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
                     <p className="text-xs text-ink-3">Tracking number</p>
                     <p className="truncate font-mono text-sm text-ink">{s.trackingNumber ?? s.labelTracking ?? '—'}</p>
                   </div>
+                  {/* CP-009: no Carrier / Service — customer-facing shipment info only. */}
                   <div className="grid grid-cols-2 gap-3">
-                    <ShipmentField label="Carrier" value={s.carrierCode ?? '—'} />
-                    <ShipmentField label="Service" value={s.serviceCode ?? '—'} />
                     <ShipmentField label="Ship date" value={shortDate(s.shipDate)} />
                     <ShipmentField label="Delivered" value={s.deliveredAt ? shortDate(s.deliveredAt) : '—'} />
                   </div>

@@ -10,7 +10,6 @@ import { Chip } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
-import { CarrierBadge } from '@/components/store/CarrierBadge';
 import { OrderDetailPanel, fmtWeight } from '@/components/OrderDetailPanel';
 import { useOrders, useSyncStatus } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
@@ -51,10 +50,6 @@ function fmtDateTime(iso: string | null): { date: string; time: string } {
     date: d.toLocaleDateString('en-US', { year: '2-digit', month: '2-digit', day: '2-digit' }),
     time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
   };
-}
-
-function selectedRateService(o: PortalOrder): string | null {
-  return o.selectedRate?.serviceName ?? o.selectedRate?.serviceCode ?? null;
 }
 
 function selectedRateAmount(o: PortalOrder): number | null {
@@ -246,23 +241,18 @@ export default function Orders() {
     },
     { key: 'weight', header: 'Weight', defaultWidth: 110, render: (o) => <span className="tnum text-ink-2">{fmtWeight(o.weightOz)}</span>, sortAccessor: (o) => o.weightOz ?? 0 },
     {
+      // CP-009: shows the selected shipping COST only — never the carrier or
+      // service (those are redacted from the client DTO). Amount is financially
+      // gated (null → "—" for clients without financial access).
       key: 'selectedRate',
-      header: 'Selected Rate',
-      defaultWidth: 190,
+      header: 'Shipping',
+      defaultWidth: 140,
+      className: 'text-right',
       render: (o) => {
-        const service = selectedRateService(o);
         const amount = selectedRateAmount(o);
-        const carrier = o.selectedRate?.carrierCode ?? (o.orderStatus === 'awaiting_shipment' ? null : o.carrierCode);
-        if (!carrier && !service && amount == null) return <span className="text-xs text-ink-3">Not selected</span>;
-        return (
-          <div className="min-w-0 leading-tight">
-            <div className="flex min-w-0 items-center gap-2">
-              {carrier ? <CarrierBadge code={carrier} /> : null}
-              {amount != null && <span className="shrink-0 font-semibold text-brand-700 tnum">{money(amount)}</span>}
-            </div>
-            {service && <p className="mt-1 truncate text-xs text-ink-3" title={service}>{service}</p>}
-          </div>
-        );
+        return amount != null
+          ? <span className="font-semibold text-brand-700 tnum">{money(amount)}</span>
+          : <span className="text-xs text-ink-3">—</span>;
       },
       sortAccessor: (o) => selectedRateAmount(o) ?? -1,
     },

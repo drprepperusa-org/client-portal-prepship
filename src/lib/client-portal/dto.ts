@@ -191,18 +191,6 @@ export function toPortalOrderDto(
     (br?.carrier_nickname as string | undefined) ?? (br?.carrierNickname as string | undefined) ?? null;
   const shippingAccount =
     row.override?.shippingAccount ?? row.shipmentAccount ?? bestRateAccount ?? null;
-  // Friendly service label: prefer the rate's own friendly name (worker
-  // `serviceName` or backfill `service_type`), else map the raw code.
-  const bestRateServiceName =
-    (br?.serviceName as string | undefined) ?? (br?.service_type as string | undefined) ?? null;
-  const shippingService = bestRateServiceName
-    ? cleanServiceName(bestRateServiceName)
-    : friendlyServiceFromCode((br?.service_code as string | undefined) ?? (br?.serviceCode as string | undefined) ?? row.serviceCode);
-  // Carrier (matches v4): awaiting orders show the *selected best-rate* carrier
-  // (the order's carrierCode isn't set until a label is bought, and can even be
-  // stale), while shipped/cancelled show the actual carrier that shipped.
-  const bestRateCarrierCode =
-    (br?.carrierCode as string | undefined) ?? (br?.carrier_code as string | undefined) ?? null;
   const isAwaiting = row.orderStatus === 'awaiting_shipment';
   const selectedRateJson =
     row.latestShipment?.selectedRateJson && typeof row.latestShipment.selectedRateJson === 'object'
@@ -234,9 +222,6 @@ export function toPortalOrderDto(
           source: 'shipment' as const,
         }
       : null;
-  const carrierCode = isAwaiting
-    ? (bestRateCarrierCode ?? row.carrierCode)
-    : (selectedRateCarrierCode ?? row.carrierCode ?? bestRateCarrierCode);
   // CP-014: product line totals + subtotal are backend-owned money. Compute the
   // per-line total (unitPrice × quantity) and the order product subtotal here so
   // the frontend renders them instead of multiplying unit prices itself. Both
@@ -282,18 +267,17 @@ export function toPortalOrderDto(
     shipToState: row.shipToState,
     shipToPostalCode: row.shipToPostalCode ?? shipToStr('postalCode'),
     shipToCountry: shipToStr('country'),
-    // CP-009: carrier/shipping-service identity is internal operational data —
-    // gated exactly like shippingAccount/money fields. Clients keep tracking
-    // numbers but never see which carrier/service was used.
-    carrierCode: options.includeFinancials ? carrierCode : null,
-    serviceCode: options.includeFinancials ? row.serviceCode : null,
+    // CP-009: the client portal is customer-facing, so carrier / shipping-
+    // service identity is NEVER exposed here — not even to financials-enabled
+    // clients or admins. Clients track packages by number, not by carrier. The
+    // shipping AMOUNT stays (financially gated); only the identity is stripped.
+    carrierCode: null,
+    serviceCode: null,
     trackingNumber: row.override?.trackingNumber ?? null,
     weightOz: row.weightOz,
     rateWeightOz: row.override?.rateWeightOz ?? null,
-    shippingService: options.includeFinancials ? shippingService : null,
-    selectedRate: options.includeFinancials
-      ? selectedRate
-      : selectedRate && { ...selectedRate, carrierCode: null, serviceCode: null, serviceName: null },
+    shippingService: null,
+    selectedRate: selectedRate && { ...selectedRate, carrierCode: null, serviceCode: null, serviceName: null },
     items,
     ...(options.includeFinancials
       ? {
@@ -334,10 +318,9 @@ export function toPortalShipmentDto(
     clientName: row.clientName ?? row.storeName ?? null,
     storeId: row.storeId ?? null,
     storeName: row.storeName ?? row.clientName ?? null,
-    // CP-009: carrier/service identity gated like the financial fields —
-    // client users track packages by number, not by carrier.
-    carrierCode: options.includeFinancials ? row.carrierCode : null,
-    serviceCode: options.includeFinancials ? row.serviceCode : null,
+    // CP-009: carrier/service identity is never exposed in the client portal.
+    carrierCode: null,
+    serviceCode: null,
     trackingNumber: row.trackingNumber,
     labelTracking: row.labelTracking,
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),

@@ -13,7 +13,7 @@ const itemLines = readFileSync(itemLinesPath, 'utf8');
 const api = readFileSync(apiPath, 'utf8');
 const dto = readFileSync(dtoPath, 'utf8');
 
-assert.match(orders, /header:\s*['"]Selected Rate['"]/, 'Orders table must include a Selected Rate column');
+assert.match(orders, /header:\s*['"]Shipping['"]/, 'Orders table has a customer-safe Shipping (cost) column');
 assert.doesNotMatch(orders, /header:\s*['"]Shipping Account['"]/, 'Orders table must not include a Shipping Account column');
 assert.doesNotMatch(orders, /header:\s*['"]Best Rate['"]/, 'Orders table must not include a Best Rate column');
 assert.match(orders, /key:\s*['"]selectedRate['"]/, 'Orders table should key the replacement column as selectedRate');
@@ -24,11 +24,10 @@ assert.match(itemLines, /Number\(item\.quantity\)\s*>\s*1/, 'SKU renderer must i
 assert.match(itemLines, /x\{item\.quantity\}/, 'SKU renderer must display an xN quantity badge next to multi-qty SKUs');
 assert.match(orders, /selectedRate/, 'Orders UI must render selectedRate data');
 assert.doesNotMatch(orders, /title=\{o\.shippingAccount\}|>\{o\.shippingAccount\}</, 'Orders table must not render account nicknames');
-assert.match(
-  orders,
-  /o\.orderStatus\s*===\s*['"]awaiting_shipment['"]\s*\?\s*null\s*:\s*o\.carrierCode/,
-  'Awaiting rows must not label best-rate carrier data as a selected rate',
-);
+// CP-009: the client portal is customer-facing — the Orders table shows the
+// shipping COST only, never the carrier badge / carrier code / service.
+assert.doesNotMatch(orders, /CarrierBadge/, 'Orders table no longer renders a carrier badge');
+assert.doesNotMatch(orders, /o\.carrierCode/, 'Orders table no longer reads the carrier code');
 
 assert.match(api, /selectedRate\??:\s*\{/, 'PortalOrder type must expose selectedRate');
 assert.match(dto, /selectedRate:/, 'Client portal DTO must project selectedRate');

@@ -64,14 +64,22 @@ check(
 );
 check(clientOrder.trackingNumber === '1Z999', 'client order DTO keeps the tracking number');
 check(!('shippingAccount' in clientOrder), 'client order DTO still omits shippingAccount (CP-001 intact)');
+// CP-009 sweep: the client portal is customer-facing, so carrier/service is
+// NEVER exposed — not even to financials-enabled clients or admins. Money (order
+// total, rate amount) still flows for financial viewers.
 const adminOrder: any = dto.toPortalOrderDto(orderRow, { includeFinancials: true });
 check(
-  adminOrder.carrierCode === 'ups' && adminOrder.serviceCode === 'ups_ground_saver' && adminOrder.shippingService != null,
-  'admin order DTO unchanged (carrier/service present)',
+  adminOrder.carrierCode === null && adminOrder.serviceCode === null && adminOrder.shippingService === null,
+  'financials/admin order DTO ALSO exposes no carrier / service (customer-facing surface)',
 );
 check(
-  adminOrder.selectedRate?.carrierCode === 'ups' && adminOrder.selectedRate?.serviceName != null,
-  'admin order DTO selectedRate identity unchanged',
+  !adminOrder.selectedRate ||
+    (adminOrder.selectedRate.carrierCode === null && adminOrder.selectedRate.serviceCode === null && adminOrder.selectedRate.serviceName === null),
+  'financials/admin order DTO selectedRate carries no carrier/service identity',
+);
+check(
+  adminOrder.orderTotal != null && adminOrder.selectedRate?.amount != null,
+  'financials order DTO still exposes money (order total + selected-rate amount)',
 );
 
 // 2) Shipment DTO: same gate.
@@ -104,11 +112,12 @@ check(
   'client shipment DTO keeps tracking number + live status',
 );
 check(clientShipment.shippingCost === null, 'client shipment DTO still gates shipping cost');
-const adminShipment: any = dto.toPortalShipmentDto(shipmentRow, { includeFinancials: true });
+const financialShipment: any = dto.toPortalShipmentDto(shipmentRow, { includeFinancials: true });
 check(
-  adminShipment.carrierCode === 'stamps_com' && adminShipment.serviceCode === 'usps_ground_advantage',
-  'admin shipment DTO unchanged',
+  financialShipment.carrierCode === null && financialShipment.serviceCode === null,
+  'financials/admin shipment DTO ALSO exposes no carrier / service (CP-009 sweep)',
 );
+check(financialShipment.shippingCost != null, 'financials shipment DTO still exposes the (billed) shipping cost');
 
 // 3) Orders-list redaction: identity keys nulled recursively for non-financial
 //    viewers (closes the ungated selectedRate.providerAccountNickname leak).
@@ -147,9 +156,14 @@ function read(rel: string) {
 }
 const dtoSource = read('src/lib/client-portal/dto.ts');
 check(
-  dtoSource.includes('carrierCode: options.includeFinancials ? carrierCode : null') &&
-    dtoSource.includes('carrierCode: options.includeFinancials ? row.carrierCode : null'),
-  'DTO source gates carrier identity behind includeFinancials',
+  !dtoSource.includes('options.includeFinancials ? carrierCode') &&
+    !dtoSource.includes('options.includeFinancials ? row.carrierCode') &&
+    !dtoSource.includes('options.includeFinancials ? row.serviceCode') &&
+    !dtoSource.includes('options.includeFinancials ? shippingService') &&
+    dtoSource.includes('carrierCode: null') &&
+    dtoSource.includes('serviceCode: null') &&
+    dtoSource.includes('shippingService: null'),
+  'DTO source hard-nulls carrier/service (never gated behind financials) — CP-009',
 );
 const ordersListSource = read('src/services/orders-list.ts');
 check(

@@ -181,8 +181,9 @@ async function main(): Promise<number> {
   check(clientOrder.carrierCode === null && clientOrder.serviceCode === null && clientOrder.shippingService === null, 'client order DTO exposes NO carrier / service');
   check(clientOrder.shipToLine1 === '123 Main St', 'client order DTO still exposes the ship-to address (address is not gated)');
   check(!('bestRateAmount' in clientOrder) && !('bestRateJson' in clientOrder), 'client order DTO exposes no raw rate JSON / gated rate money');
-  const adminOrder: any = dtoMod.toPortalOrderDto(orderRow, { includeFinancials: true });
-  check(adminOrder.carrierCode === 'stamps_com', 'operator (financials) order DTO keeps carrier — gated path unchanged');
+  const financialOrder: any = dtoMod.toPortalOrderDto(orderRow, { includeFinancials: true });
+  check(financialOrder.carrierCode === null && financialOrder.serviceCode === null, 'financials order DTO ALSO exposes no carrier/service (CP-009 — never in the portal)');
+  check(financialOrder.orderTotal != null, 'financials order DTO still exposes money (order total)');
   const clientShipment: any = dtoMod.toPortalShipmentDto(
     { id: 1, orderId: order1.id, clientId: hugrab.id, carrierCode: 'stamps_com', serviceCode: 'usps_ground_advantage', trackingNumber: '9400abc', voided: false } as any,
     { includeFinancials: false },

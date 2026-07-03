@@ -67,9 +67,9 @@ assert(
   shipmentDtoBlock.includes('options: { includeFinancials?: boolean }') &&
     shipmentDtoBlock.includes('items: safeItems(row.orderItems') &&
     shipmentDtoBlock.includes('shippingCost: options.includeFinancials ? row.shippingCost ?? null : null') &&
-    shipmentDtoBlock.includes('carrierCode: options.includeFinancials ? row.carrierCode : null') &&
-    shipmentDtoBlock.includes('serviceCode: options.includeFinancials ? row.serviceCode : null'),
-  'toPortalShipmentDto maps order items and gates shipment cost and carrier/service identity behind financial visibility (CP-005 + CP-009)',
+    shipmentDtoBlock.includes('carrierCode: null') &&
+    shipmentDtoBlock.includes('serviceCode: null'),
+  'toPortalShipmentDto maps order items, gates shipping cost behind financials, and NEVER exposes carrier/service (CP-005 + CP-009)',
 );
 
 assert(
