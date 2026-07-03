@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { BottomNav } from './BottomNav';
 import { LiquidBackground } from './LiquidBackground';
 import { NAV, COMPONENTS_NAV } from '@/nav';
 import { pageVariants } from '@/lib/motion';
@@ -94,13 +95,18 @@ export function Layout() {
               element, the mode="wait" handoff could mount the new page stuck at
               its `initial` (opacity:0) state → a blank content area on nav.
               Re-keying the motion.div replays initial→enter on every route. */}
-          <main className="min-h-[calc(100vh-6rem)]">
+          {/* pb-24 on phones clears the fixed bottom tab bar; none at lg+. */}
+          <main className="min-h-[calc(100vh-6rem)] pb-24 lg:pb-0">
             <motion.div key={pathname} variants={pageVariants} initial="initial" animate="enter">
               <Outlet />
             </motion.div>
           </main>
         </div>
       </div>
+
+      {/* Mobile bottom tab bar — primary destinations; "More" opens the full
+          drawer. Hidden at lg+ where the sidebar is the nav. */}
+      <BottomNav onOpenMore={() => setDrawer(true)} />
     </div>
   );
 }

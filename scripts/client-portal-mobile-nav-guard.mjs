@@ -21,6 +21,7 @@ function assert(condition, message) {
 const layout = read('portal-client/src/components/layout/Layout.tsx');
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
 const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
+const bottomNav = read('portal-client/src/components/layout/BottomNav.tsx');
 const packageJson = JSON.parse(read('package.json'));
 
 // ── The fix: close the drawer on route change ──
@@ -61,6 +62,28 @@ assert(
 assert(
   sidebar.includes('onClick={onNavigate}'),
   'sidebar nav items call onNavigate on tap',
+);
+
+// ── Mobile bottom tab bar ──
+assert(
+  layout.includes('<BottomNav onOpenMore={() => setDrawer(true)} />'),
+  'Layout renders the bottom tab bar; its More tab opens the full drawer',
+);
+assert(
+  layout.includes('pb-24 lg:pb-0'),
+  'main content clears the fixed bottom bar on phones (pb-24) and not on desktop',
+);
+assert(
+  bottomNav.includes('lg:hidden') && bottomNav.includes('fixed inset-x-0 bottom-0'),
+  'bottom tab bar is a fixed, mobile-only (lg:hidden) bar pinned to the bottom',
+);
+assert(
+  bottomNav.includes('onClick={onOpenMore}') && bottomNav.includes("label=\"More\""),
+  'bottom bar has a More tab that opens the drawer for the overflow destinations',
+);
+assert(
+  bottomNav.includes('env(safe-area-inset-bottom)'),
+  'bottom bar respects the iOS home-indicator safe area',
 );
 
 assert(
