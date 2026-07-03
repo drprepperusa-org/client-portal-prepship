@@ -1,0 +1,87 @@
+name: Production watchdog (auto-restart)
+
+# Trello YKvYo22G: the API "keeps going down during the weekend". The repo has
+# always had scripts/production-watchdog.mjs (health probes + deploy-hook
+# restart with cooldown and rate limits) — it was just never scheduled. This
+# workflow is that scheduler. Weekend cadence is dense because that is the
+# reported outage window; weekdays get an hourly safety net. ~1,350 GH Actions
+# minutes/month worst case, inside the free private-repo tier (repo CI is
+# otherwise idle).
+#
+# Restart wiring: add repo secret RENDER_DEPLOY_HOOK_URL (Render dashboard →
+# API service → Settings → Deploy Hook). Until it exists, the watchdog runs
+# alert-only: an unhealthy probe still fails the job, and GitHub emails the
+# scheduled-workflow failure. Optional: WATCHDOG_ALERT_WEBHOOK_URL secret for
+# a JSON alert (Slack/Discord-style webhook).
+
+on:
+  schedule:
+    # Weekends: every 15 minutes (the reported outage window).
+    - cron: '*/15 * * * 6,0'
+    # Weekdays: hourly safety net.
+    - cron: '0 * * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: render-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    name: Probe health, restart on failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The watchdog keeps cooldown + restarts-per-hour memory in a state
+      # file. Caches are immutable per key, so each run saves under its own
+      # run id and the next run restores the newest via the prefix.
+      - name: Restore watchdog state
+        uses: actions/cache/restore@v4
+        with:
+          path: outputs/production-watchdog-state.json
+          key: watchdog-state-${{ github.run_id }}
+          restore-keys: |
+            watchdog-state-
+
+      - name: Check health (restart via deploy hook on failure)
+        env:
+          RENDER_BASE_URL: ${{ vars.PORTAL_API_URL || 'https://client-portal-prepship.onrender.com' }}
+          VERCEL_SHELL_URL: ${{ vars.PORTAL_WEB_URL || 'https://client-portal-prepship.vercel.app' }}
+          WATCHDOG_ALLOW_RESTARTS: 'true'
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          WATCHDOG_ALERT_WEBHOOK_URL: ${{ secrets.WATCHDOG_ALERT_WEBHOOK_URL }}
+          # Each scheduled run is one independent probe (the script's built-in
+          # multi-run threshold would need shared state to mean anything), so
+          # restart on the first hard failure; the cached cooldown + 2/hour
+          # cap keep a flapping service from being restart-hammered.
+          WATCHDOG_FAILURE_THRESHOLD: '1'
+        run: node scripts/production-watchdog.mjs
+
+      - name: Save watchdog state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: outputs/production-watchdog-state.json
+          key: watchdog-state-${{ github.run_id }}
+
+      # A failed probe already failed the job (that is the alert). If a
+      # restart was requested, poll for recovery so the run log shows whether
+      # the deploy hook brought the service back and on which commit.
+      - name: Wait for recovery after restart request
+        if: failure()
+        env:
+          API_URL: ${{ vars.PORTAL_API_URL || 'https://client-portal-prepship.onrender.com' }}
+        run: |
+          echo "Watchdog reported unhealthy — polling /health for recovery (a deploy-hook restart may be rebuilding)…"
+          for i in $(seq 1 10); do
+            sleep 45
+            body=$(curl -sS --connect-timeout 10 --max-time 30 "${API_URL%/}/health" || true)
+            echo "poll $i: $body"
+            case "$body" in
+              *'"status":"ok"'*) echo "Recovered: $body"; exit 0;;
+            esac
+          done
+          echo "Still unhealthy after the recovery window — manual action needed (OPERATIONAL_RUNBOOKS_AND_DR_PLAN.md#production-watchdog)."
+          exit 1
