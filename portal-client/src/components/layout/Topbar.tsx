@@ -40,7 +40,9 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
 
   function submitSearch(e: FormEvent) {
     e.preventDefault();
-    if (q.trim()) nav(`/orders?q=${encodeURIComponent(q.trim())}`);
+    // tab=all: a global search must span every order status — landing on the
+    // default Awaiting tab hid shipped/cancelled matches and read as broken.
+    if (q.trim()) nav(`/orders?q=${encodeURIComponent(q.trim())}&tab=all`);
   }
 
   return (

@@ -23,11 +23,18 @@ import { type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
 
 const TABS = [
+  // 'all' exists so search can span every status — without it, the global
+  // top-bar search landed on the Awaiting tab and shipped/cancelled matches
+  // looked like "search not working".
+  { id: 'all', label: 'All' },
   { id: 'awaiting_shipment', label: 'Awaiting shipment' },
   { id: 'shipped', label: 'Shipped' },
   { id: 'cancelled', label: 'Cancelled' },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
+function isTab(value: string): value is Tab {
+  return TABS.some((t) => t.id === value);
+}
 
 const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
 function clientAccent(name: string | null): Accent {
@@ -85,6 +92,13 @@ export default function Orders() {
   // navigation, so this never clobbers in-page typing.
   const urlQ = params.get('q') ?? '';
   useEffect(() => setQ(urlQ), [urlQ]);
+
+  // Adopt ?tab= the same way — the global top-bar search navigates with
+  // tab=all so a search is never silently caged to the default Awaiting tab.
+  const urlTab = params.get('tab') ?? '';
+  useEffect(() => {
+    if (isTab(urlTab)) setTab(urlTab);
+  }, [urlTab]);
 
   useEffect(() => setPage(1), [debouncedQ, tab]);
 
@@ -327,6 +341,26 @@ export default function Orders() {
         </div>
       </GlassPanel>
 
+      {/* Search escape hatch: a search that misses inside a status tab is the
+          "search looks broken" trap — offer the cross-status search in place. */}
+      {debouncedQ && tab !== 'all' && !query.isLoading && !query.isError && rows.length === 0 && (
+        <GlassPanel className="flex flex-col items-start gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-ink-2">
+            No matches for “{debouncedQ}” in <span className="font-semibold">{TABS.find((t) => t.id === tab)?.label}</span> — it may be in another status.
+          </p>
+          <button
+            onClick={() => setTab('all')}
+            className={cn(
+              'focus-ring inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm',
+              'bg-gradient-to-br from-brand-400 to-brand-600 px-3.5 text-sm font-semibold text-white',
+              'shadow-glass transition-opacity hover:opacity-95',
+            )}
+          >
+            Search all orders
+          </button>
+        </GlassPanel>
+      )}
+
       <GlassPanel className="p-2 sm:p-3">
         <QueryState
           isLoading={query.isLoading}
@@ -335,7 +369,7 @@ export default function Orders() {
           isEmpty={rows.length === 0}
           onRetry={() => query.refetch()}
           emptyTitle="No orders"
-          emptyMessage="No orders match this tab and search."
+          emptyMessage={tab === 'all' ? 'No orders match this search.' : 'No orders match this tab and search.'}
         >
           <DataTable tableId="orders" columns={columns} rows={rows} rowKey={(o) => String(o.id)} onRowClick={setSelected} />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
