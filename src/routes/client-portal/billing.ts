@@ -116,7 +116,17 @@ app.post('/billing/generate', async (c) => {
     console.warn('[client-portal] failed to persist billing last-generated:', err instanceof Error ? err.message : err);
   }
 
-  await recordPortalAudit('portal.billing.generate', scope, { dateFrom: body.dateFrom, dateTo: body.dateTo, clientId, generated: result.generated });
+  // CP-019: record the SCOPE SHAPE (not customer data) on the destructive
+  // generate → delete → recreate path so a scoped regeneration is auditable.
+  await recordPortalAudit('portal.billing.generate', scope, {
+    dateFrom: body.dateFrom,
+    dateTo: body.dateTo,
+    clientId,
+    generated: result.generated,
+    scopeClients: scope.isGlobal ? 'all' : scope.clientIds.length,
+    scopeStores: scope.isGlobal ? 'all' : scope.storeIds.length,
+    scopeRestricted: !scope.isGlobal,
+  });
   return c.json({ generated: result.generated, total: result.total, skipped: result.skipped, message: result.message, lastGeneratedAt: generatedAt });
 });
 

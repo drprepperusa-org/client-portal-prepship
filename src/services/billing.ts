@@ -88,6 +88,31 @@ export function billingLineItemScopePredicate(input: GenerateInput): SQL {
   return sql`(${sql.join(predicates, sql` or `)})`;
 }
 
+// CP-019: order-level tenant scope for generateLineItems' source query — an
+// order is in scope when its client is in scope (by clientId or the client's
+// assigned stores). Mirrors billingLineItemScopePredicate but over orders.
+export function billingOrderScopePredicate(input: GenerateInput): SQL {
+  const predicates: SQL[] = [];
+  const clientIds = normalizeScopeIds(input.scopeClientIds);
+  const storeIds = normalizeScopeIds(input.scopeStoreIds);
+
+  if (clientIds.length) {
+    predicates.push(sql`${orders.clientId} = any(${intArraySql(clientIds)})`);
+  }
+  if (storeIds.length) {
+    predicates.push(sql`exists (
+      select 1 from clients scoped_client
+      where scoped_client.id = ${orders.clientId}
+        and scoped_client.store_ids && ${intArraySql(storeIds)}
+    )`);
+  }
+  if (!predicates.length) {
+    return input.scopeRestricted === true ? sql`false` : sql`true`;
+  }
+  if (predicates.length === 1) return predicates[0]!;
+  return sql`(${sql.join(predicates, sql` or `)})`;
+}
+
 export function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -245,6 +270,7 @@ export async function generateLineItems(input: GenerateInput) {
     where c.active = true
       and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       and coalesce(b.active, true) = true
+      and ${billingClientScopePredicate(input)}
       ${input.clientId !== undefined ? sql`and c.id = ${input.clientId}` : sql``}
     order by c.name asc
   `);
@@ -309,7 +335,9 @@ export async function generateLineItems(input: GenerateInput) {
         eq(orders.externallyShipped, false),
         sql`coalesce(${orders.raw}->>'externallyFulfilled', 'false') <> 'true'`,
         sql`coalesce(${shipments.shipDate}, ${orders.orderDate}) >= ${fromIso}::timestamptz`,
-        sql`coalesce(${shipments.shipDate}, ${orders.orderDate}) <= ${toIso}::timestamptz`
+        sql`coalesce(${shipments.shipDate}, ${orders.orderDate}) <= ${toIso}::timestamptz`,
+        // CP-019: never pull orders outside the caller's tenant scope.
+        billingOrderScopePredicate(input)
       )
     );
 
@@ -404,6 +432,11 @@ export async function generateLineItems(input: GenerateInput) {
     and(
       sql`${billingLineItems.shipDate} >= ${fromIso}::timestamptz`,
       sql`${billingLineItems.shipDate} <= ${toIso}::timestamptz`,
+      // CP-019: ALWAYS restrict the destructive delete to the caller's tenant
+      // scope. Without this, an omitted clientId deleted every tenant's billing
+      // rows in the range; a restricted caller with no resolvable scope now
+      // deletes nothing (predicate → `false`).
+      billingLineItemScopePredicate(input),
       input.clientId !== undefined
         ? eq(billingLineItems.clientId, input.clientId)
         : undefined

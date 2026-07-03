@@ -87,6 +87,29 @@ assert(
     reportingSource.includes('scopeStoreIds'),
   'billing summary/details/read-model reads apply client/store scope',
 );
+// CP-019: generateLineItems (the destructive generate → DELETE → recreate path)
+// must apply tenant scope to its config query, its source query, AND its
+// billing_line_items delete — not just the read path in billing-summaries.ts.
+// The check above passes even if generateLineItems is unscoped, so pin the
+// generate/delete path explicitly here.
+const generateSource = read('src/services/billing.ts');
+const delStart = generateSource.indexOf('db.delete(billingLineItems)');
+const deleteBlock = delStart >= 0 ? generateSource.slice(delStart, delStart + 600) : '';
+assert(
+  deleteBlock.includes('billingLineItemScopePredicate(input)'),
+  'CP-019: the destructive billing_line_items delete is tenant-scoped (an omitted clientId cannot wipe every tenant)',
+);
+assert(
+  generateSource.includes('export function billingOrderScopePredicate') &&
+    generateSource.includes('billingOrderScopePredicate(input)'),
+  'CP-019: generateLineItems source query applies order-level tenant scope',
+);
+const configBlock = /const configs = await db\.execute[\s\S]*?order by c\.name asc/.exec(generateSource)?.[0] ?? '';
+assert(
+  configBlock.includes('billingClientScopePredicate(input)'),
+  'CP-019: generateLineItems config query applies client/store scope',
+);
+
 assert(
   packageJson.scripts?.['test:billing-client-scope'] ===
     'node scripts/billing-client-store-scope-guard.mjs',
