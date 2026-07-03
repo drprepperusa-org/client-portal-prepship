@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { BottomNav } from './BottomNav';
@@ -75,36 +75,29 @@ export function Layout() {
         </div>
       </div>
 
-      {/* Mobile drawer — hoisted OUT of the z-10 content column to the page root
-          so it stacks ABOVE the fixed bottom tab bar. (Nested inside z-10 its
-          z-40/z-50 were trapped in that stacking context, so the bottom bar — a
-          root sibling at z-30 — painted over the drawer's lower items and ate
-          the taps.) backdrop + panel are separate KEYED AnimatePresence children
-          so each exit-animates and unmounts cleanly. */}
-      <AnimatePresence>
-        {drawer && (
-          <motion.div
-            key="drawer-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setDrawer(false)}
-            className="fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm lg:hidden"
-          />
+      {/* Mobile drawer — hoisted to the page root so it stacks ABOVE the fixed
+          bottom bar (panel z-50 / backdrop z-40 > bar z-30). Driven by CSS
+          transitions (NOT AnimatePresence) so it can never get "stuck": when
+          closed, BOTH layers are pointer-events-none and off-screen/transparent,
+          so nothing blocks the page — even mid-transition. Always mounted, so
+          there is no enter/exit animation that can hang. */}
+      <div
+        onClick={() => setDrawer(false)}
+        aria-hidden={!drawer}
+        className={cn(
+          'fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm transition-opacity duration-300 lg:hidden',
+          drawer ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
-        {drawer && (
-          <motion.div
-            key="drawer-panel"
-            initial={{ x: '-110%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '-110%' }}
-            transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-            className="fixed left-3 top-3 z-50 h-[calc(100vh-1.5rem)] w-64 max-w-[calc(100vw-1.5rem)] lg:hidden"
-          >
-            <Sidebar collapsed={false} onToggle={() => {}} onNavigate={() => setDrawer(false)} />
-          </motion.div>
+      />
+      <div
+        aria-hidden={!drawer}
+        className={cn(
+          'fixed left-3 top-3 z-50 h-[calc(100vh-1.5rem)] w-64 max-w-[calc(100vw-1.5rem)] transition-transform duration-300 ease-out lg:hidden',
+          drawer ? 'translate-x-0' : 'pointer-events-none -translate-x-[120%]',
         )}
-      </AnimatePresence>
+      >
+        <Sidebar collapsed={false} onToggle={() => {}} onNavigate={() => setDrawer(false)} />
+      </div>
 
       {/* Mobile bottom tab bar — primary destinations + a center create action.
           The full nav (overflow destinations) opens from the top-left menu.

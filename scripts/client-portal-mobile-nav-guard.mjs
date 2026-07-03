@@ -34,10 +34,12 @@ assert(
   'tapping the backdrop also dismisses the drawer',
 );
 
-// ── Clean unmount: keyed AnimatePresence children (a Fragment can't exit-animate) ──
+// ── Can never strand a blocking overlay: CSS-transition drawer, pointer-events
+//    disabled + off-screen/transparent when closed (no animation that can hang) ──
 assert(
-  layout.includes('key="drawer-backdrop"') && layout.includes('key="drawer-panel"'),
-  'drawer backdrop + panel are separate keyed AnimatePresence children (clean exit, no stranded backdrop)',
+  layout.includes("drawer ? 'opacity-100' : 'pointer-events-none opacity-0'") &&
+    layout.includes("drawer ? 'translate-x-0' : 'pointer-events-none -translate-x-[120%]'"),
+  'drawer uses CSS transitions and is pointer-events-none + off-screen when closed (cannot get stuck over the page)',
 );
 
 // ── Background scroll lock while open ──
