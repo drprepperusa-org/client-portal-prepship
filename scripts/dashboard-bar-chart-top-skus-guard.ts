@@ -38,12 +38,18 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   // not $10 counted once per SKU ($20).
   const totalAllocated = (a!.avgShippingPrice ?? 0) * a!.units30 + (b!.avgShippingPrice ?? 0) * b!.units30;
   assert(totalAllocated === 10, 'multi-SKU shipping sums to the order total ($10), not double-counted ($20)');
+  // Numerator/denominator surfaced for the UI's literal calculation ($alloc ÷ units):
+  // A = $10 × 1/5 = $2 over 1 unit; B = $10 × 4/5 = $8 over 4 units.
+  assert(a?.shipAlloc === 2 && a?.shipUnits === 1, 'SKU A exposes shipAlloc $2 / shipUnits 1 (calculation operands)');
+  assert(b?.shipAlloc === 8 && b?.shipUnits === 4, 'SKU B exposes shipAlloc $8 / shipUnits 4');
+  assert(a!.shipAlloc! / a!.shipUnits! === a!.avgShippingPrice, 'shipAlloc ÷ shipUnits reproduces avgShippingPrice exactly');
 }
 
 // ── No shipping data → null (rendered as "—"), not $0.00 ──
 {
   const noShip = topSkuRows([{ orderDate: '2026-06-01T00:00:00Z', shippingAmount: '0', items: [{ sku: 'C', quantity: 3 }] }], true);
   assert(noShip[0]?.avgShippingPrice === null, 'SKU with no shipping charge reports null avg shipping (shown as —)');
+  assert(noShip[0]?.shipAlloc === null && noShip[0]?.shipUnits === null, 'no-shipping SKU has null calculation operands (no bogus ÷ 0)');
 }
 
 // ── Financial visibility: avg shipping withheld when canViewFinancials is false ──
@@ -110,12 +116,18 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(dashboard.includes('Unit Count Last 30 Days'), 'Top SKUs table has a "Unit Count Last 30 Days" column');
   assert(dashboard.includes('Avg Shipping Price'), 'Top SKUs table has an "Avg Shipping Price" column');
   assert(dashboard.includes('avgShippingPrice == null') && dashboard.includes("'—'"), 'avg shipping renders — when null instead of $0.00');
+  // The value cell shows the literal calculation as a tooltip: alloc ÷ units = avg.
+  assert(
+    dashboard.includes('money(s.shipAlloc)') && dashboard.includes('s.shipUnits') && dashboard.includes('÷'),
+    'Avg Shipping Price cell renders the calculation ($shipAlloc ÷ shipUnits = avg) as a tooltip',
+  );
 }
 
 // ── Contract + wiring ──
 {
   const api = read('portal-client/src/lib/api.ts');
   assert(api.includes('avgShippingPrice'), 'DashboardSummary.bySku exposes avgShippingPrice');
+  assert(api.includes('shipAlloc') && api.includes('shipUnits'), 'DashboardSummary.bySku exposes shipAlloc/shipUnits for the calculation tooltip');
   assert(/daily:\s*Array<\{\s*day:\s*string;\s*orders:\s*number;\s*units:\s*number/.test(api), 'DashboardSummary exposes a daily orders/units series');
 
   const route = read('src/routes/client-portal.ts');

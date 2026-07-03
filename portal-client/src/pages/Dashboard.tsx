@@ -28,13 +28,10 @@ import {
  *  cramped on small screens. gap-4 = 1rem, so half = (100% - gap) / 2. */
 const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.5rem)]' : 'w-full');
 
-// Top SKUs column explainers — mirror the actual math in
-// src/lib/client-portal/dashboard-aggregate.ts (topSkuRows).
-const UNITS_TOOLTIP =
-  'Sum of item quantities on your orders in the selected date range. Discount lines are excluded.';
-const AVG_SHIPPING_TOOLTIP =
-  "Each order's shipping charge is split across its items by quantity share, then averaged per unit for this SKU — " +
-  'multi-SKU orders are never double-counted. Orders without a shipping charge are excluded; a dash means no shipping data.';
+// Top SKUs column explainers — compact formulas (not prose), mirroring the
+// actual math in src/lib/client-portal/dashboard-aggregate.ts (topSkuRows).
+const UNITS_TOOLTIP = 'Σ item quantities (discount lines excluded)';
+const AVG_SHIPPING_TOOLTIP = 'Σ(order shipping × unit share) ÷ units with a shipping charge';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
@@ -191,7 +188,20 @@ export default function Dashboard() {
                         <tr key={s.sku}>
                           <td className="py-2.5 pr-4 font-medium text-ink-2">{s.sku}</td>
                           <td className="py-2.5 px-4 text-right tnum text-ink-3">{s.units30.toLocaleString()}</td>
-                          <td className="py-2.5 pl-4 text-right tnum text-ink-3">{s.avgShippingPrice == null ? '—' : money(s.avgShippingPrice)}</td>
+                          <td className="py-2.5 pl-4 text-right tnum text-ink-3">
+                            {s.avgShippingPrice == null ? (
+                              <Tooltip side="top" multiline label="No order carrying this SKU had a shipping charge.">
+                                <span tabIndex={0} className="focus-ring cursor-help rounded">{'—'}</span>
+                              </Tooltip>
+                            ) : (
+                              // The literal calculation: allocated shipping ÷ units with a charge = avg.
+                              <Tooltip side="top" multiline label={`${money(s.shipAlloc)} ÷ ${s.shipUnits} units = ${money(s.avgShippingPrice)}`}>
+                                <span tabIndex={0} className="focus-ring cursor-help rounded underline decoration-dotted decoration-slate-300 underline-offset-2">
+                                  {money(s.avgShippingPrice)}
+                                </span>
+                              </Tooltip>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -221,7 +221,7 @@ export interface NewIntegrationInput {
 export interface DashboardSummary {
   revenue: number;
   units: number;
-  bySku: Array<{ sku: string; units30: number; units7: number; revenue: number; avgShippingPrice: number | null }>;
+  bySku: Array<{ sku: string; units30: number; units7: number; revenue: number; avgShippingPrice: number | null; shipAlloc: number | null; shipUnits: number | null }>;
   /** Per-day order + shippable-unit counts backing the cumulative bar chart. */
   daily: Array<{ day: string; orders: number; units: number }>;
   dailyRevenue: Array<{ day: string; revenue: number }>;
@@ -537,7 +537,14 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
         bySku.set(s.sku, { ...s });
         continue;
       }
-      cur.avgShippingPrice = blendAvgShipping(cur.avgShippingPrice, cur.units30, s.avgShippingPrice, s.units30);
+      // Combine the shipping numerator/denominator exactly, then re-derive the
+      // per-unit average — no weighting approximation, and the calculation
+      // tooltip's operands stay correct across the multi-client fan-out.
+      const alloc = (cur.shipAlloc ?? 0) + (s.shipAlloc ?? 0);
+      const shipUnits = (cur.shipUnits ?? 0) + (s.shipUnits ?? 0);
+      cur.shipAlloc = shipUnits > 0 ? Math.round(alloc * 100) / 100 : null;
+      cur.shipUnits = shipUnits > 0 ? shipUnits : null;
+      cur.avgShippingPrice = shipUnits > 0 ? alloc / shipUnits : null;
       cur.units30 += s.units30;
       cur.units7 += s.units7;
       cur.revenue += s.revenue;
@@ -560,21 +567,6 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([day, revenue]) => ({ day, revenue })),
   };
-}
-
-/**
- * Units-weighted blend of two per-unit average shipping prices when the same
- * SKU appears across multiple client responses. Exact when every unit carried
- * shipping; an acceptable approximation for the rare restricted multi-client
- * fan-out (single-client / global users take the exact single-response path and
- * never reach here). `null` on either side means "no shipping data for that
- * slice" and is skipped rather than counted as $0.
- */
-function blendAvgShipping(a: number | null, aUnits: number, b: number | null, bUnits: number): number | null {
-  if (a == null) return b;
-  if (b == null) return a;
-  const denom = aUnits + bUnits;
-  return denom > 0 ? (a * aUnits + b * bUnits) / denom : null;
 }
 
 async function scopedDailyCounts(token: string, days: number, clientId?: number): Promise<{ data: DailyCount[] }> {

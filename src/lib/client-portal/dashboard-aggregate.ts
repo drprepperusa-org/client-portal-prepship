@@ -30,6 +30,17 @@ export interface TopSkuRow {
    * not view financials.
    */
   avgShippingPrice: number | null;
+  /**
+   * The two operands behind `avgShippingPrice`, surfaced so the UI can show the
+   * literal calculation ($shipAlloc ÷ shipUnits = avg) instead of prose:
+   *  - `shipAlloc`: total shipping allocated to this SKU (the numerator, rounded
+   *    to cents).
+   *  - `shipUnits`: units of this SKU that were on an order carrying a shipping
+   *    charge (the denominator).
+   * Both `null` exactly when `avgShippingPrice` is `null`.
+   */
+  shipAlloc: number | null;
+  shipUnits: number | null;
 }
 
 /** A promo/discount line carries a negative unit price and is NOT a shippable
@@ -108,10 +119,17 @@ export function topSkuRows(rows: DashboardOrderRow[], canViewFinancials = false)
   return [...bySku.values()]
     .sort((a, b) => b.units30 - a.units30)
     .slice(0, 10)
-    .map(({ shipAlloc, shipUnits, ...rest }) => ({
-      ...rest,
-      avgShippingPrice: shipUnits > 0 ? shipAlloc / shipUnits : null,
-    }));
+    .map(({ shipAlloc, shipUnits, ...rest }) => {
+      const hasShipping = shipUnits > 0;
+      return {
+        ...rest,
+        avgShippingPrice: hasShipping ? shipAlloc / shipUnits : null,
+        // Numerator/denominator for the UI's literal calculation. Rounded to
+        // cents so the tooltip reads e.g. "$303.15 ÷ 41 = $7.39".
+        shipAlloc: hasShipping ? Math.round(shipAlloc * 100) / 100 : null,
+        shipUnits: hasShipping ? shipUnits : null,
+      };
+    });
 }
 
 /** Per-day order count + shippable unit count, ascending by day. Both metrics
