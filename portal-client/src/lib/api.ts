@@ -17,7 +17,13 @@ import { portalScopeFromToken } from './portalScope';
 const configured = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 export const API_BASE = import.meta.env.DEV ? '' : (configured ?? '').replace(/\/+$/, '');
 
-const TIMEOUT_MS = 15000;
+// 30s (not 15s): the Render API can cold-start after a period of idle and take
+// ~30s to wake on the first request. A shorter timeout aborts that wake-up and
+// leaves the page stuck retrying (long skeletons + failed background calls).
+// 30s lets the first request ride out the boot. Real queries can't run longer
+// than the 12s server-side statement timeout, so this only ever waits on
+// connection / cold-start, never on a genuinely slow query.
+const TIMEOUT_MS = 30000;
 
 export type QueryValue = string | number | boolean | null | undefined;
 

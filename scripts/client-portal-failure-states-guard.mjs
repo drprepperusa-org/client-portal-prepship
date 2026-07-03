@@ -27,7 +27,7 @@ function assert(condition, message) {
 
 // ── API layer: bounded timeouts + failures surfaced, never swallowed ──
 const api = read('portal-client/src/lib/api.ts');
-assert(api.includes('const TIMEOUT_MS = 15000'), 'api.ts defines a bounded request timeout (15s)');
+assert(api.includes('const TIMEOUT_MS = 30000'), 'api.ts defines a bounded request timeout (30s — long enough to ride out a Render cold-start)');
 assert(api.includes('new AbortController()'), 'api.ts uses AbortController to bound requests');
 assert(
   api.includes('controller.abort()') && api.includes('clearTimeout('),

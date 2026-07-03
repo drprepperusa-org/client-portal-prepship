@@ -19,7 +19,13 @@ const queryClient = new QueryClient({
       gcTime: 30 * 60_000,
       refetchOnWindowFocus: false,
       refetchOnMount: false,
-      retry: 1,
+      // Render can cold-start (the API spins up on the first request after
+      // idle), so a call may need a couple of tries before the server is awake.
+      // Retry twice with a short backoff; combined with the 30s client timeout
+      // in api.ts this lets a waking API self-heal instead of surfacing an error
+      // or an endless skeleton.
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     },
   },
 });
