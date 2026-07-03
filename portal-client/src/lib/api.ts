@@ -119,6 +119,15 @@ export interface PortalItemIdentity {
   lineTotal?: number | string | null;
 }
 
+// CP-017 — one row of the backend-owned, always-reconciling cost summary. The
+// non-'total' rows sum to orderTotal to the cent (a balancing refund/adjustment
+// row absorbs any residual). Mirrors the server union in dto.ts.
+export interface PortalOrderCostSummaryRow {
+  label: string;
+  amount: number;
+  kind: 'subtotal' | 'discount' | 'shipping' | 'tax' | 'adjustment' | 'refund' | 'total';
+}
+
 export interface PortalOrder {
   id: number;
   clientId: number | null;
@@ -154,6 +163,10 @@ export interface PortalOrder {
   customerShippingRate?: number | string | null;
   // CP-014: backend-owned product subtotal (Σ line totals). Financially gated.
   productSubtotal?: number | string | null;
+  // CP-017: backend-owned cost summary. Non-'total' rows sum to orderTotal to the
+  // cent. Financially gated — undefined for callers without money access, so the
+  // panel renders nothing.
+  costSummary?: PortalOrderCostSummaryRow[];
 }
 
 export interface PortalShipment {

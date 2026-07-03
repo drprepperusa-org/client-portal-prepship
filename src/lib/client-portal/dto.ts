@@ -36,6 +36,122 @@ export function safeItems(value: unknown, includeFinancials = false): Array<Reco
   });
 }
 
+/** CP-017 — a single customer-facing cost-summary row. */
+export type PortalCostKind =
+  | 'subtotal'
+  | 'discount'
+  | 'shipping'
+  | 'tax'
+  | 'adjustment'
+  | 'refund'
+  | 'total';
+export interface PortalCostRow {
+  label: string;
+  amount: number; // dollars, 2-dp; negative for discount/refund/negative adjustment
+  kind: PortalCostKind;
+}
+
+/** Integer-cent helpers — money is never summed or compared as floats. */
+const toCents = (n: number): number => Math.round((Number(n) || 0) * 100);
+const fromCents = (c: number): number => c / 100;
+
+/** Read one numeric money value from the narrow whitelisted money shape.
+ *  Accepts number or numeric-string; returns 0 for missing / non-finite.
+ *  Deliberately receives a PRE-EXTRACTED whitelist, NEVER the raw jsonb column —
+ *  carrier/rate/account keys are structurally unreachable here. */
+function moneyKey(src: { taxAmount?: unknown } | undefined, key: 'taxAmount'): number {
+  const v = src?.[key];
+  if (v == null) return 0;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * CP-017 — build the customer-facing cost summary for an order.
+ *
+ * INVARIANT: Σ(cents of every non-'total' row) === round(orderTotal × 100), and
+ * the 'total' row === orderTotal, for EVERY provider. A single balancing row
+ * (refund on a cancelled negative residual, else a sign-aware adjustment)
+ * absorbs any residual, so the receipt always closes to the cent.
+ *
+ * Real sources only (all orders flow through ShipStation V1 — no native Shopify
+ * payload is stored): subtotal = Σ cents of the returned items' lineTotal (so it
+ * matches the per-item money(lineTotal) column); discount = Σ negative promo LINE
+ * items (safeItems strips them, so read the ORIGINAL items); shipping =
+ * customerShippingRate; tax = raw.taxAmount (manual orders only). The whitelisted
+ * `money` never carries carrier/service/account fields.
+ */
+function buildCostSummary(args: {
+  orderTotal: number | string | null | undefined;
+  orderStatus: string | null | undefined;
+  /** The DTO's returned items (post-safeItems, discount-stripped) with lineTotal
+   *  attached — the SAME array the panel renders. */
+  items: Array<Record<string, unknown>>;
+  /** The ORIGINAL items (pre-safeItems) so negative promo lines are visible. */
+  rawItems: unknown;
+  customerShippingRate: number | string | null | undefined;
+  /** Narrow, pre-extracted money whitelist — NEVER the raw jsonb column. */
+  money: { taxAmount?: unknown } | undefined;
+}): PortalCostRow[] {
+  const rows: PortalCostRow[] = [];
+  const totalCents = toCents(args.orderTotal as number);
+
+  // subtotal: Σ integer-cents of each returned line's lineTotal — equals the sum
+  // of the per-item money(lineTotal) column to the cent.
+  let subtotalCents = 0;
+  for (const it of args.items) {
+    const lt = Number(it.lineTotal);
+    if (Number.isFinite(lt)) subtotalCents += toCents(lt);
+  }
+  if (subtotalCents !== 0) {
+    rows.push({ label: 'Subtotal', amount: fromCents(subtotalCents), kind: 'subtotal' });
+  }
+
+  // discount: Σ negative promo LINE items (the only real discount source).
+  let discountCents = 0;
+  if (Array.isArray(args.rawItems)) {
+    for (const raw of args.rawItems) {
+      if (!isDiscountLine(raw)) continue;
+      const r = raw as Record<string, unknown>;
+      const price = Number(r.unitPrice ?? r.unit_price ?? r.price);
+      const qty = Number(r.quantity ?? r.qty ?? 1) || 1;
+      if (Number.isFinite(price)) discountCents += toCents(price * qty); // negative
+    }
+  }
+  if (discountCents !== 0) {
+    rows.push({ label: 'Discount', amount: fromCents(discountCents), kind: 'discount' });
+  }
+
+  const shippingCents = toCents(args.customerShippingRate as number);
+  if (shippingCents !== 0) {
+    rows.push({ label: 'Shipping', amount: fromCents(shippingCents), kind: 'shipping' });
+  }
+
+  const taxCents = toCents(moneyKey(args.money, 'taxAmount'));
+  if (taxCents !== 0) {
+    rows.push({ label: 'Tax', amount: fromCents(taxCents), kind: 'tax' });
+  }
+
+  // balancing row (the guarantee) — sign- and status-aware label.
+  const knownCents = rows.reduce((c, r) => c + toCents(r.amount), 0);
+  const residualCents = totalCents - knownCents;
+  if (Math.abs(residualCents) >= 1) {
+    const status = String(args.orderStatus ?? '').toLowerCase();
+    const isVoided = status === 'cancelled' || status === 'canceled' || status === 'refunded';
+    if (residualCents < 0 && isVoided) {
+      rows.push({ label: 'Refund', amount: fromCents(residualCents), kind: 'refund' });
+    } else if (residualCents < 0) {
+      rows.push({ label: 'Adjustment', amount: fromCents(residualCents), kind: 'adjustment' });
+    } else {
+      // A POSITIVE residual (unmodeled fee/surcharge/tip) must NOT read as a discount.
+      rows.push({ label: 'Other', amount: fromCents(residualCents), kind: 'adjustment' });
+    }
+  }
+
+  rows.push({ label: 'Order total', amount: fromCents(totalCents), kind: 'total' });
+  return rows;
+}
+
 export function toPortalInboundDto(
   row: InboundShipment & { clientName?: string | null },
   items: InboundItem[] = [],
@@ -139,27 +255,45 @@ export function toPortalOrderDto(
     shippingService: null,
     items,
     ...(options.includeFinancials
-      ? {
-          orderTotal: row.orderTotal,
-          shippingAmount: row.shippingAmount,
-          // Billed shipping (Σ billing_line_items shipping) — the customer-facing
-          // shipping charge, replacing carrier/service.
-          shippingCharged: row.shippingCharged ?? null,
+      ? (() => {
           // CP-018: the ONE customer-facing shipping value. Billed customer
           // shipping when > 0, else buyer-paid store shipping when > 0, else null
-          // → "—". NEVER the internal selected/label/best rate. The > 0 guards
-          // preserve today's OrderDetailPanel semantics: a '0.00' billed value
-          // means "not billed yet" and must fall through to store shipping, not
-          // render $0.00. Financially gated like the other money fields.
-          customerShippingRate:
+          // → "—". NEVER the internal selected/label/best rate. Computed once and
+          // reused for the shipping row of the cost summary.
+          const customerShippingRate =
             Number(row.shippingCharged) > 0
               ? row.shippingCharged
               : Number(row.shippingAmount) > 0
                 ? row.shippingAmount
-                : null,
-          // CP-014: backend-owned product subtotal (Σ line totals).
-          productSubtotal,
-        }
+                : null;
+          // CP-017: extract ONLY the money keys the summary needs from raw — never
+          // pass the full jsonb column (it carries marketplace carrier / rate /
+          // account fields that CP-009/CP-018 forbid surfacing).
+          const rawObj =
+            row.raw && typeof row.raw === 'object' ? (row.raw as Record<string, unknown>) : undefined;
+          return {
+            orderTotal: row.orderTotal,
+            shippingAmount: row.shippingAmount,
+            // Billed shipping (Σ billing_line_items shipping) — the customer-facing
+            // shipping charge, replacing carrier/service.
+            shippingCharged: row.shippingCharged ?? null,
+            customerShippingRate,
+            // CP-014: backend-owned product subtotal (Σ line totals).
+            productSubtotal,
+            // CP-017: backend-owned, always-reconciling cost summary. Non-'total'
+            // rows sum to orderTotal to the cent (a balancing refund/adjustment row
+            // absorbs any residual). Financially gated — absent for callers without
+            // money access, so the panel renders nothing.
+            costSummary: buildCostSummary({
+              orderTotal: row.orderTotal,
+              orderStatus: row.orderStatus,
+              items, // returned items (discount-stripped, lineTotal attached)
+              rawItems: row.items, // original items (negative promo lines intact)
+              customerShippingRate,
+              money: { taxAmount: rawObj?.taxAmount },
+            }),
+          };
+        })()
       : {}),
   };
 }

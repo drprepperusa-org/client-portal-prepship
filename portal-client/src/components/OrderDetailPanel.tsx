@@ -47,9 +47,8 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
   const shipping = [o.customerShippingRate]
     .map((value) => (value == null ? NaN : Number(value)))
     .find((n) => Number.isFinite(n) && n > 0);
-  // CP-014: product subtotal + per-line totals are backend-owned money fields.
-  // The panel renders them; it never multiplies unitPrice × quantity itself.
-  const subtotal = Number(o.productSubtotal ?? 0);
+  // CP-014/CP-017: per-line totals and the cost-summary rows are backend-owned
+  // money. The panel renders o.costSummary verbatim and does no receipt math.
   const lineTotal = (it: PortalOrder['items'][number]): number | null => {
     const t = Number(it.lineTotal);
     return Number.isFinite(t) ? t : null;
@@ -85,17 +84,22 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
         <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />
       </div>
 
-      {(o.orderTotal != null || subtotal > 0 || shipping != null) && (
+      {o.costSummary && o.costSummary.length > 0 && (
         <div className="space-y-2 rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Cost summary</p>
-          {subtotal > 0 && <CostRow label="Product subtotal" value={money(subtotal)} />}
-          {shipping != null && <CostRow label="Customer Shipping Rate" value={money(shipping)} />}
-          {o.orderTotal != null && (
-            <>
+          {/* CP-017: backend-owned rows rendered verbatim — the panel does no
+              receipt math. Non-total rows (subtotal, discount, shipping, tax,
+              refund/adjustment), then a divider + the bold Order total. Negative
+              amounts render as -$X.XX via money(). */}
+          {o.costSummary.filter((r) => r.kind !== 'total').map((r, i) => (
+            <CostRow key={i} label={r.label} value={money(r.amount)} />
+          ))}
+          {o.costSummary.filter((r) => r.kind === 'total').map((r, i) => (
+            <div key={`t-${i}`}>
               <div className="my-1 border-t border-slate-200/70" />
-              <CostRow label="Order total" value={money(o.orderTotal)} strong />
-            </>
-          )}
+              <CostRow label={r.label} value={money(r.amount)} strong />
+            </div>
+          ))}
         </div>
       )}
 
