@@ -100,6 +100,10 @@ export interface PortalItemIdentity {
   name: string | null;
   quantity: number | null;
   imageUrl?: string | null;
+  // CP-014: financially gated — present only when the caller can view money.
+  // The frontend renders these; it never multiplies unitPrice × quantity itself.
+  unitPrice?: number | string | null;
+  lineTotal?: number | string | null;
 }
 
 export interface PortalOrder {
@@ -132,7 +136,11 @@ export interface PortalOrder {
   items: PortalItemIdentity[];
   orderTotal?: number | string | null;
   shippingAmount?: number | string | null;
-  bestRateJson?: Record<string, unknown> | null;
+  // CP-014: backend-owned product subtotal (Σ line totals). Financially gated.
+  productSubtotal?: number | string | null;
+  // CP-015: backend-normalized best-rate amount. Financially gated. The raw
+  // provider bestRateJson is intentionally NOT part of the client DTO.
+  bestRateAmount?: number | string | null;
 }
 
 export interface PortalShipment {

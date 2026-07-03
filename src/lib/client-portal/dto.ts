@@ -234,6 +234,20 @@ export function toPortalOrderDto(
   const carrierCode = isAwaiting
     ? (bestRateCarrierCode ?? row.carrierCode)
     : (selectedRateCarrierCode ?? row.carrierCode ?? bestRateCarrierCode);
+  // CP-014: product line totals + subtotal are backend-owned money. Compute the
+  // per-line total (unitPrice × quantity) and the order product subtotal here so
+  // the frontend renders them instead of multiplying unit prices itself. Both
+  // are financially gated: with no financial access, safeItems omits unitPrice,
+  // no lineTotal is attached, and the subtotal stays 0 (and is not returned).
+  const items = safeItems(row.items, options.includeFinancials);
+  if (options.includeFinancials) {
+    for (const it of items) {
+      const price = Number(it.unitPrice);
+      const qty = Number(it.quantity) || 1;
+      it.lineTotal = Number.isFinite(price) ? price * qty : null;
+    }
+  }
+  const productSubtotal = items.reduce((sum, it) => sum + (Number(it.lineTotal) || 0), 0);
   return {
     id: row.id,
     clientId: row.clientId,
@@ -261,7 +275,7 @@ export function toPortalOrderDto(
     selectedRate: options.includeFinancials
       ? selectedRate
       : selectedRate && { ...selectedRate, carrierCode: null, serviceCode: null, serviceName: null },
-    items: safeItems(row.items, options.includeFinancials),
+    items,
     ...(options.includeFinancials
       ? {
           // Carrier-account nickname is operator/internal — gated like the
@@ -269,7 +283,12 @@ export function toPortalOrderDto(
           shippingAccount,
           orderTotal: row.orderTotal,
           shippingAmount: row.shippingAmount,
-          bestRateJson,
+          // CP-014: backend-owned product subtotal (Σ line totals).
+          productSubtotal,
+          // CP-015: normalized best-rate amount. The frontend renders this and
+          // never parses raw bestRateJson; the raw provider payload is not
+          // exposed on the client DTO at all.
+          bestRateAmount: rateAmountFromRecord(br),
         }
       : {}),
   };

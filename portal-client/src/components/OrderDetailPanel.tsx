@@ -17,26 +17,6 @@ export function fmtWeight(oz: number | null): string {
   return `${rem} oz`;
 }
 
-/** Pull the numeric best-rate total out of either bestRateJson shape. */
-export function bestRateAmount(json: Record<string, unknown> | null | undefined): number | null {
-  if (!json || typeof json !== 'object') return null;
-  const j = json as Record<string, unknown>;
-  for (const k of ['shipmentCost', 'rate', 'amount', 'cost', 'totalCost', 'price', 'total']) {
-    const n = Number(j[k]);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  const amt = (k: string): number => {
-    const v = j[k];
-    if (v && typeof v === 'object' && 'amount' in (v as Record<string, unknown>)) {
-      const n = Number((v as Record<string, unknown>).amount);
-      return Number.isFinite(n) ? n : 0;
-    }
-    return 0;
-  };
-  const ssTotal = amt('shipping_amount') + amt('other_amount') + amt('confirmation_amount');
-  return ssTotal > 0 ? ssTotal : null;
-}
-
 function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
@@ -61,14 +41,18 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
 export function OrderDetailPanel({ o }: { o: PortalOrder }) {
   const meta = orderStatusMeta(o.orderStatus);
-  const best = bestRateAmount(o.bestRateJson);
+  // CP-015: the best-rate amount is a backend-normalized DTO field — no raw
+  // bestRateJson parsing on the client.
+  const best = o.bestRateAmount != null ? Number(o.bestRateAmount) : null;
   const dest = [o.shipToCity, o.shipToState].filter(Boolean).join(', ') || '—';
   const service = o.shippingService ?? o.serviceCode ?? null;
-  const lineTotal = (it: PortalOrder['items'][number]) => {
-    const p = Number((it as { unitPrice?: number | string | null }).unitPrice);
-    return Number.isFinite(p) ? p * (Number(it.quantity) || 1) : null;
+  // CP-014: product subtotal + per-line totals are backend-owned money fields.
+  // The panel renders them; it never multiplies unitPrice × quantity itself.
+  const subtotal = Number(o.productSubtotal ?? 0);
+  const lineTotal = (it: PortalOrder['items'][number]): number | null => {
+    const t = Number(it.lineTotal);
+    return Number.isFinite(t) ? t : null;
   };
-  const subtotal = o.items.reduce((n, it) => n + (lineTotal(it) ?? 0), 0);
 
   return (
     <div className="space-y-5">
