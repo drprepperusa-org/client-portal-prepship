@@ -55,15 +55,9 @@ check(
   clientOrder.carrierCode === null && clientOrder.serviceCode === null && clientOrder.shippingService === null,
   'client order DTO exposes no carrier code / service code / service name',
 );
-check(
-  !clientOrder.selectedRate ||
-    (clientOrder.selectedRate.carrierCode === null &&
-      clientOrder.selectedRate.serviceCode === null &&
-      clientOrder.selectedRate.serviceName === null),
-  'client order DTO selectedRate carries no carrier/service identity',
-);
+check(!('selectedRate' in clientOrder), 'CP-018: client order DTO no longer exposes selectedRate at all');
 check(clientOrder.trackingNumber === '1Z999', 'client order DTO keeps the tracking number');
-check(!('shippingAccount' in clientOrder), 'client order DTO still omits shippingAccount (CP-001 intact)');
+check(!('shippingAccount' in clientOrder), 'client order DTO omits the provider-account nickname (CP-001/CP-018)');
 // CP-009 sweep: the client portal is customer-facing, so carrier/service is
 // NEVER exposed — not even to financials-enabled clients or admins. Money (order
 // total, rate amount) still flows for financial viewers.
@@ -72,14 +66,11 @@ check(
   adminOrder.carrierCode === null && adminOrder.serviceCode === null && adminOrder.shippingService === null,
   'financials/admin order DTO ALSO exposes no carrier / service (customer-facing surface)',
 );
+check(!('selectedRate' in adminOrder), 'CP-018: financials/admin order DTO no longer exposes selectedRate at all');
+check(!('shippingAccount' in adminOrder), 'CP-018: financials/admin order DTO no longer exposes the provider-account nickname');
 check(
-  !adminOrder.selectedRate ||
-    (adminOrder.selectedRate.carrierCode === null && adminOrder.selectedRate.serviceCode === null && adminOrder.selectedRate.serviceName === null),
-  'financials/admin order DTO selectedRate carries no carrier/service identity',
-);
-check(
-  adminOrder.orderTotal != null && adminOrder.selectedRate?.amount != null,
-  'financials order DTO still exposes money (order total + selected-rate amount)',
+  adminOrder.orderTotal != null && adminOrder.customerShippingRate != null,
+  'financials order DTO still exposes money (order total + customer shipping rate)',
 );
 
 // 2) Shipment DTO: same gate.
@@ -169,6 +160,27 @@ const ordersListSource = read('src/services/orders-list.ts');
 check(
   ordersListSource.includes('CARRIER_IDENTITY_FIELD_KEYS') && ordersListSource.includes("'providerAccountNickname'"),
   'orders-list owns the carrier-identity redaction key set',
+);
+// CP-018: the invoice-details read-model must never ship the real carrier code
+// on the wire (the /invoice-details JSON was leaking max(o.carrier_code), gated
+// only by canViewFinancials — a client-visible carrier leak).
+const invoiceDetailsSource = read('src/lib/client-portal/read-models/invoice-details.ts');
+check(
+  !/carrierCode:\s*row\.carrier_code/.test(invoiceDetailsSource) && !/max\(o\.carrier_code\)/.test(invoiceDetailsSource),
+  'CP-018: invoice-details DTO never ships the real carrier code (nulled at source, SQL select dropped)',
+);
+const clientApiSource = read('portal-client/src/lib/api.ts');
+check(
+  !/interface BillingInvoiceDetailRow \{[^}]*carrierCode/.test(clientApiSource),
+  'CP-018: BillingInvoiceDetailRow no longer declares carrierCode',
+);
+// CP-018: /analysis/sku-orders reuses a service shared with the operator drawer
+// (which keeps carrier/service), so the client-portal ROUTE must strip carrier/
+// service from every row before returning them.
+const skuOrdersRoute = read('src/routes/client-portal/analysis.ts');
+check(
+  /carrier_code:\s*null,\s*service_code:\s*null/.test(skuOrdersRoute),
+  'CP-018: /analysis/sku-orders strips carrier_code + service_code at the client-portal boundary',
 );
 
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };

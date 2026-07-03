@@ -10,93 +10,6 @@ function iso(value: Date | string | null | undefined): string | null {
   return value;
 }
 
-// Friendly carrier service names for the "Shipping Account" sub-line, matching
-// v4's display. The best rate usually carries a friendly serviceName/
-// service_type already; this map only covers orders that have nothing but a
-// raw service_code (e.g. plain "ups_ground" on a synced shipment).
-const SERVICE_NAME_BY_CODE: Record<string, string> = {
-  ups_ground: 'UPS Ground',
-  ups_standard: 'UPS Standard',
-  ups_surepost_1_lb_or_greater: 'UPS Ground Saver (1 lb+)',
-  ups_surepost_less_than_1_lb: 'UPS Ground Saver (< 1 lb)',
-  ups_surepost_bound_printed_matter: 'UPS Ground Saver (BPM)',
-  ups_surepost_media: 'UPS Ground Saver (Media)',
-  ups_next_day_air: 'UPS Next Day Air',
-  ups_next_day_air_saver: 'UPS Next Day Air Saver',
-  ups_next_day_air_early_am: 'UPS Next Day Air Early',
-  ups_2nd_day_air: 'UPS 2nd Day Air',
-  ups_2nd_day_air_am: 'UPS 2nd Day Air AM',
-  ups_3_day_select: 'UPS 3 Day Select',
-  ups_worldwide_saver: 'UPS Worldwide Saver',
-  ups_worldwide_expedited: 'UPS Worldwide Expedited',
-  usps_ground_advantage: 'USPS Ground Advantage',
-  usps_parcel_select: 'USPS Parcel Select',
-  usps_parcel_select_ground: 'USPS Parcel Select',
-  usps_media_mail: 'USPS Media Mail',
-  usps_library_mail: 'USPS Library Mail',
-  usps_priority_mail: 'USPS Priority Mail',
-  usps_priority_mail_express: 'USPS Priority Mail Express',
-  usps_first_class_mail: 'USPS First Class',
-  fedex_ground: 'FedEx Ground',
-  fedex_home_delivery: 'FedEx Home Delivery',
-  fedex_2day: 'FedEx 2Day',
-  fedex_2day_am: 'FedEx 2Day AM',
-  fedex_express_saver: 'FedEx Express Saver',
-  fedex_standard_overnight: 'FedEx Standard Overnight',
-  fedex_priority_overnight: 'FedEx Priority Overnight',
-  fedex_first_overnight: 'FedEx First Overnight',
-  fedex_international_economy: 'FedEx International Economy',
-  fedex_international_priority: 'FedEx International Priority',
-};
-
-/** Strip the ® mark and collapse whitespace from a friendly service name. */
-function cleanServiceName(value: string): string {
-  return value.replace(/®/g, '').replace(/\s+/g, ' ').trim();
-}
-
-/** Resolve a friendly service name from a raw service code. */
-function friendlyServiceFromCode(code?: string | null): string | null {
-  if (!code) return null;
-  const c = code.toLowerCase().trim();
-  if (SERVICE_NAME_BY_CODE[c]) return SERVICE_NAME_BY_CODE[c];
-  // Generic prettify: "some_service_code" → "Some Service Code".
-  const pretty = c.replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
-  return pretty || null;
-}
-
-function stringFromRecord(record: Record<string, unknown> | null, keys: string[]): string | null {
-  if (!record) return null;
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value;
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  }
-  return null;
-}
-
-function numberFromRecord(record: Record<string, unknown> | null, keys: string[]): number | null {
-  if (!record) return null;
-  for (const key of keys) {
-    const direct = Number(record[key]);
-    if (Number.isFinite(direct) && direct > 0) return direct;
-    const value = record[key];
-    if (value && typeof value === 'object' && 'amount' in (value as Record<string, unknown>)) {
-      const nested = Number((value as Record<string, unknown>).amount);
-      if (Number.isFinite(nested) && nested > 0) return nested;
-    }
-  }
-  return null;
-}
-
-function rateAmountFromRecord(record: Record<string, unknown> | null): number | null {
-  const direct = numberFromRecord(record, ['cost', 'rate', 'amount', 'shipmentCost', 'shipment_cost', 'totalCost', 'total']);
-  if (direct != null) return direct;
-  const shipping = numberFromRecord(record, ['shipping_amount']) ?? 0;
-  const other = numberFromRecord(record, ['other_amount']) ?? 0;
-  const confirmation = numberFromRecord(record, ['confirmation_amount']) ?? 0;
-  const total = shipping + other + confirmation;
-  return total > 0 ? total : null;
-}
 
 export function safeItems(value: unknown, includeFinancials = false): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
@@ -159,69 +72,16 @@ export function toPortalOrderDto(
     clientName?: string | null;
     storeName?: string | null;
     override?: OrderOverrides | null;
-    /**
-     * Resolved nickname of the account on the order's active shipment
-     * (shipments.provider_account_id → nickname). Authoritative for
-     * shipped/cancelled orders; supplied by the route layer.
-     */
-    shipmentAccount?: string | null;
     /** Billed shipping for this order (Σ billing_line_items line_type='shipping')
      *  — the customer-facing shipping charge, supplied by the route layer. */
     shippingCharged?: number | string | null;
-    latestShipment?: {
-      carrierCode?: string | null;
-      serviceCode?: string | null;
-      serviceName?: string | null;
-      amount?: number | string | null;
-      selectedRateJson?: Record<string, unknown> | null;
-    } | null;
   },
   options: { includeFinancials?: boolean } = {}
 ) {
-  const bestRateJson = row.override?.bestRateJson ?? null;
-  // "Shipping Account" source-of-truth chain (per parity/ORDERS_VIEW_COLUMN_TRACE):
-  //   1. manual override (operator-set)              — always wins
-  //   2. the actual account billed on the shipment   — shipped/cancelled
-  //   3. the selected/best rate's carrier account     — awaiting (from rate JSON)
-  // bestRateJson comes in two shapes: the worker's camelCase shape
-  // (carrierNickname) and our backfill's ShipStation snake_case shape
-  // (carrier_nickname). Read both so the account fills regardless of writer.
-  const br = bestRateJson && typeof bestRateJson === 'object' ? (bestRateJson as Record<string, unknown>) : null;
-  const bestRateAccount =
-    (br?.carrier_nickname as string | undefined) ?? (br?.carrierNickname as string | undefined) ?? null;
-  const shippingAccount =
-    row.override?.shippingAccount ?? row.shipmentAccount ?? bestRateAccount ?? null;
-  const isAwaiting = row.orderStatus === 'awaiting_shipment';
-  const selectedRateJson =
-    row.latestShipment?.selectedRateJson && typeof row.latestShipment.selectedRateJson === 'object'
-      ? (row.latestShipment.selectedRateJson as Record<string, unknown>)
-      : null;
-  const selectedRateCarrierCode =
-    row.latestShipment?.carrierCode ??
-    stringFromRecord(selectedRateJson, ['carrierCode', 'carrier_code', 'carrier']) ??
-    null;
-  const selectedRateServiceCode =
-    row.latestShipment?.serviceCode ??
-    stringFromRecord(selectedRateJson, ['serviceCode', 'service_code']) ??
-    null;
-  const selectedRateServiceName =
-    row.latestShipment?.serviceName ??
-    stringFromRecord(selectedRateJson, ['serviceName', 'service_name', 'service_type']) ??
-    friendlyServiceFromCode(selectedRateServiceCode);
-  const selectedRateAmount =
-    row.latestShipment?.amount != null && Number(row.latestShipment.amount) > 0
-      ? row.latestShipment.amount
-      : rateAmountFromRecord(selectedRateJson);
-  const selectedRate =
-    !isAwaiting && (selectedRateCarrierCode || selectedRateServiceCode || selectedRateServiceName || selectedRateAmount != null)
-      ? {
-          carrierCode: selectedRateCarrierCode,
-          serviceCode: selectedRateServiceCode,
-          serviceName: selectedRateServiceName ? cleanServiceName(selectedRateServiceName) : null,
-          amount: options.includeFinancials ? selectedRateAmount : null,
-          source: 'shipment' as const,
-        }
-      : null;
+  // CP-018: the client portal shows ONLY the customer shipping rate (billed
+  // customer shipping, falling back to buyer-paid store shipping). The internal
+  // selected/label/best rate, carrier, service, and provider-account nickname
+  // are never computed into or projected onto the client DTO.
   // CP-014: product line totals + subtotal are backend-owned money. Compute the
   // per-line total (unitPrice × quantity) and the order product subtotal here so
   // the frontend renders them instead of multiplying unit prices itself. Both
@@ -277,24 +137,28 @@ export function toPortalOrderDto(
     weightOz: row.weightOz,
     rateWeightOz: row.override?.rateWeightOz ?? null,
     shippingService: null,
-    selectedRate: selectedRate && { ...selectedRate, carrierCode: null, serviceCode: null, serviceName: null },
     items,
     ...(options.includeFinancials
       ? {
-          // Carrier-account nickname is operator/internal — gated like the
-          // financial fields so the client-facing portal never exposes it (CP-001).
-          shippingAccount,
           orderTotal: row.orderTotal,
           shippingAmount: row.shippingAmount,
           // Billed shipping (Σ billing_line_items shipping) — the customer-facing
-          // shipping charge shown on the order detail, replacing carrier/service.
+          // shipping charge, replacing carrier/service.
           shippingCharged: row.shippingCharged ?? null,
+          // CP-018: the ONE customer-facing shipping value. Billed customer
+          // shipping when > 0, else buyer-paid store shipping when > 0, else null
+          // → "—". NEVER the internal selected/label/best rate. The > 0 guards
+          // preserve today's OrderDetailPanel semantics: a '0.00' billed value
+          // means "not billed yet" and must fall through to store shipping, not
+          // render $0.00. Financially gated like the other money fields.
+          customerShippingRate:
+            Number(row.shippingCharged) > 0
+              ? row.shippingCharged
+              : Number(row.shippingAmount) > 0
+                ? row.shippingAmount
+                : null,
           // CP-014: backend-owned product subtotal (Σ line totals).
           productSubtotal,
-          // CP-015: normalized best-rate amount. The frontend renders this and
-          // never parses raw bestRateJson; the raw provider payload is not
-          // exposed on the client DTO at all.
-          bestRateAmount: rateAmountFromRecord(br),
         }
       : {}),
   };

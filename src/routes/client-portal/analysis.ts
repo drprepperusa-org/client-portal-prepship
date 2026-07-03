@@ -105,7 +105,13 @@ app.get('/analysis/sku-orders', async (c) => {
   });
 
   await recordPortalAudit('portal.analysis.sku_orders', scope, { inventoryId, orders: result.orders.length });
-  return c.json(result);
+  // CP-018: the client portal never exposes carrier/service identity. The shared
+  // sku-orders service keeps carrier_code/service_code for the operator inventory
+  // drawer; strip them from every row here at the client-portal boundary.
+  return c.json({
+    ...result,
+    orders: result.orders.map((o) => ({ ...o, carrier_code: null, service_code: null })),
+  });
 });
 
 app.get('/daily-shipments', async (c) => {

@@ -142,25 +142,18 @@ export interface PortalOrder {
   serviceCode: string | null;
   trackingNumber: string | null;
   weightOz: number | null;
-  shippingAccount?: string | null;
   shippingService?: string | null;
-  selectedRate?: {
-    carrierCode: string | null;
-    serviceCode: string | null;
-    serviceName: string | null;
-    amount: number | string | null;
-    source: 'shipment' | 'selected_rate';
-  } | null;
   items: PortalItemIdentity[];
   orderTotal?: number | string | null;
   shippingAmount?: number | string | null;
   // Billed shipping (customer-facing shipping charge). Financially gated.
   shippingCharged?: number | string | null;
+  // CP-018: the ONE customer-facing shipping value (billed customer shipping,
+  // falling back to buyer-paid store shipping). Financially gated. The internal
+  // selected / label / best rate and provider account are never in the client DTO.
+  customerShippingRate?: number | string | null;
   // CP-014: backend-owned product subtotal (Σ line totals). Financially gated.
   productSubtotal?: number | string | null;
-  // CP-015: backend-normalized best-rate amount. Financially gated. The raw
-  // provider bestRateJson is intentionally NOT part of the client DTO.
-  bestRateAmount?: number | string | null;
 }
 
 export interface PortalShipment {
@@ -169,8 +162,6 @@ export interface PortalShipment {
   orderNumber: string | null;
   clientName: string | null;
   storeName: string | null;
-  carrierCode: string | null;
-  serviceCode?: string | null;
   trackingNumber: string | null;
   labelTracking: string | null;
   shipDate: string | null;
@@ -387,7 +378,6 @@ export interface BillingInvoiceDetailRow {
    *  line-items display standard; itemNames/skus stay for exports. */
   items?: PortalItemIdentity[];
   skus?: string | null;
-  carrierCode?: string | null;
   boxSize?: string | null;
   shipDate?: string | null;
   qty?: number | string | null;
@@ -439,8 +429,6 @@ export interface SkuOrderRow {
   order_date: string | null;
   order_status: string;
   ship_to_name: string | null;
-  carrier_code: string | null;
-  service_code: string | null;
   qty: number;
   unit_price: string | null;
   item_name: string | null;

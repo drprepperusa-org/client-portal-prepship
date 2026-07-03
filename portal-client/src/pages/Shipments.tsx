@@ -27,17 +27,11 @@ function clientAccent(name: string | null): Accent {
   return CLIENT_ACCENTS[h];
 }
 
-/** Build a carrier tracking-page URL from the carrier code + tracking number. */
-function trackingUrl(carrierCode: string | null | undefined, tracking: string | null | undefined): string | null {
+/** CP-018: neutral tracker for every shipment — takes only the tracking number,
+ *  so the client-facing tracking link never reveals the carrier. */
+function trackingUrl(tracking: string | null | undefined): string | null {
   if (!tracking) return null;
-  const c = (carrierCode ?? '').toLowerCase();
-  const t = encodeURIComponent(tracking);
-  if (c.includes('ups')) return `https://www.ups.com/track?loc=en_US&tracknum=${t}`;
-  if (c.includes('usps') || c.includes('stamps')) return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${t}`;
-  if (c.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${t}`;
-  if (c.includes('dhl')) return `https://www.dhl.com/us-en/home/tracking/tracking-parcel.html?submit=1&tracking-id=${t}`;
-  // Universal fallback (17track) for unknown / custom carriers.
-  return `https://t.17track.net/en#nums=${t}`;
+  return `https://t.17track.net/en#nums=${encodeURIComponent(tracking)}`;
 }
 
 // Server-side status filter: values match the backend's SHIPMENT_STATUS_FILTERS,
@@ -126,8 +120,8 @@ export default function Shipments() {
       },
       {
         key: 'shippingCost',
-        header: 'Shipping Cost',
-        defaultWidth: 130,
+        header: 'Customer Shipping Rate',
+        defaultWidth: 170,
         className: 'text-right',
         render: (s) => <span className="font-semibold text-ink tnum">{s.shippingCost != null ? money(s.shippingCost) : '—'}</span>,
         sortAccessor: (s) => Number(s.shippingCost) || 0,
@@ -138,7 +132,7 @@ export default function Shipments() {
         defaultWidth: 190,
         render: (s) => {
           const tn = s.trackingNumber ?? s.labelTracking;
-          const url = trackingUrl(s.carrierCode, tn);
+          const url = trackingUrl(tn);
           if (!tn) return <span className="text-ink-3">—</span>;
           return url ? (
             <a
@@ -267,9 +261,9 @@ export default function Shipments() {
               )}
             </div>
 
-            {trackingUrl(selected.carrierCode, selected.trackingNumber ?? selected.labelTracking) && (
+            {trackingUrl(selected.trackingNumber ?? selected.labelTracking) && (
               <a
-                href={trackingUrl(selected.carrierCode, selected.trackingNumber ?? selected.labelTracking)!}
+                href={trackingUrl(selected.trackingNumber ?? selected.labelTracking)!}
                 target="_blank"
                 rel="noreferrer"
                 className="focus-ring flex w-full items-center justify-center gap-2 rounded-glass-sm bg-gradient-to-br from-brand-400 to-brand-600 py-2.5 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95"
@@ -281,7 +275,7 @@ export default function Shipments() {
             {/* CP-009: customer-facing — the carrier identity is never shown.
                 Only the customer-safe shipping cost + dates + tracking status. */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Shipping Cost" value={selected.shippingCost != null ? money(selected.shippingCost) : '—'} />
+              <Field label="Customer Shipping Rate" value={selected.shippingCost != null ? money(selected.shippingCost) : '—'} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
               {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
               {selected.trackingStatusDetail && !selected.deliveredAt && (

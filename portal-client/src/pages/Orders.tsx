@@ -52,8 +52,8 @@ function fmtDateTime(iso: string | null): { date: string; time: string } {
   };
 }
 
-function selectedRateAmount(o: PortalOrder): number | null {
-  const amount = Number(o.selectedRate?.amount);
+function customerShippingRate(o: PortalOrder): number | null {
+  const amount = Number(o.customerShippingRate);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
@@ -241,20 +241,21 @@ export default function Orders() {
     },
     { key: 'weight', header: 'Weight', defaultWidth: 110, render: (o) => <span className="tnum text-ink-2">{fmtWeight(o.weightOz)}</span>, sortAccessor: (o) => o.weightOz ?? 0 },
     {
-      // CP-009: shows the selected shipping COST only — never the carrier or
-      // service (those are redacted from the client DTO). Amount is financially
-      // gated (null → "—" for clients without financial access).
-      key: 'selectedRate',
-      header: 'Shipping',
-      defaultWidth: 140,
+      // CP-018: the client sees the CUSTOMER shipping rate only — billed customer
+      // shipping (fallback buyer-paid store shipping), never the internal
+      // selected/best/label rate, carrier, or service. Financially gated
+      // (null → "—" for clients without financial access).
+      key: 'customerShipping',
+      header: 'Customer Shipping Rate',
+      defaultWidth: 170,
       className: 'text-right',
       render: (o) => {
-        const amount = selectedRateAmount(o);
+        const amount = customerShippingRate(o);
         return amount != null
           ? <span className="font-semibold text-brand-700 tnum">{money(amount)}</span>
           : <span className="text-xs text-ink-3">—</span>;
       },
-      sortAccessor: (o) => selectedRateAmount(o) ?? -1,
+      sortAccessor: (o) => customerShippingRate(o) ?? -1,
     },
   ];
 

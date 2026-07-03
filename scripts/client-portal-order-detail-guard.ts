@@ -60,30 +60,38 @@ check(admin.productSubtotal === 30, 'CP-014: backend product subtotal = Σ line 
 check(admin.items.find((i: any) => i.sku === 'A')?.lineTotal === 15, 'CP-014: per-line total is backend-owned (unitPrice × qty)');
 check(!admin.items.some((i: any) => i.sku === 'PROMO'), 'CP-014: discount/promo lines excluded from the item list');
 
-// ── CP-015: financial DTO normalizes raw rate JSON into a numeric amount ──
-check(admin.bestRateAmount === 5, 'CP-015: backend normalizes bestRateJson → bestRateAmount (4 + 1 = 5)');
-check(!('bestRateJson' in admin), 'CP-015: raw bestRateJson is not exposed on the client DTO');
+// ── CP-018: the internal selected/best rate is gone from the client DTO ──
+check(!('bestRateAmount' in admin), 'CP-018: bestRateAmount is no longer exposed on the client DTO');
+check(!('selectedRate' in admin), 'CP-018: selectedRate is no longer exposed on the client DTO');
+check(!('bestRateJson' in admin), 'CP-018: raw bestRateJson is not exposed on the client DTO');
 
-// ── Order detail: full ship-to address (ungated) + billed shipping (gated) ──
+// ── Order detail: full ship-to address (ungated) + customer shipping (gated) ──
 check(admin.shipToLine1 === '123 Main St' && admin.shipToLine2 === 'Apt 4', 'order detail: DTO exposes full ship-to street lines from raw');
 check(admin.shipToPostalCode === '02101' && admin.shipToCountry === 'US', 'order detail: DTO exposes ship-to postal code + country');
 check(admin.shippingCharged === '5.99', 'order detail: DTO exposes backend billed shipping (shippingCharged)');
+// CP-018: customerShippingRate = billed customer shipping when > 0.
+check(admin.customerShippingRate === '5.99', 'CP-018: customerShippingRate = billed customer shipping when > 0');
+// CP-018: a '0.00' billed value means "not billed yet" → falls through to the
+// buyer-paid store shipping, never renders $0.00.
+const zeroBilled: any = dto.toPortalOrderDto({ ...baseRow, shippingCharged: '0.00', shippingAmount: '5.00' }, { includeFinancials: true });
+check(zeroBilled.customerShippingRate === '5.00', 'CP-018: $0.00 billed shipping falls through to store shipping ($5.00), not $0.00');
 
 // ── Redaction: non-financial DTO omits all product/rate money ──
 const client: any = dto.toPortalOrderDto(baseRow, { includeFinancials: false });
 check(!('productSubtotal' in client), 'CP-014: non-financial DTO omits productSubtotal');
 check(client.items.every((i: any) => i.unitPrice === undefined && i.lineTotal === undefined), 'CP-014: non-financial DTO omits unitPrice/lineTotal');
-check(!('bestRateAmount' in client) && !('bestRateJson' in client), 'CP-015: non-financial DTO omits best-rate money entirely');
+check(!('bestRateAmount' in client) && !('bestRateJson' in client), 'CP-018: non-financial DTO omits best-rate money entirely');
 check(client.shipToLine1 === '123 Main St' && client.shipToPostalCode === '02101', 'order detail: ship-to address is NOT financially gated (client sees their own recipient)');
 check(!('shippingCharged' in client), 'order detail: shippingCharged is financially gated');
+check(!('customerShippingRate' in client), 'CP-018: customerShippingRate is financially gated (omitted for non-financial clients)');
 
 // ── Frontend: OrderDetailPanel renders backend fields, no local math/JSON parse ──
 const panel = read('portal-client/src/components/OrderDetailPanel.tsx');
 check(panel.includes('Number(o.productSubtotal ?? 0)'), 'CP-014: panel renders backend productSubtotal');
 check(/Number\(it\.lineTotal\)/.test(panel), 'CP-014: panel renders backend per-line total');
 check(!panel.includes('p * (Number(it.quantity) || 1)'), 'CP-014: panel no longer multiplies unitPrice × quantity');
-check(panel.includes('o.bestRateAmount'), 'CP-015: panel reads backend-normalized o.bestRateAmount');
-check(!panel.includes('bestRateAmount(o.bestRateJson)') && !panel.includes('o.bestRateJson'), 'CP-015: panel no longer parses raw bestRateJson');
+check(!panel.includes('o.bestRateAmount'), 'CP-018: panel no longer reads the internal best-rate amount');
+check(!panel.includes('o.bestRateJson') && !panel.includes('o.selectedRate'), 'CP-018: panel no longer parses raw bestRateJson or reads selectedRate');
 
 // ── CP-009: the customer-facing order detail never shows carrier or service ──
 check(!panel.includes('CarrierBadge') && !panel.includes('o.carrierCode'), 'CP-009: panel does not render the carrier');
@@ -92,7 +100,8 @@ check(!panel.includes('o.shippingAccount'), 'CP-001: panel does not render the s
 
 // ── Order detail: full ship-to address + shipping amount + order number ──
 check(panel.includes('o.shipToLine1') && panel.includes('o.shipToPostalCode') && panel.includes('o.shipToCountry'), 'order detail: panel renders the full ship-to address');
-check(panel.includes('o.shippingCharged') && /label="Shipping"/.test(panel), 'order detail: panel shows the shipping amount (not carrier/service)');
+check(panel.includes('o.customerShippingRate') && /label="Customer Shipping Rate"/.test(panel), 'CP-018: panel shows the Customer Shipping Rate (not carrier/service/internal rate)');
+check(!panel.includes('o.shippingCharged, o.shippingAmount'), 'CP-018: panel no longer three-tiers billed/store/best — it reads the single backend field');
 check(panel.includes('o.orderNumber'), 'order detail: panel shows the order number');
 
 if (failed) process.exit(1);

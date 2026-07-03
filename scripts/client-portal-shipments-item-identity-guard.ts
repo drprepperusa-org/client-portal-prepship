@@ -93,17 +93,17 @@ assert(
     shipmentsPage.includes("key: 'sku'") &&
     shipmentsPage.includes("header: 'SKU'") &&
     shipmentsPage.includes("key: 'shippingCost'") &&
-    shipmentsPage.includes("header: 'Shipping Cost'") &&
+    shipmentsPage.includes("header: 'Customer Shipping Rate'") &&
     !shipmentsPage.includes("key: 'service'") &&
     !shipmentsPage.includes("header: 'Service'") &&
     !shipmentsPage.includes('serviceCode'),
-  'Shipments table shows Item Name, SKU, and Shipping Cost columns without Service',
+  'CP-018: Shipments table shows Item Name, SKU, and Customer Shipping Rate columns without Service',
 );
 
 assert(
   shipmentsPage.includes('money(s.shippingCost)') &&
     shipmentsPage.includes('money(selected.shippingCost)') &&
-    shipmentsPage.includes('Field label="Shipping Cost"') &&
+    shipmentsPage.includes('Field label="Customer Shipping Rate"') &&
     !shipmentsPage.includes('Field label="Service"') &&
     !shipmentsPage.includes('serviceCode'),
   'Shipments drawer shows shipping cost and never renders Service',

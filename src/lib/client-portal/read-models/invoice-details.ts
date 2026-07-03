@@ -275,7 +275,6 @@ type PortalInvoiceDetailRow = {
   item_names: string | null;
   items_json: string | null;
   skus: string | null;
-  carrier_code: string | null;
   best_rate_dims: string | null;
   dim_l: string | null;
   dim_w: string | null;
@@ -362,7 +361,6 @@ export async function portalInvoiceDetails(
           and oi.sku is not null
           and oi.sku <> ''
       ) as skus,
-      max(o.carrier_code) as carrier_code,
       max(oo.best_rate_dims) as best_rate_dims,
       max(o.raw->'dimensions'->>'length') as dim_l,
       max(o.raw->'dimensions'->>'width') as dim_w,
@@ -413,7 +411,9 @@ export async function portalInvoiceDetails(
     itemNames: row.item_names,
     items: safeItems(parseItemsJson(row.items_json), scope.canViewFinancials),
     skus: row.skus,
-    carrierCode: row.carrier_code,
+    // CP-018: the client portal never exposes the carrier — not even on the wire.
+    // (Matches the heritage-override branch above, which already hardcodes null.)
+    carrierCode: null,
     boxSize: row.best_rate_dims ?? dimsFromRaw(row.dim_l, row.dim_w, row.dim_h),
     shipDate: row.ship_date,
     qty: row.qty,

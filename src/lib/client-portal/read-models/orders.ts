@@ -3,7 +3,6 @@ import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderOverrides, orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
-import { getProviderAccountNicknames } from '../../../services/rates';
 import { toPortalOrderDto } from '../dto';
 import {
   activeClientPredicate,
@@ -41,50 +40,14 @@ export async function listPortalOrders(
       override: orderOverrides,
       clientName: clients.name,
       storeIds: clients.storeIds,
-      // Active (non-voided) shipment's billed account for this order — drives
-      // the "Shipping Account" column for shipped/cancelled orders.
-      shipAcctNickname: sql<string | null>`(
-        select ${shipments.providerAccountNickname} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipAcctId: sql<number | null>`(
-        select ${shipments.providerAccountId} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-          and ${shipments.providerAccountId} is not null
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipCarrierCode: sql<string | null>`(
-        select coalesce(${shipments.labelCarrier}, ${shipments.carrierCode}) from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipServiceCode: sql<string | null>`(
-        select ${shipments.serviceCode} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipServiceName: sql<string | null>`(
-        select ${shipments.labelService} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipSelectedAmount: sql<string | null>`(
-        select coalesce(${shipments.labelCost}, ${shipments.cost} + coalesce(${shipments.otherCost}, 0), ${shipments.cost})::text from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
-      )`,
-      shipSelectedRateJson: sql<Record<string, unknown> | null>`(
-        select ${shipments.selectedRateJson} from ${shipments}
-        where ${shipments.orderId} = ${orders.id} and ${shipments.voided} = false
-        order by ${shipments.shipDate} desc nulls last, ${shipments.id} desc
-        limit 1
+      // CP-018: billed customer shipping (Σ billing_line_items line_type='shipping')
+      // — the ONLY shipping value the Orders list needs. The internal carrier /
+      // service / selected-rate / provider-account subqueries were removed: none
+      // of that data is exposed to the client any more, so we no longer fetch it.
+      billedShipping: sql<string | null>`(
+        select coalesce(sum(bli.total_cost), 0)::text
+        from billing_line_items bli
+        where bli.order_id = ${orders.id} and bli.line_type = 'shipping'
       )`,
     })
     .from(orders)
@@ -100,30 +63,20 @@ export async function listPortalOrders(
     .leftJoin(clients, eq(clients.id, orders.clientId))
     .where(where);
   const count = countRows[0]?.count ?? rows.length;
-  // Resolve numeric account ids → nicknames (cached carrier list + curated map).
-  const accountNicknames = await getProviderAccountNicknames().catch(() => new Map<number, string>());
   return {
-    data: rows.map((row) => {
-      const shipmentAccount =
-        row.shipAcctNickname ?? (row.shipAcctId != null ? accountNicknames.get(row.shipAcctId) ?? null : null);
-      return toPortalOrderDto(
+    data: rows.map((row) =>
+      toPortalOrderDto(
         {
           ...row.order,
           clientName: row.clientName,
           storeName: row.clientName,
           override: row.override,
-          shipmentAccount,
-          latestShipment: {
-            carrierCode: row.shipCarrierCode,
-            serviceCode: row.shipServiceCode,
-            serviceName: row.shipServiceName,
-            amount: row.shipSelectedAmount,
-            selectedRateJson: row.shipSelectedRateJson,
-          },
+          // CP-018: list now provides the billed customer shipping charge.
+          shippingCharged: row.billedShipping,
         },
         { includeFinancials: scope.canViewFinancials },
-      );
-    }),
+      ),
+    ),
     pagination: {
       page,
       pageSize,

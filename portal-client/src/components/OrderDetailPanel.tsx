@@ -40,12 +40,11 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
 export function OrderDetailPanel({ o }: { o: PortalOrder }) {
   const meta = orderStatusMeta(o.orderStatus);
-  // CP-015: best-rate amount is a backend-normalized DTO field (no raw JSON parse).
-  const best = o.bestRateAmount != null ? Number(o.bestRateAmount) : null;
-  // CP-009: this is a CUSTOMER-facing page — it must never show the carrier or
-  // shipping service. It shows the customer-safe shipping AMOUNT instead: billed
-  // shipping first, then buyer-paid shipping, then the best-rate quote.
-  const shipping = [o.shippingCharged, o.shippingAmount, best]
+  // CP-018: this is a CUSTOMER-facing page — it shows the customer shipping rate
+  // only (backend-owned: billed customer shipping, fallback buyer-paid store
+  // shipping), never the internal selected/best/label rate, carrier, or service.
+  // The > 0 guard treats a '0.00' billed value as "not billed yet".
+  const shipping = [o.customerShippingRate]
     .map((value) => (value == null ? NaN : Number(value)))
     .find((n) => Number.isFinite(n) && n > 0);
   // CP-014: product subtotal + per-line totals are backend-owned money fields.
@@ -82,7 +81,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
 
       {/* CP-009: shipping AMOUNT + weight only — never carrier or service. */}
       <div className="grid grid-cols-2 gap-3">
-        <Detail icon={<Truck size={14} />} label="Shipping" value={shipping != null ? money(shipping) : '—'} />
+        <Detail icon={<Truck size={14} />} label="Customer Shipping Rate" value={shipping != null ? money(shipping) : '—'} />
         <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />
       </div>
 
@@ -90,7 +89,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
         <div className="space-y-2 rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Cost summary</p>
           {subtotal > 0 && <CostRow label="Product subtotal" value={money(subtotal)} />}
-          {shipping != null && <CostRow label="Shipping" value={money(shipping)} />}
+          {shipping != null && <CostRow label="Customer Shipping Rate" value={money(shipping)} />}
           {o.orderTotal != null && (
             <>
               <div className="my-1 border-t border-slate-200/70" />
