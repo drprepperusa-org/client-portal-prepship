@@ -118,8 +118,13 @@ export interface PortalOrder {
   orderStatus: string | null;
   orderDate: string | null;
   shipToName: string | null;
+  // Full customer ship-to address (street lines from the raw payload).
+  shipToLine1?: string | null;
+  shipToLine2?: string | null;
   shipToCity: string | null;
   shipToState: string | null;
+  shipToPostalCode?: string | null;
+  shipToCountry?: string | null;
   carrierCode: string | null;
   serviceCode: string | null;
   trackingNumber: string | null;
@@ -136,6 +141,8 @@ export interface PortalOrder {
   items: PortalItemIdentity[];
   orderTotal?: number | string | null;
   shippingAmount?: number | string | null;
+  // Billed shipping (customer-facing shipping charge). Financially gated.
+  shippingCharged?: number | string | null;
   // CP-014: backend-owned product subtotal (Σ line totals). Financially gated.
   productSubtotal?: number | string | null;
   // CP-015: backend-normalized best-rate amount. Financially gated. The raw

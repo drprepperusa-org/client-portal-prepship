@@ -135,7 +135,18 @@ export async function listPortalOrders(
 
 export async function getPortalOrder(scope: ClientPortalScope, id: number) {
   const [row] = await db
-    .select({ order: orders, override: orderOverrides, clientName: clients.name })
+    .select({
+      order: orders,
+      override: orderOverrides,
+      clientName: clients.name,
+      // Billed shipping for this order (customer-facing shipping charge) — the
+      // same billed shipping the Billing surfaces show, never the internal cost.
+      billedShipping: sql<string | null>`(
+        select coalesce(sum(bli.total_cost), 0)::text
+        from billing_line_items bli
+        where bli.order_id = ${orders.id} and bli.line_type = 'shipping'
+      )`,
+    })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
     .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
@@ -143,7 +154,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
     .limit(1);
   if (!row) return null;
   return toPortalOrderDto(
-    { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override },
+    { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override, shippingCharged: row.billedShipping },
     { includeFinancials: scope.canViewFinancials },
   );
 }

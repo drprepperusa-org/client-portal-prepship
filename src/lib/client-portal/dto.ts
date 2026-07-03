@@ -165,6 +165,9 @@ export function toPortalOrderDto(
      * shipped/cancelled orders; supplied by the route layer.
      */
     shipmentAccount?: string | null;
+    /** Billed shipping for this order (Σ billing_line_items line_type='shipping')
+     *  — the customer-facing shipping charge, supplied by the route layer. */
+    shippingCharged?: number | string | null;
     latestShipment?: {
       carrierCode?: string | null;
       serviceCode?: string | null;
@@ -248,6 +251,18 @@ export function toPortalOrderDto(
     }
   }
   const productSubtotal = items.reduce((sum, it) => sum + (Number(it.lineTotal) || 0), 0);
+  // Full customer ship-to address. Street lines live in the raw marketplace
+  // payload (there is no dedicated column); city/state/postal are columns. This
+  // is the CLIENT's own recipient — not provider/internal data — so it is not
+  // financially gated (only carrier/service/money are).
+  const rawShipTo =
+    row.raw && typeof row.raw === 'object'
+      ? ((row.raw as Record<string, unknown>).shipTo as Record<string, unknown> | undefined)
+      : undefined;
+  const shipToStr = (key: string): string | null => {
+    const value = rawShipTo?.[key];
+    return typeof value === 'string' && value.trim() ? value : null;
+  };
   return {
     id: row.id,
     clientId: row.clientId,
@@ -261,8 +276,12 @@ export function toPortalOrderDto(
     orderStatus: row.orderStatus,
     orderDate: iso(row.orderDate),
     shipToName: row.shipToName,
+    shipToLine1: shipToStr('street1'),
+    shipToLine2: shipToStr('street2'),
     shipToCity: row.shipToCity,
     shipToState: row.shipToState,
+    shipToPostalCode: row.shipToPostalCode ?? shipToStr('postalCode'),
+    shipToCountry: shipToStr('country'),
     // CP-009: carrier/shipping-service identity is internal operational data —
     // gated exactly like shippingAccount/money fields. Clients keep tracking
     // numbers but never see which carrier/service was used.
@@ -283,6 +302,9 @@ export function toPortalOrderDto(
           shippingAccount,
           orderTotal: row.orderTotal,
           shippingAmount: row.shippingAmount,
+          // Billed shipping (Σ billing_line_items shipping) — the customer-facing
+          // shipping charge shown on the order detail, replacing carrier/service.
+          shippingCharged: row.shippingCharged ?? null,
           // CP-014: backend-owned product subtotal (Σ line totals).
           productSubtotal,
           // CP-015: normalized best-rate amount. The frontend renders this and

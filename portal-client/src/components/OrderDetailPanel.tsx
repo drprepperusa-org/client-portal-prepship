@@ -1,7 +1,6 @@
-import { MapPin, Hash, Package, ShoppingCart } from 'lucide-react';
+import { MapPin, Package, Truck } from 'lucide-react';
 import { Chip } from '@/components/ui/Display';
 import { Thumb } from '@/components/ui/Thumb';
-import { CarrierBadge } from '@/components/store/CarrierBadge';
 import { orderStatusMeta, itemCount, money, shortDate } from '@/lib/status';
 import type { PortalOrder } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -41,11 +40,14 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
 export function OrderDetailPanel({ o }: { o: PortalOrder }) {
   const meta = orderStatusMeta(o.orderStatus);
-  // CP-015: the best-rate amount is a backend-normalized DTO field — no raw
-  // bestRateJson parsing on the client.
+  // CP-015: best-rate amount is a backend-normalized DTO field (no raw JSON parse).
   const best = o.bestRateAmount != null ? Number(o.bestRateAmount) : null;
-  const dest = [o.shipToCity, o.shipToState].filter(Boolean).join(', ') || '—';
-  const service = o.shippingService ?? o.serviceCode ?? null;
+  // CP-009: this is a CUSTOMER-facing page — it must never show the carrier or
+  // shipping service. It shows the customer-safe shipping AMOUNT instead: billed
+  // shipping first, then buyer-paid shipping, then the best-rate quote.
+  const shipping = [o.shippingCharged, o.shippingAmount, best]
+    .map((value) => (value == null ? NaN : Number(value)))
+    .find((n) => Number.isFinite(n) && n > 0);
   // CP-014: product subtotal + per-line totals are backend-owned money fields.
   // The panel renders them; it never multiplies unitPrice × quantity itself.
   const subtotal = Number(o.productSubtotal ?? 0);
@@ -53,39 +55,42 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
     const t = Number(it.lineTotal);
     return Number.isFinite(t) ? t : null;
   };
+  // Full customer ship-to address ("Boston, MA 02101").
+  const cityLine = [[o.shipToCity, o.shipToState].filter(Boolean).join(', '), o.shipToPostalCode]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <Chip accent={meta.accent}>{meta.label}</Chip>
-        <span className="text-sm text-ink-3">{shortDate(o.orderDate)}</span>
+        <span className="truncate text-sm text-ink-3">
+          {o.orderNumber ? `#${o.orderNumber} · ` : ''}{shortDate(o.orderDate)}
+        </span>
       </div>
 
+      {/* Full customer ship-to address */}
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
         <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3"><MapPin size={13} /> Ship to</p>
         <p className="break-words text-sm font-semibold text-ink">{o.shipToName ?? '—'}</p>
-        <p className="break-words text-sm text-ink-2">{dest}</p>
+        {o.shipToLine1 && <p className="break-words text-sm text-ink-2">{o.shipToLine1}</p>}
+        {o.shipToLine2 && <p className="break-words text-sm text-ink-2">{o.shipToLine2}</p>}
+        {cityLine && <p className="break-words text-sm text-ink-2">{cityLine}</p>}
+        {o.shipToCountry && <p className="break-words text-sm text-ink-2">{o.shipToCountry}</p>}
         {o.clientName && <p className="mt-1 break-words text-xs text-ink-3">{o.clientName}</p>}
       </div>
 
+      {/* CP-009: shipping AMOUNT + weight only — never carrier or service. */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-ink-3"><Hash size={14} /> Carrier</p>
-          <div className="mt-1 flex items-center gap-2">
-            {o.carrierCode ? <CarrierBadge code={o.carrierCode} /> : <span className="text-sm text-ink-3">—</span>}
-          </div>
-        </div>
-        <Detail icon={<Package size={14} />} label="Service" value={service ?? '—'} />
-        <Detail icon={<ShoppingCart size={14} />} label="Shipping account" value={o.shippingAccount ?? '—'} />
+        <Detail icon={<Truck size={14} />} label="Shipping" value={shipping != null ? money(shipping) : '—'} />
         <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />
       </div>
 
-      {(o.orderTotal != null || subtotal > 0 || best != null || o.shippingAmount != null) && (
+      {(o.orderTotal != null || subtotal > 0 || shipping != null) && (
         <div className="space-y-2 rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Cost summary</p>
           {subtotal > 0 && <CostRow label="Product subtotal" value={money(subtotal)} />}
-          {o.shippingAmount != null && Number(o.shippingAmount) > 0 && <CostRow label="Shipping charged" value={money(o.shippingAmount)} />}
-          {best != null && <CostRow label="Best rate" value={money(best)} />}
+          {shipping != null && <CostRow label="Shipping" value={money(shipping)} />}
           {o.orderTotal != null && (
             <>
               <div className="my-1 border-t border-slate-200/70" />
@@ -95,6 +100,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
         </div>
       )}
 
+      {/* Full order — every line item */}
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Items ({itemCount(o.items)})</p>
         <ul className="space-y-3">
