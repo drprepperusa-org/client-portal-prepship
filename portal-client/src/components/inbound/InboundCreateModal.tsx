@@ -31,21 +31,25 @@ function DraftItemRow({
   onRemove: (index: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <input
-        className={field}
-        style={{ flex: 1 }}
-        value={item.sku}
-        onChange={(e) => onChange(index, 'sku', e.target.value)}
-        placeholder="SKU"
-      />
-      <input
-        className={field}
-        style={{ flex: 2 }}
-        value={item.name}
-        onChange={(e) => onChange(index, 'name', e.target.value)}
-        placeholder="Item name"
-      />
+    // flex-wrap so on a narrow phone the Qty + remove drop below SKU/name
+    // instead of squeezing the SKU field down to a few characters.
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-[180px] flex-1 gap-2">
+        <input
+          className={field}
+          style={{ flex: 1 }}
+          value={item.sku}
+          onChange={(e) => onChange(index, 'sku', e.target.value)}
+          placeholder="SKU"
+        />
+        <input
+          className={field}
+          style={{ flex: 2 }}
+          value={item.name}
+          onChange={(e) => onChange(index, 'name', e.target.value)}
+          placeholder="Item name"
+        />
+      </div>
       <input
         className={field}
         style={{ width: 80 }}

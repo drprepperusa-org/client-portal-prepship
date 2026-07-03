@@ -110,47 +110,52 @@ export function MarkupsEditor() {
                   const st = status[c.id];
                   const effect = v.type === 'pct' ? `+${n}%` : `+$${n.toFixed(2)}`;
                   return (
-                    <div key={c.id} className="flex items-center gap-4 bg-white/40 px-4 py-2.5">
-                      <span className="grid w-[72px] shrink-0 place-items-center"><CarrierBadge code={c.carrierCode} /></span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-ink">{c.nickname}</p>
+                    <div key={c.id} className="flex flex-col gap-2 bg-white/40 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-4 sm:px-4">
+                      {/* Identity: badge + nickname. Its own row on phones so the
+                          fixed-width controls below don't overflow the viewport. */}
+                      <div className="flex min-w-0 items-center gap-3 sm:flex-1">
+                        <span className="grid w-[72px] shrink-0 place-items-center"><CarrierBadge code={c.carrierCode} /></span>
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{c.nickname}</p>
                       </div>
 
-                      <select
-                        value={v.type}
-                        onChange={(e) => { setRow(c.id, { type: e.target.value as Edit['type'] }); }}
-                        onBlur={() => commit(c.id)}
-                        className="focus-ring h-9 w-16 cursor-pointer rounded-glass-sm border border-white/80 bg-white px-2 text-sm text-ink ring-1 ring-slate-200/70"
-                      >
-                        <option value="flat">$</option>
-                        <option value="pct">%</option>
-                      </select>
+                      {/* Controls: type / value / effect / status / remove. */}
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <select
+                          value={v.type}
+                          onChange={(e) => { setRow(c.id, { type: e.target.value as Edit['type'] }); }}
+                          onBlur={() => commit(c.id)}
+                          className="focus-ring h-9 w-16 shrink-0 cursor-pointer rounded-glass-sm border border-white/80 bg-white px-2 text-sm text-ink ring-1 ring-slate-200/70"
+                        >
+                          <option value="flat">$</option>
+                          <option value="pct">%</option>
+                        </select>
 
-                      <input
-                        type="number"
-                        min={0}
-                        step={v.type === 'pct' ? 1 : 0.01}
-                        value={v.value}
-                        onChange={(e) => setRow(c.id, { value: e.target.value })}
-                        onBlur={() => commit(c.id)}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                        placeholder="0"
-                        className="focus-ring h-9 w-20 rounded-glass-sm border border-white/80 bg-white px-2 text-right text-sm text-ink ring-1 ring-slate-200/70 focus:bg-white"
-                      />
+                        <input
+                          type="number"
+                          min={0}
+                          step={v.type === 'pct' ? 1 : 0.01}
+                          value={v.value}
+                          onChange={(e) => setRow(c.id, { value: e.target.value })}
+                          onBlur={() => commit(c.id)}
+                          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                          placeholder="0"
+                          className="focus-ring h-9 w-20 shrink-0 rounded-glass-sm border border-white/80 bg-white px-2 text-right text-sm text-ink ring-1 ring-slate-200/70 focus:bg-white"
+                        />
 
-                      <span className={cn('w-16 text-right text-sm font-semibold tnum', active || n > 0 ? 'text-emerald-600' : 'text-ink-3')}>{effect}</span>
+                        <span className={cn('w-16 shrink-0 text-right text-sm font-semibold tnum', active || n > 0 ? 'text-emerald-600' : 'text-ink-3')}>{effect}</span>
 
-                      <span className="grid w-5 shrink-0 place-items-center">
-                        {st === 'saving' ? <Loader2 size={14} className="animate-spin text-brand-500" /> : st === 'saved' ? <Check size={14} className="text-emerald-600" /> : null}
-                      </span>
+                        <span className="grid w-5 shrink-0 place-items-center">
+                          {st === 'saving' ? <Loader2 size={14} className="animate-spin text-brand-500" /> : st === 'saved' ? <Check size={14} className="text-emerald-600" /> : null}
+                        </span>
 
-                      {active ? (
-                        <button onClick={() => remove(c.id)} aria-label="Remove markup" className="focus-ring grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-rose-50 hover:text-rose-500">
-                          <Trash2 size={14} />
-                        </button>
-                      ) : (
-                        <span className="w-7 shrink-0" />
-                      )}
+                        {active ? (
+                          <button onClick={() => remove(c.id)} aria-label="Remove markup" className="focus-ring grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-rose-50 hover:text-rose-500">
+                            <Trash2 size={14} />
+                          </button>
+                        ) : (
+                          <span className="w-7 shrink-0" />
+                        )}
+                      </div>
                     </div>
                   );
                 })}

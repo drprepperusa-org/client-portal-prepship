@@ -73,8 +73,10 @@ export function PickerPopover({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.98 }}
               transition={{ duration: 0.16 }}
-              style={{ width }}
-              className="glass-strong absolute z-30 mt-2 rounded-glass-sm p-3 shadow-glass-lg"
+              // Clamp to the viewport so a near-edge trigger never pushes the
+              // panel off-screen / forces horizontal scroll on a phone.
+              style={{ width: `min(${width}px, calc(100vw - 24px))` }}
+              className="glass-strong absolute z-30 mt-2 max-w-[calc(100vw-1.5rem)] rounded-glass-sm p-3 shadow-glass-lg"
             >
               {children}
             </motion.div>

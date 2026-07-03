@@ -20,7 +20,7 @@ export default function Rates() {
         <SectionTitle title="Rate sheet" subtitle="Your contracted PrepShip service pricing" />
       </GlassPanel>
 
-      <GlassPanel className="p-8">
+      <GlassPanel className="p-6 sm:p-8">
         <div className="mx-auto flex max-w-md flex-col items-center text-center">
           <AnimatedIcon icon={Tags} accent="amber" tile />
           <h3 className="mt-4 font-display text-lg font-semibold text-ink">Your rate sheet is managed by your operator</h3>

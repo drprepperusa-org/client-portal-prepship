@@ -182,7 +182,7 @@ export default function Shipments() {
           ariaLabel="Search shipments"
         />
 
-        <div className="flex items-center gap-2 sm:shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
           <label className="relative flex items-center">
             <Truck size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
             <select

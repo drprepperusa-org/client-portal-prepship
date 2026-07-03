@@ -390,9 +390,9 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     <div className="space-y-4">
       {selected == null ? (
         <GlassPanel className="p-2 sm:p-3">
-          <div className="flex items-center justify-between gap-3 px-2 pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-2 pb-2">
             <p className="text-sm font-bold text-ink">Billing periods</p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {clients.length > 1 && (
                 <select
                   value={clientFilter ?? ''}
