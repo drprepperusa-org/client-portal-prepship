@@ -34,16 +34,16 @@ function fmtDateTime(iso: string | null): string {
   return d.toLocaleString('en-US', { year: '2-digit', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' });
 }
 
-function isLow(s: PortalInventory) {
-  const stock = Number(s.stockQty ?? 0);
-  const reorder = Number(s.reorderLevel ?? 0);
-  return reorder > 0 && stock <= reorder;
-}
+// CP-013: stock status is backend-owned (dto.stockStatus). The frontend only
+// maps the enum to its label/accent — it no longer decides LOW/OUT/IN from
+// stock vs reorder, so the badge and the server-side Low/Out filter can't drift.
+const STOCK_STATUS_META: Record<'out' | 'low' | 'in', { label: string; accent: Accent }> = {
+  out: { label: 'OUT', accent: 'rose' },
+  low: { label: 'LOW', accent: 'amber' },
+  in: { label: 'IN', accent: 'emerald' },
+};
 function stockStatus(s: PortalInventory): { label: string; accent: Accent } {
-  const stock = Number(s.stockQty ?? 0);
-  if (stock <= 0) return { label: 'OUT', accent: 'rose' };
-  if (isLow(s)) return { label: 'LOW', accent: 'amber' };
-  return { label: 'IN', accent: 'emerald' };
+  return STOCK_STATUS_META[s.stockStatus ?? 'in'] ?? STOCK_STATUS_META.in;
 }
 const MOVEMENT_ACCENT: Record<string, Accent> = {
   ship: 'rose',
@@ -133,7 +133,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       header: 'Stock',
       defaultWidth: 90,
       className: 'text-right',
-      render: (s) => <span className={cn('font-semibold tnum', Number(s.stockQty ?? 0) <= 0 ? 'text-rose-600' : 'text-ink')}>{s.stockQty ?? 0}</span>,
+      render: (s) => <span className={cn('font-semibold tnum', s.isOut ?? Number(s.stockQty ?? 0) <= 0 ? 'text-rose-600' : 'text-ink')}>{s.stockQty ?? 0}</span>,
       sortAccessor: (s) => Number(s.stockQty) || 0,
     },
     { key: 'sold30', header: 'Sold 30d', defaultWidth: 100, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{Number(s.soldLast30Days ?? 0)}</span>, sortAccessor: (s) => Number(s.soldLast30Days) || 0 },

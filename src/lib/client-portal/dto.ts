@@ -348,6 +348,16 @@ export function toPortalInventoryDto(
         ? Number(((length * width * height) / 1728).toFixed(3))
         : null;
   const baseUnitQty = row.baseUnitQty ?? 1;
+  // CP-013: stock status is backend-owned so the Low/Out filter and the status
+  // badge share ONE definition. Mirrors the read-model's lowStock predicate:
+  //   out  = stockQty <= 0
+  //   low  = reorderLevel > 0 and stockQty <= reorderLevel
+  //   (lowStock filter = out OR low; OUT wins for the display label)
+  const stock = Number(row.stockQty ?? 0);
+  const reorder = Number(row.reorderLevel ?? 0);
+  const isOut = stock <= 0;
+  const isLow = reorder > 0 && stock <= reorder;
+  const stockStatus: 'out' | 'low' | 'in' = isOut ? 'out' : isLow ? 'low' : 'in';
   return {
     id: row.id,
     clientId: row.clientId,
@@ -362,6 +372,10 @@ export function toPortalInventoryDto(
     imageUrl: row.imageUrl,
     soldLast30Days: Number(row.soldLast30Days ?? 0),
     effectiveStock: row.stockQty,
+    // CP-013: backend-owned stock status (the frontend renders this enum).
+    stockStatus,
+    isLow,
+    isOut,
     updatedAt: iso(row.updatedAt),
     // ── v4 Stock-Levels parity fields ──
     weightOz: row.weightOz ?? null,

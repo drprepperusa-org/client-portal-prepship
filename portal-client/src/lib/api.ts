@@ -174,6 +174,11 @@ export interface PortalInventory {
   imageUrl: string | null;
   soldLast30Days: number | string | null;
   effectiveStock: number | null;
+  // CP-013: backend-owned stock status (shared with the Low/Out filter). The
+  // frontend renders these; it no longer derives status from stock/reorder.
+  stockStatus?: 'out' | 'low' | 'in' | null;
+  isLow?: boolean | null;
+  isOut?: boolean | null;
   // v4 Stock-Levels parity
   weightOz: number | null;
   length: number | null;
