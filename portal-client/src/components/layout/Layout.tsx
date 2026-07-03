@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { BottomNav } from './BottomNav';
 import { LiquidBackground } from './LiquidBackground';
+import { ConnectionStatus } from '../ConnectionStatus';
 import { NAV, COMPONENTS_NAV } from '@/nav';
 import { pageVariants } from '@/lib/motion';
 import { usePrefetchPortal } from '@/lib/hooks';
@@ -46,6 +47,7 @@ export function Layout() {
   return (
     <div className="relative min-h-screen">
       <LiquidBackground />
+      <ConnectionStatus />
 
       {/* Capped + centered: pages hug a readable width on wide monitors
           instead of stretching w-full with dead white space. */}

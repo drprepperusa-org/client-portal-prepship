@@ -34,13 +34,36 @@ assert(
   'api.ts aborts timed-out requests and clears the timer',
 );
 assert(
-  api.includes('Promise<never>') && api.includes('throw new Error(message)'),
-  'api.ts fail() throws — HTTP errors are surfaced, not hidden behind empty fallbacks',
+  api.includes('Promise<never>') && api.includes('throw err') && api.includes('err.status = res.status'),
+  'api.ts fail() throws an ApiError carrying the HTTP status — errors surfaced, not hidden',
 );
 assert(
   api.includes('if (!res.ok) await fail(res)'),
   'apiGet/apiSend rethrow non-OK responses instead of returning empty data',
 );
+
+// ── Cold-start resilience: transient failures retry + a "reconnecting" banner;
+//    expected client errors (4xx) do NOT retry ──
+const main = read('portal-client/src/main.tsx');
+assert(
+  /status >= 400 && status < 500\) return false/.test(main),
+  'main.tsx does not retry expected client errors (4xx won\'t change / aren\'t a connection problem)',
+);
+assert(
+  main.includes('return failureCount < 2'),
+  'main.tsx retries transient failures (network / timeout / 5xx) up to twice',
+);
+const connectionStatus = read('portal-client/src/components/ConnectionStatus.tsx');
+assert(
+  connectionStatus.includes("fetchStatus === 'fetching'") && connectionStatus.includes('fetchFailureCount > 0'),
+  'ConnectionStatus detects a query actively retrying after a failure (the reconnecting signal)',
+);
+assert(
+  connectionStatus.includes('Reconnecting to the server'),
+  'ConnectionStatus renders a reconnecting banner so a waking API reads as "waking", not frozen',
+);
+const layout = read('portal-client/src/components/layout/Layout.tsx');
+assert(layout.includes('<ConnectionStatus'), 'Layout mounts ConnectionStatus so the banner is portal-wide');
 
 // ── Shared error UI: explicit error state with a recoverable Retry ──
 const queryState = read('portal-client/src/components/ui/QueryState.tsx');

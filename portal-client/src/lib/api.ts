@@ -55,6 +55,11 @@ async function request(token: string, path: string, params: Record<string, Query
   }
 }
 
+/** Error thrown by the API layer, carrying the HTTP status so callers (and the
+ *  React Query retry policy) can tell an expected client error (4xx) apart from
+ *  a transient failure (network / timeout / 5xx) worth retrying. */
+export type ApiError = Error & { status?: number };
+
 async function fail(res: Response): Promise<never> {
   let message = `${res.status} ${res.statusText}`;
   try {
@@ -63,7 +68,9 @@ async function fail(res: Response): Promise<never> {
   } catch {
     /* keep status */
   }
-  throw new Error(message);
+  const err = new Error(message) as ApiError;
+  err.status = res.status;
+  throw err;
 }
 
 export async function apiGet<T>(token: string, path: string, params: Record<string, QueryValue> = {}): Promise<T> {

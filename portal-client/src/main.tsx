@@ -21,10 +21,15 @@ const queryClient = new QueryClient({
       refetchOnMount: false,
       // Render can cold-start (the API spins up on the first request after
       // idle), so a call may need a couple of tries before the server is awake.
-      // Retry twice with a short backoff; combined with the 30s client timeout
-      // in api.ts this lets a waking API self-heal instead of surfacing an error
-      // or an endless skeleton.
-      retry: 2,
+      // Retry transient failures (network / timeout / 5xx) twice with a short
+      // backoff so a waking API self-heals; do NOT retry expected client errors
+      // (401/403/404) — they won't change and aren't a connection problem. The
+      // 30s client timeout in api.ts covers the wake-up window per attempt.
+      retry: (failureCount, error) => {
+        const status = (error as { status?: number } | null)?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) return false;
+        return failureCount < 2;
+      },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     },
   },
