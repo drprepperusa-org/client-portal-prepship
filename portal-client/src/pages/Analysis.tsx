@@ -33,8 +33,13 @@ export default function Analysis() {
   const rows = (analysis.data?.data ?? []) as AnalysisSkuRow[];
   const buckets = analysis.data?.dateBuckets ?? [];
 
-  const totalUnits = rows.reduce((n, r) => n + num(r.total_qty), 0);
-  const totalRevenue = rows.reduce((n, r) => n + num(r.total_revenue), 0);
+  // CP-010: the Revenue/Units KPIs come from the backend-owned canonical
+  // sales-metrics totals (the same owner the Dashboard uses), NOT from reducing
+  // the SKU rows here. The per-SKU rows still roll up to these totals by
+  // construction (identical filter set), but React no longer decides the
+  // authoritative number, so Analysis and Dashboard can't drift.
+  const totalUnits = Number(analysis.data?.totalUnits ?? 0);
+  const totalRevenue = Number(analysis.data?.totalRevenue ?? 0);
 
   // Build the "Daily Units Sold — Top SKUs" multi-line series from the top SKUs.
   const { trendData, topSkus } = useMemo(() => {

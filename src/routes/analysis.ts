@@ -446,6 +446,118 @@ const skuBreakdownQuery = rangeQuery.extend({
 });
 
 export type SkuBreakdownQuery = z.infer<typeof skuBreakdownQuery> & ClientStoreScopeQuery;
+
+// CP-010: the one canonical customer-visible sales-metrics query. Dashboard and
+// Analysis both consume THIS for their Revenue/Units KPIs so the two screens can
+// never define revenue independently again. Definition (chosen to match the
+// Analysis SKU table, whose Profit column already assumes revenue excludes
+// shipping/fees): sales revenue = Σ(order_items.unit_price × quantity), units =
+// Σ(order_items.quantity), over non-cancelled, active-client, in-scope orders in
+// the date window. It is set-based (NOT a capped row reduction) so money KPIs
+// never truncate as volume grows, and it owns financial redaction.
+export type SalesTotalsQuery = {
+  dateFrom: string;
+  dateTo: string;
+  clientId?: number;
+  storeId?: number;
+  includeCancelled?: boolean;
+  hideTestOrders?: boolean;
+} & ClientStoreScopeQuery;
+
+export interface ClientPortalSalesTotals {
+  revenue: number;
+  units: number;
+  orders: number;
+}
+
+export async function getClientPortalSalesTotals(q: SalesTotalsQuery): Promise<ClientPortalSalesTotals> {
+  const fromIso = new Date(q.dateFrom).toISOString();
+  const toIso = new Date(q.dateTo).toISOString();
+  const cid: number | null = q.clientId ?? null;
+  // Same cancelled/test/scope/active filters as getSkuBreakdownFromOrderItems'
+  // item_rows CTE, so the KPI total equals the sum of the Analysis SKU rows.
+  const cancelledFilter = q.includeCancelled
+    ? sql`true`
+    : sql`coalesce(o.order_status, '') <> 'cancelled'`;
+  const testOrderFilter = q.hideTestOrders
+    ? sql`and not (
+        coalesce(c.is_test, false) = true
+        or coalesce(o.order_number, '') ilike 'TESTING-%'
+        or o.raw @> '{"test": true}'::jsonb
+        or o.raw @> '{"testing": true}'::jsonb
+      )`
+    : sql``;
+
+  const rows = await db.execute<{ revenue: string; units: number; orders: number }>(sql`
+    select
+      coalesce(sum(coalesce(oi.unit_price, 0)::numeric * greatest(0, coalesce(oi.quantity, 0))), 0)::text as revenue,
+      coalesce(sum(greatest(0, coalesce(oi.quantity, 0))), 0)::int as units,
+      count(distinct o.id)::int as orders
+    from order_items oi
+    join orders o on o.id = oi.order_id
+    left join clients c on c.id = o.client_id
+    where ${cancelledFilter}
+      and o.order_date >= ${fromIso}::timestamptz
+      and o.order_date <= ${toIso}::timestamptz
+      ${testOrderFilter}
+      and (${cid}::int is null or o.client_id = ${cid}::int)
+      and ${analysisOrderScopePredicate(q)}
+      and oi.quantity > 0
+      and oi.sku <> ''
+      and (o.client_id is null or coalesce(c.active, true) = true)
+  `);
+
+  const raw = rows[0] ?? { revenue: '0', units: 0, orders: 0 };
+  const canViewFinancials = q.canViewFinancials !== false;
+  return {
+    // Revenue is financially gated here — the owner enforces redaction, not the UI.
+    revenue: canViewFinancials ? Number(raw.revenue) || 0 : 0,
+    units: Number(raw.units) || 0,
+    orders: Number(raw.orders) || 0,
+  };
+}
+
+// CP-010: per-day companion to getClientPortalSalesTotals, using the SAME filter
+// set, so the Dashboard's revenue drill-down chart sums to exactly the canonical
+// Revenue KPI. Financially gated (empty when the caller can't view financials).
+export async function getClientPortalDailyRevenue(q: SalesTotalsQuery): Promise<Array<{ day: string; revenue: number }>> {
+  if (q.canViewFinancials === false) return [];
+  const fromIso = new Date(q.dateFrom).toISOString();
+  const toIso = new Date(q.dateTo).toISOString();
+  const cid: number | null = q.clientId ?? null;
+  const cancelledFilter = q.includeCancelled
+    ? sql`true`
+    : sql`coalesce(o.order_status, '') <> 'cancelled'`;
+  const testOrderFilter = q.hideTestOrders
+    ? sql`and not (
+        coalesce(c.is_test, false) = true
+        or coalesce(o.order_number, '') ilike 'TESTING-%'
+        or o.raw @> '{"test": true}'::jsonb
+        or o.raw @> '{"testing": true}'::jsonb
+      )`
+    : sql``;
+
+  const rows = await db.execute<{ day: string; revenue: string }>(sql`
+    select
+      to_char(o.order_date at time zone 'UTC', 'YYYY-MM-DD') as day,
+      coalesce(sum(coalesce(oi.unit_price, 0)::numeric * greatest(0, coalesce(oi.quantity, 0))), 0)::text as revenue
+    from order_items oi
+    join orders o on o.id = oi.order_id
+    left join clients c on c.id = o.client_id
+    where ${cancelledFilter}
+      and o.order_date >= ${fromIso}::timestamptz
+      and o.order_date <= ${toIso}::timestamptz
+      ${testOrderFilter}
+      and (${cid}::int is null or o.client_id = ${cid}::int)
+      and ${analysisOrderScopePredicate(q)}
+      and oi.quantity > 0
+      and oi.sku <> ''
+      and (o.client_id is null or coalesce(c.active, true) = true)
+    group by to_char(o.order_date at time zone 'UTC', 'YYYY-MM-DD')
+    order by day asc
+  `);
+  return rows.map((r) => ({ day: r.day, revenue: Number(r.revenue) || 0 }));
+}
 type SkuBreakdownRow = {
   sku: string;
   name: string | null;
@@ -713,6 +825,11 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
       )
   `);
 
+  // CP-010: canonical KPI totals from the single sales-metrics owner. These are
+  // set-based (no LIMIT), so the Revenue/Units KPI never truncates and always
+  // equals the roll-up of the per-SKU rows above (same filter set).
+  const salesTotals = await getClientPortalSalesTotals(q);
+
   const dateBuckets = buildDateBuckets(fromIso, toIso);
   const canViewFinancials = q.canViewFinancials !== false;
   const enrichedRows = rows.map((r) => {
@@ -739,6 +856,9 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
     dateBuckets,
     totalSkus: enrichedRows.length,
     totalOrders: totalOrders[0]?.count ?? 0,
+    // CP-010: backend-owned canonical KPI totals (already financially redacted).
+    totalRevenue: salesTotals.revenue,
+    totalUnits: salesTotals.units,
   };
 }
 

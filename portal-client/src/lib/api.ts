@@ -362,6 +362,11 @@ export interface AnalysisBreakdown {
   dateBuckets?: string[];
   totalSkus?: number;
   totalOrders?: number;
+  // CP-010: backend-owned canonical KPI totals (financially redacted). The
+  // Analysis page renders these instead of reducing the SKU rows itself, so it
+  // can never drift from the Dashboard Revenue/Units KPIs.
+  totalRevenue?: number;
+  totalUnits?: number;
 }
 
 export interface SkuOrderRow {
@@ -502,7 +507,10 @@ async function scopedList<T>(token: string, path: string, params: Record<string,
 
 async function scopedDashboard(token: string, days: number, clientId?: number): Promise<DashboardSummary> {
   const scope = portalScopeFromToken(token);
-  const range = defaultRange(days);
+  // CP-010: send dateFrom/dateTo timestamps (identical to the Analysis client)
+  // so Dashboard and Analysis evaluate the exact same date window — no more
+  // "to = today midnight" vs "to = end of today" off-by-a-day drift.
+  const range = rangeToTimestamps(defaultRange(days));
   // Explicit client filter from the top-bar switcher → one scoped request for
   // that client. The backend re-checks the client against the caller's scope,
   // so passing it can only ever narrow, never widen, visibility.
@@ -729,11 +737,14 @@ export const portalApi = {
   importInbound: (token: string, shipments: NewInboundInput[]) =>
     apiPost<{ data: { created: number; itemsCreated: number; skipped: number } }>(token, '/api/client-portal/inbound/import', { shipments }),
 
-  analysis: (token: string, days = 30) =>
+  analysis: (token: string, days = 30, clientId?: number) =>
     apiGet<AnalysisBreakdown>(token, '/api/client-portal/analysis', {
       ...rangeToTimestamps(defaultRange(days)),
       limit: 200,
-      storeId: firstStoreId(token),
+      // CP-010: honor the top-bar client switcher (same as the Dashboard) so
+      // both screens scope to the same client/store and can't diverge.
+      clientId,
+      storeId: clientId === undefined ? firstStoreId(token) : undefined,
     }),
 
   reports: (token: string, days = 30) => scopedReports(token, days),

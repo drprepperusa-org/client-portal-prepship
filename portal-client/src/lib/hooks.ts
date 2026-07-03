@@ -50,8 +50,11 @@ export function useDailyShipments() {
   return useTokenQuery(['daily-shipments', days, clientId ?? 'scope'], (t) => portalApi.dailyShipments(t, days, clientId));
 }
 export function useAnalysis() {
-  const { days } = usePortalFilters();
-  return useTokenQuery(['analysis', days], (t) => portalApi.analysis(t, days));
+  // CP-010: include the top-bar clientId in the key + request (like useDashboard)
+  // so Analysis re-fetches when the client switcher changes and stays in
+  // lock-step with the Dashboard's scope.
+  const { days, clientId } = usePortalFilters();
+  return useTokenQuery(['analysis', days, clientId ?? 'scope'], (t) => portalApi.analysis(t, days, clientId));
 }
 export function useReports() {
   const { days } = usePortalFilters();

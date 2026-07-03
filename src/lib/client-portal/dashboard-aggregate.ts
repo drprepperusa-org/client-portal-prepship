@@ -147,16 +147,3 @@ export function dailyOrderUnitsRows(rows: DashboardOrderRow[]): Array<{ day: str
   }
   return [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
 }
-
-/** Per-day revenue (order totals), ascending by day. */
-export function dailyRevenueRows(rows: DashboardOrderRow[]): Array<{ day: string; revenue: number }> {
-  const byDay = new Map<string, number>();
-  for (const row of rows) {
-    const key = dayKey(row.orderDate);
-    if (!key) continue;
-    byDay.set(key, (byDay.get(key) ?? 0) + Number(row.orderTotal ?? 0));
-  }
-  return [...byDay.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, revenue]) => ({ day, revenue }));
-}

@@ -14,7 +14,11 @@ import { shipments } from '../db/schema/shipments';
 import { generateLineItems } from '../services/billing';
 import { billingSummary } from '../services/billing-summaries';
 import { getSkuOrdersForSku } from '../services/sku-orders';
-import { getSkuBreakdownFromOrderItems } from './analysis';
+import {
+  getSkuBreakdownFromOrderItems,
+  getClientPortalSalesTotals,
+  getClientPortalDailyRevenue,
+} from './analysis';
 import {
   HERITAGE_PREP_FEE_CLIENT_NAME,
   heritagePrepFeeRowsForRange,
@@ -46,9 +50,7 @@ import {
 } from '../lib/client-portal/dto';
 import { recordPortalAudit } from '../lib/client-portal/audit';
 import {
-  safeItemQty,
   topSkuRows,
-  dailyRevenueRows,
   dailyOrderUnitsRows,
 } from '../lib/client-portal/dashboard-aggregate';
 import { invoiceItemNameLinesSql } from '../lib/client-portal/invoice-items';
@@ -159,28 +161,50 @@ app.get('/me', async (c) => {
 app.get('/dashboard', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const from = parseDate(c.req.query('from')) ?? new Date(Date.now() - 30 * 86_400_000);
-  const to = parseDate(c.req.query('to')) ?? new Date();
+  // CP-010: accept dateFrom/dateTo (aligned with /analysis) with a legacy
+  // from/to fallback, so Dashboard and Analysis evaluate the SAME window.
+  const from = parseDate(c.req.query('dateFrom') ?? c.req.query('from')) ?? new Date(Date.now() - 30 * 86_400_000);
+  const to = parseDate(c.req.query('dateTo') ?? c.req.query('to')) ?? new Date();
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
   const where = and(
-    orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    orderScopePredicate(scope, { clientId, storeId }),
     activeClientPredicate(),
     gte(orders.orderDate, from),
     lte(orders.orderDate, to)
   );
+  // Rows feed the charts / Top-SKUs widgets only (a bounded visual sample).
   const rows = await db.select().from(orders).where(where).limit(1000);
-  const revenue = scope.canViewFinancials
-    ? rows.reduce((sum, row) => sum + Number(row.orderTotal ?? 0), 0)
-    : 0;
-  const units = rows.reduce((sum, row) => sum + safeItemQty(row.items), 0);
+  // CP-010: Revenue + Units KPIs (and the revenue drill-down) come from the ONE
+  // canonical sales-metrics owner (set-based SQL — no 1000-row truncation — same
+  // definition/filters as Analysis), NEVER from reducing the capped rows above.
+  // This is what makes Dashboard Revenue == Analysis Revenue for the same
+  // window/scope, and the daily chart sums to exactly the Revenue KPI.
+  const salesQuery = {
+    dateFrom: asTimestamp(from),
+    dateTo: asTimestamp(to),
+    clientId: clientId ?? undefined,
+    storeId: storeId ?? undefined,
+    clientIds: scope.clientIds,
+    storeIds: scope.storeIds,
+    scopeRestricted: scope.isRestricted,
+    canViewFinancials: scope.canViewFinancials,
+    includeCancelled: false,
+    hideTestOrders: false,
+  };
+  const [totals, dailyRevenue] = await Promise.all([
+    getClientPortalSalesTotals(salesQuery),
+    getClientPortalDailyRevenue(salesQuery),
+  ]);
   await recordPortalAudit('portal.dashboard.view', scope, { from, to, rows: rows.length });
   return c.json({
-    revenue,
-    units,
+    revenue: totals.revenue,
+    units: totals.units,
     bySku: topSkuRows(rows, scope.canViewFinancials),
     // Order + unit counts per day power the cumulative bar chart. Counts are
     // non-financial, so they are returned regardless of canViewFinancials.
     daily: dailyOrderUnitsRows(rows),
-    dailyRevenue: scope.canViewFinancials ? dailyRevenueRows(rows) : [],
+    dailyRevenue,
   });
 });
 
@@ -442,11 +466,20 @@ app.get('/analysis', async (c) => {
     includeCancelled: false,
   });
   await recordPortalAudit('portal.analysis.view', scope);
+  // CP-010: redact per-SKU revenue for non-financial users so the table stays
+  // consistent with the (already redacted) canonical Revenue KPI below.
+  const rows = scope.canViewFinancials
+    ? result.rows
+    : result.rows.map((r) => ({ ...r, total_revenue: '0' }));
   return c.json({
-    data: result.rows,
+    data: rows,
     dateBuckets: result.dateBuckets,
     totalSkus: result.totalSkus,
     totalOrders: result.totalOrders,
+    // CP-010: backend-owned canonical KPI totals (financially redacted). The
+    // frontend renders these instead of reducing the SKU rows itself.
+    totalRevenue: result.totalRevenue,
+    totalUnits: result.totalUnits,
   });
 });
 
