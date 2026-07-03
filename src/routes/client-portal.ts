@@ -769,8 +769,23 @@ app.get('/invoice-summary', async (c) => {
           granularity: c.req.query('granularity') === 'month' ? 'month' : 'half',
         })
       : await portalInvoiceSummary(scope, { clientId, dateFrom, dateTo });
+  // CP-011: grand totals across all summary rows are backend-owned, so the
+  // Billing footer renders these instead of the frontend reducing per-period
+  // subtotals. Computed over the full SQL-aggregated set (no row cap).
+  const totals = rows.reduce(
+    (acc, r) => ({
+      orders: acc.orders + Number(r.orders ?? 0),
+      pickpackTotal: acc.pickpackTotal + Number(r.pickpackTotal ?? 0),
+      additionalTotal: acc.additionalTotal + Number(r.additionalTotal ?? 0),
+      packageTotal: acc.packageTotal + Number(r.packageTotal ?? 0),
+      storageTotal: acc.storageTotal + Number(r.storageTotal ?? 0),
+      shippingTotal: acc.shippingTotal + Number(r.shippingTotal ?? 0),
+      rowTotal: acc.rowTotal + Number(r.rowTotal ?? 0),
+    }),
+    { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, rowTotal: 0 },
+  );
   await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
-  return c.json({ data: rows, billingVisible: true });
+  return c.json({ data: rows, totals, billingVisible: true });
 });
 
 app.get('/invoice', async (c) => {

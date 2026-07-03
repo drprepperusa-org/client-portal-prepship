@@ -55,17 +55,6 @@ const EMPTY_TOTALS: BillingTotals = {
   fee: 0,
 };
 
-function addBillingTotals(acc: BillingTotals, summary: ClientSummary): BillingTotals {
-  return {
-    orders: acc.orders + summary.orders,
-    pickpack: acc.pickpack + summary.pickpack,
-    additional: acc.additional + summary.additional,
-    box: acc.box + summary.box,
-    storage: acc.storage + summary.storage,
-    shipping: acc.shipping + summary.shipping,
-    fee: acc.fee + summary.fee,
-  };
-}
 
 // Walk the paginated invoice-details endpoint to gather EVERY line item for a
 // client + range. The unpaginated endpoint caps at 5000 rows (1000 for a whole
@@ -159,7 +148,23 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       })),
     [summaryQuery.data],
   );
-  const totals = useMemo(() => summary.reduce(addBillingTotals, EMPTY_TOTALS), [summary]);
+  // CP-011: the footer grand totals are backend-owned. Map the backend `totals`
+  // object into the footer's field names — React does NOT reduce the per-period
+  // rows (so the footer can't drift from the printable invoice / exports).
+  const totals: BillingTotals = useMemo(() => {
+    const t = summaryQuery.data?.totals;
+    return t
+      ? {
+          orders: num(t.orders),
+          pickpack: num(t.pickpackTotal),
+          additional: num(t.additionalTotal),
+          box: num(t.packageTotal),
+          storage: num(t.storageTotal),
+          shipping: num(t.shippingTotal),
+          fee: num(t.rowTotal),
+        }
+      : EMPTY_TOTALS;
+  }, [summaryQuery.data]);
 
   // Line items load for the selected client + billing period, server-paginated
   // (100/page) so the animated table never renders thousands of rows at once.

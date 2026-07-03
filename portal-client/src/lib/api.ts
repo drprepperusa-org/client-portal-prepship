@@ -344,6 +344,18 @@ export interface BillingInvoicePeriodSummaryRow extends BillingInvoiceSummaryRow
   periodEnd: string;
 }
 
+// CP-011: backend-owned grand totals across every summary row. The Billing
+// footer renders these instead of reducing the per-period rows in React.
+export interface BillingInvoiceTotals {
+  orders: number;
+  pickpackTotal: number | string;
+  additionalTotal: number | string;
+  packageTotal: number | string;
+  storageTotal: number | string;
+  shippingTotal: number | string;
+  rowTotal: number | string;
+}
+
 export interface BillingInvoiceDetailRow {
   clientId?: number;
   clientName?: string | null;
@@ -823,7 +835,7 @@ export const portalApi = {
     clientId?: number,
     granularity: 'half' | 'month' = 'half',
   ) =>
-    apiGet<{ data: BillingInvoicePeriodSummaryRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
+    apiGet<{ data: BillingInvoicePeriodSummaryRow[]; totals?: BillingInvoiceTotals; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       clientId,
