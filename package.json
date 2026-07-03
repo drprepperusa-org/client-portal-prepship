@@ -75,6 +75,8 @@
     "test:client-portal-sku-orders-scope": "node scripts/client-portal-sku-orders-scope-guard.mjs",
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",
     "test:client-portal-sales-sot-drift": "node scripts/client-portal-sales-sot-drift-guard.mjs",
+    "test:guards": "node scripts/run-guards.mjs",
+    "test:guards:list": "node scripts/run-guards.mjs --list",
     "test:client-portal-integration": "tsx scripts/integration/client-portal.integration.ts",
     "test:client-portal-integration:setup": "tsx scripts/integration/setup.ts",
     "test:client-portal-inventory-status": "tsx scripts/client-portal-inventory-status-guard.ts",

@@ -1,30 +1,55 @@
 name: CI
 
+# The static gate for every change to main: typecheck (API + portal), a real
+# production build of the portal, and the full static guard suite (RBAC,
+# carrier/service redaction, sales-SOT drift, client-scoping, billing, …). The
+# behavioral DB-backed tests live in integration-tests.yml; together the two
+# workflows are what a change must pass before it reaches main.
 on:
-  push:
-    branches:
-      - prepshipv4-stable
-      - 'parity/**'
   pull_request:
-    branches:
-      - prepshipv4-stable
+    branches: [main]
+  push:
+    branches: [main, prepshipv4-stable, 'parity/**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  check:
-    name: Typecheck + Frontend build
+  static-checks:
+    name: Typecheck + build + guard suite
     runs-on: ubuntu-latest
+    env:
+      # The guards read source and exercise pure functions — they never open a
+      # database connection, so these are throwaway values whose only job is to
+      # satisfy env.ts's zod validation. Real secrets live in Render/Vercel and
+      # are never present (or needed) in CI.
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_ANON_KEY: ci
+      SUPABASE_SERVICE_ROLE_KEY: ci
+      SUPABASE_JWT_SECRET: ci-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            portal-client/package-lock.json
 
-      - name: Install deps
+      - name: Install API deps
         run: npm ci
+      - name: Install portal deps
+        run: npm --prefix portal-client ci
 
-      - name: Typecheck (backend + frontend)
+      - name: Typecheck (API + portal)
         run: npm run typecheck
 
-      - name: Frontend build
+      - name: Build portal (production)
         run: npm run build:web
+
+      - name: Static guard suite
+        run: npm run test:guards
