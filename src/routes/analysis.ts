@@ -641,6 +641,12 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
   const fromIso = new Date(q.dateFrom).toISOString();
   const toIso = new Date(q.dateTo).toISOString();
   const cid: number | null = q.clientId ?? null;
+  // Inventory rows the caller can actually open (in their client scope). Used to
+  // resolve inv_sku_id so the Analysis drawer's sku-orders lookup (which
+  // re-checks scope by inventory id) doesn't 404 on a global/other-client row.
+  // Empty for global callers → resolution falls back to smallest id (unchanged).
+  const scopeClientIds = normalizeScopeIds(q.clientIds);
+  const scopeClientIdsSql = scopeClientIds.length ? intArraySql(scopeClientIds) : sql`array[]::int[]`;
   const cancelledFilter = q.includeCancelled
     ? sql`true`
     : sql`coalesce(o.order_status, '') <> 'cancelled'`;
@@ -756,7 +762,9 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         inv.id
       from inventory inv
       where inv.sku is not null and inv.sku <> ''
-      order by lower(inv.sku), inv.id
+      -- Prefer an inventory row in the caller's client scope over a global /
+      -- other-client row, so the resolved inv_sku_id is one the caller can open.
+      order by lower(inv.sku), (inv.client_id = any(${scopeClientIdsSql})) desc nulls last, inv.id
     ),
     sku_day_agg as (
       select

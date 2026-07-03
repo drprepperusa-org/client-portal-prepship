@@ -499,11 +499,31 @@ app.get('/analysis/sku-orders', async (c) => {
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
 
-  const [item] = await db
+  let [item] = await db
     .select({ sku: inventory.sku, name: inventory.name, clientId: inventory.clientId })
     .from(inventory)
     .where(and(eq(inventory.id, inventoryId), inventoryScopePredicate(scope, { clientId, storeId })))
     .limit(1);
+  // The Analysis SKU table resolves inv_sku_id to ONE inventory row per SKU
+  // (globally, smallest id) — which can be a client_id=NULL / other-client row a
+  // scoped caller can't open, even though their own orders carry that SKU. When
+  // the exact id isn't in scope, fall back to the caller's OWN inventory row for
+  // the same SKU. Still scope-checked, and the analytics below only ever read
+  // the caller's orders (orderScopeSql), so this never widens visibility.
+  if (!item) {
+    const [ref] = await db
+      .select({ sku: inventory.sku })
+      .from(inventory)
+      .where(eq(inventory.id, inventoryId))
+      .limit(1);
+    if (ref?.sku) {
+      [item] = await db
+        .select({ sku: inventory.sku, name: inventory.name, clientId: inventory.clientId })
+        .from(inventory)
+        .where(and(sql`lower(${inventory.sku}) = lower(${ref.sku})`, inventoryScopePredicate(scope, { clientId, storeId })))
+        .limit(1);
+    }
+  }
   if (!item) return c.json({ error: 'Inventory item not found' }, 404);
 
   const result = await getSkuOrdersForSku({

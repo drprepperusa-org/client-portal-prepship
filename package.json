@@ -72,6 +72,7 @@
     "test:dashboard-chart-drilldown": "node scripts/dashboard-chart-drilldown-guard.mjs",
     "test:dashboard-customize": "node scripts/dashboard-customize-guard.mjs",    "test:analysis-client-scope": "node scripts/analysis-client-store-scope-guard.mjs",
     "test:analysis-table-columns": "node scripts/client-portal-analysis-columns-guard.mjs",
+    "test:client-portal-sku-orders-scope": "node scripts/client-portal-sku-orders-scope-guard.mjs",
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",
     "test:client-portal-inventory-status": "tsx scripts/client-portal-inventory-status-guard.ts",
     "test:inventory-client-scope": "node scripts/inventory-client-store-scope-guard.mjs",    "test:inventory-auto-deduct": "node scripts/inventory-auto-deduct-guard.mjs",    "test:inventory-reconciliation-dry-run": "node scripts/inventory-reconciliation-dry-run-guard.mjs",
