@@ -41,13 +41,21 @@ function slugify(name: string): string {
 
 export async function exportInvoiceExcel(
   rows: BillingInvoiceDetailRow[],
-  opts: { clientName: string; from: string; to: string },
+  opts: { clientName: string; from: string; to: string; includeClient?: boolean },
 ): Promise<void> {
   const { default: writeXlsxFile } = await import('write-excel-file');
 
-  const header = HEADERS.map((value) => ({ value: value as string, fontWeight: 'bold' as const }));
+  // A whole-range export can span multiple clients (admin, no client filter);
+  // prepend a Client column then so each line stays attributable.
+  const includeClient = opts.includeClient ?? false;
+  const clientCol = <T,>(cell: T) => (includeClient ? [cell] : []);
+
+  const headerLabels = includeClient ? ['Client', ...HEADERS] : [...HEADERS];
+  const widths = includeClient ? [22, ...COLUMN_WIDTHS] : COLUMN_WIDTHS;
+  const header = headerLabels.map((value) => ({ value: value as string, fontWeight: 'bold' as const }));
 
   const dataRows = rows.map((r) => [
+    ...clientCol({ type: String, value: r.clientName ?? '' }),
     { type: String, value: r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
     { type: String, value: r.shipDate ?? '' },
     { type: String, value: r.carrierCode ? formatCarrierLabel(r.carrierCode) : '' },
@@ -67,6 +75,7 @@ export async function exportInvoiceExcel(
     rows.reduce((acc, r) => acc + num(pick(r)), 0);
   const bold = { fontWeight: 'bold' as const };
   const totalsRow = [
+    ...clientCol(null),
     { type: String, value: 'Total', ...bold },
     null,
     null,
@@ -83,7 +92,7 @@ export async function exportInvoiceExcel(
   ];
 
   await writeXlsxFile([header, ...dataRows, totalsRow], {
-    columns: COLUMN_WIDTHS.map((width) => ({ width })),
+    columns: widths.map((width) => ({ width })),
     sheet: 'Invoice',
     fileName: `invoice-${slugify(opts.clientName)}-${opts.from}-${opts.to}.xlsx`,
   });

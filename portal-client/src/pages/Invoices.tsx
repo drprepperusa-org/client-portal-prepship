@@ -67,6 +67,31 @@ function addBillingTotals(acc: BillingTotals, summary: ClientSummary): BillingTo
   };
 }
 
+// Walk the paginated invoice-details endpoint to gather EVERY line item for a
+// client + range. The unpaginated endpoint caps at 5000 rows (1000 for a whole
+// scope), so a multi-month "export all" would silently truncate there — page
+// through instead (200/page server max) and accumulate, flagging (never hiding)
+// a hard ceiling.
+async function fetchAllInvoiceRows(
+  token: string,
+  clientId: number | undefined,
+  rangeFrom: string,
+  rangeTo: string,
+): Promise<{ rows: BillingInvoiceDetailRow[]; truncated: boolean }> {
+  const PAGE_SIZE = 200;
+  const MAX_PAGES = 250; // 50k-row ceiling — covers any real range, guards a runaway loop
+  const rows: BillingInvoiceDetailRow[] = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const res = await portalApi.invoiceDetailsRange(token, rangeFrom, rangeTo, clientId, { page, pageSize: PAGE_SIZE });
+    rows.push(...(res.data ?? []));
+    totalPages = res.pagination?.totalPages ?? 1;
+    page += 1;
+  } while (page <= totalPages && page <= MAX_PAGES);
+  return { rows, truncated: totalPages > MAX_PAGES };
+}
+
 export default function Invoices({ from, to }: { from: string; to: string }) {
   const toast = useToast();
   const { accessToken } = useAuth();
@@ -142,20 +167,51 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const lineItems = detailQuery.data?.data ?? [];
   const detailPg = detailQuery.data?.pagination;
 
-  // Excel export fetches the full row set for the client + period directly,
-  // so it is complete no matter which view the button was clicked from.
+  // Excel export fetches the full row set for the client + period (paging
+  // through so nothing is truncated), independent of the table's paging.
   async function exportExcel(clientId: number, clientName: string, rangeFrom: string, rangeTo: string, busyKey: string) {
     if (exporting != null || !accessToken) return;
     setExporting(busyKey);
     try {
-      // Full (unpaginated) row set for the export, independent of table paging.
-      const res = await portalApi.invoiceDetailsRange(accessToken, rangeFrom, rangeTo, clientId, { pageSize: 5000 });
-      const clientRows = res.data ?? [];
-      if (!clientRows.length) {
+      const { rows, truncated } = await fetchAllInvoiceRows(accessToken, clientId, rangeFrom, rangeTo);
+      if (!rows.length) {
         toast.error('Nothing to export', 'No billable lines for this client in this period.');
         return;
       }
-      await exportInvoiceExcel(clientRows, { clientName, from: rangeFrom, to: rangeTo });
+      await exportInvoiceExcel(rows, { clientName, from: rangeFrom, to: rangeTo });
+      if (truncated) toast.warning('Partial export', 'This range is very large; narrow it and export again for a complete file.');
+    } catch (err) {
+      toast.error('Excel export failed', err instanceof Error ? err.message : 'Could not build the Excel file.');
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  // Export the ENTIRE selected date range (every billing period) as one Excel —
+  // the "I want April → July in a single file" case. Uses the on-page client
+  // filter when set, else the whole visible scope with a Client column so a
+  // multi-client file stays attributable.
+  async function exportAllPeriods() {
+    if (exporting != null || !accessToken) return;
+    const distinctClientIds = [...new Set(summary.map((s) => s.clientId))];
+    const effectiveClientId = clientFilter ?? (distinctClientIds.length === 1 ? distinctClientIds[0] : undefined);
+    const multiClient = effectiveClientId == null && distinctClientIds.length > 1;
+    const clientName = effectiveClientId != null
+      ? summary.find((s) => s.clientId === effectiveClientId)?.clientName ?? `Client ${effectiveClientId}`
+      : 'All clients';
+    setExporting('all-periods');
+    try {
+      const { rows, truncated } = await fetchAllInvoiceRows(accessToken, effectiveClientId, from, to);
+      if (!rows.length) {
+        toast.error('Nothing to export', 'No billable lines in this date range.');
+        return;
+      }
+      await exportInvoiceExcel(rows, { clientName, from, to, includeClient: multiClient });
+      if (truncated) {
+        toast.warning('Partial export', 'This range is very large; narrow it and export again for a complete file.');
+      } else {
+        toast.success('Excel ready', `${rows.length.toLocaleString()} line${rows.length === 1 ? '' : 's'} across ${from} → ${to}.`);
+      }
     } catch (err) {
       toast.error('Excel export failed', err instanceof Error ? err.message : 'Could not build the Excel file.');
     } finally {
@@ -364,6 +420,18 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
                   {label}
                 </button>
               ))}
+              {/* Export EVERY period in the selected range as one Excel — the
+                  per-row buttons only cover a single period each. */}
+              <div className="mx-0.5 h-5 w-px bg-slate-200" aria-hidden />
+              <button
+                onClick={() => void exportAllPeriods()}
+                disabled={exporting != null || summary.length === 0}
+                className={actionBtn}
+                title={`Download every billing period from ${from} to ${to} in one Excel (.xlsx)`}
+              >
+                {exporting === 'all-periods' ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+                Export all
+              </button>
             </div>
           </div>
           <QueryState
