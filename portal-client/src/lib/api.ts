@@ -811,7 +811,9 @@ export const portalApi = {
     dateFrom: string,
     dateTo: string,
     clientId?: number,
-    opts: { page?: number; pageSize?: number } = {},
+    // CP-016: sortBy/sortDir drive the backend whole-set header sort for the
+    // Billing line-item table. Omitted (e.g. by the export) → default order.
+    opts: { page?: number; pageSize?: number; sortBy?: string; sortDir?: 'asc' | 'desc' } = {},
   ) =>
     apiGet<{
       data: BillingInvoiceDetailRow[];
@@ -823,6 +825,8 @@ export const portalApi = {
       clientId,
       page: opts.page,
       pageSize: opts.pageSize,
+      sortBy: opts.sortBy,
+      sortDir: opts.sortDir,
     }),
 
   /** Per-client billing rollup for a range — SQL-aggregated, no row cap. */

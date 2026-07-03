@@ -87,6 +87,10 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   // Drill-in selection: a client + its semi-monthly billing period.
   const [selected, setSelected] = useState<{ clientId: number; clientName: string; from: string; to: string } | null>(null);
   const [detailPage, setDetailPage] = useState(1);
+  // CP-016: the Billing line-item table sorts across the FULL filtered set
+  // (server-owned), not just the loaded page. This holds the active header sort;
+  // a header click updates it + resets to page 1, and it flows into the query.
+  const [detailSort, setDetailSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>({ key: 'date', dir: 'desc' });
   // Busy keys are `${clientId}-${periodStart}` so each period row spins alone.
   const [opening, setOpening] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -168,7 +172,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
 
   // Line items load for the selected client + billing period, server-paginated
   // (100/page) so the animated table never renders thousands of rows at once.
-  const detailQuery = useInvoiceDetailsRange(selected?.from ?? from, selected?.to ?? to, selected?.clientId ?? null, detailPage, 100);
+  const detailQuery = useInvoiceDetailsRange(selected?.from ?? from, selected?.to ?? to, selected?.clientId ?? null, detailPage, 100, detailSort?.key, detailSort?.dir);
   const lineItems = detailQuery.data?.data ?? [];
   const detailPg = detailQuery.data?.pagination;
 
@@ -507,7 +511,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               columns={lineCols}
               rows={lineItems}
               rowKey={(r) => `${r.orderId}-${r.orderNumber}`}
-              defaultSort={{ key: 'date', dir: 'desc' }}
+              sort={detailSort}
+              onSortChange={(s) => { setDetailSort(s); setDetailPage(1); }}
             />
             {detailPg && (
               <Pagination page={detailPg.page} totalPages={detailPg.totalPages} total={detailPg.total} pageSize={detailPg.pageSize} onPage={setDetailPage} />

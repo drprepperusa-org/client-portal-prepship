@@ -86,12 +86,15 @@ export function useInvoiceDetailsRange(
   explicitClientId?: number | null,
   page = 1,
   pageSize = 100,
+  // CP-016: whole-set header sort for the Billing line-item table.
+  sortBy?: string,
+  sortDir?: 'asc' | 'desc',
 ) {
   const { clientId: globalClientId } = usePortalFilters();
   const clientId = explicitClientId ?? globalClientId;
   return useTokenQuery(
-    ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope', page, pageSize],
-    (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId, { page, pageSize }),
+    ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope', page, pageSize, sortBy ?? '', sortDir ?? ''],
+    (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId, { page, pageSize, sortBy, sortDir }),
     Boolean(dateFrom && dateTo) && (explicitClientId === undefined || explicitClientId != null),
     { refetchInterval: 60_000, refetchOnWindowFocus: true },
   );

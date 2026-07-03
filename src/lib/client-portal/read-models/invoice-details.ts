@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderItems } from '../../../db/schema/order-items';
@@ -194,6 +194,78 @@ export async function portalInvoicePeriodSummary(
   });
 }
 
+// CP-016: whitelisted server-side sort for the Billing line-item table. The
+// query owns sorting the FULL filtered set before limit/offset, so header
+// sorting spans every page (not just the loaded one). Each key maps to the same
+// canonical grouped expression the SELECT uses; unknown keys fall back to the
+// default (never interpolate raw client params into SQL). `order_id` is unique
+// per group, so it is the deterministic tie-breaker for stable pagination.
+const INVOICE_DETAIL_SORT_EXPR: Record<string, SQL> = {
+  order: sql`case when b.order_number ~ '^[0-9]+$' then lpad(b.order_number, 20, '0') else lower(coalesce(b.order_number, '')) end`,
+  date: sql`min(b.ship_date)`,
+  item: sql`lower(coalesce(${invoiceItemNameLinesSql(sql`b.order_id`)}, ''))`,
+  sku: sql`(select min(lower(oi.sku)) from ${orderItems} oi where oi.order_id = b.order_id and oi.sku is not null and oi.sku <> '')`,
+  qty: sql`coalesce((select sum(greatest(0, coalesce(oi.quantity, 0))) from ${orderItems} oi where oi.order_id = b.order_id and oi.quantity > 0 and coalesce(oi.unit_price, 0) >= 0), 0)`,
+  pickpack: sql`coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)`,
+  addl: sql`coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)`,
+  boxcost: sql`coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)`,
+  boxsize: sql`max(oo.best_rate_dims)`,
+  shipping: sql`coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)`,
+  fee: sql`coalesce(sum(b.total_cost), 0)`,
+};
+
+export const INVOICE_DETAIL_SORT_KEYS = Object.keys(INVOICE_DETAIL_SORT_EXPR);
+
+/** ORDER BY for the Billing detail query: the whitelisted column (asc/desc)
+ *  first, then a unique per-group tie-breaker. Unknown/absent key → default
+ *  ship-date order (the same order the printable invoice/export use). */
+function invoiceDetailOrderBy(sortBy?: string | null, sortDir?: string | null): SQL {
+  const expr = sortBy ? INVOICE_DETAIL_SORT_EXPR[sortBy] : undefined;
+  if (!expr) return sql`order by min(b.ship_date) desc, b.order_id desc`;
+  const dir = String(sortDir).toLowerCase() === 'asc' ? sql`asc` : sql`desc`;
+  return sql`order by ${expr} ${dir} nulls last, b.order_id desc`;
+}
+
+/** Sort the Heritage Prep Fee override rows the same way the SQL path sorts —
+ *  in full, before pagination slices — so that special client's Billing table
+ *  also sorts across all pages. Mutates + returns the array. */
+function sortHeritageOverrideRows<T extends {
+  orderNumber: string | null;
+  itemNames: string | null;
+  shipDate: string | null;
+  qty: number;
+  pickpackTotal: number;
+  packageTotal: number;
+  shippingTotal: number;
+  rowTotal: number;
+}>(rows: T[], sortBy?: string | null, sortDir?: string | null): T[] {
+  if (!sortBy || !(sortBy in INVOICE_DETAIL_SORT_EXPR)) return rows;
+  const sign = String(sortDir).toLowerCase() === 'asc' ? 1 : -1;
+  const num = (r: T): number =>
+    sortBy === 'qty' ? r.qty
+    : sortBy === 'pickpack' ? r.pickpackTotal
+    : sortBy === 'boxcost' ? r.packageTotal
+    : sortBy === 'shipping' ? r.shippingTotal
+    : sortBy === 'fee' ? r.rowTotal
+    : sortBy === 'addl' ? 0
+    : NaN;
+  const text = (r: T): string | null =>
+    sortBy === 'order' ? r.orderNumber
+    : sortBy === 'item' ? r.itemNames
+    : sortBy === 'date' ? r.shipDate
+    : null;
+  return rows.sort((a, b) => {
+    const na = num(a);
+    if (Number.isFinite(na)) return (na - num(b)) * sign;
+    const ta = text(a);
+    const tb = text(b);
+    if (ta == null && tb == null) return 0;
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' }) * sign;
+  });
+}
+
 type PortalInvoiceDetailRow = {
   client_id: number;
   client_name: string | null;
@@ -220,7 +292,17 @@ type PortalInvoiceDetailRow = {
 
 export async function portalInvoiceDetails(
   scope: ClientPortalScope,
-  input: { clientId?: number | null; dateFrom: string; dateTo: string; page?: number; pageSize?: number },
+  input: {
+    clientId?: number | null;
+    dateFrom: string;
+    dateTo: string;
+    page?: number;
+    pageSize?: number;
+    // CP-016: whitelisted server-side sort applied across the full filtered set
+    // before pagination. See INVOICE_DETAIL_SORT_KEYS.
+    sortBy?: string | null;
+    sortDir?: string | null;
+  },
 ) {
   if (input.clientId) {
     const [client] = await db
@@ -229,7 +311,12 @@ export async function portalInvoiceDetails(
       .where(clientFilterPredicate(scope, input.clientId, null))
       .limit(1);
     if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
-      const allOverrideRows = heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo);
+      // CP-016: sort the FULL override set before slicing this page.
+      const allOverrideRows = sortHeritageOverrideRows(
+        heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo),
+        input.sortBy,
+        input.sortDir,
+      );
       const overrideRows =
         input.page && input.pageSize
           ? allOverrideRows.slice((input.page - 1) * input.pageSize, input.page * input.pageSize)
@@ -304,7 +391,7 @@ export async function portalInvoiceDetails(
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, b.order_id, b.order_number
-    order by min(b.ship_date) desc, b.order_id desc
+    ${invoiceDetailOrderBy(input.sortBy, input.sortDir)}
     limit ${input.pageSize ?? (input.clientId ? 5000 : 1000)}
     ${input.page && input.pageSize ? sql`offset ${(input.page - 1) * input.pageSize}` : sql``}
   `);

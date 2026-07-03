@@ -46,8 +46,17 @@ interface DataTableProps<T> {
   empty?: ReactNode;
   /** Optional footer row(s) (e.g. a totals row), rendered in <tfoot>. */
   footer?: ReactNode;
-  /** Initial sort. */
+  /** Initial sort (local mode only). */
   defaultSort?: SortState;
+  /**
+   * Controlled (server-side) sort. Provide `sort` + `onSortChange` TOGETHER for
+   * whole-dataset sorting: the table renders `rows` as-is (they arrive already
+   * sorted by the server for the full filtered set) and only surfaces the sort
+   * indicator + reports header clicks. Omit both for the default local sort of
+   * the current rows.
+   */
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
   /**
    * Stable id used to persist column order/width to localStorage. Omit to keep
    * customization in-memory only (resets on unmount).
@@ -55,23 +64,30 @@ interface DataTableProps<T> {
   tableId?: string;
 }
 
-export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId, footer, defaultSort = null }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId, footer, defaultSort = null, sort: controlledSort, onSortChange }: DataTableProps<T>) {
   const layout = useColumnLayout(tableId, columns);
   const byKey = Object.fromEntries(columns.map((c) => [c.key, c])) as Record<string, Column<T>>;
   const ordered = layout.visibleOrder.map((k) => byKey[k]).filter(Boolean) as Column<T>[];
 
   // ---- Sorting ----
-  const [sort, setSort] = useState<SortState>(defaultSort);
+  // Controlled (server-sort) when a change handler is supplied: the parent owns
+  // the sort and feeds `rows` already sorted for the FULL filtered set.
+  const controlled = onSortChange != null;
+  const [internalSort, setInternalSort] = useState<SortState>(defaultSort);
+  const sort = controlled ? controlledSort ?? null : internalSort;
   function toggleSort(c: Column<T>) {
     if (!c.sortAccessor) return;
-    setSort((cur) => {
-      if (!cur || cur.key !== c.key) return { key: c.key, dir: 'asc' };
-      if (cur.dir === 'asc') return { key: c.key, dir: 'desc' };
-      return null; // third click clears the sort
-    });
+    let next: SortState;
+    if (!sort || sort.key !== c.key) next = { key: c.key, dir: 'asc' };
+    else if (sort.dir === 'asc') next = { key: c.key, dir: 'desc' };
+    else next = controlled ? { key: c.key, dir: 'asc' } : null; // server: cycle asc↔desc; local: clear
+    if (controlled) onSortChange(next);
+    else setInternalSort(next);
   }
   const sortedRows = useMemo(() => {
-    if (!sort) return rows;
+    // Server-sort mode: rows already sorted for the whole filtered set — render
+    // as-is, never re-sorting just the current page.
+    if (controlled || !sort) return rows;
     const acc = columns.find((c) => c.key === sort.key)?.sortAccessor;
     if (!acc) return rows;
     const dir = sort.dir === 'asc' ? 1 : -1;
@@ -84,7 +100,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
       if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
       return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
     });
-  }, [rows, sort, columns]);
+  }, [rows, sort, columns, controlled]);
 
   // Columns visibility dropdown
   const [colsOpen, setColsOpen] = useState(false);

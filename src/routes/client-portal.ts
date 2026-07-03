@@ -746,8 +746,12 @@ app.get('/invoice-details', async (c) => {
   if (c.req.query('page')) {
     const page = parsePage(c.req.query('page'));
     const pageSize = parsePageSize(c.req.query('pageSize'));
+    // CP-016: whitelisted header sort applies across the FULL filtered set
+    // (before pagination) — the read-model validates/ignores unknown keys.
+    const sortBy = c.req.query('sortBy');
+    const sortDir = c.req.query('sortDir');
     const [rows, total] = await Promise.all([
-      portalInvoiceDetails(scope, { clientId, dateFrom, dateTo, page, pageSize }),
+      portalInvoiceDetails(scope, { clientId, dateFrom, dateTo, page, pageSize, sortBy, sortDir }),
       portalInvoiceDetailCount(scope, { clientId, dateFrom, dateTo }),
     ]);
     await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length, page });
