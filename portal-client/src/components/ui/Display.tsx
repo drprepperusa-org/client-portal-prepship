@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/cn';
 import { ACCENTS, type Accent } from '@/lib/accents';
@@ -59,35 +60,73 @@ export function Tooltip({
   /** Wrap long explanatory copy in a fixed-width bubble instead of one nowrap line. */
   multiline?: boolean;
 }) {
-  const [show, setShow] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const show = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
+  const hide = () => setRect(null);
+
+  // The bubble is position:fixed at the document level, so a scroll or resize
+  // would leave it stranded at stale coordinates — just dismiss it.
+  useEffect(() => {
+    if (!rect) return;
+    const dismiss = () => setRect(null);
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [rect]);
+
+  // Rendered through a portal with fixed coordinates so no ancestor overflow
+  // can clip it — an overflow-x-auto table wrapper is a scroll container that
+  // clips vertical overflow too, which swallowed in-flow bubbles entirely.
+  const BUBBLE_HALF = 128; // w-64 / 2 — keeps multiline bubbles on screen
+  const position = rect
+    ? side === 'top'
+      ? {
+          left: multiline
+            ? Math.min(Math.max(rect.left + rect.width / 2, BUBBLE_HALF + 8), window.innerWidth - BUBBLE_HALF - 8)
+            : rect.left + rect.width / 2,
+          top: rect.top - 8,
+          transform: 'translate(-50%, -100%)',
+        }
+      : {
+          left: rect.right + 10,
+          top: rect.top + rect.height / 2,
+          transform: 'translateY(-50%)',
+        }
+    : null;
+
   return (
-    <span className="relative inline-flex" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)} onFocus={() => setShow(true)} onBlur={() => setShow(false)}>
+    <span ref={anchorRef} className="relative inline-flex" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
       {children}
-      <AnimatePresence>
-        {show && (
-          <motion.span
-            initial={{ opacity: 0, x: side === 'right' ? -6 : 0, y: side === 'top' ? 6 : 0, scale: 0.9 }}
-            animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.14 }}
-            role="tooltip"
-            className={cn(
-              'pointer-events-none absolute z-50 rounded-lg bg-ink',
-              'px-2.5 py-1.5 text-xs font-medium text-white shadow-lg',
-              // normal-case/tracking-normal: explanatory copy must not inherit
-              // uppercase table-header styling from the anchor element.
-              multiline
-                ? 'w-64 whitespace-normal text-left font-normal normal-case leading-relaxed tracking-normal'
-                : 'whitespace-nowrap',
-              side === 'right'
-                ? 'left-full top-1/2 ml-2.5 -translate-y-1/2'
-                : 'bottom-full left-1/2 mb-2 -translate-x-1/2',
-            )}
-          >
-            {label}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
+          {position && (
+            <span className="pointer-events-none fixed z-50" style={position}>
+              <motion.span
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.14 }}
+                role="tooltip"
+                className={cn(
+                  'block rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-white shadow-lg',
+                  // Explicit casing/leading: the bubble no longer inherits from
+                  // the anchor (e.g. uppercase table headers), keep it that way.
+                  multiline
+                    ? 'w-64 whitespace-normal text-left font-normal normal-case leading-relaxed tracking-normal'
+                    : 'whitespace-nowrap',
+                )}
+              >
+                {label}
+              </motion.span>
+            </span>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </span>
   );
 }
