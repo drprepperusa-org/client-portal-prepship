@@ -4,7 +4,7 @@ import { Thumb } from '@/components/ui/Thumb';
 import { GlassPanel } from '@/components/ui/Glass';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Chip } from '@/components/ui/Display';
+import { Chip, Tooltip } from '@/components/ui/Display';
 import { Checkbox, Select } from '@/components/ui/Selection';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
@@ -16,6 +16,10 @@ import { cn } from '@/lib/cn';
 
 /* ---------- formatting helpers ---------- */
 const trimNum = (n: number) => String(Number(n.toFixed(2))); // 11.0 -> "11"
+// CP-023: this column is warehouse ship-out (inventory ledger), NOT ordered units.
+const WHSE_SHIPPED_TOOLTIP =
+  'Units shipped from the warehouse in the last 30 days (inventory ledger ship events, by ship date). ' +
+  'Not order/sales units — see Analysis for units ordered.';
 function fmtWeight(oz: number | null): string {
   if (oz == null || oz <= 0) return '—';
   const whole = Math.round(oz); // round to whole oz first so the remainder can't overflow to 16
@@ -136,7 +140,18 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       render: (s) => <span className={cn('font-semibold tnum', s.isOut ?? Number(s.stockQty ?? 0) <= 0 ? 'text-rose-600' : 'text-ink')}>{s.stockQty ?? 0}</span>,
       sortAccessor: (s) => Number(s.stockQty) || 0,
     },
-    { key: 'sold30', header: 'Sold 30d', defaultWidth: 100, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{Number(s.soldLast30Days ?? 0)}</span>, sortAccessor: (s) => Number(s.soldLast30Days) || 0 },
+    {
+      key: 'whseShipped30',
+      header: 'Whse Shipped 30d',
+      defaultWidth: 130,
+      className: 'text-right',
+      render: (s) => (
+        <Tooltip side="top" multiline label={WHSE_SHIPPED_TOOLTIP}>
+          <span tabIndex={0} className="tnum text-ink-3 cursor-help">{Number(s.warehouseShipped30d ?? 0)}</span>
+        </Tooltip>
+      ),
+      sortAccessor: (s) => Number(s.warehouseShipped30d) || 0,
+    },
     { key: 'unitsPack', header: 'Units/Pack', defaultWidth: 110, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.unitsPerPack ?? 1}</span>, sortAccessor: (s) => Number(s.unitsPerPack) || 0 },
     { key: 'totalUnits', header: 'Total Units', defaultWidth: 110, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.totalUnits ?? 0}</span>, sortAccessor: (s) => Number(s.totalUnits) || 0 },
     { key: 'min', header: 'Min', defaultWidth: 80, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.reorderLevel ?? 0}</span>, sortAccessor: (s) => Number(s.reorderLevel) || 0 },

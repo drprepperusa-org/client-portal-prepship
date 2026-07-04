@@ -77,7 +77,7 @@ export async function listPortalInventory(
         clientName: row.clientName,
         storeName: row.clientName,
         storeIds: row.storeIds,
-        soldLast30Days: soldById.get(row.item.id) ?? 0,
+        warehouseShipped30d: soldById.get(row.item.id) ?? 0,
         pkg: row.pkgName != null || row.pkgLength != null ? { name: row.pkgName, length: row.pkgLength, width: row.pkgWidth, height: row.pkgHeight } : null,
       }),
     ),

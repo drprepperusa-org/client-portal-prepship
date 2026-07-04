@@ -196,7 +196,9 @@ export interface PortalInventory {
   reorderLevel: number | null;
   active: boolean | null;
   imageUrl: string | null;
-  soldLast30Days: number | string | null;
+  // CP-023: warehouse ship-out units (ledger ship rows, by ship date) — NOT
+  // ordered units. Distinct from Analysis "Ordered Units" by name and source.
+  warehouseShipped30d: number | string | null;
   effectiveStock: number | null;
   // CP-013: backend-owned stock status (shared with the Low/Out filter). The
   // frontend renders these; it no longer derives status from stock/reorder.

@@ -333,7 +333,10 @@ export function toPortalShipmentDto(
 
 export function toPortalInventoryDto(
   row: Inventory & {
-    soldLast30Days?: number | string | null;
+    // CP-023: warehouse ship-out units (inventory_ledger ship rows, by ship
+    // date) — NOT ordered/sold units. The SOT-encoding name prevents confusion
+    // with Analysis's "Ordered Units".
+    warehouseShipped30d?: number | string | null;
     clientName?: string | null;
     storeName?: string | null;
     storeIds?: number[] | null;
@@ -373,7 +376,7 @@ export function toPortalInventoryDto(
     reorderLevel: row.reorderLevel,
     active: row.active,
     imageUrl: row.imageUrl,
-    soldLast30Days: Number(row.soldLast30Days ?? 0),
+    warehouseShipped30d: Number(row.warehouseShipped30d ?? 0),
     effectiveStock: row.stockQty,
     // CP-013: backend-owned stock status (the frontend renders this enum).
     stockStatus,
