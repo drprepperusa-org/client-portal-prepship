@@ -16,7 +16,7 @@
 // status, not by carrier. The label/tracking/cost SOT stays on shipments; the
 // return label PDF is served through the existing /labels/mock/:id route (the
 // return shipment's labelUrl already points at it) — we never invent a new one.
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { and, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
@@ -52,6 +52,35 @@ const RETURN_STATUS_FILTERS = new Set([
   'closed',
   'cancelled',
 ]);
+
+// CP-030 — the statuses a return can be in when the 3PL is still expecting or
+// actively receiving it. The mobile receiving list is bounded to these.
+const RECEIVING_STATUSES = ['requested', 'label_created', 'in_transit', 'received'];
+
+// CP-030 — the agreed inspection CONDITION enum. An inspection write must carry
+// one of these (or none, for a bare "received" ack); anything else is rejected.
+const INSPECTION_CONDITIONS = new Set([
+  'sealed_new',
+  'opened_good',
+  'damaged',
+  'missing_item',
+  'wrong_item',
+  'other',
+]);
+
+// CP-030 — inspection media kinds. Photo or video only.
+const INSPECTION_MEDIA_TYPES = new Set(['photo', 'video']);
+
+// CP-030 — 3PL/admin-only WRITE gate. Reused verbatim from the sibling
+// operator-only writes (src/routes/client-portal/inbound.ts): a scoped client
+// user is NOT global and lacks 'settings:write', so they get a 403. This is the
+// single source of truth for "can this caller record receiving/inspection".
+function operatorGateOrResponse(c: Context, scope: ClientPortalScope): Response | null {
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Admin access required' }, 403);
+  }
+  return null;
+}
 
 // ── Scope predicate for returns ──────────────────────────────────────────────
 // A return is visible when the caller can see its ORDER. We reuse the canonical
@@ -475,6 +504,230 @@ app.post('/returns/:id{[0-9]+}/deliver', async (c) => {
   const result = await deliverReturn({ returnRow: ret, returnShipment, order });
   await recordPortalAudit('portal.returns.deliver', scope, { returnId: id, method: result.deliveryMethod, status: result.deliveryStatus });
   return c.json({ data: result });
+});
+
+// ── GET /returns/receiving — 3PL/admin receiving queue (mobile-oriented) ─────
+// A small, scannable list of the returns the warehouse is still expecting or
+// actively receiving (requested | label_created | in_transit | received),
+// searchable by return tracking / order number / return id. Operator-only (a
+// client user has no receiving desk) AND bounded by the SAME return-scope
+// predicate every other read uses, so an operator with a restricted JWT still
+// only sees their scope. The payload is deliberately minimal for a phone.
+app.get('/returns/receiving', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const gated = operatorGateOrResponse(c, scope);
+  if (gated) return gated;
+
+  const search = requestedSearch(c);
+  const where = and(
+    returnScopePredicate(scope),
+    inArray(returns.status, RECEIVING_STATUSES),
+    returnSearchPredicate(search),
+  );
+
+  const rows = await db
+    .select({
+      ret: returns,
+      orderNumber: orders.orderNumber,
+      clientName: clients.name,
+      returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
+      returnToLocationName: locations.name,
+    })
+    .from(returns)
+    .leftJoin(orders, eq(orders.id, returns.orderId))
+    .leftJoin(clients, eq(clients.id, returns.clientId))
+    .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
+    .leftJoin(locations, eq(locations.id, returns.returnToLocationId))
+    .where(where)
+    .orderBy(desc(returns.requestedAt), desc(returns.id))
+    .limit(100);
+
+  await recordPortalAudit('portal.returns.receiving.list', scope, { rows: rows.length, search });
+  return c.json({
+    data: rows.map((row) => ({
+      id: row.ret.id,
+      orderId: row.ret.orderId,
+      orderNumber: row.orderNumber,
+      clientName: row.clientName,
+      status: row.ret.status,
+      trackingNumber: row.returnTracking,
+      returnToLocation: row.returnToLocationName,
+      requestedAt: iso(row.ret.requestedAt),
+    })),
+  });
+});
+
+// ── POST /returns/:id/inspection — record 3PL receiving/inspection ───────────
+// 3PL/admin WRITE only (a client user is 403'd by the operator gate). Upserts
+// the return_inspections row for this return: receivedAt, condition (validated
+// against INSPECTION_CONDITIONS), status, comments; stamps inspectorEmail from
+// the caller and links returnShipmentId from the return. Advances the return's
+// lifecycle → 'received' (bare ack) or 'inspected' (a condition was recorded).
+// Scope is re-validated: an operator can only inspect a return inside their JWT
+// scope, exactly like every other return read/write here.
+app.post('/returns/:id{[0-9]+}/inspection', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const gated = operatorGateOrResponse(c, scope);
+  if (gated) return gated;
+  const id = Number(c.req.param('id'));
+
+  const [ret] = await db
+    .select({ id: returns.id, returnShipmentId: returns.returnShipmentId })
+    .from(returns)
+    .where(and(eq(returns.id, id), returnScopePredicate(scope)))
+    .limit(1);
+  if (!ret) return c.json({ error: 'Return not found' }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    receivedAt?: string;
+    condition?: string;
+    status?: string;
+    comments?: string;
+  };
+
+  const condition = typeof body.condition === 'string' && body.condition.trim() ? body.condition.trim() : null;
+  if (condition && !INSPECTION_CONDITIONS.has(condition)) {
+    return c.json({ error: `Invalid condition. Expected one of: ${[...INSPECTION_CONDITIONS].join(', ')}` }, 400);
+  }
+  const receivedAt = body.receivedAt ? new Date(body.receivedAt) : new Date();
+  if (Number.isNaN(receivedAt.getTime())) return c.json({ error: 'Invalid receivedAt' }, 400);
+  const comments = typeof body.comments === 'string' && body.comments.trim() ? body.comments.trim().slice(0, 2000) : null;
+  // The inspection status: 'passed' for a good/sealed condition, 'failed' for a
+  // damaged/missing/wrong one, otherwise 'pending'. Callers may override with an
+  // explicit status; anything else falls back to the derived value.
+  const derivedStatus =
+    condition === 'sealed_new' || condition === 'opened_good'
+      ? 'passed'
+      : condition === 'damaged' || condition === 'missing_item' || condition === 'wrong_item'
+        ? 'failed'
+        : 'pending';
+  const status = ['pending', 'passed', 'failed'].includes(body.status ?? '') ? (body.status as string) : derivedStatus;
+
+  // Upsert: one inspection row per return (the latest ack). Update the existing
+  // row when present, else insert a fresh one.
+  const [existing] = await db
+    .select({ id: returnInspections.id })
+    .from(returnInspections)
+    .where(eq(returnInspections.returnId, id))
+    .orderBy(desc(returnInspections.id))
+    .limit(1);
+
+  let inspectionId: number;
+  if (existing) {
+    await db
+      .update(returnInspections)
+      .set({
+        returnShipmentId: ret.returnShipmentId,
+        receivedAt,
+        condition,
+        status,
+        comments,
+        inspectorEmail: scope.email ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(returnInspections.id, existing.id));
+    inspectionId = existing.id;
+  } else {
+    const [inserted] = await db
+      .insert(returnInspections)
+      .values({
+        returnId: id,
+        returnShipmentId: ret.returnShipmentId,
+        receivedAt,
+        condition,
+        status,
+        comments,
+        inspectorEmail: scope.email ?? null,
+      })
+      .returning({ id: returnInspections.id });
+    inspectionId = inserted!.id;
+  }
+
+  // Advance the return lifecycle: 'inspected' once a condition is recorded,
+  // otherwise 'received'. Never regress a return that is already closed/cancelled.
+  const nextReturnStatus = condition ? 'inspected' : 'received';
+  await db
+    .update(returns)
+    .set({ status: nextReturnStatus, updatedAt: new Date() })
+    .where(and(eq(returns.id, id), sql`${returns.status} not in ('closed', 'cancelled')`));
+
+  await recordPortalAudit('portal.returns.inspection.record', scope, {
+    returnId: id,
+    inspectionId,
+    condition,
+    status,
+    returnStatus: nextReturnStatus,
+  });
+  return c.json({ data: { id: inspectionId, returnId: id, status, condition, returnStatus: nextReturnStatus } }, existing ? 200 : 201);
+});
+
+// ── POST /returns/:id/inspection/:iid/media — attach inspection media ────────
+// 3PL/admin WRITE only. Inserts a return_inspection_media row linked to the
+// inspection, after validating the inspection belongs to THIS return AND the
+// return is inside the caller's scope. METADATA-CANONICAL: this repo has no
+// object-storage upload plumbing (Supabase is auth-only; labels/images are
+// stored as URLs, never binaries), so we persist an already-hosted storageRef
+// (URL/key) + mediaType/contentType/sizeBytes/capturedAt — never a binary in
+// the DB. Wiring an actual upload depends on choosing a storage backend.
+app.post('/returns/:id{[0-9]+}/inspection/:iid{[0-9]+}/media', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const gated = operatorGateOrResponse(c, scope);
+  if (gated) return gated;
+  const id = Number(c.req.param('id'));
+  const iid = Number(c.req.param('iid'));
+
+  // The inspection must belong to this return AND the return must be in scope.
+  const [match] = await db
+    .select({ inspectionId: returnInspections.id })
+    .from(returnInspections)
+    .innerJoin(returns, eq(returns.id, returnInspections.returnId))
+    .where(and(eq(returnInspections.id, iid), eq(returnInspections.returnId, id), returnScopePredicate(scope)))
+    .limit(1);
+  if (!match) return c.json({ error: 'Inspection not found' }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    mediaType?: string;
+    storageRef?: string;
+    contentType?: string;
+    sizeBytes?: number;
+    capturedAt?: string;
+  };
+
+  const mediaType = typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
+  if (!INSPECTION_MEDIA_TYPES.has(mediaType)) {
+    return c.json({ error: "mediaType must be 'photo' or 'video'" }, 400);
+  }
+  const storageRef = typeof body.storageRef === 'string' ? body.storageRef.trim() : '';
+  if (!storageRef) {
+    return c.json({ error: 'storageRef (an already-hosted URL or object-storage key) is required' }, 400);
+  }
+  const contentType = typeof body.contentType === 'string' && body.contentType.trim() ? body.contentType.trim().slice(0, 200) : null;
+  const sizeBytes = Number.isFinite(Number(body.sizeBytes)) && Number(body.sizeBytes) > 0 ? Math.floor(Number(body.sizeBytes)) : null;
+  const capturedAt = body.capturedAt ? new Date(body.capturedAt) : new Date();
+  if (Number.isNaN(capturedAt.getTime())) return c.json({ error: 'Invalid capturedAt' }, 400);
+
+  const [inserted] = await db
+    .insert(returnInspectionMedia)
+    .values({
+      inspectionId: iid,
+      mediaType,
+      storageRef,
+      contentType,
+      sizeBytes,
+      capturedAt,
+    })
+    .returning({ id: returnInspectionMedia.id });
+
+  await recordPortalAudit('portal.returns.inspection.media.add', scope, {
+    returnId: id,
+    inspectionId: iid,
+    mediaId: inserted!.id,
+    mediaType,
+  });
+  return c.json({ data: { id: inserted!.id, inspectionId: iid, mediaType } }, 201);
 });
 
 export default app;

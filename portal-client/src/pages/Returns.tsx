@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Building2, Filter, Download, MapPin, Copy, ExternalLink } from 'lucide-react';
+import { Building2, Filter, Download, MapPin, Copy, ExternalLink, PackageCheck } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -10,13 +10,14 @@ import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
-import { useReturns, useReturnDetail, useClients } from '@/lib/hooks';
+import { useReturns, useReturnDetail, useClients, useMe } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shortDate } from '@/lib/status';
 import { API_BASE, type PortalReturnRow } from '@/lib/api';
 import { type Accent } from '@/lib/accents';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
+import { ReturnReceivingModal } from '@/components/returns/ReturnReceivingModal';
 
 const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
 function clientAccent(name: string | null): Accent {
@@ -65,6 +66,12 @@ function trackingUrl(tracking: string | null | undefined): string | null {
 export default function Returns() {
   const { clientId: globalClientId } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
+  const me = useMe().data;
+  // Operator = 3PL/admin. The receiving desk is theirs; a client user never sees
+  // the entry point. The BACKEND is the true guard (it 403s a client on writes) —
+  // this is the client-side signal that matches the operator concept as closely
+  // as the JWT allows (admin email OR global scope).
+  const isOperator = Boolean(me?.isAdmin || me?.isGlobal);
   const [params] = useSearchParams();
 
   const [q, setQ] = useState('');
@@ -73,6 +80,7 @@ export default function Returns() {
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOrderId, setCreateOrderId] = useState<number | null>(null);
+  const [receivingOpen, setReceivingOpen] = useState(false);
 
   const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
@@ -180,6 +188,14 @@ export default function Returns() {
         <SearchInput value={q} onChange={setQ} placeholder="Search order #, tracking, reason…" ariaLabel="Search returns" />
 
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+          {/* Operator-only receiving desk entry. Client users never see it; the
+              backend independently 403s a client on the receiving/inspection
+              writes, so this is a convenience gate, not the security boundary. */}
+          {isOperator && (
+            <Button leadingIcon={<PackageCheck size={16} />} onClick={() => setReceivingOpen(true)}>
+              Receive returns
+            </Button>
+          )}
           <label className="relative flex items-center">
             <Filter size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
             <select
@@ -238,6 +254,8 @@ export default function Returns() {
         onClose={() => setCreateOrderId(null)}
         onCreated={(id) => setSelectedId(id)}
       />
+      {/* Operator-only mobile receiving/inspection flow. */}
+      {isOperator && <ReturnReceivingModal open={receivingOpen} onClose={() => setReceivingOpen(false)} />}
     </div>
   );
 }

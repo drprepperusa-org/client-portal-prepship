@@ -1,0 +1,237 @@
+// CP-030 — Client-portal Returns 3PL receiving + inspection guard.
+//
+// Statically pins the safety + correctness invariants of the mobile receiving /
+// inspection workflow that CP-030 adds on top of the CP-026 schema and CP-029
+// returns router:
+//   1. The inspection WRITE endpoints carry the operator/admin gate — a client
+//      user cannot write (the SAME gate the sibling operator writes use in
+//      inbound.ts: !scope.isGlobal && !scope.permissions.includes('settings:write')
+//      → 403).
+//   2. Every new read/write stays scope-gated (scopeOrResponse + isClientPortalScope)
+//      exactly like the sibling endpoints, and re-validates the return is in the
+//      caller's scope via the canonical returnScopePredicate.
+//   3. Inspection media persists to return_inspection_media LINKED to the
+//      inspection — never a binary in the DB (metadata-canonical: storageRef).
+//   4. The condition enum is exactly the agreed 6-value set.
+//   5. The mobile receiving UI exists, is operator-gated in the page, and uses a
+//      mobile-capture file input (accept image/video + capture).
+//   6. The route never issues refunds or calls a marketplace (out of scope).
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = process.cwd();
+const read = (rel) =>
+  fs.existsSync(path.join(root, rel)) ? fs.readFileSync(path.join(root, rel), 'utf8') : '';
+
+let failed = false;
+function assert(cond, msg) {
+  if (cond) {
+    console.log(`PASS ${msg}`);
+  } else {
+    console.error(`FAIL ${msg}`);
+    failed = true;
+  }
+}
+
+// Strip ONLY whole-line `//` comments (lines whose first non-space char is `//`)
+// so the checks test executable CODE, not header prose — WITHOUT mangling code
+// like `/api/client-portal/*` that legitimately contains `/*` inside inline
+// comment text. A full block-comment strip is unsafe on these files (their
+// comment prose contains `/api/...*` sequences that would open spurious blocks),
+// so we deliberately only drop full-line line-comments. The forbidden-identifier
+// absence checks below target identifiers that appear NOWHERE in the comments of
+// these files, so raw-source matching is correct for them.
+function stripLineComments(src) {
+  return src
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .join('\n');
+}
+
+const route = read('src/routes/client-portal/returns.ts');
+const routeCode = stripLineComments(route);
+const api = read('portal-client/src/lib/api.ts');
+const hooks = read('portal-client/src/lib/hooks.ts');
+const page = read('portal-client/src/pages/Returns.tsx');
+const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
+const pkg = JSON.parse(read('package.json'));
+
+// ── 0. The new endpoints exist ──
+assert(route.length > 0, 'src/routes/client-portal/returns.ts exists');
+assert(
+  /app\.get\('\/returns\/receiving'/.test(route),
+  'GET /returns/receiving (the receiving queue) is declared',
+);
+assert(
+  /app\.post\('\/returns\/:id\{\[0-9\]\+\}\/inspection'/.test(route),
+  'POST /returns/:id/inspection (record inspection) is declared',
+);
+assert(
+  /app\.post\('\/returns\/:id\{\[0-9\]\+\}\/inspection\/:iid\{\[0-9\]\+\}\/media'/.test(route),
+  'POST /returns/:id/inspection/:iid/media (attach media) is declared',
+);
+
+// ── 1. Operator/admin gate on the WRITE endpoints (client cannot write) ──
+// The exact operator gate the sibling operator writes use (inbound.ts):
+//   if (!scope.isGlobal && !scope.permissions.includes('settings:write')) { 403 }
+assert(
+  /!scope\.isGlobal\s*&&\s*!scope\.permissions\.includes\('settings:write'\)/.test(routeCode),
+  "the operator gate (!scope.isGlobal && !scope.permissions.includes('settings:write')) is present",
+);
+// Every inspection/media WRITE must reach that gate. We route them through a
+// single operatorGateOrResponse helper; require it to be invoked in each write.
+const operatorGateCalls = (routeCode.match(/operatorGateOrResponse\(/g) || []).length;
+assert(
+  /function operatorGateOrResponse\(/.test(routeCode),
+  'a single operatorGateOrResponse helper carries the 403 operator gate',
+);
+// receiving list + inspection + media = 3 gated surfaces (definition + ≥3 calls).
+assert(
+  operatorGateCalls >= 4,
+  `the operator gate is applied to the receiving list + both inspection writes (${operatorGateCalls} references incl. definition)`,
+);
+// The gate must 403.
+assert(
+  /operatorGateOrResponse[\s\S]{0,220}?return\s+c\.json\(\s*\{\s*error:[^}]*\}\s*,\s*403\s*\)/.test(routeCode),
+  'the operator gate returns a 403 (client users are forbidden from writing)',
+);
+
+// ── 2. Scope-gated + scope-revalidated like the siblings ──
+assert(
+  /scopeOrResponse\(c\)/.test(routeCode) && /isClientPortalScope/.test(routeCode),
+  'the new endpoints use scopeOrResponse + isClientPortalScope (same scope guard as the siblings)',
+);
+// The receiving list + inspection + media must all bound by returnScopePredicate
+// so a scoped operator only touches their own returns. Count the predicate uses
+// added by CP-030 (the CP-029 endpoints already use it; require it to have grown).
+const scopePredicateUses = (routeCode.match(/returnScopePredicate\(/g) || []).length;
+assert(
+  scopePredicateUses >= 6,
+  `the receiving/inspection/media surfaces re-validate scope with returnScopePredicate (${scopePredicateUses} total uses)`,
+);
+// The media write validates the inspection belongs to the return.
+assert(
+  /returnInspections\.returnId/.test(routeCode) && /eq\(returnInspections\.id,\s*iid\)/.test(routeCode),
+  'the media write validates the inspection belongs to THIS return (returnId + inspection id)',
+);
+// Audit on the new surfaces.
+assert(
+  /portal\.returns\.receiving\.list/.test(routeCode) &&
+    /portal\.returns\.inspection\.record/.test(routeCode) &&
+    /portal\.returns\.inspection\.media\.add/.test(routeCode),
+  'the receiving/inspection/media surfaces are audited (recordPortalAudit events)',
+);
+
+// ── 3. Media persists to return_inspection_media, linked, no binary-in-DB ──
+assert(
+  /db\s*\.insert\(returnInspectionMedia\)/.test(routeCode) || /insert\(returnInspectionMedia\)/.test(routeCode),
+  'inspection media persists to the return_inspection_media table',
+);
+assert(
+  /inspectionId:\s*iid/.test(routeCode),
+  'the media row is linked to the inspection (inspectionId)',
+);
+assert(
+  /storageRef/.test(routeCode) && /mediaType/.test(routeCode),
+  'media is stored as metadata (storageRef + mediaType) — never a binary in the DB',
+);
+// Guard against a binary-in-DB regression: the route must not persist base64 /
+// raw file bytes / a data-URI blob column.
+for (const bad of ['base64', 'Buffer.from', 'bytea', 'blobData', 'fileData']) {
+  assert(
+    !new RegExp(bad).test(routeCode),
+    `the media write never stores a binary in the DB (no ${bad})`,
+  );
+}
+// inspectorEmail is stamped from the caller's scope, not client-supplied.
+assert(
+  /inspectorEmail:\s*scope\.email/.test(routeCode),
+  'the inspection stamps inspectorEmail from the caller scope (not client-supplied)',
+);
+
+// ── 4. The condition enum is exactly the agreed 6-value set ──
+const CONDITIONS = ['sealed_new', 'opened_good', 'damaged', 'missing_item', 'wrong_item', 'other'];
+for (const cond of CONDITIONS) {
+  assert(new RegExp(`'${cond}'`).test(routeCode), `the condition enum includes '${cond}'`);
+}
+assert(
+  /INSPECTION_CONDITIONS\s*=\s*new Set\(/.test(routeCode) &&
+    /INSPECTION_CONDITIONS\.has\(/.test(routeCode),
+  'the inspection endpoint validates condition against the agreed enum set (rejects anything else)',
+);
+
+// ── 5. Out of scope: no refund issuance, no marketplace calls ──
+// Literal substring checks (not RegExp) so tokens like 'refund(' don't blow up.
+for (const bad of ['issueRefund', 'refund(', 'marketplace', 'notifyMarketplace']) {
+  assert(!routeCode.includes(bad), `the receiving route never issues refunds / calls a marketplace (no ${bad})`);
+}
+
+// ── 6. Frontend: api + hook wiring ──
+assert(
+  /returnsReceiving:/.test(api) && /recordInspection:/.test(api) && /addInspectionMedia:/.test(api),
+  'portalApi exposes returnsReceiving + recordInspection + addInspectionMedia',
+);
+assert(
+  /\/api\/client-portal\/returns\/receiving/.test(api) &&
+    /\/inspection`/.test(api) &&
+    /\/inspection\/\$\{inspectionId\}\/media`/.test(api),
+  'the api methods hit the receiving / inspection / media endpoints',
+);
+assert(
+  /useReturnsReceiving/.test(hooks),
+  'the frontend exposes a useReturnsReceiving hook',
+);
+
+// ── 7. Frontend: the mobile receiving UI exists + is operator-gated ──
+assert(receiving.length > 0, 'the ReturnReceivingModal component exists');
+const pageCode = stripLineComments(page);
+// The page must import + mount the receiving modal AND gate it on the operator
+// role (isAdmin || isGlobal from useMe).
+assert(
+  /ReturnReceivingModal/.test(pageCode),
+  'the Returns page uses the ReturnReceivingModal',
+);
+assert(
+  /useMe\(\)/.test(pageCode) && /(isAdmin|isGlobal)/.test(pageCode),
+  'the Returns page reads the operator role from useMe (isAdmin / isGlobal)',
+);
+assert(
+  /isOperator\s*&&/.test(pageCode),
+  'the receiving entry point + modal are gated on the operator role (isOperator &&)',
+);
+
+// ── 8. Mobile-capture inspection form (photo/video), phone-first ──
+const receivingCode = stripLineComments(receiving);
+assert(
+  /type="file"/.test(receivingCode) &&
+    /accept="image\/\*,video\/\*"/.test(receivingCode) &&
+    /capture=/.test(receivingCode),
+  'the inspection form uses a mobile-capture file input (accept image/video + capture)',
+);
+// The 6 condition values are offered in the form.
+for (const cond of CONDITIONS) {
+  assert(new RegExp(`'${cond}'`).test(receivingCode), `the inspection form offers the '${cond}' condition`);
+}
+// A received date/time field + a scan/search box are present (phone receiving).
+assert(
+  /datetime-local/.test(receivingCode),
+  'the inspection form captures a received date/time',
+);
+assert(
+  /Scan or|scan|Scan/.test(receiving) && /useReturnsReceiving/.test(receivingCode),
+  'the receiving flow has a scan/search box backed by the receiving queue',
+);
+// The receiving flow must not compute rates/carrier or issue refunds.
+for (const bad of ['getRates', 'carrierCode', 'issueRefund', 'cheapest', 'bestRate']) {
+  assert(!new RegExp(bad).test(receivingCode), `the receiving flow never computes rates/carrier or refunds (no ${bad})`);
+}
+
+// ── package.json wiring ──
+assert(
+  pkg.scripts?.['test:client-portal-returns-receiving'] ===
+    'node scripts/client-portal-returns-receiving-guard.mjs',
+  'package.json exposes test:client-portal-returns-receiving',
+);
+
+if (failed) process.exit(1);
+console.log('\nCP-030 client-portal Returns receiving guard passed.');

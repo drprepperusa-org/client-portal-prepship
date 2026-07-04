@@ -277,6 +277,49 @@ export interface NewReturnInput {
   items: Array<{ sku: string; name?: string; quantity: number; orderItemId?: number }>;
 }
 
+// CP-030 — 3PL receiving + inspection. These surfaces are OPERATOR-ONLY: the
+// backend 403s a client user on every write. A row in the receiving queue is a
+// return the warehouse still expects or is receiving.
+export interface PortalReturnReceivingRow {
+  id: number;
+  orderId: number | null;
+  orderNumber: string | null;
+  clientName: string | null;
+  status: string;
+  trackingNumber: string | null;
+  returnToLocation: string | null;
+  requestedAt: string | null;
+}
+
+/** The agreed inspection CONDITION enum (mirrors the backend set exactly). */
+export type ReturnInspectionCondition =
+  | 'sealed_new'
+  | 'opened_good'
+  | 'damaged'
+  | 'missing_item'
+  | 'wrong_item'
+  | 'other';
+
+/** Payload for recording a 3PL inspection. receivedAt/condition/comments are the
+ *  inspector's ack; the backend stamps inspectorEmail + advances the return. */
+export interface NewInspectionInput {
+  receivedAt?: string;
+  condition?: ReturnInspectionCondition;
+  status?: 'pending' | 'passed' | 'failed';
+  comments?: string;
+}
+
+/** Payload for attaching inspection media. METADATA-CANONICAL: the frontend
+ *  posts an already-hosted storageRef (URL/object-storage key) + metadata — the
+ *  binary never rides in this JSON. */
+export interface NewInspectionMediaInput {
+  mediaType: 'photo' | 'video';
+  storageRef: string;
+  contentType?: string;
+  sizeBytes?: number;
+  capturedAt?: string;
+}
+
 export interface PortalInventory {
   id: number;
   clientName: string | null;
@@ -903,6 +946,22 @@ export const portalApi = {
     apiPost<{ data: ReturnLabelResult }>(token, `/api/client-portal/returns/${id}/label`),
   deliverReturn: (token: string, id: number) =>
     apiPost<{ data: ReturnDeliveryResult }>(token, `/api/client-portal/returns/${id}/deliver`),
+
+  // CP-030 — 3PL receiving + inspection (operator-only; the backend 403s clients).
+  returnsReceiving: (token: string, search?: string) =>
+    apiGet<{ data: PortalReturnReceivingRow[] }>(token, '/api/client-portal/returns/receiving', { search }),
+  recordInspection: (token: string, id: number, body: NewInspectionInput) =>
+    apiPost<{ data: { id: number; returnId: number; status: string; condition: string | null; returnStatus: string } }>(
+      token,
+      `/api/client-portal/returns/${id}/inspection`,
+      body,
+    ),
+  addInspectionMedia: (token: string, id: number, inspectionId: number, body: NewInspectionMediaInput) =>
+    apiPost<{ data: { id: number; inspectionId: number; mediaType: string } }>(
+      token,
+      `/api/client-portal/returns/${id}/inspection/${inspectionId}/media`,
+      body,
+    ),
 
   integrations: (token: string) => apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
   /** Submit a store connection request (admin-only). Created pending

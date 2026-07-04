@@ -191,6 +191,18 @@ export function useReturnDetail(id: number | null) {
   return useTokenQuery(['return', id ?? 0], (t) => portalApi.returnDetail(t, id as number), id != null);
 }
 
+// CP-030 — 3PL receiving queue (operator-only). Only enabled when requested, so
+// non-operator pages never fire it (the backend also 403s a client user). The
+// search term is debounced upstream in the page and passed in.
+export function useReturnsReceiving(search: string, enabled = true) {
+  return useTokenQuery(
+    ['returns-receiving', search],
+    (t) => portalApi.returnsReceiving(t, search || undefined),
+    enabled,
+    { refetchInterval: LIVE_ORDERS_MS },
+  );
+}
+
 export function useInbound(clientId?: number) {
   const { clientId: globalClientId } = usePortalFilters();
   const cid = clientId ?? globalClientId;
