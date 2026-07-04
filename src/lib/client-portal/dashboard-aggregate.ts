@@ -18,30 +18,13 @@ export interface DashboardOrderRow {
   shippingAmount?: number | string | null;
 }
 
-export interface TopSkuRow {
-  sku: string;
-  units30: number;
-  units7: number;
-  revenue: number;
-  /**
-   * Quantity-weighted average shipping price per unit for this SKU, or `null`
-   * when no order carrying this SKU had a shipping charge (rendered as "—" in
-   * the UI rather than a misleading $0.00). Always `null` when the caller may
-   * not view financials.
-   */
-  avgShippingPrice: number | null;
-  /**
-   * The two operands behind `avgShippingPrice`, surfaced so the UI can show the
-   * literal calculation ($shipAlloc ÷ shipUnits = avg) instead of prose:
-   *  - `shipAlloc`: total shipping allocated to this SKU (the numerator, rounded
-   *    to cents).
-   *  - `shipUnits`: units of this SKU that were on an order carrying a shipping
-   *    charge (the denominator).
-   * Both `null` exactly when `avgShippingPrice` is `null`.
-   */
-  shipAlloc: number | null;
-  shipUnits: number | null;
-}
+// CP-021: the former `topSkuRows(...)` folder — which ranked Top-SKUs and
+// allocated Avg Shipping Price by reducing a capped `orders.limit(1000)` array
+// in JS — was REMOVED. Those business rankings/financials now come from the ONE
+// canonical Analysis SKU query (src/lib/client-portal/read-models/dashboard.ts →
+// dashboardTopSkus, over getSkuBreakdownFromOrderItems). The helpers below stay
+// because they still power the non-ranking, non-financial per-day orders/units
+// bar chart (`dailyOrderUnitsRows`), a bounded visual sample only.
 
 /** A promo/discount line carries a negative unit price and is NOT a shippable
  *  item. Excluding it keeps the dashboard's unit counts and SKU rollups in
@@ -71,65 +54,6 @@ export function dayKey(value: unknown): string | null {
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
-}
-
-/**
- * Top SKUs by 30-day unit count, with a quantity-share allocation of each
- * order's shipping charge across its SKU lines.
- *
- * Avg shipping price method (mirrors `sku-orders.ts`):
- *   - For each order, spread its `shippingAmount` across the SKU lines in
- *     proportion to each line's quantity share of the order. A multi-SKU order
- *     therefore never bills its full shipping to every SKU.
- *   - Per SKU: avg = (sum of allocated shipping) / (units that carried
- *     shipping). This is a per-unit average, consistent with the SKU drawer's
- *     `avgStandardShippingCost`.
- *   - Orders with no shipping charge (<= 0) contribute to neither the numerator
- *     nor the denominator, so a SKU with no real shipping data reports `null`.
- *   - When `canViewFinancials` is false, revenue and avg shipping are withheld
- *     (avgShippingPrice = null) — financial visibility is enforced here, not in
- *     the UI.
- */
-export function topSkuRows(rows: DashboardOrderRow[], canViewFinancials = false): TopSkuRow[] {
-  const bySku = new Map<string, { sku: string; units30: number; units7: number; revenue: number; shipAlloc: number; shipUnits: number }>();
-  for (const row of rows) {
-    if (!Array.isArray(row.items)) continue;
-    const orderShipping = Number(row.shippingAmount ?? 0);
-    const orderQty = safeItemQty(row.items);
-    const allocate = canViewFinancials && orderShipping > 0 && orderQty > 0;
-    for (const item of row.items) {
-      if (!item || typeof item !== 'object' || isDiscountLine(item)) continue;
-      const record = item as Record<string, unknown>;
-      const sku = typeof record.sku === 'string' && record.sku.trim() ? record.sku : 'unknown';
-      const qtyRaw = Number(record.quantity ?? record.qty ?? 0);
-      const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
-      const current = bySku.get(sku) ?? { sku, units30: 0, units7: 0, revenue: 0, shipAlloc: 0, shipUnits: 0 };
-      current.units30 += qty;
-      if (canViewFinancials) {
-        const unitPrice = Number(record.unitPrice ?? record.unit_price ?? 0);
-        current.revenue += (Number.isFinite(unitPrice) ? unitPrice : 0) * qty;
-      }
-      if (allocate && qty > 0) {
-        current.shipAlloc += orderShipping * (qty / orderQty);
-        current.shipUnits += qty;
-      }
-      bySku.set(sku, current);
-    }
-  }
-  return [...bySku.values()]
-    .sort((a, b) => b.units30 - a.units30)
-    .slice(0, 10)
-    .map(({ shipAlloc, shipUnits, ...rest }) => {
-      const hasShipping = shipUnits > 0;
-      return {
-        ...rest,
-        avgShippingPrice: hasShipping ? shipAlloc / shipUnits : null,
-        // Numerator/denominator for the UI's literal calculation. Rounded to
-        // cents so the tooltip reads e.g. "$303.15 ÷ 41 = $7.39".
-        shipAlloc: hasShipping ? Math.round(shipAlloc * 100) / 100 : null,
-        shipUnits: hasShipping ? shipUnits : null,
-      };
-    });
 }
 
 /** Per-day order count + shippable unit count, ascending by day. Both metrics

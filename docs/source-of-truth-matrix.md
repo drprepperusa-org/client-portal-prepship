@@ -476,6 +476,45 @@ Next hardening step:
 - Make reporting metrics/read models the standard API input for dashboard and
   analysis pages.
 
+#### CP-021 — Client-portal Dashboard KPI/widget SOT mapping
+
+Each Dashboard KPI/widget below is named after the entity + table it reads, so
+two numbers on the same page can never silently mean different things. All
+ranked/financial numbers are backend-owned; the frontend renders DTO fields
+verbatim (no client-side ranking, revenue, units, or shipping math).
+
+| UI label | Frontend field | Backend DTO field | Canonical table / read-model | Event clock |
+| --- | --- | --- | --- | --- |
+| Open orders | `aw.data.count` | `count` | `awaitingActiveOrderCount` over `orders` (live awaiting) | order state (now) |
+| Shipped orders (Nd) | `countRows[].shipped` | `daily[].shipped` | `/daily-counts` — `orders.order_status='shipped'` grouped by `order_date` | order date |
+| Ordered units (Nd) | `dash.data.units` | `units` | `getClientPortalSalesTotals` — Σ `order_items.quantity` (set-based) | order date |
+| Revenue (Nd) | `dash.data.revenue` | `revenue` | `getClientPortalSalesTotals` — Σ `order_items.unit_price × quantity` (set-based, financially gated) | order date |
+| Orders over time (bar) | `dash.data.daily[]` | `daily[]` | `dailyOrderUnitsRows` over a bounded `orders.limit(1000)` visual sample (non-ranking, non-financial) | order date |
+| Shipments created (bar) | `ships.data.data[]` | `daily-shipments[].shipments` | `/analysis/daily-shipments` — `shipments` rows by `ship_date` | ship date |
+| Top SKUs → SKU / Unit Count Last 30 Days | `dash.data.bySku[].units30` | `bySku[].units30` | `dashboardTopSkus` → `getSkuBreakdownFromOrderItems` (`total_qty`, set-based over `order_items`) — SAME query as the Analysis Top-SKUs table | order date |
+| Top SKUs → Avg Shipping Price | `dash.data.bySku[].avgShippingPrice` (+ `shipAlloc`/`shipUnits`) | `bySku[].avgShippingPrice` | `dashboardTopSkus` — allocated shipment `label_cost` (`total_shipping`) ÷ shipped-with-cost units (`std_qty_total + exp_qty_total`); financially gated | ship date (label cost), allocated over order units |
+| Revenue KPI drill-down (revenue/day) | `dash.data.dailyRevenue[]` | `dailyRevenue[]` | `getClientPortalDailyRevenue` — same filters as the Revenue KPI | order date |
+
+Ownership rules established by CP-021:
+
+- Dashboard Top-SKUs (ranking + per-SKU units + Avg Shipping Price) is a thin
+  projection over the ONE canonical Analysis SKU query
+  (`getSkuBreakdownFromOrderItems`). Because it is the same query for the same
+  scope/date window, numeric parity with the Analysis page is structurally
+  guaranteed — there is no second definition to drift.
+- The capped `orders.limit(1000)` array may back ONLY the non-ranking,
+  non-financial per-day orders/units bar chart. It must never rank SKUs,
+  allocate shipping, or total revenue/units.
+- Avg Shipping Price has ONE source of truth: allocated shipment `label_cost`
+  (the same allocation basis Analysis uses), NOT the raw `orders.shippingAmount`
+  JSONB. Financial redaction lives in the backend owner.
+- Labels name the entity: "Shipped orders" (`orders.order_status`) is distinct
+  from "Shipments created" (`shipments` rows by `ship_date`); "Ordered units"
+  (order-clock `order_items` quantity) is NOT shipped units.
+
+Guard: `scripts/client-portal-dashboard-sot-guard.mjs`
+(`npm run test:client-portal-dashboard-sot`).
+
 ### Clients / Stores
 
 Status: `[MIXED]`

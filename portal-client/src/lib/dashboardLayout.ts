@@ -11,7 +11,7 @@ export const ALL_WIDGETS: WidgetId[] = ['kpis', 'ordersChart', 'volumeChart', 't
 export const WIDGET_LABELS: Record<WidgetId, string> = {
   kpis: 'Key metrics',
   ordersChart: 'Orders over time',
-  volumeChart: 'Shipment volume',
+  volumeChart: 'Shipments created',
   topSkus: 'Top SKUs',
 };
 

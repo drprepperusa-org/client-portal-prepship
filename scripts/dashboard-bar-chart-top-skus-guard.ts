@@ -1,14 +1,16 @@
-// CP-002 guard: the Dashboard "Orders over time" card is a cumulative
-// orders/units BAR chart (not an area/line chart, not a raw additive stack),
-// and Top SKUs is a table with SKU / Unit Count Last 30 Days / Avg Shipping
-// Price whose avg shipping does not double-count multi-SKU orders.
+// CP-002 + CP-021 guard: the Dashboard "Orders over time" card is a cumulative
+// orders/units BAR chart (not an area/line chart, not a raw additive stack), and
+// Top SKUs is a table (SKU / Unit Count Last 30 Days / Avg Shipping Price) whose
+// numbers come from the CANONICAL backend Analysis SKU query — NOT from folding
+// + sorting a capped orders array in the frontend (the removed topSkuRows path).
 //
-// Runs the real aggregation code (imported, no DB needed) for the data math,
-// then asserts the portal-client UI wiring via source inspection. Legacy web/
-// is intentionally untouched, so this guard only looks at portal-client/.
+// Runs the real per-day aggregation code (imported, no DB needed) for the chart
+// math, then asserts the portal-client UI wiring + the backend-owned Top-SKUs
+// SOT via source inspection. Legacy web/ is intentionally untouched, so this
+// guard only looks at portal-client/.
 import fs from 'node:fs';
 import path from 'node:path';
-import { topSkuRows, dailyOrderUnitsRows } from '../src/lib/client-portal/dashboard-aggregate';
+import { dailyOrderUnitsRows } from '../src/lib/client-portal/dashboard-aggregate';
 
 const root = process.cwd();
 let failed = false;
@@ -21,42 +23,6 @@ function assert(condition: boolean, message: string) {
   }
 }
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
-
-// ── Data math: a multi-SKU order must not bill its full shipping to every SKU ──
-{
-  const multiSku = topSkuRows(
-    [{ orderDate: '2026-06-01T00:00:00Z', shippingAmount: '10.00', items: [{ sku: 'A', quantity: 1 }, { sku: 'B', quantity: 4 }] }],
-    true,
-  );
-  const a = multiSku.find((r) => r.sku === 'A');
-  const b = multiSku.find((r) => r.sku === 'B');
-  assert(!!a && !!b, 'topSkuRows returns a row per SKU in a multi-SKU order');
-  // $10 shipping over 5 units = $2/unit; each SKU's per-unit avg is $2.
-  assert(a?.avgShippingPrice === 2, 'SKU A avg shipping is the per-unit $2 (qty-share allocation)');
-  assert(b?.avgShippingPrice === 2, 'SKU B avg shipping is the per-unit $2 (qty-share allocation)');
-  // Total allocated shipping across SKUs equals the ONE order's shipping ($10),
-  // not $10 counted once per SKU ($20).
-  const totalAllocated = (a!.avgShippingPrice ?? 0) * a!.units30 + (b!.avgShippingPrice ?? 0) * b!.units30;
-  assert(totalAllocated === 10, 'multi-SKU shipping sums to the order total ($10), not double-counted ($20)');
-  // Numerator/denominator surfaced for the UI's literal calculation ($alloc ÷ units):
-  // A = $10 × 1/5 = $2 over 1 unit; B = $10 × 4/5 = $8 over 4 units.
-  assert(a?.shipAlloc === 2 && a?.shipUnits === 1, 'SKU A exposes shipAlloc $2 / shipUnits 1 (calculation operands)');
-  assert(b?.shipAlloc === 8 && b?.shipUnits === 4, 'SKU B exposes shipAlloc $8 / shipUnits 4');
-  assert(a!.shipAlloc! / a!.shipUnits! === a!.avgShippingPrice, 'shipAlloc ÷ shipUnits reproduces avgShippingPrice exactly');
-}
-
-// ── No shipping data → null (rendered as "—"), not $0.00 ──
-{
-  const noShip = topSkuRows([{ orderDate: '2026-06-01T00:00:00Z', shippingAmount: '0', items: [{ sku: 'C', quantity: 3 }] }], true);
-  assert(noShip[0]?.avgShippingPrice === null, 'SKU with no shipping charge reports null avg shipping (shown as —)');
-  assert(noShip[0]?.shipAlloc === null && noShip[0]?.shipUnits === null, 'no-shipping SKU has null calculation operands (no bogus ÷ 0)');
-}
-
-// ── Financial visibility: avg shipping withheld when canViewFinancials is false ──
-{
-  const redacted = topSkuRows([{ orderDate: '2026-06-01T00:00:00Z', shippingAmount: '10.00', items: [{ sku: 'D', quantity: 2 }] }], false);
-  assert(redacted[0]?.avgShippingPrice === null, 'avg shipping is null when caller cannot view financials');
-}
 
 // ── Daily series carries BOTH order count and unit count, and is not additive ──
 {
@@ -72,7 +38,7 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(daily[0].units === 25 && additive === 27, 'cumulative unit height (25) is distinct from the additive orders+units (27)');
 }
 
-// ── Discount/promo lines (negative unit price) are excluded from units ──
+// ── Discount/promo lines (negative unit price) are excluded from the day units ──
 {
   const promoDaily = dailyOrderUnitsRows([
     { orderDate: '2026-06-02T00:00:00Z', shippingAmount: '0', items: [
@@ -81,18 +47,43 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
     ] },
   ]);
   assert(promoDaily[0]?.units === 3, 'daily units exclude negative-price discount lines (3, not 4)');
+}
 
-  const promoSkus = topSkuRows([
-    { orderDate: '2026-06-02T00:00:00Z', shippingAmount: '6.00', items: [
-      { sku: 'A', quantity: 3, unitPrice: 9.99 },
-      { sku: 'WELCOME10', quantity: 1, unitPrice: -10 },
-    ] },
-  ], true);
-  assert(!promoSkus.some((r) => r.sku === 'WELCOME10'), 'Top SKUs omit discount/promo lines');
-  const aRow = promoSkus.find((r) => r.sku === 'A');
-  assert(aRow?.units30 === 3, 'a real SKU is not inflated by a discount line');
-  // $6 shipping over 3 shippable units (discount line excluded from the denominator) = $2/unit.
-  assert(aRow?.avgShippingPrice === 2, 'avg shipping allocates over shippable units only ($2), ignoring the discount line');
+// ── CP-021: Top-SKUs comes from the canonical backend read-model, NOT a capped
+//    frontend orders-array fold/sort/slice ──
+{
+  // The dead frontend folder (topSkuRows) that ranked SKUs + allocated Avg
+  // Shipping Price from a capped orders array is GONE from the shared module.
+  const aggregate = read('src/lib/client-portal/dashboard-aggregate.ts');
+  assert(!/export function topSkuRows/.test(aggregate), 'the capped-array Top-SKUs folder (topSkuRows) is removed from dashboard-aggregate');
+
+  // A shared backend read-model exists and is a thin projection over the SAME
+  // Analysis SKU owner (getSkuBreakdownFromOrderItems), so parity is structural.
+  const readModel = read('src/lib/client-portal/read-models/dashboard.ts');
+  assert(/export async function dashboardTopSkus/.test(readModel), 'a shared backend read-model dashboardTopSkus exists');
+  assert(readModel.includes('getSkuBreakdownFromOrderItems'), 'dashboardTopSkus reuses the canonical Analysis SKU query (getSkuBreakdownFromOrderItems)');
+
+  // The /dashboard route sources bySku from the read-model — not from topSkuRows.
+  const route = read('src/routes/client-portal/dashboard.ts').replace(/\s+/g, ' ');
+  assert(route.includes('dashboardTopSkus('), '/dashboard sources Top-SKUs from the canonical read-model');
+  assert(!route.includes('topSkuRows('), '/dashboard no longer folds the capped rows into a Top-SKUs ranking');
+  // The capped rows array must only feed the non-ranking per-day bar chart.
+  assert(route.includes('daily: dailyOrderUnitsRows(rows)'), '/dashboard still builds the per-day orders/units bar series');
+  assert(/const rows = await db\.select\(\)\.from\(orders\)\.where\(where\)\.limit\(1000\)/.test(route), 'the capped orders array is bounded (limit 1000) and used for the visual chart only');
+}
+
+// ── CP-021: frontend renders backend Top-SKUs verbatim — no ranking sort/slice
+//    of an orders/SKU array for the business ranking ──
+{
+  const dashboard = read('portal-client/src/pages/Dashboard.tsx');
+  // Renders the backend-ranked rows in order; a plain display cap is fine, but
+  // there must be no client-side .sort() that re-ranks the Top-SKUs.
+  assert(dashboard.includes('dash.data!.bySku.slice(0, 8)') || dashboard.includes('dash.data.bySku.slice(0, 8)'), 'Dashboard renders backend-ranked bySku rows in order (display cap only)');
+  assert(!/bySku[^\n]*\.sort\(/.test(dashboard), 'Dashboard does not .sort() the Top-SKUs (backend owns the ranking)');
+
+  const buildConfig = read('portal-client/src/components/dashboard/peek/buildConfig.tsx');
+  assert(!/d\.bySku\]\.sort\(/.test(buildConfig) && !/\[\.\.\.d\.bySku\]\.sort\(/.test(buildConfig), 'KPI peek no longer re-ranks bySku with a client-side .sort()');
+  assert(buildConfig.includes('d.bySku.slice(0, 5)'), 'KPI peek renders the backend-ranked bySku (slice only)');
 }
 
 // ── UI: cumulative BAR chart, not an area/line chart ──
@@ -109,7 +100,7 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(dashboard.includes('Orders count vs. unit count'), 'chart subtitle reflects orders vs. unit metrics');
 }
 
-// ── UI: Top SKUs is a table with the required columns ──
+// ── UI: Top SKUs is a table with the required columns + honest "—" rendering ──
 {
   const dashboard = read('portal-client/src/pages/Dashboard.tsx');
   assert(/<table[\s>]/.test(dashboard), 'Top SKUs renders a <table>');
@@ -123,6 +114,19 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   );
 }
 
+// ── Honest labels (CP-021): widgets name the entity + table the number is from ──
+{
+  const dashboard = read('portal-client/src/pages/Dashboard.tsx');
+  // "Shipped orders" (orders.order_status) vs "Shipments created" (shipments rows).
+  assert(/Shipped orders \(\$\{days\}d\)/.test(dashboard), 'the order-status shipped KPI is labelled "Shipped orders" (names orders.order_status)');
+  assert(dashboard.includes('Shipments created'), 'the shipments-table volume chart is labelled "Shipments created" (names the shipments table)');
+  assert(!/label=\{`Shipped \(\$\{days\}d\)`\}/.test(dashboard), 'the ambiguous bare "Shipped (Nd)" label is gone');
+  assert(!dashboard.includes('title="Shipment volume"') && !dashboard.includes('title={`Shipment volume'), 'the ambiguous "Shipment volume" title is gone');
+
+  const layout = read('portal-client/src/lib/dashboardLayout.ts');
+  assert(layout.includes("volumeChart: 'Shipments created'"), 'the customize-panel widget label matches the honest "Shipments created" title');
+}
+
 // ── Contract + wiring ──
 {
   const api = read('portal-client/src/lib/api.ts');
@@ -130,11 +134,8 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(api.includes('shipAlloc') && api.includes('shipUnits'), 'DashboardSummary.bySku exposes shipAlloc/shipUnits for the calculation tooltip');
   assert(/daily:\s*Array<\{\s*day:\s*string;\s*orders:\s*number;\s*units:\s*number/.test(api), 'DashboardSummary exposes a daily orders/units series');
 
-  // /dashboard moved to its own sub-router; flatten so the pins tolerate the
-  // physical move + any reformatting.
   const route = read('src/routes/client-portal/dashboard.ts').replace(/\s+/g, ' ');
-  assert(route.includes('dailyOrderUnitsRows') && route.includes('topSkuRows'), 'client-portal route uses the shared dashboard aggregations');
-  assert(route.includes('daily: dailyOrderUnitsRows(rows)'), '/dashboard response includes the daily orders/units series');
+  assert(route.includes('dailyOrderUnitsRows') && route.includes('dashboardTopSkus'), 'client-portal route uses the shared per-day aggregation + the canonical Top-SKUs read-model');
 
   const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
   assert(
@@ -144,4 +145,4 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 }
 
 if (failed) process.exit(1);
-console.log('\nCP-002 dashboard bar-chart + Top-SKUs guard passed.');
+console.log('\nCP-002 + CP-021 dashboard bar-chart + canonical Top-SKUs guard passed.');

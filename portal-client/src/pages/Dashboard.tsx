@@ -29,9 +29,11 @@ import {
 const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.5rem)]' : 'w-full');
 
 // Top SKUs column explainers — compact formulas (not prose), mirroring the
-// actual math in src/lib/client-portal/dashboard-aggregate.ts (topSkuRows).
-const UNITS_TOOLTIP = 'Σ item quantities (discount lines excluded)';
-const AVG_SHIPPING_TOOLTIP = 'Σ(order shipping × unit share) ÷ units with a shipping charge';
+// backend-owned math in the canonical Analysis SKU query (see
+// src/lib/client-portal/read-models/dashboard.ts → dashboardTopSkus). These are
+// the SAME numbers the Analysis page shows for the same scope/date window.
+const UNITS_TOOLTIP = 'Σ order_items quantity (order_items SOT, matches Analysis)';
+const AVG_SHIPPING_TOOLTIP = 'Σ(allocated shipment label cost) ÷ shipped units (same SOT as Analysis)';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
@@ -98,9 +100,15 @@ export default function Dashboard() {
               Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-glass" />)
             ) : (
               <>
+                {/* Honest labels (CP-021): each KPI names the entity + table it
+                    comes from, so two numbers on the page can't silently mean
+                    different things. "Shipped Orders" = orders.order_status='shipped'
+                    (order clock); "Ordered Units" = Σ order_items.quantity (order
+                    clock — NOT shipped units); "Shipments Created" (below) =
+                    shipments rows by ship_date (shipment clock). */}
                 <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" onPeek={edit ? undefined : openPeek('open')} />
-                <StatCard label={`Shipped (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" onPeek={edit ? undefined : openPeek('shipped')} />
-                <StatCard label={`Units shipped (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} onPeek={edit ? undefined : openPeek('units')} />
+                <StatCard label={`Shipped orders (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" hint="orders.order_status = shipped" onPeek={edit ? undefined : openPeek('shipped')} />
+                <StatCard label={`Ordered units (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} onPeek={edit ? undefined : openPeek('units')} />
                 <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" hint="Visible if permitted" onPeek={edit ? undefined : openPeek('revenue')} />
               </>
             )}
@@ -131,7 +139,10 @@ export default function Dashboard() {
       case 'volumeChart':
         return (
           <GlassPanel className="p-5">
-            <SectionTitle title="Shipment volume" subtitle="Daily shipments" />
+            {/* CP-021: this counts shipments (label rows) by ship_date — the
+                shipment clock — NOT orders. Named "Shipments Created" so it can't
+                be read as the order-based "Shipped orders" KPI above. */}
+            <SectionTitle title="Shipments created" subtitle="Daily shipments (shipments table, by ship date)" />
             <div className="mt-4">
               {loading ? (
                 <Skeleton className="h-[260px]" />
@@ -153,7 +164,9 @@ export default function Dashboard() {
       case 'topSkus':
         return (
           <GlassPanel className="p-5">
-            <SectionTitle title="Top SKUs" subtitle={`By units shipped (last ${days} days)`} />
+            {/* CP-021: ranked by ordered units (order_items SOT), same query as
+                the Analysis Top-SKUs — so these rows match Analysis exactly. */}
+            <SectionTitle title="Top SKUs" subtitle={`By ordered units — matches Analysis (last ${days} days)`} />
             <div className="mt-4">
               {loading ? (
                 <Skeleton className="h-40" />

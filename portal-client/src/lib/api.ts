@@ -394,7 +394,11 @@ export interface NewIntegrationInput {
 export interface DashboardSummary {
   revenue: number;
   units: number;
-  bySku: Array<{ sku: string; units30: number; units7: number; revenue: number; avgShippingPrice: number | null; shipAlloc: number | null; shipUnits: number | null }>;
+  // CP-021: canonical Top-SKUs. Backend-ranked (units desc) by the SAME Analysis
+  // SKU query, so these rows equal the Analysis Top-SKUs for the same scope/date.
+  // The frontend renders them in the order received — it never ranks/sorts/slices
+  // an orders array or re-derives units/revenue/shipping. `name` mirrors Analysis.
+  bySku: Array<{ sku: string; name?: string | null; units30: number; revenue: number; avgShippingPrice: number | null; shipAlloc: number | null; shipUnits: number | null }>;
   /** Per-day order + shippable-unit counts backing the cumulative bar chart. */
   daily: Array<{ day: string; orders: number; units: number }>;
   dailyRevenue: Array<{ day: string; revenue: number }>;
@@ -732,9 +736,11 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
       }),
     ),
   );
-  // Restricted users with >1 client get one response per client; merge by SKU
-  // and by day so a SKU shipped under two clients shows a single combined row
-  // (concatenating would duplicate it and skew the Top-SKUs ranking).
+  // Restricted users with >1 client get one response per client; combine by SKU
+  // and by day so a SKU shipped under two clients shows a single row (concat
+  // would duplicate it and skew the ranking). This is a per-client SCOPE UNION
+  // — not a ranking re-derivation: every summand is a backend-owned canonical
+  // per-client total, and we re-order strictly by the backend's units30 field.
   const bySku = new Map<string, DashboardSummary['bySku'][number]>();
   const daily = new Map<string, DashboardSummary['daily'][number]>();
   let revenue = 0;
@@ -759,7 +765,6 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
       cur.shipUnits = shipUnits > 0 ? shipUnits : null;
       cur.avgShippingPrice = shipUnits > 0 ? alloc / shipUnits : null;
       cur.units30 += s.units30;
-      cur.units7 += s.units7;
       cur.revenue += s.revenue;
     }
     for (const d of p.daily ?? []) {
