@@ -89,6 +89,9 @@ export type BillingSummaryMetricRow = {
   packageTotal: number;
   shippingTotal: number;
   storageTotal: number;
+  // CP-031: return billing totals (surface in byType; grand_total sums all).
+  returnPostageTotal: number;
+  returnProcessingTotal: number;
   orderCount: number;
   grandTotal: number;
   total: number;
@@ -489,6 +492,8 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         package_total,
         shipping_total,
         storage_total,
+        return_postage_total,
+        return_processing_total,
         grand_total,
         updated_at
       )
@@ -502,6 +507,9 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         coalesce(sum(case when b.line_type = 'package_cost' then b.total_cost else 0 end), 0)::numeric(14, 2) as package_total,
         coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::numeric(14, 2) as shipping_total,
         coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::numeric(14, 2) as storage_total,
+        -- CP-031: return line-type totals materialized for the summary byType.
+        coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::numeric(14, 2) as return_postage_total,
+        coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::numeric(14, 2) as return_processing_total,
         coalesce(sum(b.total_cost), 0)::numeric(14, 2) as grand_total,
         now() as updated_at
       from clients c
@@ -520,6 +528,8 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         package_total = excluded.package_total,
         shipping_total = excluded.shipping_total,
         storage_total = excluded.storage_total,
+        return_postage_total = excluded.return_postage_total,
+        return_processing_total = excluded.return_processing_total,
         grand_total = excluded.grand_total,
         updated_at = now()
     `);
@@ -857,6 +867,8 @@ export async function getFreshBillingSummaryMetrics(options: {
       package_total: string | number;
       shipping_total: string | number;
       storage_total: string | number;
+      return_postage_total: string | number;
+      return_processing_total: string | number;
       order_count: number;
       grand_total: string | number;
     }>(sql`
@@ -868,6 +880,8 @@ export async function getFreshBillingSummaryMetrics(options: {
         m.package_total,
         m.shipping_total,
         m.storage_total,
+        m.return_postage_total,
+        m.return_processing_total,
         m.order_count,
         m.grand_total
       from billing_summary_metrics m
@@ -888,6 +902,8 @@ export async function getFreshBillingSummaryMetrics(options: {
       const packageTotal = num(row.package_total);
       const shippingTotal = num(row.shipping_total);
       const storageTotal = num(row.storage_total);
+      const returnPostageTotal = num(row.return_postage_total);
+      const returnProcessingTotal = num(row.return_processing_total);
       const grandTotal = num(row.grand_total);
       const orderCount = num(row.order_count);
       return {
@@ -898,6 +914,8 @@ export async function getFreshBillingSummaryMetrics(options: {
         packageTotal,
         shippingTotal,
         storageTotal,
+        returnPostageTotal,
+        returnProcessingTotal,
         orderCount,
         grandTotal,
         total: grandTotal,
@@ -908,6 +926,8 @@ export async function getFreshBillingSummaryMetrics(options: {
           package_cost: packageTotal,
           shipping: shippingTotal,
           storage: storageTotal,
+          return_postage: returnPostageTotal,
+          return_processing_fee: returnProcessingTotal,
         },
       };
     });

@@ -38,6 +38,33 @@ export const billingConfig = pgTable('billing_config', {
   shippingRateOverrideAmount: numeric('shipping_rate_override_amount', { precision: 10, scale: 2 })
     .default('0')
     .notNull(),
+  // ── CP-031: return billing (additive) ────────────────────────────────────
+  // Per-return processing/handling fee, charged once per non-voided return
+  // shipment in the billing period. 0 disables the return_processing_fee line.
+  returnProcessingFee: numeric('return_processing_fee', { precision: 10, scale: 2 })
+    .default('0')
+    .notNull(),
+  // Return postage markup, kept SEPARATE from the outbound shipping markup so a
+  // client can be charged a different (or zero) markup on return labels than on
+  // outbound. Applied to the return label's house cost (percent + flat). 0/0
+  // means "bill the house cost as-is".
+  returnPostageMarkupPct: numeric('return_postage_markup_pct', { precision: 5, scale: 2 })
+    .default('0')
+    .notNull(),
+  returnPostageMarkupFlat: numeric('return_postage_markup_flat', { precision: 10, scale: 2 })
+    .default('0')
+    .notNull(),
+  // Return postage minimum/customer-visible price hook — mirrors the PS-366
+  // outbound below-trigger override but with its OWN return-specific config so a
+  // cheap return label (house cost < trigger) can be billed at a floor display
+  // price. e.g. trigger 6.00 / amount 7.73: a $5.99 return-label house cost
+  // bills 7.73; a $6.82 house cost keeps its marked-up amount. 0 disables.
+  returnShippingRateOverrideTriggerBelow: numeric('return_shipping_rate_override_trigger_below', { precision: 10, scale: 2 })
+    .default('0')
+    .notNull(),
+  returnShippingRateOverrideAmount: numeric('return_shipping_rate_override_amount', { precision: 10, scale: 2 })
+    .default('0')
+    .notNull(),
   // Monthly storage fee in dollars per cubic-foot of inventory on hand.
   // v2 computed storage line items from inventory_ledger deltas × cuFtOverride
   // (or default L×W×H/1728). 0 disables storage billing entirely.

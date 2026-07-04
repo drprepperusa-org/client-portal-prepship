@@ -229,6 +229,48 @@ export function resolveCustomerShippingRate(input: {
   return { cShippingRate: markedUpCost, overrideApplied: false };
 }
 
+/**
+ * CP-031: return-postage billing policy. Prices a `return_postage` line from the
+ * return label's HOUSE cost (`cost`, falling back to `labelCost`, + otherCost),
+ * applies the client's RETURN-specific markup (percent + flat — separate from
+ * the outbound shipping markup so returns can carry a different or zero markup),
+ * then runs the minimum/customer-visible price hook.
+ *
+ * MIN-PRICE HOOK RULE (customer-visible floor, mirrors PS-366 outbound but with
+ * return config): when a return-specific trigger + amount are configured and the
+ * return label's HOUSE cost is below the trigger, the billable return postage
+ * becomes the configured amount. It is NOT a floor on the marked-up value — the
+ * trigger tests the raw house cost, never the marked-up amount. Rates at/above
+ * the trigger keep their normal markup-derived amount.
+ *   e.g. trigger $6.00 / amount $7.73 → a $5.99 house cost bills $7.73; a $6.82
+ *   house cost stays at its marked-up amount.
+ * When no return override is configured (config null / 0), the sane default is
+ * simply the marked-up house cost with no floor applied.
+ */
+export function resolveReturnPostageRate(input: {
+  /** Return label house cost (cost || labelCost, + otherCost) — pre-markup SOT. */
+  houseCost: number;
+  /** Return postage markup percent. */
+  markupPct: number;
+  /** Return postage flat markup. */
+  markupFlat: number;
+  /** Return-specific below-trigger threshold; 0/negative disables the hook. */
+  triggerBelow: number;
+  /** Return-specific override amount when triggered; 0/negative disables. */
+  overrideAmount: number;
+}): { returnRate: number; overrideApplied: boolean } {
+  const { houseCost, markupPct, markupFlat, triggerBelow, overrideAmount } = input;
+  const markedUp = houseCost * (1 + markupPct / 100) + markupFlat;
+  // The customer-visible min-price hook tests the raw house cost, not markedUp.
+  const { cShippingRate, overrideApplied } = resolveCustomerShippingRate({
+    selectedCost: houseCost,
+    markedUpCost: markedUp,
+    triggerBelow,
+    overrideAmount,
+  });
+  return { returnRate: cShippingRate, overrideApplied };
+}
+
 export async function generateLineItems(input: GenerateInput) {
   const from = new Date(input.dateFrom);
   const to = new Date(input.dateTo);
@@ -248,6 +290,12 @@ export async function generateLineItems(input: GenerateInput) {
     shippingMarkupFlat: string;
     shippingRateOverrideTriggerBelow: string;
     shippingRateOverrideAmount: string;
+    // CP-031 return billing config (all default to '0' → return lines disabled).
+    returnProcessingFee: string;
+    returnPostageMarkupPct: string;
+    returnPostageMarkupFlat: string;
+    returnShippingRateOverrideTriggerBelow: string;
+    returnShippingRateOverrideAmount: string;
     storageFeePerCuFt: string;
     billingMode: string;
     active: boolean;
@@ -262,6 +310,11 @@ export async function generateLineItems(input: GenerateInput) {
       coalesce(b.shipping_markup_flat, '0'::numeric)::text as "shippingMarkupFlat",
       coalesce(b.shipping_rate_override_trigger_below, '0'::numeric)::text as "shippingRateOverrideTriggerBelow",
       coalesce(b.shipping_rate_override_amount, '0'::numeric)::text as "shippingRateOverrideAmount",
+      coalesce(b.return_processing_fee, '0'::numeric)::text as "returnProcessingFee",
+      coalesce(b.return_postage_markup_pct, '0'::numeric)::text as "returnPostageMarkupPct",
+      coalesce(b.return_postage_markup_flat, '0'::numeric)::text as "returnPostageMarkupFlat",
+      coalesce(b.return_shipping_rate_override_trigger_below, '0'::numeric)::text as "returnShippingRateOverrideTriggerBelow",
+      coalesce(b.return_shipping_rate_override_amount, '0'::numeric)::text as "returnShippingRateOverrideAmount",
       coalesce(b.storage_fee_per_cu_ft, '0'::numeric)::text as "storageFeePerCuFt",
       coalesce(b.billing_mode, 'per_shipment') as "billingMode",
       coalesce(b.active, true) as active
@@ -743,6 +796,127 @@ export async function generateLineItems(input: GenerateInput) {
     for (const row of rows) {
       allRows.push(row);
       total += toNum(row.totalCost);
+    }
+  }
+
+  // ─── CP-031: return postage + return processing fee ─────────────────────────
+  // Return billing flows through the SAME billing SOT as outbound: the lines are
+  // collected into `allRows` here, INSIDE the same delete-then-regenerate window
+  // opened above (the tenant-scoped DELETE over ship_date ∈ [from,to]) and share
+  // the same batched INSERT below. A rerun for the period therefore replaces the
+  // return lines cleanly — no duplicates. Return lines use EXPLICIT lineTypes
+  // (`return_postage` / `return_processing_fee`), never the outbound `shipping`
+  // lineType, so there is no collision with outbound generation.
+  //
+  // Source: non-voided return shipments (shipments.is_return = true) whose label/
+  // ship date falls in the period, joined to their originating order for
+  // orderId/orderNumber/clientId. Voided return labels are excluded here (and so
+  // are never billed). Tenant scope is applied via billingOrderScopePredicate,
+  // the same predicate the outbound source query uses.
+  const returnShipmentRows = await db
+    .select({
+      shipmentId: shipments.id,
+      shipmentClientId: shipments.clientId,
+      shipDate: shipments.shipDate,
+      labelShipDate: shipments.labelShipDate,
+      labelCost: shipments.labelCost,
+      cost: shipments.cost,
+      otherCost: shipments.otherCost,
+      orderId: orders.id,
+      orderNumber: orders.orderNumber,
+      orderClientId: orders.clientId,
+      orderStoreId: orders.storeId,
+      orderDate: orders.orderDate,
+      orderRaw: orders.raw,
+    })
+    .from(shipments)
+    .innerJoin(orders, eq(shipments.orderId, orders.id))
+    .where(
+      and(
+        eq(shipments.isReturn, true),
+        // Skip voided return labels — a voided return is never billed.
+        eq(shipments.voided, false),
+        sql`coalesce(${shipments.labelShipDate}, ${shipments.shipDate}, ${orders.orderDate}) >= ${fromIso}::timestamptz`,
+        sql`coalesce(${shipments.labelShipDate}, ${shipments.shipDate}, ${orders.orderDate}) <= ${toIso}::timestamptz`,
+        // CP-019 tenant scope — never pull returns outside the caller's scope.
+        billingOrderScopePredicate(input)
+      )
+    );
+
+  for (const r of returnShipmentRows) {
+    const storeId = rawStoreId(r.orderRaw ?? {}, r.orderStoreId ?? null);
+    const clientId =
+      (storeId !== null ? clientByStore.get(storeId) ?? null : null) ??
+      r.orderClientId ??
+      r.shipmentClientId ??
+      null;
+    if (clientId === null) {
+      skipped += 1;
+      continue;
+    }
+    if (input.clientId !== undefined && clientId !== input.clientId) continue;
+    const cfg = configByClient.get(clientId);
+    if (!cfg) {
+      skipped += 1;
+      continue;
+    }
+    // Persisted ship_date MUST match the coalesce the source query filters on, so
+    // a rerun's delete window (which filters billing_line_items.ship_date ∈
+    // [from,to]) always catches these return lines and replaces them — no dup.
+    const labelDate = r.labelShipDate ?? r.shipDate ?? r.orderDate ?? null;
+
+    // ── return_postage ──────────────────────────────────────────────────────
+    // Priced by backend policy from the return label house cost with the
+    // client's return markup + the min-price hook applied. `cost` is the synced
+    // house cost; `labelCost` is a fallback for rows created before cost synced.
+    const houseCost = (toNum(r.cost) || toNum(r.labelCost)) + toNum(r.otherCost);
+    if (houseCost > 0) {
+      const triggerBelow = toNum(cfg.returnShippingRateOverrideTriggerBelow);
+      const { returnRate, overrideApplied } = resolveReturnPostageRate({
+        houseCost,
+        markupPct: toNum(cfg.returnPostageMarkupPct),
+        markupFlat: toNum(cfg.returnPostageMarkupFlat),
+        triggerBelow,
+        overrideAmount: toNum(cfg.returnShippingRateOverrideAmount),
+      });
+      if (returnRate > 0) {
+        allRows.push({
+          clientId,
+          orderId: r.orderId,
+          orderNumber: r.orderNumber,
+          shipmentId: r.shipmentId,
+          shipDate: labelDate,
+          lineType: 'return_postage',
+          // shipmentId keeps the description unique per return label, so multiple
+          // returns on one order don't collide on (order_id, line_type, description).
+          description: overrideApplied
+            ? `Return postage (below-$${triggerBelow.toFixed(2)} override $${returnRate.toFixed(2)}) · return #${r.shipmentId} · order ${r.orderNumber ?? r.orderId}`
+            : `Return postage · return #${r.shipmentId} · order ${r.orderNumber ?? r.orderId}`,
+          qty: '1',
+          unitCost: returnRate.toFixed(2),
+          totalCost: returnRate.toFixed(2),
+        });
+        total += returnRate;
+      }
+    }
+
+    // ── return_processing_fee ───────────────────────────────────────────────
+    // One per non-voided return shipment when the client configures a fee.
+    const processingFee = toNum(cfg.returnProcessingFee);
+    if (processingFee > 0) {
+      allRows.push({
+        clientId,
+        orderId: r.orderId,
+        orderNumber: r.orderNumber,
+        shipmentId: r.shipmentId,
+        shipDate: labelDate,
+        lineType: 'return_processing_fee',
+        description: `Return processing fee · return #${r.shipmentId} · order ${r.orderNumber ?? r.orderId}`,
+        qty: '1',
+        unitCost: processingFee.toFixed(2),
+        totalCost: processingFee.toFixed(2),
+      });
+      total += processingFee;
     }
   }
 

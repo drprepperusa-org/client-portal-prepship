@@ -35,6 +35,8 @@ function billingSummaryHasValues(summary: { clients: BillingSummaryRow[] }): boo
       row.packageTotal > 0 ||
       row.shippingTotal > 0 ||
       row.storageTotal > 0 ||
+      row.returnPostageTotal > 0 ||
+      row.returnProcessingTotal > 0 ||
       row.grandTotal > 0
   );
 }
@@ -47,6 +49,9 @@ export type BillingSummaryRow = {
   packageTotal: number;
   shippingTotal: number;
   storageTotal: number;
+  // CP-031: return billing totals (surface in byType + fold into grandTotal).
+  returnPostageTotal: number;
+  returnProcessingTotal: number;
   orderCount: number;
   grandTotal: number;
   // Back-compat fields for legacy callers of the old shape.
@@ -153,6 +158,8 @@ export async function billingSummary(
         packageTotal: 0,
         shippingTotal: 0,
         storageTotal: 0,
+        returnPostageTotal: 0,
+        returnProcessingTotal: 0,
         orderCount: 0,
         grandTotal: 0,
         total: 0,
@@ -163,6 +170,8 @@ export async function billingSummary(
           package_cost: 0,
           shipping: 0,
           storage: 0,
+          return_postage: 0,
+          return_processing_fee: 0,
         },
       })),
       grandTotal: 0,
@@ -187,6 +196,8 @@ export async function billingSummary(
     package_total: string;
     shipping_total: string;
     storage_total: string;
+    return_postage_total: string;
+    return_processing_total: string;
     order_count: number;
     grand_total: string;
   }>(sql`
@@ -198,6 +209,10 @@ export async function billingSummary(
       coalesce(sum(case when b.line_type = 'package_cost' then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      -- CP-031: return line types fold into byType here; grand_total (sum of ALL
+      -- line types) already reconciles them into the grand total.
+      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as return_postage_total,
+      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as return_processing_total,
       count(distinct b.order_id)::int as order_count,
       coalesce(sum(b.total_cost), 0)::text as grand_total
     from clients c
@@ -219,6 +234,8 @@ export async function billingSummary(
     const packageTotal = toNum(r.package_total);
     const shippingTotal = toNum(r.shipping_total);
     const storageTotal = toNum(r.storage_total);
+    const returnPostageTotal = toNum(r.return_postage_total);
+    const returnProcessingTotal = toNum(r.return_processing_total);
     const grandTotal = toNum(r.grand_total);
     return {
       clientId: r.client_id,
@@ -228,6 +245,8 @@ export async function billingSummary(
       packageTotal,
       shippingTotal,
       storageTotal,
+      returnPostageTotal,
+      returnProcessingTotal,
       orderCount: Number(r.order_count ?? 0),
       grandTotal,
       total: grandTotal,
@@ -238,6 +257,8 @@ export async function billingSummary(
         package_cost: packageTotal,
         shipping: shippingTotal,
         storage: storageTotal,
+        return_postage: returnPostageTotal,
+        return_processing_fee: returnProcessingTotal,
       },
     };
   });
