@@ -293,11 +293,17 @@ function ReceivingDetail({ id, onBack, onDone }: { id: number; onBack: () => voi
             </Labeled>
 
             {/* Photo / video capture — a mobile-capture file input opens the
-                camera on a phone. Files are previewed locally; their metadata is
-                what the backend persists (see the AUTHORITY BOUNDARY note above). */}
+                camera on a phone. Files are previewed locally only — durable
+                saving turns on once a media-storage backend is configured. */}
             <div>
               <span className="mb-1 block text-xs font-medium text-ink-2">Photos / video (optional)</span>
-              <label className="focus-within:ring-brand-400 flex min-h-[48px] cursor-pointer items-center justify-center gap-2 rounded-glass-sm border border-dashed border-slate-300 bg-white/60 py-3 text-sm font-medium text-ink-2 ring-1 ring-slate-200/70 hover:bg-white/90">
+              <label
+                className={
+                  'focus-within:ring-brand-400 flex min-h-[48px] cursor-pointer items-center justify-center gap-2 ' +
+                  'rounded-glass-sm border border-dashed border-slate-300 bg-white/60 py-3 text-sm font-medium ' +
+                  'text-ink-2 ring-1 ring-slate-200/70 hover:bg-white/90'
+                }
+              >
                 <Camera size={18} /> Capture photo or video
                 <input
                   type="file"
