@@ -10,8 +10,11 @@ import { Chip } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
+import { Undo2 } from 'lucide-react';
 import { fmtWeight } from '@/components/OrderDetailPanel';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
+import { Button } from '@/components/ui/Button';
+import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { useOrders, useSyncStatus } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -80,6 +83,8 @@ export default function Orders() {
   const [q, setQ] = useState(params.get('q') ?? '');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<PortalOrder | null>(null);
+  // CP-029: "Start return" opens the create-return modal for the selected order.
+  const [returnOrderId, setReturnOrderId] = useState<number | null>(null);
   const debouncedQ = useDebounced(q, 350);
 
   // Adopt the ?q= param whenever it changes. useState only reads it at mount, so
@@ -371,8 +376,20 @@ export default function Orders() {
       <Drawer open={!!selected} onClose={() => setSelected(null)} title={selected ? `Order ${selected.orderNumber ?? `#${selected.id}`}` : ''}>
         {/* CP-022: fetch the canonical /orders/:id DTO — the list row only drives
             the table, never the modal's business fields. */}
-        {selected && <OrderDetailLoader id={selected.id} />}
+        {selected && (
+          <div className="space-y-5">
+            <OrderDetailLoader id={selected.id} />
+            {/* CP-029: start-return entry point — opens the create-return modal
+                for this order. The modal renders the backend order DTO only; no
+                rate/carrier/billing math happens here. */}
+            <Button variant="secondary" className="w-full" leadingIcon={<Undo2 size={16} />} onClick={() => setReturnOrderId(selected.id)}>
+              Start a return
+            </Button>
+          </div>
+        )}
       </Drawer>
+
+      <ReturnCreateModal open={returnOrderId != null} orderId={returnOrderId} onClose={() => setReturnOrderId(null)} />
     </div>
   );
 }

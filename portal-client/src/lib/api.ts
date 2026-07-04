@@ -186,6 +186,97 @@ export interface PortalShipment {
   shippingCost?: number | string | null;
 }
 
+// CP-029 — Returns. The client return DTO is CARRIER/SERVICE/PROVIDER-FREE by
+// contract (mirrors the CP-027/028 client-safe results): it carries order
+// identity, lifecycle status, delivery method/status, tracking, PDF
+// availability, and a financially-gated price — NEVER carrierCode/serviceCode/
+// provider/account/selectedRate. The frontend renders these; it never computes
+// rates, picks a carrier, or makes billing/duplicate/override decisions.
+export interface PortalReturnRow {
+  id: number;
+  orderId: number | null;
+  orderNumber: string | null;
+  clientId: number | null;
+  clientName: string | null;
+  status: string;
+  initiatedBy: string;
+  reason: string | null;
+  deliveryMethod: string | null;
+  deliveryStatus: string | null;
+  trackingNumber: string | null;
+  pdfAvailable: boolean;
+  price: number | null;
+  createdAt: string | null;
+}
+
+export interface PortalReturnItem {
+  id: number;
+  sku: string;
+  name: string | null;
+  quantity: number;
+  orderItemId: number | null;
+}
+
+export interface PortalReturnInspectionMedia {
+  id: number;
+  mediaType: string;
+  url: string;
+  contentType: string | null;
+  capturedAt: string | null;
+}
+
+export interface PortalReturnInspection {
+  id: number;
+  status: string;
+  condition: string | null;
+  comments: string | null;
+  receivedAt: string | null;
+  media: PortalReturnInspectionMedia[];
+}
+
+export interface PortalReturnDetail extends PortalReturnRow {
+  trackingStatus: string | null;
+  deliveryError: string | null;
+  returnToLocationId: number | null;
+  // The return label PDF, served by the existing /labels/... route the return
+  // shipment's labelUrl points at. Downloaded via the detail panel button.
+  pdfUrl: string | null;
+  requestedAt: string | null;
+  closedAt: string | null;
+  items: PortalReturnItem[];
+  inspections: PortalReturnInspection[];
+}
+
+/** Result of creating a return label (CP-027 client-safe result, verbatim). */
+export interface ReturnLabelResult {
+  price: number;
+  trackingNumber: string | null;
+  trackingStatus: string | null;
+  labelAvailable: boolean;
+  pdfAvailable: boolean;
+  returnShipmentId: number | null;
+  createdAt: string;
+}
+
+/** Result of delivering a return (CP-028 client-safe delivery result). */
+export interface ReturnDeliveryResult {
+  deliveryMethod: 'shopify_native' | 'manual_pdf';
+  deliveryStatus: 'pending' | 'delivered' | 'failed';
+  pdfAvailable: boolean;
+  pdfUrl: string | null;
+  trackingNumber: string | null;
+  trackingStatus: string | null;
+}
+
+/** Payload for creating a return. The frontend selects items + partial
+ *  quantities + a return-to location; it does NOT compute rates/carrier/price. */
+export interface NewReturnInput {
+  orderId: number;
+  reason?: string;
+  returnToLocationId?: number;
+  items: Array<{ sku: string; name?: string; quantity: number; orderItemId?: number }>;
+}
+
 export interface PortalInventory {
   id: number;
   clientName: string | null;
@@ -792,6 +883,26 @@ export const portalApi = {
       to: `${r.to}T23:59:59.999Z`,
     });
   },
+
+  // CP-029 — Returns. List/detail render backend DTOs verbatim; create posts to
+  // the backend. No rate/carrier/billing math happens client-side.
+  returns: (token: string, opts: ListOpts & { orderId?: number } = {}) =>
+    scopedList<PortalReturnRow>(token, '/api/client-portal/returns', {
+      page: opts.page ?? 1,
+      pageSize: opts.pageSize ?? 50,
+      search: opts.search,
+      status: opts.status && opts.status !== 'all' ? opts.status : undefined,
+      clientId: opts.clientId,
+      orderId: opts.orderId,
+    }),
+  returnDetail: (token: string, id: number) =>
+    apiGet<{ data: PortalReturnDetail }>(token, `/api/client-portal/returns/${id}`),
+  createReturn: (token: string, body: NewReturnInput) =>
+    apiPost<{ data: { id: number; status: string } }>(token, '/api/client-portal/returns', body),
+  createReturnLabel: (token: string, id: number) =>
+    apiPost<{ data: ReturnLabelResult }>(token, `/api/client-portal/returns/${id}/label`),
+  deliverReturn: (token: string, id: number) =>
+    apiPost<{ data: ReturnDeliveryResult }>(token, `/api/client-portal/returns/${id}/deliver`),
 
   integrations: (token: string) => apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
   /** Submit a store connection request (admin-only). Created pending

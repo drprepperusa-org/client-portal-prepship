@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/auth';
 import { portalApi, type ListOpts } from './api';
+// ListOpts is re-used by useReturns below (returns filter shape mirrors it).
 import { usePortalFilters } from './portalContext';
 
 type TokenQueryOpts = {
@@ -174,6 +175,21 @@ export function useInventoryHistory(opts: { page?: number; sku?: string; type?: 
   );
 }
 export const useIntegrations = () => useTokenQuery(['integrations'], portalApi.integrations);
+
+// CP-029 — Returns list + detail. Mirrors useShipments/useOrder: the list honors
+// the top-bar client switcher and the on-page status/search/order filters; the
+// detail re-reads the single backend-owned return DTO.
+export function useReturns(opts: ListOpts & { orderId?: number } = {}) {
+  const { clientId } = usePortalFilters();
+  const merged = { ...opts, clientId: opts.clientId ?? clientId };
+  return useTokenQuery(
+    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.orderId ?? 0, merged.clientId ?? 'scope'],
+    (t) => portalApi.returns(t, merged),
+  );
+}
+export function useReturnDetail(id: number | null) {
+  return useTokenQuery(['return', id ?? 0], (t) => portalApi.returnDetail(t, id as number), id != null);
+}
 
 export function useInbound(clientId?: number) {
   const { clientId: globalClientId } = usePortalFilters();

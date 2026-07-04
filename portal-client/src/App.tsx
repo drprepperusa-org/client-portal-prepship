@@ -12,6 +12,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Inbound = lazy(() => import('./pages/Inbound'));
 const Shipments = lazy(() => import('./pages/Shipments'));
+const Returns = lazy(() => import('./pages/Returns'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Analysis = lazy(() => import('./pages/Analysis'));
 const Finance = lazy(() => import('./pages/Finance'));
@@ -79,6 +80,7 @@ export default function App() {
         <Route path="/orders" element={<Lazy el={<Orders />} />} />
         <Route path="/inbound" element={<Lazy el={<Inbound />} />} />
         <Route path="/shipments" element={<Lazy el={<Shipments />} />} />
+        <Route path="/returns" element={<Lazy el={<Returns />} />} />
         <Route path="/inventory" element={<Lazy el={<Inventory />} />} />
         <Route path="/analysis" element={<Lazy el={<Analysis />} />} />
         <Route path="/finance" element={<Lazy el={<Finance />} />} />

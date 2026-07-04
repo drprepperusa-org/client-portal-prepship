@@ -13,6 +13,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useShipments, useClients } from '@/lib/hooks';
+import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
+import { Undo2 } from 'lucide-react';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
@@ -56,6 +58,8 @@ export default function Shipments() {
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selected, setSelected] = useState<PortalShipment | null>(null);
+  // CP-029: "Start return" opens the create-return modal for the shipment's order.
+  const [returnOrderId, setReturnOrderId] = useState<number | null>(null);
   const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
 
@@ -283,6 +287,14 @@ export default function Shipments() {
               )}
             </div>
 
+            {/* CP-029: start-return entry point from the shipment — opens the
+                create-return modal for this shipment's order. */}
+            {selected.orderId != null && (
+              <Button variant="secondary" className="w-full" leadingIcon={<Undo2 size={16} />} onClick={() => setReturnOrderId(selected.orderId)}>
+                Start a return
+              </Button>
+            )}
+
             {/* Full order details + ship-to address. Reuses the order detail
                 panel (backend-owned money fields; carrier/service redacted). */}
             {selected.orderId != null ? (
@@ -302,6 +314,8 @@ export default function Shipments() {
           </div>
         )}
       </Drawer>
+
+      <ReturnCreateModal open={returnOrderId != null} orderId={returnOrderId} onClose={() => setReturnOrderId(null)} />
     </div>
   );
 }

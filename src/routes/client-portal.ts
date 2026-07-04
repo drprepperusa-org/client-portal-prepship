@@ -1,5 +1,5 @@
 // Barrel router: this file was one flat ~1500-line Hono app. It is now a thin
-// aggregator that mounts 11 per-domain sub-routers (src/routes/client-portal/*).
+// aggregator that mounts 12 per-domain sub-routers (src/routes/client-portal/*).
 // Each sub-router is `const app = new Hono(); …; export default app`, using the
 // same `app.route(prefix, sub)` idiom main.ts uses to mount THIS file. All
 // sub-routers mount at '/', so their relative paths ('/orders',
@@ -19,6 +19,7 @@ import invoicesRoute from './client-portal/invoices';
 import accessRoute from './client-portal/access';
 import integrationsRoute from './client-portal/integrations';
 import inboundRoute from './client-portal/inbound';
+import returnsRoute from './client-portal/returns';
 import syncRoute from './client-portal/sync';
 
 const app = new Hono();
@@ -33,6 +34,7 @@ app.route('/', invoicesRoute);
 app.route('/', accessRoute);
 app.route('/', integrationsRoute);
 app.route('/', inboundRoute);
+app.route('/', returnsRoute);
 app.route('/', syncRoute);
 
 export default app;
