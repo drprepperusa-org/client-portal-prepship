@@ -19,6 +19,7 @@ export default defineConfig({
     './src/db/schema/parent-skus.ts',
     './src/db/schema/inventory-sku-parents.ts',
     './src/db/schema/return-labels.ts',
+    './src/db/schema/returns.ts',
     './src/db/schema/mock-labels.ts',
     './src/db/schema/product-defaults.ts',
     './src/db/schema/sync-meta.ts',

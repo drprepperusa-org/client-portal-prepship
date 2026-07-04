@@ -14,6 +14,7 @@ export * from './print-queue';
 export * from './parent-skus';
 export * from './inventory-sku-parents';
 export * from './return-labels';
+export * from './returns';
 export * from './mock-labels';
 export * from './product-defaults';
 export * from './sync-meta';
