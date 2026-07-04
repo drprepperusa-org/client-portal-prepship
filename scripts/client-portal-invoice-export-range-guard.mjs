@@ -64,6 +64,25 @@ assert(
   'exportInvoiceExcel prepends a Client column when includeClient is set',
 );
 
+// ── CP-024: the Excel export must stay client-safe — the .xlsx must NEVER
+// leak carrier / service identity, the selected/best rate, the label cost, or
+// the shipping margin. The customer-facing "Shipping" column is the billed
+// customer shipping charge (BillingInvoiceDetailRow), not any provider cost.
+// Match CODE-SHAPED patterns (property access + specific identifiers) rather
+// than bare words, so the file's own "no carrier / margin" prose doesn't trip
+// the check and no comment-stripping (which a `//` inside a string could defeat)
+// is needed. Note: shippingTotal (the billed customer charge) is intentionally
+// NOT matched — only shippingMargin/provider cost is. ──
+assert(
+  !/\.(carrier[A-Za-z]*|service[A-Za-z]*|labelCost|selectedRate|bestRate|shippingMargin|providerAccount)\b/i.test(excel) &&
+    !/\b(carrierCode|carrier_code|serviceCode|service_code|labelCost|label_cost|selectedRate|bestRate|shippingMargin|providerAccount)\b/.test(excel),
+  'invoiceExcel never reads carrier/service/label-cost/selected-rate/margin fields (property access or identifier)',
+);
+assert(
+  !/['"`]\s*(Carrier|Service|Label Cost|Selected Rate|Best Rate|Margin)\s*['"`]/.test(excel),
+  'invoiceExcel column headers expose no Carrier / Service / Label Cost / Rate / Margin column',
+);
+
 assert(
   packageJson.scripts?.['test:client-portal-invoice-export-range'] ===
     'node scripts/client-portal-invoice-export-range-guard.mjs',

@@ -83,6 +83,15 @@ const invoicePrintStyles = `
       margin-bottom: 24px;
     }
     .total b { font-size: 24px; }
+    .trunc-note {
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      font-size: 12px;
+    }
     table { width: 100%; border-collapse: collapse; }
     th { background: #f9fafb; color: #374151; text-transform: uppercase; font-size: 10px; letter-spacing: .06em; }
     td, th { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
@@ -128,13 +137,24 @@ export function renderPortalInvoiceHtml(input: {
   dateTo: string;
   invoiceTotals: InvoiceTotals;
   details: InvoiceDetailRows;
+  // CP-024: set when the itemized listing below is capped (more billed orders
+  // exist than the row cap). The summary/amount-due totals are always complete
+  // and canonical; this flag lets the invoice say so rather than let the visible
+  // lines silently disagree with the total.
+  truncated?: boolean;
 }): string {
-  const { clientName, dateFrom, dateTo, invoiceTotals, details } = input;
+  const { clientName, dateFrom, dateTo, invoiceTotals, details, truncated } = input;
   const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
   const moneyOrDash = (value: unknown) => (Number(value ?? 0) > 0 ? money(value) : '&mdash;');
   const periodFrom = longDate(dateFrom);
   const periodTo = longDate(dateTo);
   const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const truncNote = truncated
+    ? '<div class="trunc-note">Amount due above is complete for the full period (' +
+      `${invoiceTotals.orderCount.toLocaleString()} orders). The itemized list and its quantity ` +
+      'subtotal below are partial (this period exceeds the per-invoice line limit) &mdash; ' +
+      'export the period from the Billing page for every line.</div>'
+    : '';
   const detailRows = details
     .map((detail) => `
       <tr>
@@ -179,6 +199,7 @@ export function renderPortalInvoiceHtml(input: {
     <div class="card"><div class="label">Fulfillment Fee</div><div class="value">${money(invoiceTotals.grandTotal)}</div></div>
   </div>
   <div class="total"><span>Total Amount Due &mdash; ${periodFrom} &rarr; ${periodTo}</span><b>${money(invoiceTotals.grandTotal)}</b></div>
+  ${truncNote}
   <table>
     <thead><tr>
       <th>Ship Date (Los Angeles)</th><th>Order #</th><th>SKU(s)</th><th>Box Size</th>

@@ -24,6 +24,7 @@ const route = flat(read('src/routes/client-portal/invoices.ts'));
 const invoices = read('portal-client/src/pages/Invoices.tsx');
 const invoicesFlat = flat(invoices);
 const api = flat(read('portal-client/src/lib/api.ts'));
+const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
 const pkg = JSON.parse(read('package.json'));
 
 // ── Backend /invoice-summary owns the grand totals ──
@@ -54,6 +55,54 @@ assert(
 assert(
   api.includes('totals?: BillingInvoiceTotals') && api.includes('export interface BillingInvoiceTotals'),
   'the period-summary API response type exposes backend totals',
+);
+
+// ── CP-024: the printable /invoice HTML's money totals are backend-owned too ──
+// The amount-due and every section total must come from the canonical, uncapped
+// billingSummary row — NEVER a reduction over the (row-capped) detail rows,
+// which under-counts amount-due for a large invoice.
+assert(
+  route.includes('const summary = await billingSummary(') && route.includes('const row = summary.clients[0];'),
+  'the /invoice handler derives its money totals from the canonical billingSummary (row)',
+);
+assert(
+  route.includes('grandTotal: Number(row?.grandTotal') &&
+    route.includes('pickPackTotal: Number(row?.pickPackTotal') &&
+    route.includes('shippingTotal: Number(row?.shippingTotal') &&
+    route.includes('storageTotal: Number(row?.storageTotal'),
+  'the printable invoiceTotals source amount-due and every section total from the canonical row',
+);
+// Any detail-row money reduction is gated to the Heritage override client (whose
+// itemized rows come from a hand-maintained table, not billing_line_items, and
+// are always complete). Every other client's money totals come from row? above,
+// so a re-introduced capped reduction on the normal path would have to replace
+// those canonical assertions — this is stronger than name-locking a variable.
+assert(
+  route.includes('const isOverrideSourced = client.name === HERITAGE_PREP_FEE_CLIENT_NAME') &&
+    route.includes('heritagePrepFeeRowsForRange(dateFrom, dateTo).length > 0') &&
+    route.includes('const invoiceTotals = isOverrideSourced'),
+  'the /invoice handler only detail-sums money totals when the Heritage override actually covers the range; all others (incl. Heritage fall-through) use the canonical summary',
+);
+assert(
+  route.includes('const orderedQty = details.reduce('),
+  'only qty (a display count of the rendered line items) is summed from the details',
+);
+// No silent truncation: when the itemized list is genuinely row-capped, the
+// invoice says the amount due is still complete rather than let visible lines
+// under-sum it. Grains are aligned — real-order rows vs the canonical distinct-
+// order count — and the always-complete override path never flags truncation.
+assert(
+  route.includes('!isOverrideSourced &&') &&
+    route.includes('details.filter((d) => d.orderId != null).length < invoiceTotals.orderCount') &&
+    route.includes('details, truncated }'),
+  'the /invoice handler flags a genuinely row-capped listing (grain-aligned) and passes it to the renderer',
+);
+assert(
+  invoiceHtml.includes('truncated?: boolean') &&
+    invoiceHtml.includes('const truncNote = truncated') &&
+    invoiceHtml.includes('trunc-note') &&
+    invoiceHtml.includes('${truncNote}'),
+  'the printable invoice renders a truncation note when the itemized list is capped',
 );
 
 assert(
