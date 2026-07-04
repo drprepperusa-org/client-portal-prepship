@@ -58,6 +58,52 @@ These are sanity rails for live operations — not a refactoring lock.
 
 ---
 
+## Client Portal — shadow-renderer / source-of-truth law
+
+The Client Portal is a **shadow renderer** of PrepShip / database truth. It
+displays what PrepShip already knows; it does not become a second place where
+business facts are decided. This law is the umbrella over CP-017→024 (and the
+CP-026→031 returns work) and is enforced by static guards — see
+`docs/source-of-truth-matrix.md` for the full surface-by-surface SOT matrix.
+
+**The rule:**
+
+- Client Portal must **derive every business value** — status, bucket, rate,
+  total, count, metric, and any customer-visible field — from
+  database / PrepShip-backed canonical sources.
+- If PrepShip already shows or uses a value, Client Portal must pull from that
+  **same canonical owner** (or a shared backend read-model extracted from it),
+  never a parallel re-derivation.
+- `portal-client/` may **arrange** backend data, **format** it, **sort/hide**
+  visible rows, and make presentation or derived computations **only when every
+  input is sourced from database/PrepShip AND the computation does not become an
+  independent source of truth.**
+- Computed fields must **document their source inputs, event clock, formula, and
+  owner.** If a computed field is customer-visible or operationally
+  authoritative, prefer **backend DTO / read-model ownership** so PrepShip and
+  Client Portal share one definition and cannot drift.
+- Client Portal must **NOT**: invent source data; rank/select rates from
+  competing internal fields; create an alternate billing / inventory / status /
+  redaction truth; silently fall back to a stale or nearby field; or duplicate a
+  PrepShip calculation in a way that can drift.
+
+**Backend DTO naming:** Client Portal APIs should expose **intent-named DTO
+fields** that delegate to the canonical owner — e.g. `customerShippingRate`,
+`effectiveStock`, `orderedUnits`, `ledgerShippedUnits`, `billedShippingTotal`,
+`displayTrackingNumber`. Generic names (`shipping`, `sold`, `stock`, `total`)
+are acceptable **only** when the DTO docs name the source + event clock +
+formula, so two numbers on one page can never silently mean different things.
+
+**Enforcement:** tests/guards must fail when `portal-client` introduces
+unsourced business truth, an unapproved fallback chain, or a forbidden
+customer-facing DTO exposure (carrier / service / provider / rate identity). The
+enforcement layer includes `test:client-portal-sales-sot-drift`,
+`test:client-portal-analytics-parity`, `guard:client-portal-architecture`, the
+per-surface SOT guards, and `test:client-portal-shadow-renderer` (which pins
+this law + the matrix in place).
+
+---
+
 ## Sync step (run if AGENTS.md changes)
 
 After editing this file, mirror to the other agent surfaces so all

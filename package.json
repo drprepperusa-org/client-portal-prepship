@@ -76,6 +76,7 @@
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",
     "test:client-portal-dashboard-sot": "node scripts/client-portal-dashboard-sot-guard.mjs",
     "test:client-portal-sales-sot-drift": "node scripts/client-portal-sales-sot-drift-guard.mjs",
+    "test:client-portal-shadow-renderer": "node scripts/client-portal-shadow-renderer-guard.mjs",
     "test:client-portal-analysis-ship-bucket": "node scripts/client-portal-analysis-ship-bucket-guard.mjs",
     "test:client-portal-inventory-sold-label": "node scripts/client-portal-inventory-sold-label-guard.mjs",
     "test:client-portal-returns-schema": "node scripts/client-portal-returns-schema-guard.mjs",

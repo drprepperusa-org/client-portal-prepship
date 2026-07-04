@@ -843,3 +843,284 @@ Suggested package script name:
   marketplace ingestion.
 - Make reporting metrics the standard dashboard/analysis input.
 - Add immutable adjustment/credit flows for any future billing corrections.
+
+## Client Portal Source-of-Truth Matrix (CP-025)
+
+### Shadow-renderer law (intro)
+
+The Client Portal is a **shadow renderer** of PrepShip / database truth. It
+derives every business value — status, bucket, rate, total, count, metric, and
+any customer-visible field — from a database / PrepShip-backed canonical owner
+(a table, a service, or a shared backend read-model extracted from one). If
+PrepShip already shows or uses a value, the Client Portal pulls from that **same
+owner**, never a parallel re-derivation.
+
+`portal-client/` may arrange, format, sort, and hide visible rows, and may make
+presentation or derived computations **only** when every input is sourced from
+database/PrepShip AND the computation does not become an independent source of
+truth. Any customer-visible or operationally authoritative computation is pushed
+into a **backend DTO / read-model** so PrepShip and the portal share one
+definition and cannot drift. Backend Client Portal APIs expose **intent-named
+DTO fields** (`customerShippingRate`, `effectiveStock`, `warehouseShipped30d`,
+`shippingCharged`, `costSummary`, `expectedUnits`, …) that delegate to the
+canonical owner; generic names are used only when the DTO docs already name the
+source + event clock + formula. The Client Portal must never invent source data,
+rank/select rates from competing internal fields, create an alternate
+billing/inventory/status/redaction truth, silently fall back to a stale/nearby
+field, or duplicate a PrepShip calculation in a driftable way.
+
+The authoritative wording of this law lives in `AGENTS.md`
+(mirrored to `CLAUDE.md` / `.cursorrules`). This section is the surface-by-surface
+mapping that makes the law auditable.
+
+**Classification key** (rightmost column of each table):
+
+- `presentation-only` — the frontend only formats / arranges / hides an
+  already-canonical value; no business fact is created.
+- `derived-from-canonical` — a computed value, but every input is a canonical
+  source and the formula/owner is documented (ideally backend-owned).
+- `backend-owned-truth` — the canonical owner itself (a table / service /
+  read-model) that other surfaces shadow.
+
+Customer-facing carrier / service / provider / rate identity is **never** shown
+(hard-nulled in the DTO). This is a redaction-truth rule, not a presentation
+choice — see the Carrier redaction remediation (CP-009/CP-018) below.
+
+### Dashboard
+
+Detailed per-widget mapping lives in the **CP-021 Dashboard KPI/widget SOT
+mapping** table above (`### Reporting / Dashboard / Analysis` →
+`#### CP-021`). In short: every ranked/financial KPI is backend-owned
+(`getClientPortalSalesTotals`, `getClientPortalDailyRevenue`, `dashboardTopSkus`
+reusing the canonical `getSkuBreakdownFromOrderItems`); the capped
+`orders.limit(1000)` array backs only the non-ranking per-day bar chart. Guard:
+`scripts/client-portal-dashboard-sot-guard.mjs`.
+
+### Orders
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Order # | `orderNumber` | `orderNumber` | `orders.order_number` | order date | presentation-only |
+| Status | `orderStatus` | `orderStatus` | `orders.order_status` | order state | presentation-only |
+| Order date | `orderDate` | `orderDate` (ISO) | `orders.order_date` | order date | presentation-only |
+| Tracking | `trackingNumber` | `trackingNumber` | `order_overrides.trackingNumber` / `shipments` | label time | presentation-only |
+| Carrier / service | (hidden) | `carrierCode`/`serviceCode`/`shippingService` = **null** | hard-nulled in `toPortalOrderDto` | n/a | backend-owned-truth (redaction) |
+| Ship-to | `shipToName/City/State` | same | `orders` columns + raw `shipTo` jsonb (client's own recipient) | order time | presentation-only |
+| Shipping charge | `customerShippingRate` | `customerShippingRate` | billed `Σ billing_line_items` (shipping) → fallback `orders.shippingAmount` | billing / order time | derived-from-canonical (backend-owned) |
+
+Owner: `src/lib/client-portal/dto.ts` (`toPortalOrderDto`) over `orders` /
+`order_items` / `order_overrides`. Route: `src/routes/client-portal/orders.ts`.
+Guards: `client-portal-orders-selected-rate-guard.mjs` (no internal
+selected/label/best rate leaks), `client-portal-orders-search-guard.mjs`,
+`client-portal-carrier-redaction-guard.ts` (CP-009/CP-018 redaction).
+
+### Order Detail
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Line item name/sku/qty | `items[]` | `items[]` (`safeItems`) | `orders.items` jsonb → canonical `order_items` | order time | presentation-only |
+| Line total | `lineTotal` | `lineTotal` (unitPrice × qty) | backend-computed in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
+| Product subtotal | `productSubtotal` | `productSubtotal` | Σ line totals in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
+| Cost summary receipt | `costSummary[]` | `costSummary[]` | `buildCostSummary` — reconciles to `orders.orderTotal` to the cent | order time | backend-owned-truth (CP-017) |
+
+Owner: one canonical loader — every entry point (Orders list, Shipments drawer)
+fetches `/orders/:id` and renders the shared `OrderDetailLoader` /
+`OrderDetailPanel` (CP-022), so no surface re-derives detail from a raw list row.
+Guard: `client-portal-order-detail-guard.ts`.
+
+### Shipments
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Tracking # | `trackingNumber` | `trackingNumber` | `shipments.tracking_number` | label time | presentation-only |
+| Ship date | `shipDate` | `shipDate` | `shipments.ship_date`/`label_ship_date`/`create_date` | ship date | presentation-only |
+| Delivery status | `trackingStatus` | `trackingStatus` | `shipments.tracking_status` (live) | tracking event | presentation-only |
+| Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at` | delivery event | presentation-only |
+| Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
+| Shipping cost | `shippingCost` | `shippingCost` (financially gated) | `shipments.shipping_cost` | label time | presentation-only (gated) |
+| Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
+
+Owner: `toPortalShipmentDto` over `shipments`. Route:
+`src/routes/client-portal/shipments.ts` + read-model
+`read-models/shipments.ts`. Guards: `client-portal-shipments-status-guard.ts`,
+`client-portal-shipments-item-identity-guard.ts`.
+
+### Inventory
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| On-hand stock | `stockQty` / `effectiveStock` | `stockQty` / `effectiveStock` | `inventory.stockQty` | now | presentation-only |
+| Stock status (In/Low/Out) | `stockStatus` (`isLow`/`isOut`) | `stockStatus` | backend enum in `toPortalInventoryDto` (mirrors read-model `lowStock` predicate) | now | backend-owned-truth (CP-013) |
+| "Sold" / shipped (30d) | `warehouseShipped30d` | `warehouseShipped30d` | `inventory_ledger` ship rows by ship date — **NOT** ordered/sold units | ship date | backend-owned-truth (CP-023) |
+| Reorder level | `reorderLevel` | `reorderLevel` | `inventory.reorderLevel` | now | presentation-only |
+| Cubic feet / dims | `cuFt`, `length/width/height` | same | `inventory` dims, override else L×W×H/1728 | now | derived-from-canonical (backend-owned) |
+
+Owner: `toPortalInventoryDto` + read-model `listPortalInventory`
+(`inventory` + `inventory_ledger`). Route:
+`src/routes/client-portal/inventory.ts`. The `warehouseShipped30d` name is
+deliberately SOT-encoded so it can never be confused with Analysis "Ordered
+Units". Guards: `client-portal-inventory-sold-label-guard.mjs` (CP-023, ledger
+ships not order units), `client-portal-inventory-status-guard.ts` (CP-013).
+
+### Analysis
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Ordered units | `totalUnits` | `totalUnits` | `getClientPortalSalesTotals` — Σ `order_items.quantity` (set-based) | order date | backend-owned-truth (CP-010) |
+| Revenue | `totalRevenue` | `totalRevenue` | `getClientPortalSalesTotals` — Σ `unit_price × qty` (financially gated) | order date | backend-owned-truth (CP-010) |
+| Top-SKU rows | `rows[]` (`total_qty`, `total_revenue`, `total_shipping`) | same | `getSkuBreakdownFromOrderItems` (set-based over `order_items`) | order date | backend-owned-truth |
+| Std/Exp ship counts | `std_total`/`exp_total` | same | cost-gated `shipments` COUNT paired with the SAME filter as `std_qty_total` | ship date | backend-owned-truth (CP-020) |
+
+Owner: `src/routes/analysis.ts` (`getClientPortalSalesTotals`,
+`getClientPortalDailyRevenue`, `getSkuBreakdownFromOrderItems`). The Dashboard
+shadows this exact query set — parity is structural, not a re-implementation.
+Guards: `client-portal-analytics-parity-guard.mjs` (CP-010),
+`client-portal-sales-sot-drift-guard.mjs`,
+`client-portal-analysis-ship-bucket-guard.mjs` (CP-020),
+`client-portal-analysis-columns-guard.mjs`.
+
+### Finance
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Charge breakdown | `breakdown[]` | `breakdown[]` (`pick_pack`, `shipping`, …) | `/reports` route over `billing_line_items` | billing time | backend-owned-truth (CP-012) |
+| Total charges | `totalCharges` | `totalCharges` | `/reports` route (backend sum) | billing time | backend-owned-truth (CP-012) |
+| Billable orders | `billableOrders` | `billableOrders` | `/reports` route (backend count) | billing time | backend-owned-truth (CP-012) |
+| Avg cost / order | `avgCostPerOrder` | `avgCostPerOrder` | `totalCharges / billableOrders` (zero-guarded, backend) | billing time | backend-owned-truth (CP-012) |
+
+Owner: `src/routes/client-portal/billing.ts` (`/reports`). Redacted
+(`billingVisible:false`) for non-financial callers. Frontend issues ONE scoped
+request and reduces nothing. Guard: `client-portal-finance-sot-guard.mjs`.
+
+### Billing
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Per-client rollup | `pickpack_total`, `shipping_total`, `storage_total`, `package_total`, `row_total` | same | `portalInvoiceSummary` — SQL rollup over `billing_line_items` (no row cap) | billing time | backend-owned-truth |
+| Order count | `orders` | `orders` | `portalInvoiceSummary` (`count(distinct)`) | billing time | backend-owned-truth |
+| Line-item sort/pagination | ordering | backend order | `read-models/invoice-details.ts` | billing time | presentation-only |
+
+Owner: `read-models/invoice-details.ts` (`portalInvoiceSummary` +
+`portalInvoiceDetails`). Qty comes from canonical `order_items`, never from
+summed billing-line quantities. **Billing generation authority stays in the
+admin app; the portal is read-only** (never re-enable portal auto-generation).
+Guards: `client-portal-billing-totals-guard.mjs`,
+`client-portal-billing-item-identity-guard.ts`,
+`client-portal-billing-line-item-sort-guard.mjs`,
+`client-portal-billing-shipment-modal-guard.ts`.
+
+### Invoices / exports
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Invoice line items | `items[]` (name/sku/qty) | invoice-detail rows | `read-models/invoice-details.ts` over `billing_line_items` + `order_items` | billing time | backend-owned-truth |
+| Printable invoice totals | section totals / amount due | backend totals | invoice read-model (CP-024 — HTML money is backend-owned) | billing time | backend-owned-truth (CP-024) |
+| Excel "Export all" | full-range rows | paginated fetch of every line item | invoice-details, page-through (no 5000/1000-row truncation) | billing time | presentation-only |
+| Carrier code | (never shipped) | dropped from `invoice-details` SQL + DTO | — | n/a | backend-owned-truth (redaction, CP-018) |
+
+Owner: `read-models/invoice-details.ts`, `Invoices.tsx`. The `.xlsx` stays
+client-safe (no carrier/service). Guards:
+`client-portal-invoice-items-guard.ts`,
+`client-portal-invoice-export-range-guard.mjs`.
+
+### Returns (CP-026 → CP-031)
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Return status | `status` | `status` | `returns.status` (workflow table) | return workflow | backend-owned-truth (CP-026) |
+| Reason | `reason` | `reason` | `returns.reason` | return workflow | presentation-only |
+| Return tracking | `trackingNumber` | `returnTracking` = `coalesce(shipments.labelTracking, shipments.trackingNumber)` | **`shipments`** (label SOT stays there) | label time | backend-owned-truth (CP-026/027) |
+| Return label PDF | `pdfUrl` | `returnLabelUrl` | `shipments.labelUrl` (never a new URL) | label time | presentation-only |
+| Delivery method/status | `deliveryMethod`/`deliveryStatus` | same | `returns` delivery columns (CP-028 resolver) | delivery event | backend-owned-truth (CP-028) |
+| Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
+| Inspection condition | `condition` | `condition` | `return_inspections` (6-value enum) | receiving/inspection | backend-owned-truth (CP-030) |
+| Inspection media | `media[]` | `media[]` (`storageRef`) | `return_inspection_media` (metadata only, never the binary) | receiving | backend-owned-truth (CP-030) |
+
+Owner: `src/db/schema/returns.ts` (`returns` / `return_items` /
+`return_inspections` / `return_inspection_media`), route
+`src/routes/client-portal/returns.ts`, services `src/services/returns.ts`
+(label) + `src/services/return-delivery.ts`. **The new tables never re-declare
+label money / tracking / rate — that truth stays on `shipments`.** The route
+never rate-shops or picks a carrier; the frontend renders backend fields only.
+Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
+`client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
+postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
+`client-portal-returns-ui-guard.mjs` (CP-029, carrier/service-free UI+API),
+`client-portal-returns-receiving-guard.mjs` (CP-030, operator-gated inspection).
+
+### Inbound
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Reference / supplier / status | `reference`/`supplier`/`status` | same | `inbound_shipments` | inbound workflow | presentation-only |
+| Carrier / tracking | `carrier`/`trackingNumber` | same | `inbound_shipments` (inbound carrier, not an outbound label) | inbound time | presentation-only |
+| Expected units | `expectedUnits` | `expectedUnits` | Σ `inbound_items.expectedQty` (backend) | inbound time | derived-from-canonical (backend-owned) |
+| Received units | `receivedUnits` | `receivedUnits` | Σ `inbound_items.receivedQty` (backend) | receiving | derived-from-canonical (backend-owned) |
+
+Owner: `toPortalInboundDto` over `inbound_shipments` + `inbound_items`. Route:
+`src/routes/client-portal/inbound.ts`.
+
+### Connections
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Provider / label | `provider`/`label` | `provider`/`label` | connector rows via `toPortalIntegrationDto` | now | presentation-only |
+| Account identifier | `accountIdentifier` | `accountIdentifier` | connector account row (no secrets) | now | presentation-only |
+| Active | `active` | `active` | connector row | now | presentation-only |
+| Pending request | `PortalIntegration` | POST `/integrations` | server-persisted request row (never client-only state) | now | backend-owned-truth |
+
+Owner: `toPortalIntegrationDto` + read-model `listPortalIntegrations`
+(`read-models/integrations.ts`) over `carrier_accounts` +
+`carrier_account_clients` + `store_accounts`. Route:
+`src/routes/client-portal/integrations.ts`. Carrier/provider **identity is not
+secret** here (it is the customer's own store/connector), but
+credentials/payloads are never exposed.
+
+### Rate Sheet
+
+| UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Contracted rates | (honest empty state) | — (no endpoint yet) | operator-managed rate sheet — **not yet a portal endpoint** | n/a | backend-owned-truth (absent) |
+
+`portal-client/src/pages/Rates.tsx` is an **honest placeholder**: storage /
+pick-pack / zone pricing is a contracted, operator-managed rate sheet with no
+live `/api/client-portal/rate-sheet` endpoint yet. Rather than fabricate
+numbers, the page shows an empty state and points to real billed charges in
+Invoices — an exemplary application of the shadow-renderer law (it refuses to
+invent source data). When the endpoint exists, it must be the canonical owner
+and this row becomes a real mapping.
+
+### DJ-approved exceptions
+
+None. No Client Portal surface currently derives an authoritative business value
+outside a database / PrepShip-backed canonical owner. Any future exception must
+be recorded here with the DJ approval, the exact field, and the justification,
+and must still document source inputs, event clock, and formula.
+
+### CP remediation reference
+
+- **CP-009 / CP-018** — carrier / service / provider / rate identity is
+  hard-nulled in the order + shipment DTOs and dropped from the invoice-details
+  SQL/DTO; the client shows tracking numbers, never carriers.
+- **CP-010** — one canonical sales-metrics owner (`getClientPortalSalesTotals`)
+  so Dashboard and Analysis revenue/units cannot drift.
+- **CP-012** — Finance charge breakdown / totals / billable count / avg per
+  order are backend-owned (`/reports`), not React reductions.
+- **CP-013** — inventory stock status (In/Low/Out) is a backend enum shared by
+  the filter and the badge.
+- **CP-014** — product line totals + subtotal are backend-owned money.
+- **CP-017** — the order cost-summary receipt is a backend read-model that
+  always reconciles to `orderTotal` to the cent.
+- **CP-020** — Analysis Std/Exp columns pair the shipment COUNT with the SAME
+  cost-gated filter as the quantity.
+- **CP-021** — Dashboard KPIs/widgets are named after entity+table and are
+  backend-owned; Top-SKUs reuses the canonical Analysis SKU query.
+- **CP-022** — one canonical order-detail loader across every entry point.
+- **CP-023** — inventory "sold" is warehouse ledger ships (`warehouseShipped30d`,
+  ship date), not ordered units.
+- **CP-024** — printable-invoice money totals are backend-owned; the Excel
+  export stays carrier/service-free.
+- **CP-026 → CP-031** — returns workflow/item/inspection/media tables own only
+  workflow detail; label money + tracking stay on `shipments`; no portal-side
+  rate-shopping; offline-mock labels by default; operator-gated receiving.
+
