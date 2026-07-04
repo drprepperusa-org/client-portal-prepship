@@ -117,8 +117,8 @@ assert(
   'CP-009: Shipments drawer no longer renders the Carrier field',
 );
 assert(
-  shipmentsPage.includes('OrderDetailPanel') && shipmentsPage.includes('ShipmentOrderDetail'),
-  'Shipments drawer shows the full order detail (address + items + cost) via OrderDetailPanel',
+  shipmentsPage.includes('OrderDetailLoader') && shipmentsPage.includes('ShipmentOrderDetail'),
+  'Shipments drawer shows the full order detail (address + items + cost) via the canonical OrderDetailLoader (CP-022)',
 );
 
 if (failed) process.exit(1);

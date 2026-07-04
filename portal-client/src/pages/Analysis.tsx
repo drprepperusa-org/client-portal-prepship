@@ -11,9 +11,9 @@ import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
 import { TopSkuTrendChart } from '@/components/charts/Charts';
 import { Sparkline } from '@/components/charts/Sparkline';
-import { OrderDetailPanel } from '@/components/OrderDetailPanel';
+import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { staggerContainer } from '@/lib/motion';
-import { useAnalysis, useSkuOrders, useOrder } from '@/lib/hooks';
+import { useAnalysis, useSkuOrders } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate, orderStatusMeta } from '@/lib/status';
 import type { AnalysisSkuRow, SkuOrdersResult } from '@/lib/api';
@@ -205,13 +205,6 @@ export default function Analysis() {
       </Modal>
     </div>
   );
-}
-
-function OrderDetailLoader({ id }: { id: number }) {
-  const q = useOrder(id);
-  if (q.isLoading) return <div className="space-y-3"><Skeleton className="h-24" /><Skeleton className="h-40" /></div>;
-  if (q.isError || !q.data?.data) return <p className="text-sm text-ink-3">Couldn’t load this order.</p>;
-  return <OrderDetailPanel o={q.data.data} />;
 }
 
 function SkuStat({ label, value }: { label: string; value: string }) {

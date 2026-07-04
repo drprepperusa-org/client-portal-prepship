@@ -10,7 +10,8 @@ import { Chip } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
-import { OrderDetailPanel, fmtWeight } from '@/components/OrderDetailPanel';
+import { fmtWeight } from '@/components/OrderDetailPanel';
+import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { useOrders, useSyncStatus } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -368,7 +369,9 @@ export default function Orders() {
       </GlassPanel>
 
       <Drawer open={!!selected} onClose={() => setSelected(null)} title={selected ? `Order ${selected.orderNumber ?? `#${selected.id}`}` : ''}>
-        {selected && <OrderDetailPanel o={selected} />}
+        {/* CP-022: fetch the canonical /orders/:id DTO — the list row only drives
+            the table, never the modal's business fields. */}
+        {selected && <OrderDetailLoader id={selected.id} />}
       </Drawer>
     </div>
   );

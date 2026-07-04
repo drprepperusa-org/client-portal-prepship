@@ -184,5 +184,28 @@ check(panel.includes('o.customerShippingRate') && /label="Customer Shipping Rate
 check(!panel.includes('o.shippingCharged, o.shippingAmount'), 'CP-018: panel no longer three-tiers billed/store/best — it reads the single backend field');
 check(panel.includes('o.orderNumber'), 'order detail: panel shows the order number');
 
+// ── CP-022: ONE canonical order-detail loader — every entry point (Orders,
+//    Analysis, Shipments drawers) fetches the /orders/:id DTO, so the launching
+//    page's list row can never change the visible detail truth. ──
+const loader = read('portal-client/src/components/OrderDetailLoader.tsx');
+check(
+  loader.includes('useOrder(id)') && loader.includes('<OrderDetailPanel o={q.data.data}'),
+  'CP-022: OrderDetailLoader fetches the canonical /orders/:id DTO and renders the panel',
+);
+const ordersPage = read('portal-client/src/pages/Orders.tsx');
+const analysisPage = read('portal-client/src/pages/Analysis.tsx');
+const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
+for (const [name, src] of [
+  ['Orders', ordersPage],
+  ['Analysis', analysisPage],
+  ['Shipments', shipmentsPage],
+] as const) {
+  check(src.includes('OrderDetailLoader'), `CP-022: ${name} renders order detail through the shared OrderDetailLoader`);
+}
+check(
+  !/<OrderDetailPanel\s+o=\{selected\}/.test(ordersPage),
+  'CP-022: Orders no longer passes the raw list row into OrderDetailPanel (it fetches /orders/:id first)',
+);
+
 if (failed) process.exit(1);
 console.log('\nclient portal order detail guard passed.');

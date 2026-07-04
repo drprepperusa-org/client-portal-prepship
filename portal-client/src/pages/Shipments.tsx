@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
-import { OrderDetailPanel } from '@/components/OrderDetailPanel';
+import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { GlassPanel } from '@/components/ui/Glass';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Chip, Skeleton } from '@/components/ui/Display';
+import { Chip } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useShipments, useClients, useOrder } from '@/lib/hooks';
+import { useShipments, useClients } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
@@ -318,8 +318,6 @@ function Field({ label, value }: { label: string; value: string }) {
 /** Loads the shipment's order and renders the full order detail (ship-to
  *  address, line items with prices, cost summary) — carrier/service redacted. */
 function ShipmentOrderDetail({ orderId }: { orderId: number }) {
-  const q = useOrder(orderId);
-  if (q.isLoading) return <div className="space-y-3"><Skeleton className="h-20 rounded-glass-sm" /><Skeleton className="h-40 rounded-glass-sm" /></div>;
-  if (q.isError || !q.data?.data) return <p className="text-sm text-ink-3">Couldn’t load the order details.</p>;
-  return <OrderDetailPanel o={q.data.data} />;
+  // CP-022: render through the ONE canonical order-detail loader.
+  return <OrderDetailLoader id={orderId} />;
 }
