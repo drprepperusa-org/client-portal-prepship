@@ -5,7 +5,7 @@ import { TrendingUp, Boxes, DollarSign, Package, Inbox } from 'lucide-react';
 import { Thumb } from '@/components/ui/Thumb';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
-import { Skeleton, EmptyState, Chip } from '@/components/ui/Display';
+import { Skeleton, EmptyState, Chip, Tooltip as InfoTooltip } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
@@ -21,6 +21,12 @@ import { cn } from '@/lib/cn';
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const TOP_N = 5;
+// CP-020: the Std/Exp columns show a cost-gated shipment COUNT paired with its
+// matching-predicate allocated-shipping-cost DOLLAR — disclosed honestly.
+const SHIP_BUCKET_TOOLTIP =
+  'Excludes external, pending-label, and costless rows — so Std + Exp will read lower than Orders. ' +
+  'Counts only shipments that carry a billed carrier label of this class. ' +
+  'The $ is allocated shipping COST (the carrier label cost apportioned per unit), not revenue.';
 
 export default function Analysis() {
   const { days } = usePortalFilters();
@@ -105,29 +111,33 @@ export default function Analysis() {
     { key: 'revenue', header: 'Total Revenue', defaultWidth: 130, className: 'text-right', render: (r) => <span className="tnum font-semibold text-ink">{money(num(r.total_revenue))}</span>, sortAccessor: (r) => num(r.total_revenue) },
     {
       key: 'std',
-      header: 'Std',
-      defaultWidth: 110,
+      header: 'Std ship',
+      defaultWidth: 120,
       className: 'text-right',
       render: (r) => (
-        <span className="tnum text-ink-2">
-          {num(r.std_orders)}
-          {num(r.std_total) > 0 && <span className="ml-1 text-xs text-emerald-600">{money(num(r.std_total))}</span>}
-        </span>
+        <InfoTooltip side="top" multiline label={SHIP_BUCKET_TOOLTIP}>
+          <span tabIndex={0} className="tnum text-ink-2 cursor-help">
+            {num(r.std_ship_count)}
+            {num(r.std_total) > 0 && <span className="ml-1 text-xs text-emerald-600">{money(num(r.std_total))}</span>}
+          </span>
+        </InfoTooltip>
       ),
-      sortAccessor: (r) => num(r.std_orders),
+      sortAccessor: (r) => num(r.std_ship_count),
     },
     {
       key: 'exp',
-      header: 'Exp',
-      defaultWidth: 110,
+      header: 'Exp ship',
+      defaultWidth: 120,
       className: 'text-right',
       render: (r) => (
-        <span className="tnum text-ink-2">
-          {num(r.exp_orders)}
-          {num(r.exp_total) > 0 && <span className="ml-1 text-xs text-amber-600">{money(num(r.exp_total))}</span>}
-        </span>
+        <InfoTooltip side="top" multiline label={SHIP_BUCKET_TOOLTIP}>
+          <span tabIndex={0} className="tnum text-ink-2 cursor-help">
+            {num(r.exp_ship_count)}
+            {num(r.exp_total) > 0 && <span className="ml-1 text-xs text-amber-600">{money(num(r.exp_total))}</span>}
+          </span>
+        </InfoTooltip>
       ),
-      sortAccessor: (r) => num(r.exp_orders),
+      sortAccessor: (r) => num(r.exp_ship_count),
     },
     { key: 'shipping', header: 'Total Shipping', defaultWidth: 130, className: 'text-right', render: (r) => <span className="tnum text-ink-2">{money(num(r.total_shipping))}</span>, sortAccessor: (r) => num(r.total_shipping) },
     { key: 'fees', header: 'Selling Fees', defaultWidth: 120, className: 'text-right', render: (r) => <span className="tnum text-ink-2">{money(num(r.total_selling_fee))}</span>, sortAccessor: (r) => num(r.total_selling_fee) },

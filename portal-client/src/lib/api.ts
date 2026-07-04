@@ -413,8 +413,12 @@ export interface AnalysisSkuRow {
   pending?: number | null;
   ext_shipped?: number | null;
   std_orders?: number | null;
+  // CP-020: cost-gated shipment count — the count whose predicate MATCHES std_total
+  // (not is_external, label_cost > 0, ship_class='std'). Pair this with std_total.
+  std_ship_count?: number | null;
   std_total?: string | null;
   exp_orders?: number | null;
+  exp_ship_count?: number | null;
   exp_total?: string | null;
   total_qty?: number | null;
   total_shipping?: string | null;
