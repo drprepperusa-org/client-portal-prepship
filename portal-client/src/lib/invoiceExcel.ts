@@ -4,7 +4,8 @@ import type { BillingInvoiceDetailRow } from '@/lib/api';
 // order mirror the billing line-items table (client-safe fields only — no
 // carrier / selected rate / shipping margin):
 //   Order # | Ship Date | Item Name | SKU | Qty | Pick & Pack |
-//   Addl Units | Box Cost | Box Size | Shipping | Storage | Fulfillment Fee
+//   Addl Units | Box Cost | Box Size | Shipping | Storage |
+//   Return Postage | Return Processing | Fulfillment Fee
 // Money cells are written as real numbers (2-decimal format) so Excel can sum
 // and pivot them; the final row is a bold totals row. write-excel-file is
 // loaded via dynamic import so the writer only ships when Export is clicked.
@@ -24,10 +25,12 @@ const HEADERS = [
   'Box Size',
   'Shipping',
   'Storage',
+  'Return Postage',
+  'Return Processing',
   'Fulfillment Fee',
 ] as const;
 
-const COLUMN_WIDTHS = [10, 12, 30, 26, 6, 12, 11, 10, 12, 10, 10, 14];
+const COLUMN_WIDTHS = [10, 12, 30, 26, 6, 12, 11, 10, 12, 10, 10, 13, 15, 14];
 
 function slugify(name: string): string {
   const slug = name
@@ -65,6 +68,8 @@ export async function exportInvoiceExcel(
     { type: String, value: r.boxSize ?? '' },
     { type: Number, value: num(r.shippingTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.storageTotal), format: MONEY_FORMAT },
+    { type: Number, value: num(r.returnPostageTotal), format: MONEY_FORMAT },
+    { type: Number, value: num(r.returnProcessingTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.rowTotal), format: MONEY_FORMAT },
   ]);
 
@@ -84,6 +89,8 @@ export async function exportInvoiceExcel(
     null,
     { type: Number, value: sum((r) => r.shippingTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.storageTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.returnPostageTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.returnProcessingTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.rowTotal), format: MONEY_FORMAT, ...bold },
   ];
 

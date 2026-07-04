@@ -42,6 +42,10 @@ type PortalInvoiceSummaryRow = {
   package_total: string;
   shipping_total: string;
   storage_total: string;
+  // CP-031: return charges broken out from the grand total so returns are a
+  // visible billing category (they were already inside row_total, just hidden).
+  returnpostage_total: string;
+  returnprocessing_total: string;
   row_total: string;
 };
 
@@ -64,6 +68,8 @@ export async function portalInvoiceSummary(
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as returnpostage_total,
+      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as returnprocessing_total,
       coalesce(sum(b.total_cost), 0)::text as row_total
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
@@ -84,6 +90,8 @@ export async function portalInvoiceSummary(
     packageTotal: row.package_total,
     shippingTotal: row.shipping_total,
     storageTotal: row.storage_total,
+    returnPostageTotal: row.returnpostage_total,
+    returnProcessingTotal: row.returnprocessing_total,
     rowTotal: row.row_total,
   }));
 }
@@ -131,6 +139,8 @@ type PortalInvoicePeriodSummaryRow = {
   package_total: string;
   shipping_total: string;
   storage_total: string;
+  returnpostage_total: string;
+  returnprocessing_total: string;
   row_total: string;
 };
 
@@ -161,6 +171,8 @@ export async function portalInvoicePeriodSummary(
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as returnpostage_total,
+      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as returnprocessing_total,
       coalesce(sum(b.total_cost), 0)::text as row_total
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
@@ -189,6 +201,8 @@ export async function portalInvoicePeriodSummary(
       packageTotal: row.package_total,
       shippingTotal: row.shipping_total,
       storageTotal: row.storage_total,
+      returnPostageTotal: row.returnpostage_total,
+      returnProcessingTotal: row.returnprocessing_total,
       rowTotal: row.row_total,
     };
   });
@@ -286,6 +300,8 @@ type PortalInvoiceDetailRow = {
   package_total: string;
   shipping_total: string;
   storage_total: string;
+  returnpostage_total: string;
+  returnprocessing_total: string;
   row_total: string;
 };
 
@@ -339,6 +355,9 @@ export async function portalInvoiceDetails(
           packageTotal: row.packageTotal.toFixed(2),
           shippingTotal: row.shippingTotal.toFixed(2),
           storageTotal: row.storageTotal.toFixed(2),
+          // Heritage prep-fee override rows carry no return charges.
+          returnPostageTotal: '0.00',
+          returnProcessingTotal: '0.00',
           rowTotal: row.rowTotal.toFixed(2),
         }));
       }
@@ -378,6 +397,8 @@ export async function portalInvoiceDetails(
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
+      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as returnpostage_total,
+      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as returnprocessing_total,
       coalesce(sum(b.total_cost), 0)::text as row_total
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
@@ -422,6 +443,8 @@ export async function portalInvoiceDetails(
     packageTotal: row.package_total,
     shippingTotal: row.shipping_total,
     storageTotal: row.storage_total,
+    returnPostageTotal: row.returnpostage_total,
+    returnProcessingTotal: row.returnprocessing_total,
     rowTotal: row.row_total,
   }));
 }

@@ -90,9 +90,12 @@ app.get('/invoice-summary', async (c) => {
       packageTotal: acc.packageTotal + Number(r.packageTotal ?? 0),
       storageTotal: acc.storageTotal + Number(r.storageTotal ?? 0),
       shippingTotal: acc.shippingTotal + Number(r.shippingTotal ?? 0),
+      // CP-031: return charges as their own backend-owned footer totals.
+      returnPostageTotal: acc.returnPostageTotal + Number(r.returnPostageTotal ?? 0),
+      returnProcessingTotal: acc.returnProcessingTotal + Number(r.returnProcessingTotal ?? 0),
       rowTotal: acc.rowTotal + Number(r.rowTotal ?? 0),
     }),
-    { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, rowTotal: 0 },
+    { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, returnPostageTotal: 0, returnProcessingTotal: 0, rowTotal: 0 },
   );
   await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
   return c.json({ data: rows, totals, billingVisible: true });

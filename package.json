@@ -96,6 +96,7 @@
     "test:client-portal-billing-totals": "node scripts/client-portal-billing-totals-guard.mjs",
     "test:billing-line-item-sort-pagination": "node scripts/client-portal-billing-line-item-sort-guard.mjs",
     "test:return-billing": "node scripts/return-billing-guard.mjs",
+    "test:client-portal-billing-returns-display": "node scripts/client-portal-billing-returns-display-guard.mjs",
     "test:print-queue-client-scope": "node scripts/print-queue-client-store-scope-guard.mjs",
     "test:orders-manifests-scope": "node scripts/orders-manifests-client-store-scope-guard.mjs",
     "test:field-level-rbac": "node scripts/field-level-rbac-guard.mjs",

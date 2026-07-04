@@ -27,6 +27,8 @@ type ClientSummary = {
   box: number;
   storage: number;
   shipping: number;
+  returnPostage: number;
+  returnProcessing: number;
   fee: number;
 };
 
@@ -52,6 +54,8 @@ const EMPTY_TOTALS: BillingTotals = {
   box: 0,
   storage: 0,
   shipping: 0,
+  returnPostage: 0,
+  returnProcessing: 0,
   fee: 0,
 };
 
@@ -148,6 +152,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
         box: num(r.packageTotal),
         storage: num(r.storageTotal),
         shipping: num(r.shippingTotal),
+        returnPostage: num(r.returnPostageTotal),
+        returnProcessing: num(r.returnProcessingTotal),
         fee: num(r.rowTotal),
       })),
     [summaryQuery.data],
@@ -165,6 +171,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           box: num(t.packageTotal),
           storage: num(t.storageTotal),
           shipping: num(t.shippingTotal),
+          returnPostage: num(t.returnPostageTotal),
+          returnProcessing: num(t.returnProcessingTotal),
           fee: num(t.rowTotal),
         }
       : EMPTY_TOTALS;
@@ -293,6 +301,24 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
       footer: <span className="tnum">{money(totals.shipping)}</span>,
     },
     {
+      key: 'returnPostage',
+      header: 'Return Postage',
+      defaultWidth: 130,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.returnPostage)}</span>,
+      sortAccessor: (s) => s.returnPostage,
+      footer: <span className="tnum">{money0(totals.returnPostage)}</span>,
+    },
+    {
+      key: 'returnProcessing',
+      header: 'Return Processing',
+      defaultWidth: 140,
+      className: moneyRight,
+      render: (s) => <span className="tnum text-ink-2">{money0(s.returnProcessing)}</span>,
+      sortAccessor: (s) => s.returnProcessing,
+      footer: <span className="tnum">{money0(totals.returnProcessing)}</span>,
+    },
+    {
       key: 'fee',
       header: 'Fulfillment Fee',
       defaultWidth: 140,
@@ -384,6 +410,16 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     { key: 'boxcost', header: 'Box Cost', defaultWidth: 100, className: moneyRight, render: (r) => <span className="tnum text-ink-2">{money0(num(r.packageTotal))}</span>, sortAccessor: (r) => num(r.packageTotal) },
     { key: 'boxsize', header: 'Box Size', defaultWidth: 120, render: (r) => <span className="tnum text-ink-3">{r.boxSize ?? '—'}</span>, sortAccessor: (r) => r.boxSize ?? '' },
     { key: 'shipping', header: 'Shipping', defaultWidth: 110, className: moneyRight, render: (r) => <span className="tnum text-ink-2">{money0(num(r.shippingTotal))}</span>, sortAccessor: (r) => num(r.shippingTotal) },
+    {
+      key: 'returnpostage', header: 'Return Postage', defaultWidth: 130, className: moneyRight,
+      render: (r) => <span className="tnum text-ink-2">{money0(num(r.returnPostageTotal))}</span>,
+      sortAccessor: (r) => num(r.returnPostageTotal),
+    },
+    {
+      key: 'returnprocessing', header: 'Return Processing', defaultWidth: 140, className: moneyRight,
+      render: (r) => <span className="tnum text-ink-2">{money0(num(r.returnProcessingTotal))}</span>,
+      sortAccessor: (r) => num(r.returnProcessingTotal),
+    },
     { key: 'fee', header: 'Fulfillment Fee', defaultWidth: 130, className: moneyRight, render: (r) => <span className="font-bold tnum text-brand-700">{money(num(r.rowTotal))}</span>, sortAccessor: (r) => num(r.rowTotal) },
   ], []);
 

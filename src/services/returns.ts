@@ -15,6 +15,7 @@ import {
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
 import { createReturnLabelV2 } from './labels';
+import { resolveReturnPostageRate } from './billing';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
 import {
   generateFakeShipmentId,
@@ -183,14 +184,66 @@ async function findActiveReturnForOrder(orderId: number): Promise<OutboundShipme
   return row ?? null;
 }
 
+const toNum = (v: string | number | null | undefined): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 /**
- * CP-027 client-facing price. Prefer a billing-config/policy-derived return
- * price when available, else fall back to the raw carrier cost. (No return
- * billing policy exists yet; when one lands it plugs in here without changing
- * the client-safe result shape.)
+ * CP-027 client-facing return price — derived from the SAME backend billing
+ * policy that generates the `return_postage` billing line (CP-031's
+ * `resolveReturnPostageRate` in billing.ts), so the price a customer is quoted
+ * equals the amount that will actually be billed. ONE definition, no drift.
+ *
+ * Parity with billing generation (see billing.ts generateLineItems):
+ *  - house cost 0 (offline-mock / no synced cost) → 0. Billing generates NO
+ *    `return_postage` line for a 0 house cost, so the quote is likewise 0.
+ *  - house cost > 0 → the client's return markup + min-price override applied.
+ *    With all-zero / absent config this reduces to the raw house cost (no
+ *    regression from the prior raw-cost behaviour).
+ *
+ * PARITY INVARIANT: this service persists return shipments with cost = rawCost
+ * and NO otherCost, so billing's houseCost = (cost || labelCost) + otherCost
+ * equals the rawCost passed here. Keep it that way — if a future sync ever
+ * backfills shipments.otherCost on a return row, add it into rawCost at the call
+ * sites too, or the quote (single rawCost) would drift from the billed line.
+ *
+ * The raw house/label cost is NEVER surfaced to the client — only this
+ * policy-derived amount ever reaches ClientSafeReturnResult.price.
  */
-function computeCustomerReturnPrice(rawCost: number): number {
-  return Number(rawCost.toFixed(2));
+async function resolveReturnCustomerPrice(rawCost: number, clientId: number | null): Promise<number> {
+  const houseCost = toNum(rawCost);
+  if (houseCost <= 0) return 0;
+  if (clientId == null) return Number(houseCost.toFixed(2));
+  try {
+    const cfgRows = await db.execute<{
+      returnPostageMarkupPct: string;
+      returnPostageMarkupFlat: string;
+      returnShippingRateOverrideTriggerBelow: string;
+      returnShippingRateOverrideAmount: string;
+    }>(sql`
+      select
+        coalesce(return_postage_markup_pct, '0'::numeric)::text as "returnPostageMarkupPct",
+        coalesce(return_postage_markup_flat, '0'::numeric)::text as "returnPostageMarkupFlat",
+        coalesce(return_shipping_rate_override_trigger_below, '0'::numeric)::text as "returnShippingRateOverrideTriggerBelow",
+        coalesce(return_shipping_rate_override_amount, '0'::numeric)::text as "returnShippingRateOverrideAmount"
+      from billing_config
+      where client_id = ${clientId}
+      limit 1
+    `);
+    const cfg = cfgRows[0];
+    const { returnRate } = resolveReturnPostageRate({
+      houseCost,
+      markupPct: toNum(cfg?.returnPostageMarkupPct),
+      markupFlat: toNum(cfg?.returnPostageMarkupFlat),
+      triggerBelow: toNum(cfg?.returnShippingRateOverrideTriggerBelow),
+      overrideAmount: toNum(cfg?.returnShippingRateOverrideAmount),
+    });
+    return Number(returnRate.toFixed(2));
+  } catch (err) {
+    console.warn('[returns] return price policy load failed; quoting raw house cost:', err);
+    return Number(houseCost.toFixed(2));
+  }
 }
 
 function toClientSafeResult(args: {
@@ -409,7 +462,7 @@ export async function createReturnLabel(
   //    labelShipmentId, so this only ever buys real postage when truly eligible.
   if (liveEligible && outbound.labelShipmentId) {
     const v2 = await createReturnLabelV2(outbound.id, { reason });
-    const price = computeCustomerReturnPrice(v2.cost);
+    const price = await resolveReturnCustomerPrice(v2.cost, clientId);
     if (returnRow && v2.returnShipmentId != null) {
       await markReturnLabelCreated(returnRow.id, outbound.id);
     }
@@ -547,7 +600,7 @@ export async function createReturnLabel(
     if (returnRow) await markReturnLabelCreated(returnRow.id, returnShipmentId);
 
     return toClientSafeResult({
-      price: computeCustomerReturnPrice(0),
+      price: await resolveReturnCustomerPrice(0, clientId),
       trackingNumber: fakeTracking,
       trackingStatus: null,
       labelUrl: mockLabelUrl,
@@ -605,7 +658,7 @@ export async function createReturnLabel(
   if (returnRow) await markReturnLabelCreated(returnRow.id, returnShipmentId);
 
   return toClientSafeResult({
-    price: computeCustomerReturnPrice(created.cost || rateCost),
+    price: await resolveReturnCustomerPrice(created.cost || rateCost, clientId),
     trackingNumber: created.trackingNumber,
     trackingStatus: null,
     labelUrl,

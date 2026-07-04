@@ -207,6 +207,38 @@ assert(
   /quantity/.test(createModal) && /items/.test(createModal),
   'the create-return modal collects per-item return quantities and sends them as items',
 );
+// CP-029 acceptance: the create-return modal must let the user CHOOSE a
+// return-to location (with DR PREPPER/default as an option) and submit it as
+// returnToLocationId — the backend validates it + applies the default when
+// omitted. The location list is fetched from the backend (never invented).
+assert(
+  /returnToLocationId/.test(createModal),
+  'the create-return modal collects + sends returnToLocationId (return-to location selector)',
+);
+assert(
+  /useReturnLocations/.test(createModal),
+  'the create-return modal fetches selectable return-to locations via useReturnLocations',
+);
+assert(
+  /<select/.test(createModal) && /Default \(/.test(createModal),
+  'the create-return modal renders a return-to location <select> with a Default option',
+);
+assert(
+  /returnToLocationId/.test(api) || /returnLocations:/.test(api),
+  'portalApi exposes returnLocations + NewReturnInput carries returnToLocationId',
+);
+assert(
+  /returnLocations:/.test(api) && /returns\/locations/.test(api),
+  'portalApi.returnLocations reads /api/client-portal/returns/locations',
+);
+assert(
+  /app\.get\('\/returns\/locations'/.test(route),
+  'the returns route exposes GET /returns/locations for the selector',
+);
+assert(
+  /useReturnLocations/.test(hooks),
+  'the frontend exposes a useReturnLocations react-query hook',
+);
 // The label/deliver client methods post to the backend too. Match each method's
 // definition through its apiPost call (non-greedy, across the arrow body).
 assert(

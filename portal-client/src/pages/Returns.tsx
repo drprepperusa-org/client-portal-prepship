@@ -352,7 +352,7 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
             </ul>
           </div>
 
-          {/* Inspection notes + media (placeholder until the 3PL inspects). */}
+          {/* Inspection notes + media from the 3PL receiving flow (CP-030). */}
           <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Inspection</p>
             {d.inspections.length === 0 ? (
@@ -369,17 +369,27 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
                     {ins.comments && <p className="text-sm text-ink-2">{ins.comments}</p>}
                     {ins.media.length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {ins.media.map((m) => (
-                          <a
-                            key={m.id}
-                            href={m.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="focus-ring inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs text-ink-2 hover:bg-slate-200"
-                          >
-                            {m.mediaType === 'video' ? 'Video' : 'Photo'}
-                          </a>
-                        ))}
+                        {ins.media.map((m) =>
+                          m.url ? (
+                            <a
+                              key={m.id}
+                              href={m.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="focus-ring inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs text-ink-2 hover:bg-slate-200"
+                            >
+                              {m.mediaType === 'video' ? 'Video' : 'Photo'}
+                            </a>
+                          ) : (
+                            <span
+                              key={m.id}
+                              title="Media unavailable"
+                              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs text-ink-3 opacity-60"
+                            >
+                              {m.mediaType === 'video' ? 'Video' : 'Photo'} · unavailable
+                            </span>
+                          ),
+                        )}
                       </div>
                     )}
                   </li>

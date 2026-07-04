@@ -57,6 +57,13 @@ const schema = z.object({
   // connector for 'shipment.confirm'). When off, no live Shopify/customer
   // notification can ever fire.
   RETURNS_SHOPIFY_DELIVERY: booleanFlag(false),
+  // CP-030 — durable inspection media (Supabase Storage). The 3PL receiving
+  // flow relays captured photos/video to this PRIVATE bucket via the service
+  // client; the DB stores only the object path, and the client reads media
+  // through short-lived signed URLs (never public). The bucket must exist with
+  // private access (owner/service-role read+write only).
+  RETURNS_MEDIA_BUCKET: z.string().min(1).default('returns-inspection-media'),
+  RETURNS_MEDIA_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   // Runtime split controls. Default RUN_SYNC_SCHEDULER=true keeps legacy API
   // deploys working until Render envs are explicitly flipped during rollout.
   RUN_SYNC_SCHEDULER: booleanFlag(true),

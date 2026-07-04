@@ -107,6 +107,28 @@ export const apiPatch = <T>(token: string, path: string, body: unknown = {}) => 
 export const apiPut = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('PUT', token, path, body);
 export const apiDelete = <T>(token: string, path: string, body: unknown = {}) => apiSend<T>('DELETE', token, path, body);
 
+// Multipart upload (CP-030 inspection media). No Content-Type header — the
+// browser sets multipart/form-data + boundary. A longer timeout than the JSON
+// calls, since a phone photo/short clip over a warehouse connection can take a
+// while; still well under any server limit.
+const UPLOAD_TIMEOUT_MS = 120000;
+export async function apiUpload<T>(token: string, path: string, form: FormData): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      body: form,
+      signal: controller.signal,
+    });
+    if (!res.ok) await fail(res);
+    return (await res.json()) as T;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 /* ---------- Portal DTO types (mirror src/lib/client-portal/dto.ts) ---------- */
 export interface PortalItemIdentity {
   sku: string | null;
@@ -220,7 +242,9 @@ export interface PortalReturnItem {
 export interface PortalReturnInspectionMedia {
   id: number;
   mediaType: string;
-  url: string;
+  // Short-lived signed URL for the stored object (private bucket). null when the
+  // object can't be signed (missing/renamed) → render a "media unavailable" state.
+  url: string | null;
   contentType: string | null;
   capturedAt: string | null;
 }
@@ -309,16 +333,10 @@ export interface NewInspectionInput {
   comments?: string;
 }
 
-/** Payload for attaching inspection media. METADATA-CANONICAL: the frontend
- *  posts an already-hosted storageRef (URL/object-storage key) + metadata — the
- *  binary never rides in this JSON. */
-export interface NewInspectionMediaInput {
-  mediaType: 'photo' | 'video';
-  storageRef: string;
-  contentType?: string;
-  sizeBytes?: number;
-  capturedAt?: string;
-}
+// CP-030: inspection media is uploaded as multipart/form-data (the binary
+// itself) via portalApi.uploadInspectionMedia — the backend relays it to the
+// private Supabase bucket and stores a durable object path. There is no longer a
+// JSON storageRef payload (the browser never hosts media or holds a service key).
 
 export interface PortalInventory {
   id: number;
@@ -499,6 +517,9 @@ export interface BillingInvoiceSummaryRow {
   packageTotal: number | string;
   shippingTotal: number | string;
   storageTotal: number | string;
+  // CP-031: return charges as explicit categories (already inside rowTotal).
+  returnPostageTotal: number | string;
+  returnProcessingTotal: number | string;
   rowTotal: number | string;
 }
 
@@ -517,6 +538,8 @@ export interface BillingInvoiceTotals {
   packageTotal: number | string;
   storageTotal: number | string;
   shippingTotal: number | string;
+  returnPostageTotal: number | string;
+  returnProcessingTotal: number | string;
   rowTotal: number | string;
 }
 
@@ -539,6 +562,8 @@ export interface BillingInvoiceDetailRow {
   packageTotal?: number | string | null;
   shippingTotal?: number | string | null;
   storageTotal?: number | string | null;
+  returnPostageTotal?: number | string | null;
+  returnProcessingTotal?: number | string | null;
   rowTotal?: number | string | null;
 }
 
@@ -947,6 +972,13 @@ export const portalApi = {
     apiGet<{ data: PortalReturnDetail }>(token, `/api/client-portal/returns/${id}`),
   createReturn: (token: string, body: NewReturnInput) =>
     apiPost<{ data: { id: number; status: string } }>(token, '/api/client-portal/returns', body),
+  // CP-029: selectable return-to locations for the create-return modal. Metadata
+  // only (id/name/city/state/isDefault) — never carrier/rate/cost.
+  returnLocations: (token: string) =>
+    apiGet<{ data: Array<{ id: number; name: string; city: string | null; state: string | null; isDefault: boolean }> }>(
+      token,
+      '/api/client-portal/returns/locations',
+    ),
   createReturnLabel: (token: string, id: number) =>
     apiPost<{ data: ReturnLabelResult }>(token, `/api/client-portal/returns/${id}/label`),
   deliverReturn: (token: string, id: number) =>
@@ -961,12 +993,20 @@ export const portalApi = {
       `/api/client-portal/returns/${id}/inspection`,
       body,
     ),
-  addInspectionMedia: (token: string, id: number, inspectionId: number, body: NewInspectionMediaInput) =>
-    apiPost<{ data: { id: number; inspectionId: number; mediaType: string } }>(
+  // CP-030: relay the captured photo/video binary to the backend as multipart;
+  // it uploads to the private Supabase bucket and persists a durable object path.
+  uploadInspectionMedia: (token: string, id: number, inspectionId: number, file: File, mediaType: 'photo' | 'video') => {
+    const form = new FormData();
+    form.set('file', file);
+    form.set('mediaType', mediaType);
+    // Real capture time (the file's own mtime), not the server upload time.
+    if (file.lastModified) form.set('capturedAt', new Date(file.lastModified).toISOString());
+    return apiUpload<{ data: { id: number; inspectionId: number; mediaType: string } }>(
       token,
       `/api/client-portal/returns/${id}/inspection/${inspectionId}/media`,
-      body,
-    ),
+      form,
+    );
+  },
 
   integrations: (token: string) => apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
   /** Submit a store connection request (admin-only). Created pending

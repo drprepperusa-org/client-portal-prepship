@@ -54,6 +54,8 @@ const api = read('portal-client/src/lib/api.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
 const page = read('portal-client/src/pages/Returns.tsx');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
+const envFile = read('src/lib/env.ts');
+const supa = read('src/lib/supabase.ts');
 const pkg = JSON.parse(read('package.json'));
 
 // ── 0. The new endpoints exist ──
@@ -149,6 +151,51 @@ assert(
   'the inspection stamps inspectorEmail from the caller scope (not client-supplied)',
 );
 
+// ── 3b. CP-030 acceptance: media is DURABLE (Supabase Storage), not preview-only ──
+// The media endpoint relays the uploaded binary to a PRIVATE Supabase bucket
+// (only the backend holds the service key) and stores the returned object PATH;
+// the detail endpoint serves media back through short-lived SIGNED URLs. No
+// blob: preview URL is ever persisted.
+assert(
+  /await c\.req\.formData\(\)/.test(routeCode),
+  'the media endpoint accepts a multipart/form-data file upload (not a JSON storageRef)',
+);
+assert(
+  /uploadReturnInspectionMedia\(/.test(routeCode),
+  'the media endpoint uploads the binary to durable storage (uploadReturnInspectionMedia)',
+);
+assert(
+  /getReturnMediaSignedUrl\(/.test(routeCode),
+  'the return detail serves media via short-lived signed URLs (getReturnMediaSignedUrl)',
+);
+assert(
+  /RETURNS_MEDIA_BUCKET/.test(envFile) && /RETURNS_MEDIA_BUCKET/.test(supa),
+  'a configurable RETURNS_MEDIA_BUCKET backs the storage helpers',
+);
+assert(
+  /createSignedUrl\(/.test(supa) && /\.upload\(/.test(supa),
+  'the storage helper uploads objects and mints signed URLs (private bucket — never public)',
+);
+// The frontend uploads the real File and never persists a blob: object URL.
+assert(
+  /uploadInspectionMedia\(/.test(stripLineComments(receiving)),
+  'the receiving modal uploads captured files via uploadInspectionMedia (durable), not preview-only',
+);
+assert(
+  !/createObjectURL/.test(receiving),
+  'the receiving modal no longer creates a blob: object URL for media (no createObjectURL)',
+);
+assert(
+  !/Photos not saved yet/.test(receiving),
+  'the preview-only "Photos not saved yet" stub is gone (media is durably uploaded)',
+);
+// The client return detail renders the inspection media (signed URL) so the
+// client can view what the 3PL captured.
+assert(
+  /ins\.media\.map/.test(stripLineComments(page)) && /m\.url/.test(page),
+  'the client return detail renders inspection media via its (signed) url',
+);
+
 // ── 4. The condition enum is exactly the agreed 6-value set ──
 const CONDITIONS = ['sealed_new', 'opened_good', 'damaged', 'missing_item', 'wrong_item', 'other'];
 for (const cond of CONDITIONS) {
@@ -168,8 +215,8 @@ for (const bad of ['issueRefund', 'refund(', 'marketplace', 'notifyMarketplace']
 
 // ── 6. Frontend: api + hook wiring ──
 assert(
-  /returnsReceiving:/.test(api) && /recordInspection:/.test(api) && /addInspectionMedia:/.test(api),
-  'portalApi exposes returnsReceiving + recordInspection + addInspectionMedia',
+  /returnsReceiving:/.test(api) && /recordInspection:/.test(api) && /uploadInspectionMedia:/.test(api),
+  'portalApi exposes returnsReceiving + recordInspection + uploadInspectionMedia',
 );
 assert(
   /\/api\/client-portal\/returns\/receiving/.test(api) &&

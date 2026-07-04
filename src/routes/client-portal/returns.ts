@@ -17,8 +17,10 @@
 // return label PDF is served through the existing /labels/mock/:id route (the
 // return shipment's labelUrl already points at it) — we never invent a new one.
 import { Hono, type Context } from 'hono';
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
+import { getReturnMediaSignedUrl, uploadReturnInspectionMedia } from '../../lib/supabase';
 import { clients } from '../../db/schema/clients';
 import { orders } from '../../db/schema/orders';
 import { orderItems } from '../../db/schema/order-items';
@@ -212,6 +214,31 @@ app.get('/returns', async (c) => {
   });
 });
 
+// ── GET /returns/locations — selectable return-to locations for the create form ──
+// CP-029: the create-return modal renders this to let the user CHOOSE a
+// return-to location (with the configured default surfaced first). The payload
+// is non-sensitive operator-managed metadata only — id / name / city / state /
+// isDefault — never carrier, rate, or cost. The backend still validates the
+// chosen id and applies the default when the caller omits it (POST /returns).
+// Any in-scope portal caller may read it (a numeric :id can't match 'locations',
+// so this never shadows the detail route below).
+app.get('/returns/locations', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const rows = await db
+    .select({
+      id: locations.id,
+      name: locations.name,
+      city: locations.city,
+      state: locations.state,
+      isDefault: locations.isDefault,
+    })
+    .from(locations)
+    .where(eq(locations.active, true))
+    .orderBy(desc(locations.isDefault), locations.name);
+  return c.json({ data: rows });
+});
+
 // ── GET /returns/:id — client-safe detail (items, tracking, delivery, PDF, inspection) ──
 app.get('/returns/:id{[0-9]+}', async (c) => {
   const scope = scopeOrResponse(c);
@@ -258,6 +285,16 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
     list.push(m);
     mediaByInspection.set(m.inspectionId, list);
   }
+  // CP-030: resolve each stored object path to a short-lived SIGNED URL (the
+  // media bucket is private — a raw path or blob: URL is never returned to the
+  // client). Legacy absolute URLs pass through unchanged; a null (missing or
+  // renamed object) degrades to a "media unavailable" state, not a broken link.
+  const mediaUrlById = new Map<number, string | null>();
+  await Promise.all(
+    media.map(async (m) => {
+      mediaUrlById.set(m.id, await getReturnMediaSignedUrl(m.storageRef));
+    }),
+  );
 
   const includeFinancials = scope.canViewFinancials;
   await recordPortalAudit('portal.returns.detail.view', scope, { returnId: id });
@@ -292,7 +329,8 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
         media: (mediaByInspection.get(ins.id) ?? []).map((m) => ({
           id: m.id,
           mediaType: m.mediaType,
-          url: m.storageRef,
+          // Short-lived signed URL (private bucket) — never the raw object path.
+          url: mediaUrlById.get(m.id) ?? null,
           contentType: m.contentType,
           capturedAt: iso(m.capturedAt),
         })),
@@ -663,14 +701,19 @@ app.post('/returns/:id{[0-9]+}/inspection', async (c) => {
   return c.json({ data: { id: inspectionId, returnId: id, status, condition, returnStatus: nextReturnStatus } }, existing ? 200 : 201);
 });
 
-// ── POST /returns/:id/inspection/:iid/media — attach inspection media ────────
-// 3PL/admin WRITE only. Inserts a return_inspection_media row linked to the
-// inspection, after validating the inspection belongs to THIS return AND the
-// return is inside the caller's scope. METADATA-CANONICAL: this repo has no
-// object-storage upload plumbing (Supabase is auth-only; labels/images are
-// stored as URLs, never binaries), so we persist an already-hosted storageRef
-// (URL/key) + mediaType/contentType/sizeBytes/capturedAt — never a binary in
-// the DB. Wiring an actual upload depends on choosing a storage backend.
+// ── POST /returns/:id/inspection/:iid/media — upload inspection media ────────
+// 3PL/admin WRITE only. Accepts a multipart/form-data upload (the operator's
+// phone posts the captured photo/video itself) and RELAYS the binary to the
+// private Supabase Storage bucket via the service client — the browser never
+// holds the service key. The DB persists only the durable object PATH as
+// storageRef; the detail endpoint serves it back through short-lived signed
+// URLs. No blob: preview URL is ever persisted, and if the upload fails we
+// surface an error and insert NOTHING (no dead reference).
+//
+// Form fields: `file` (required), `mediaType` ('photo'|'video', required),
+// `capturedAt` (optional ISO). Validated the same way, and gated by the SAME
+// operator + scope checks as the inspection write.
+const MEDIA_MAX_BYTES = 25 * 1024 * 1024; // 25 MB — a phone photo or short clip.
 app.post('/returns/:id{[0-9]+}/inspection/:iid{[0-9]+}/media', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -688,35 +731,58 @@ app.post('/returns/:id{[0-9]+}/inspection/:iid{[0-9]+}/media', async (c) => {
     .limit(1);
   if (!match) return c.json({ error: 'Inspection not found' }, 404);
 
-  const body = (await c.req.json().catch(() => ({}))) as {
-    mediaType?: string;
-    storageRef?: string;
-    contentType?: string;
-    sizeBytes?: number;
-    capturedAt?: string;
-  };
+  // Reject an over-large upload from the declared Content-Length BEFORE buffering
+  // the body (formData() reads the whole request into memory). Multipart overhead
+  // makes this an upper bound on the file, so it never false-rejects a legit file.
+  const declaredLen = Number(c.req.header('content-length') ?? 0);
+  if (declaredLen > MEDIA_MAX_BYTES) {
+    return c.json({ error: 'File exceeds the 25 MB limit' }, 413);
+  }
 
-  const mediaType = typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Expected multipart/form-data with a file field' }, 400);
+  }
+
+  const mediaType = String(form.get('mediaType') ?? '').trim();
   if (!INSPECTION_MEDIA_TYPES.has(mediaType)) {
     return c.json({ error: "mediaType must be 'photo' or 'video'" }, 400);
   }
-  const storageRef = typeof body.storageRef === 'string' ? body.storageRef.trim() : '';
-  if (!storageRef) {
-    return c.json({ error: 'storageRef (an already-hosted URL or object-storage key) is required' }, 400);
+  const file = form.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return c.json({ error: 'A non-empty file field is required' }, 400);
   }
-  const contentType = typeof body.contentType === 'string' && body.contentType.trim() ? body.contentType.trim().slice(0, 200) : null;
-  const sizeBytes = Number.isFinite(Number(body.sizeBytes)) && Number(body.sizeBytes) > 0 ? Math.floor(Number(body.sizeBytes)) : null;
-  const capturedAt = body.capturedAt ? new Date(body.capturedAt) : new Date();
+  if (file.size > MEDIA_MAX_BYTES) {
+    return c.json({ error: 'File exceeds the 25 MB limit' }, 413);
+  }
+  const capturedRaw = form.get('capturedAt');
+  const capturedAt = typeof capturedRaw === 'string' && capturedRaw ? new Date(capturedRaw) : new Date();
   if (Number.isNaN(capturedAt.getTime())) return c.json({ error: 'Invalid capturedAt' }, 400);
+
+  const contentType = (file.type || (mediaType === 'video' ? 'video/mp4' : 'image/jpeg')).slice(0, 200);
+  const safeName = (file.name || 'media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+  // Durable, scannable, collision-free object path — never carrier/provider data.
+  const objectPath = `returns/${id}/inspection/${iid}/${randomUUID()}-${safeName}`;
+
+  // Upload FIRST; only persist the row if the binary durably landed. A failed
+  // upload throws → we surface a clean 502 and store no dead storageRef.
+  try {
+    await uploadReturnInspectionMedia(objectPath, await file.arrayBuffer(), contentType);
+  } catch (err) {
+    console.error('[returns] inspection media upload failed:', err instanceof Error ? err.message : err);
+    return c.json({ error: 'Media upload failed. Please retry.' }, 502);
+  }
 
   const [inserted] = await db
     .insert(returnInspectionMedia)
     .values({
       inspectionId: iid,
       mediaType,
-      storageRef,
+      storageRef: objectPath,
       contentType,
-      sizeBytes,
+      sizeBytes: file.size,
       capturedAt,
     })
     .returning({ id: returnInspectionMedia.id });

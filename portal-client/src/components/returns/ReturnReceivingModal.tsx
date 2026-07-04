@@ -22,9 +22,10 @@ import { type Accent } from '@/lib/accents';
  *
  * AUTHORITY BOUNDARY: this form records the warehouse's receiving ack only. It
  * never computes rates/carrier/price and never issues refunds (out of scope).
- * Media is METADATA-CANONICAL: this repo has no object-storage upload plumbing,
- * so a captured file is previewed locally and its metadata is what the backend
- * persists (storageRef). Real binary upload depends on a storage backend.
+ * Media: each captured photo/video is uploaded to DURABLE storage — the backend
+ * relays the binary to a private Supabase bucket and the client reads it back
+ * through short-lived signed URLs. The browser never holds the storage key or
+ * persists a blob: preview as the durable reference.
  */
 
 const STATUS_META: Record<string, { label: string; accent: Accent }> = {
@@ -159,27 +160,36 @@ function ReceivingDetail({ id, onBack, onDone }: { id: number; onBack: () => voi
         condition: condition || undefined,
         comments: comments.trim() || undefined,
       });
-      void res.data.id;
+      const inspectionId = res.data.id;
 
-      // Photos/videos are captured + previewed locally for the operator's own
-      // check during receiving, but are NOT persisted yet: this repo has no
-      // durable media-storage backend (Supabase is auth-only), and posting an
-      // ephemeral blob: object URL as the storageRef would leave the CLIENT a
-      // dead link in the return detail. The return_inspection_media table + the
-      // POST .../media endpoint (portalApi.addInspectionMedia) are built and
-      // ready — once a storage bucket is configured, upload the file, get a
-      // hosted URL, and post THAT as storageRef (the row shape is unchanged).
-      if (media.length > 0) {
-        toast.warning(
-          'Photos not saved yet',
-          'Photo/video capture is preview-only until durable media storage is configured; the inspection notes were saved.',
-        );
+      // CP-030: upload each captured photo/video to durable storage — the
+      // backend relays the binary to the private Supabase bucket and the client
+      // reads it back via signed URLs. The inspection itself is already saved, so
+      // a failed upload keeps the notes and tells the operator which files to
+      // retry rather than silently losing them (or persisting a dead blob: link).
+      let mediaFailed = 0;
+      for (const m of media) {
+        try {
+          await portalApi.uploadInspectionMedia(accessToken, id, inspectionId, m.file, m.mediaType);
+        } catch (err) {
+          console.error('[returns] inspection media upload failed:', err);
+          mediaFailed += 1;
+        }
       }
 
       await qc.invalidateQueries({ queryKey: ['returns'] });
       await qc.invalidateQueries({ queryKey: ['return', id] });
       await qc.invalidateQueries({ queryKey: ['returns-receiving'] });
-      toast.success('Return received', condition ? 'Inspection recorded.' : 'Marked received.');
+
+      if (mediaFailed > 0) {
+        toast.warning(
+          'Saved — some media failed',
+          `${mediaFailed} of ${media.length} file${media.length === 1 ? '' : 's'} didn’t upload. Reopen the return to add them again.`,
+        );
+      } else {
+        const mediaNote = media.length > 0 ? ` · ${media.length} file${media.length === 1 ? '' : 's'} uploaded` : '';
+        toast.success('Return received', `${condition ? 'Inspection recorded' : 'Marked received'}${mediaNote}.`);
+      }
       onDone();
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : 'Please try again.');
@@ -195,9 +205,7 @@ function ReceivingDetail({ id, onBack, onDone }: { id: number; onBack: () => voi
       next.push({
         id: `${f.name}-${f.size}-${f.lastModified}`,
         mediaType: f.type.startsWith('video') ? 'video' : 'photo',
-        storageRef: URL.createObjectURL(f),
-        contentType: f.type || null,
-        sizeBytes: f.size || null,
+        file: f,
         name: f.name,
       });
     }
@@ -293,8 +301,8 @@ function ReceivingDetail({ id, onBack, onDone }: { id: number; onBack: () => voi
             </Labeled>
 
             {/* Photo / video capture — a mobile-capture file input opens the
-                camera on a phone. Files are previewed locally only — durable
-                saving turns on once a media-storage backend is configured. */}
+                camera on a phone. Captured files upload to durable storage when
+                the return is saved, and appear in the client's return detail. */}
             <div>
               <span className="mb-1 block text-xs font-medium text-ink-2">Photos / video (optional)</span>
               <label
@@ -372,9 +380,8 @@ function ReceivingDetail({ id, onBack, onDone }: { id: number; onBack: () => voi
 interface CapturedMedia {
   id: string;
   mediaType: 'photo' | 'video';
-  storageRef: string;
-  contentType: string | null;
-  sizeBytes: number | null;
+  // The actual File — uploaded to durable storage on submit (no blob: URL kept).
+  file: File;
   name: string;
 }
 

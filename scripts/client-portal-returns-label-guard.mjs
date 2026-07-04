@@ -160,6 +160,30 @@ assert(
   'ClientSafeReturnResult exposes label/PDF availability (boolean, not a URL/provider)',
 );
 
+// ── 6b. CP-027 acceptance: customer price is BILLING-POLICY derived ──
+// The client-facing return price must come from the SAME policy that generates
+// the return_postage billing line (billing.ts resolveReturnPostageRate), so the
+// quoted price equals the billed amount — one definition, no drift. The raw
+// house/label cost must never be the client-facing price.
+assert(
+  /resolveReturnCustomerPrice/.test(service),
+  'the client price is produced by resolveReturnCustomerPrice (policy-derived), not raw cost',
+);
+assert(
+  /resolveReturnPostageRate/.test(service) && /from '\.\/billing'/.test(service),
+  'resolveReturnCustomerPrice reuses billing.ts resolveReturnPostageRate (one shared definition, no drift)',
+);
+assert(
+  !/function computeCustomerReturnPrice/.test(service),
+  'the raw-cost pricer (computeCustomerReturnPrice) is removed in favour of the policy helper',
+);
+// Every client-price call site must pass through the policy helper with the
+// client id, never a bare raw cost.
+assert(
+  /price:\s*await resolveReturnCustomerPrice\(/.test(service) || /=\s*await resolveReturnCustomerPrice\(/.test(service),
+  'the client-safe result price is awaited from resolveReturnCustomerPrice at the call sites',
+);
+
 // ── 7. Admin-override audit path ──
 assert(
   /adminOverride/.test(service),

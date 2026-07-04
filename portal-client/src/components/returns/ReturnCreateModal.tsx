@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useOrder } from '@/lib/hooks';
+import { useOrder, useReturnLocations } from '@/lib/hooks';
 import { portalApi } from '@/lib/api';
 import { field, Labeled } from '@/components/inbound/shared';
 
@@ -40,13 +40,20 @@ export function ReturnCreateModal({
   const [reason, setReason] = useState('');
   // Per-item requested return quantity, keyed by the item's index in the order.
   const [qtys, setQtys] = useState<Record<number, string>>({});
+  // CP-029: selected return-to location. null → the backend applies its default.
+  const [returnToLocationId, setReturnToLocationId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const locationsQuery = useReturnLocations(open);
+  const locations = locationsQuery.data?.data ?? [];
+  const defaultLocationName = locations.find((l) => l.isDefault)?.name ?? 'default location';
 
   // Reset the draft whenever a new order's modal opens.
   useEffect(() => {
     if (open) {
       setReason('');
       setQtys({});
+      setReturnToLocationId(null);
     }
   }, [open, orderId]);
 
@@ -80,6 +87,7 @@ export function ReturnCreateModal({
       const res = await portalApi.createReturn(accessToken, {
         orderId,
         reason: reason.trim() || undefined,
+        returnToLocationId: returnToLocationId ?? undefined,
         items: chosen,
       });
       await qc.invalidateQueries({ queryKey: ['returns'] });
@@ -143,6 +151,23 @@ export function ReturnCreateModal({
             </div>
           </div>
 
+          <Labeled label="Return to location">
+            <select
+              className={field}
+              value={returnToLocationId ?? ''}
+              onChange={(e) => setReturnToLocationId(e.target.value ? Number(e.target.value) : null)}
+              aria-label="Return-to location"
+            >
+              <option value="">Default ({defaultLocationName})</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                  {loc.city && loc.state ? ` — ${loc.city}, ${loc.state}` : ''}
+                </option>
+              ))}
+            </select>
+          </Labeled>
+
           <Labeled label="Reason (optional)">
             <textarea
               className={field + ' h-20 py-2'}
@@ -153,8 +178,8 @@ export function ReturnCreateModal({
           </Labeled>
 
           <p className="text-xs text-ink-3">
-            The return ships to your default return location. The return label, tracking, and cost are
-            handled for you after the return is created.
+            Choose where the return ships, or leave it on the default location. The return label,
+            tracking, and cost are handled for you after the return is created.
           </p>
 
           <div className="flex items-center justify-between pt-1">
