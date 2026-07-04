@@ -93,16 +93,19 @@ body {
     outline-offset: 2px;
   }
 
-  /* Recharts v3 makes the chart <svg> focusable (accessibilityLayer), so
-     clicking a chart draws the browser's default black outline around the whole
-     plot. The same data is in the tables, so drop that decorative artifact. */
+  /* Recharts v3 makes charts focusable (accessibilityLayer defaults on), so a
+     click focuses the plot and draws the browser's outline PLUS a sticky
+     keyboard cursor line — both read as stray black lines. Every chart now
+     passes accessibilityLayer={false} (the same data lives in the tables), and
+     this rule is the belt-and-suspenders net: kill the focus outline on the
+     wrapper AND any focusable descendant (svg, group, path, dot). */
   .recharts-wrapper:focus,
   .recharts-wrapper:focus-visible,
-  .recharts-wrapper svg:focus,
-  .recharts-wrapper svg:focus-visible,
+  .recharts-wrapper :focus,
+  .recharts-wrapper :focus-visible,
   .recharts-surface:focus,
   .recharts-surface:focus-visible {
-    outline: none;
+    outline: none !important;
   }
 
   /* Skeleton shimmer sweep */

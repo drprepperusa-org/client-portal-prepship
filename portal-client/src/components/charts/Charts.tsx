@@ -72,7 +72,7 @@ export function OrdersUnitsBarChart({ data, onSelectDay }: { data: { day: string
   const rows = data.map((d) => ({ ...d, unitDelta: Math.max(0, Number(d.units) - Number(d.orders)) }));
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={rows} margin={{ left: -10, right: 6, top: 6 }} onClick={dayClickHandler(onSelectDay)} className={onSelectDay ? 'cursor-pointer' : undefined}>
+      <BarChart data={rows} accessibilityLayer={false} margin={{ left: -10, right: 6, top: 6 }} onClick={dayClickHandler(onSelectDay)} className={onSelectDay ? 'cursor-pointer' : undefined}>
         <defs>
           <linearGradient id="gOuOrders" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4FC3F7" />
@@ -98,7 +98,7 @@ export function OrdersUnitsBarChart({ data, onSelectDay }: { data: { day: string
 export function VolumeBarChart({ data, onSelectDay }: { data: { day: string; vol: number }[]; onSelectDay?: DaySelect }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={data} margin={{ left: -10, right: 6, top: 6 }} onClick={dayClickHandler(onSelectDay)} className={onSelectDay ? 'cursor-pointer' : undefined}>
+      <BarChart data={data} accessibilityLayer={false} margin={{ left: -10, right: 6, top: 6 }} onClick={dayClickHandler(onSelectDay)} className={onSelectDay ? 'cursor-pointer' : undefined}>
         <defs>
           <linearGradient id="gBar" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4FC3F7" />
@@ -118,7 +118,7 @@ export function VolumeBarChart({ data, onSelectDay }: { data: { day: string; vol
 export function HBarChart({ data }: { data: { name: string; units: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={data} layout="vertical" margin={{ left: 24, right: 12, top: 6 }}>
+      <BarChart data={data} accessibilityLayer={false} layout="vertical" margin={{ left: 24, right: 12, top: 6 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" horizontal={false} />
         <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" tick={AXIS} axisLine={false} tickLine={false} width={92} />
@@ -136,7 +136,7 @@ export function HBarChart({ data }: { data: { name: string; units: number }[] })
 export function SpendPieChart({ data }: { data: { name: string; value: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <PieChart>
+      <PieChart accessibilityLayer={false}>
         <Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={92} paddingAngle={3} stroke="none">
           {data.map((_, i) => (
             <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
@@ -153,7 +153,7 @@ export function SpendPieChart({ data }: { data: { name: string; value: number }[
 export function TopSkuTrendChart({ data, skus }: { data: Array<Record<string, number | string>>; skus: string[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data} margin={{ left: -12, right: 8, top: 6 }}>
+      <LineChart data={data} accessibilityLayer={false} margin={{ left: -12, right: 8, top: 6 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
         <XAxis dataKey="day" tick={AXIS} axisLine={false} tickLine={false} minTickGap={24} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -170,7 +170,7 @@ export function TopSkuTrendChart({ data, skus }: { data: Array<Record<string, nu
 export function RateLineChart({ data }: { data: { week: string; rate: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data} margin={{ left: -10, right: 8, top: 6 }}>
+      <LineChart data={data} accessibilityLayer={false} margin={{ left: -10, right: 8, top: 6 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.14)" vertical={false} />
         <XAxis dataKey="week" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis domain={[92, 100]} tick={AXIS} axisLine={false} tickLine={false} />

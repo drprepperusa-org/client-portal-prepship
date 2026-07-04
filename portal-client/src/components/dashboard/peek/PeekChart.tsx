@@ -30,7 +30,7 @@ export function PeekChart({ data, color, format }: { data: ChartPoint[]; color: 
   return (
     <div className="rounded-glass-sm bg-white/45 p-3 ring-1 ring-slate-200/60">
       <ResponsiveContainer width="100%" height={172}>
-        <AreaChart data={data} margin={{ left: -22, right: 6, top: 6, bottom: 0 }} onClick={pick} style={{ cursor: 'pointer' }}>
+        <AreaChart data={data} accessibilityLayer={false} margin={{ left: -22, right: 6, top: 6, bottom: 0 }} onClick={pick} style={{ cursor: 'pointer' }}>
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity={0.32} />

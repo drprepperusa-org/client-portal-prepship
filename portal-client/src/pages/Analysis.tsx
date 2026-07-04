@@ -245,7 +245,7 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Units sold — last 30 days</p>
         {chart.length ? (
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={chart} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
+            <BarChart data={chart} accessibilityLayer={false} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
               <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" tickLine={false} axisLine={false} />
               <Tooltip cursor={{ fill: 'rgba(3,169,244,0.06)' }} contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
               <Bar dataKey="units" fill="#03A9F4" radius={[4, 4, 0, 0]} />
