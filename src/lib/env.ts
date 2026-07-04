@@ -44,6 +44,12 @@ const schema = z.object({
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
   STRICT_JWT_CLAIMS: booleanFlag(false),
   CLIENT_PORTAL_ONLY_API: booleanFlag(false),
+  // CP-027 — return-label live-postage approval flag. OFF by default: the
+  // return-label service takes an offline-mock path (fake tracking, cost 0.00,
+  // source 'test_offline', no carrier call) unless this is explicitly truthy.
+  // The live ShipStation purchase path may ONLY run when this is true AND the
+  // client is not a test client.
+  RETURNS_LIVE_LABELS: booleanFlag(false),
   // Runtime split controls. Default RUN_SYNC_SCHEDULER=true keeps legacy API
   // deploys working until Render envs are explicitly flipped during rollout.
   RUN_SYNC_SCHEDULER: booleanFlag(true),
