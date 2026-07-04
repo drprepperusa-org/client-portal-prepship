@@ -79,6 +79,7 @@
     "test:client-portal-inventory-sold-label": "node scripts/client-portal-inventory-sold-label-guard.mjs",
     "test:client-portal-returns-schema": "node scripts/client-portal-returns-schema-guard.mjs",
     "test:client-portal-returns-label": "node scripts/client-portal-returns-label-guard.mjs",
+    "test:client-portal-returns-delivery": "node scripts/client-portal-returns-delivery-guard.mjs",
     "test:guards": "node scripts/run-guards.mjs",
     "test:guards:list": "node scripts/run-guards.mjs --list",
     "test:client-portal-integration": "tsx scripts/integration/client-portal.integration.ts",

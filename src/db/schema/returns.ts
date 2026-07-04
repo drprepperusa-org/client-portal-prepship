@@ -52,6 +52,15 @@ export const returns = pgTable(
     adminOverride: boolean().default(false).notNull(),
     adminOverrideBy: text(),
     adminOverrideReason: text(),
+    // CP-028 — return-delivery resolution (how the PrepShip-created return label
+    // reaches the customer). The label/tracking/PDF SOT still lives on shipments;
+    // these columns only record the DELIVERY decision + outcome for the workflow.
+    //   deliveryMethod : 'shopify_native' | 'manual_pdf' (null until resolved)
+    //   deliveryStatus : 'pending' | 'delivered' | 'failed' (null until resolved)
+    //   deliveryError  : redaction-safe failure summary (no PII / raw payloads)
+    deliveryMethod: text(),
+    deliveryStatus: text(),
+    deliveryError: text(),
     requestedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     closedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),

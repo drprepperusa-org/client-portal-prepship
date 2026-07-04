@@ -50,6 +50,13 @@ const schema = z.object({
   // The live ShipStation purchase path may ONLY run when this is true AND the
   // client is not a test client.
   RETURNS_LIVE_LABELS: booleanFlag(false),
+  // CP-028 — Shopify return-delivery approval flag. OFF by default: the return
+  // delivery resolver always resolves to 'manual_pdf' (PDF-download only) unless
+  // this is explicitly truthy. The shopify_native delivery attempt may ONLY run
+  // when this is true AND the store is genuinely Shopify-capable (a live store
+  // connector for 'shipment.confirm'). When off, no live Shopify/customer
+  // notification can ever fire.
+  RETURNS_SHOPIFY_DELIVERY: booleanFlag(false),
   // Runtime split controls. Default RUN_SYNC_SCHEDULER=true keeps legacy API
   // deploys working until Render envs are explicitly flipped during rollout.
   RUN_SYNC_SCHEDULER: booleanFlag(true),
