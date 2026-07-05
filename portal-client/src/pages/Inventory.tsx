@@ -137,8 +137,8 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       header: 'Stock',
       defaultWidth: 90,
       className: 'text-right',
-      render: (s) => <span className={cn('font-semibold tnum', s.isOut ?? Number(s.stockQty ?? 0) <= 0 ? 'text-rose-600' : 'text-ink')}>{s.stockQty ?? 0}</span>,
-      sortAccessor: (s) => Number(s.stockQty) || 0,
+      render: (s) => <span className={cn('font-semibold tnum', s.isOut ?? Number(s.effectiveStock ?? 0) <= 0 ? 'text-rose-600' : 'text-ink')}>{s.effectiveStock ?? 0}</span>,
+      sortAccessor: (s) => Number(s.effectiveStock) || 0,
     },
     {
       key: 'whseShipped30',

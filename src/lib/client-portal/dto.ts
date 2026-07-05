@@ -348,6 +348,7 @@ export function toPortalInventoryDto(
     // date) — NOT ordered/sold units. The SOT-encoding name prevents confusion
     // with Analysis's "Ordered Units".
     warehouseShipped30d?: number | string | null;
+    effectiveStock?: number | string | null;
     clientName?: string | null;
     storeName?: string | null;
     storeIds?: number[] | null;
@@ -365,12 +366,12 @@ export function toPortalInventoryDto(
         ? Number(((length * width * height) / 1728).toFixed(3))
         : null;
   const baseUnitQty = row.baseUnitQty ?? 1;
-  // CP-013: stock status is backend-owned so the Low/Out filter and the status
-  // badge share ONE definition. Mirrors the read-model's lowStock predicate:
-  //   out  = stockQty <= 0
-  //   low  = reorderLevel > 0 and stockQty <= reorderLevel
-  //   (lowStock filter = out OR low; OUT wins for the display label)
-  const stock = Number(row.stockQty ?? 0);
+  // CP-013 / PS-378: stock status is backend-owned so the Low/Out filter and
+  // the status badge share ONE definition. The source input is effectiveStock
+  // from src/services/inventory-stock-math, not raw cached inventory.stockQty:
+  //   out = effectiveStock <= 0
+  //   low = reorderLevel > 0 and effectiveStock <= reorderLevel
+  const stock = Number(row.effectiveStock ?? row.stockQty ?? 0);
   const reorder = Number(row.reorderLevel ?? 0);
   const isOut = stock <= 0;
   const isLow = reorder > 0 && stock <= reorder;
@@ -388,8 +389,8 @@ export function toPortalInventoryDto(
     active: row.active,
     imageUrl: row.imageUrl,
     warehouseShipped30d: Number(row.warehouseShipped30d ?? 0),
-    effectiveStock: row.stockQty,
-    // CP-013: backend-owned stock status (the frontend renders this enum).
+    effectiveStock: stock,
+    // CP-013 / PS-378: backend-owned stock status (the frontend renders this enum).
     stockStatus,
     isLow,
     isOut,
@@ -402,7 +403,7 @@ export function toPortalInventoryDto(
     cuFt,
     unitsPerPack: row.unitsPerPack ?? 1,
     baseUnitQty,
-    totalUnits: (row.stockQty ?? 0) * baseUnitQty,
+    totalUnits: stock * baseUnitQty,
     packageName: row.pkg?.name ?? null,
     packageLength: row.pkg?.length ?? null,
     packageWidth: row.pkg?.width ?? null,

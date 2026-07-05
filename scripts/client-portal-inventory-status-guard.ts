@@ -1,7 +1,5 @@
-// CP-013 — Inventory stock status (LOW/OUT/IN) and the Low/Out filter must be
-// backend-owned, so the badge and the server-side filter share ONE definition
-// and the filter spans the full dataset (not just the loaded page). Enforced at
-// runtime against the pure DTO + a static pin on the page.
+// CP-013 / PS-378 - Inventory stock status (LOW/OUT/IN) and the Low/Out
+// filter must be backend-owned from effectiveStock, not raw inventory.stockQty.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -19,34 +17,44 @@ function check(condition: boolean, message: string) {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const dto = await import('../src/lib/client-portal/dto');
-const mk = (stockQty: number, reorderLevel: number): any =>
-  dto.toPortalInventoryDto({ id: 1, clientId: 1, sku: 'A', name: 'A', stockQty, reorderLevel, active: true } as any);
+const mk = (effectiveStock: number, reorderLevel: number, stockQty = effectiveStock): any =>
+  dto.toPortalInventoryDto({
+    id: 1,
+    clientId: 1,
+    sku: 'A',
+    name: 'A',
+    stockQty,
+    effectiveStock,
+    reorderLevel,
+    active: true,
+  } as any);
 
-// ── Backend derives status the same way the read-model's lowStock predicate does:
-//    out = stockQty <= 0 ; low = reorderLevel > 0 and stockQty <= reorderLevel ──
+// Backend derives status from effectiveStock so the portal mirrors PrepShip's
+// displayed stock SOT instead of raw cached inventory.stockQty:
+//   out = effectiveStock <= 0 ; low = reorderLevel > 0 and effectiveStock <= reorderLevel
 let r = mk(0, 5);
-check(r.stockStatus === 'out' && r.isOut === true, 'CP-013: stockQty<=0 → out');
+check(r.stockStatus === 'out' && r.isOut === true, 'CP-013/PS-378: effectiveStock<=0 -> out');
 r = mk(-3, 0);
-check(r.stockStatus === 'out', 'CP-013: negative stock → out even without a reorder level');
+check(r.stockStatus === 'out', 'CP-013/PS-378: negative effectiveStock -> out even without a reorder level');
 r = mk(4, 10);
-check(r.stockStatus === 'low' && r.isLow === true && r.isOut === false, 'CP-013: stock<=reorder (reorder>0) → low');
+check(r.stockStatus === 'low' && r.isLow === true && r.isOut === false, 'CP-013/PS-378: effectiveStock<=reorder (reorder>0) -> low');
 r = mk(10, 10);
-check(r.stockStatus === 'low', 'CP-013: stock == reorder → low');
+check(r.stockStatus === 'low', 'CP-013/PS-378: effectiveStock == reorder -> low');
 r = mk(20, 10);
-check(r.stockStatus === 'in' && r.isLow === false && r.isOut === false, 'CP-013: stock>reorder → in');
+check(r.stockStatus === 'in' && r.isLow === false && r.isOut === false, 'CP-013/PS-378: effectiveStock>reorder -> in');
 r = mk(5, 0);
-check(r.stockStatus === 'in', 'CP-013: in stock with no reorder threshold → in (not low)');
+check(r.stockStatus === 'in', 'CP-013/PS-378: positive effectiveStock with no reorder threshold -> in (not low)');
+r = mk(0, 0, 20);
+check(r.stockStatus === 'out', 'PS-378: status follows effectiveStock even when raw stockQty is positive');
 
-// ── Status matches the read-model filter (out OR low = the rows lowStock returns) ──
+// Status matches the read-model filter (out OR low = the rows lowStock returns).
 const readModel = read('src/lib/client-portal/read-models/inventory.ts');
 check(
-  /stockQty\}\s*<=\s*0\s*or\s*\(\$\{[^}]*reorderLevel\}\s*>\s*0\s*and\s*\$\{[^}]*stockQty\}\s*<=\s*\$\{[^}]*reorderLevel\}\)/.test(
-    readModel.replace(/\s+/g, ' '),
-  ) || readModel.includes('reorderLevel} > 0'),
-  'CP-013: read-model lowStock filter uses the same out/low predicate the DTO status mirrors',
+  readModel.includes('computeEffectiveStockForIds') && readModel.includes('effectiveStock'),
+  'CP-013/PS-378: read-model lowStock filter uses backend effectiveStock like the DTO status',
 );
 
-// ── Frontend renders the backend enum, derives nothing, filters server-side ──
+// Frontend renders the backend enum, derives nothing, filters server-side.
 const page = read('portal-client/src/pages/Inventory.tsx');
 check(page.includes('STOCK_STATUS_META[s.stockStatus'), 'CP-013: Inventory renders the backend stockStatus enum');
 check(!/reorder\s*>\s*0\s*&&\s*stock\s*<=\s*reorder/.test(page), 'CP-013: Inventory no longer derives LOW from stock vs reorder');
