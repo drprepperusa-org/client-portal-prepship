@@ -459,6 +459,9 @@ export interface PortalAuditLogRow {
   actorEmail: string | null;
   clientIds: number[];
   storeIds: number[];
+  clientNames: string[];
+  storeNames: string[];
+  scopeLabel: string;
   metadata: Record<string, unknown>;
   createdAt: string;
 }

@@ -100,6 +100,8 @@ assert(
     routeFlat.includes("app.post('/audit-log/click'") &&
     routeFlat.includes('isAdminEmail(scope.email) || scope.role ===') &&
     routeFlat.includes('clientPortalAuditLogs') &&
+    routeFlat.includes('scopeLabel: buildScopeLabel') &&
+    route.includes('loadAuditScopeNames') &&
     routeFlat.includes("portal.ui.click") &&
     routeFlat.includes('desc(clientPortalAuditLogs.createdAt'),
   'audit-log route exposes admin list and authenticated click tracking',
@@ -116,10 +118,13 @@ assert(
 );
 assert(
   api.includes('export interface PortalAuditLogRow') &&
+    api.includes('clientNames: string[]') &&
+    api.includes('storeNames: string[]') &&
+    api.includes('scopeLabel: string') &&
     api.includes('auditLog: (token: string') &&
     api.includes("'/api/client-portal/audit-log'") &&
     api.includes('auditClick: (token: string'),
-  'portal API exposes audit-log read and click-write helpers',
+  'portal API exposes audit-log readable scope fields and helpers',
 );
 assert(
   hooks.includes('export function useAuditLog') &&
@@ -153,6 +158,8 @@ assert(pageExists, 'AuditLog page exists');
 assert(
   page.includes('Audit log') &&
     page.includes('useAuditLog') &&
+    page.includes('return row.scopeLabel') &&
+    !page.includes("Stores ${row.storeIds.join(', ')}") &&
     page.includes('Search event or user') &&
     page.includes('Event') &&
     page.includes('User') &&

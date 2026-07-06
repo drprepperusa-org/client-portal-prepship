@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, desc, ilike, ne, or } from 'drizzle-orm';
+import { and, desc, ilike, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
+import { clients } from '../../db/schema/clients';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
 import { isAdminEmail } from '../../lib/admin-emails';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
@@ -19,6 +20,70 @@ const clickBody = z.object({
 
 function canViewAuditLog(scope: ClientPortalScope): boolean {
   return isAdminEmail(scope.email) || scope.role === 'admin';
+}
+
+function uniqueIds(rows: Array<{ clientIds: number[]; storeIds: number[] }>, key: 'clientIds' | 'storeIds'): number[] {
+  return Array.from(new Set(rows.flatMap((row) => row[key]).filter((id) => Number.isInteger(id) && id > 0)));
+}
+
+function intArrayLiteral(values: number[]): SQL {
+  return sql`array[${sql.join(values.map((value) => sql`${value}`), sql`, `)}]::int[]`;
+}
+
+function readableList(labels: string[]): string[] {
+  return Array.from(new Set(labels.map((label) => label.trim()).filter(Boolean)));
+}
+
+function groupedStoreLabels(storeIds: number[], storeNames: Map<number, string>): string[] {
+  const counts = new Map<string, number>();
+  for (const storeId of storeIds) {
+    const label = storeNames.get(storeId) ?? `Store #${storeId}`;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([label, count]) => (count > 1 ? `${label} (${count} stores)` : label));
+}
+
+function buildScopeLabel(
+  row: { clientIds: number[]; storeIds: number[] },
+  names: { clientNames: Map<number, string>; storeNames: Map<number, string> },
+): string {
+  const clientLabels = readableList(row.clientIds.map((id) => names.clientNames.get(id) ?? `Client #${id}`));
+  const storeLabels = groupedStoreLabels(row.storeIds, names.storeNames);
+  const storeBases = storeLabels.map((label) => label.replace(/\s+\(\d+ stores\)$/, ''));
+  const visibleStoreLabels = storeLabels.filter((_, index) => !clientLabels.includes(storeBases[index] ?? ''));
+  const parts = [...clientLabels, ...visibleStoreLabels];
+  return parts.length ? parts.join(' / ') : 'Global';
+}
+
+async function loadAuditScopeNames(rows: Array<{ clientIds: number[]; storeIds: number[] }>) {
+  const clientIds = uniqueIds(rows, 'clientIds');
+  const storeIds = uniqueIds(rows, 'storeIds');
+  const clientNames = new Map<number, string>();
+  const storeNames = new Map<number, string>();
+  const predicates: SQL[] = [];
+
+  if (clientIds.length) predicates.push(inArray(clients.id, clientIds));
+  if (storeIds.length) predicates.push(sql`${clients.storeIds} && ${intArrayLiteral(storeIds)}`);
+  if (!predicates.length) return { clientNames, storeNames };
+
+  const rowsWithNames = await db
+    .select({
+      id: clients.id,
+      name: clients.name,
+      storeIds: clients.storeIds,
+    })
+    .from(clients)
+    .where(or(...predicates));
+
+  for (const row of rowsWithNames) {
+    const name = row.name || `Client #${row.id}`;
+    clientNames.set(row.id, name);
+    for (const storeId of row.storeIds ?? []) {
+      if (storeIds.includes(Number(storeId))) storeNames.set(Number(storeId), name);
+    }
+  }
+
+  return { clientNames, storeNames };
 }
 
 app.get('/audit-log', async (c) => {
@@ -60,10 +125,14 @@ app.get('/audit-log', async (c) => {
     .where(where)
     .orderBy(desc(clientPortalAuditLogs.createdAt), desc(clientPortalAuditLogs.id))
     .limit(limit);
+  const scopeNames = await loadAuditScopeNames(rows);
 
   return c.json({
     data: rows.map((row) => ({
       ...row,
+      clientNames: row.clientIds.map((id) => scopeNames.clientNames.get(id) ?? `Client #${id}`),
+      storeNames: groupedStoreLabels(row.storeIds, scopeNames.storeNames),
+      scopeLabel: buildScopeLabel(row, scopeNames),
       createdAt: row.createdAt.toISOString(),
     })),
   });

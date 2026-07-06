@@ -37,10 +37,7 @@ function metadataText(metadata: Record<string, unknown>): string {
 }
 
 function scopeLabel(row: PortalAuditLogRow): string {
-  const parts: string[] = [];
-  if (row.clientIds.length) parts.push(`Clients ${row.clientIds.join(', ')}`);
-  if (row.storeIds.length) parts.push(`Stores ${row.storeIds.join(', ')}`);
-  return parts.join(' / ') || 'Global';
+  return row.scopeLabel || 'Global';
 }
 
 function LogMobileRow({ row }: { row: PortalAuditLogRow }) {
