@@ -39,8 +39,16 @@ import { deliverReturn } from '../../services/return-delivery';
 import { trackingUrlForCarrier } from '../../lib/tracking-url';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
-import { orderScopePredicate } from '../../lib/client-portal/predicates';
-import { parsePage, parsePageSize, parsePositiveInt, requestedClientId, requestedStoreId, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
+import { intArrayLiteral, orderScopePredicate } from '../../lib/client-portal/predicates';
+import {
+  parsePage,
+  parsePageSize,
+  parsePositiveInt,
+  requestedClientId,
+  requestedSearch,
+  requestedStoreId,
+  scopeOrResponse,
+} from '../../lib/client-portal/query-params';
 
 const app = new Hono();
 
@@ -95,7 +103,27 @@ function returnScopePredicate(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null } = {},
 ): SQL {
-  const orderPredicate = orderScopePredicate(scope, filters);
+  const scopedPredicates: SQL[] = [];
+  if (scope.isRestricted) {
+    if (scope.clientIds.length) {
+      scopedPredicates.push(sql`scoped_order.client_id = any(${intArrayLiteral(scope.clientIds)})`);
+    }
+    if (scope.storeIds.length) {
+      scopedPredicates.push(sql`scoped_order.store_id = any(${intArrayLiteral(scope.storeIds)})`);
+    }
+  }
+  const scopePredicate = !scope.isRestricted
+    ? undefined
+    : scopedPredicates.length === 0
+      ? sql`false`
+      : scopedPredicates.length === 1
+        ? scopedPredicates[0]
+        : (or(...scopedPredicates) ?? sql`false`);
+  const orderPredicate = and(
+    scopePredicate,
+    filters.clientId ? sql`scoped_order.client_id = ${filters.clientId}` : undefined,
+    filters.storeId ? sql`scoped_order.store_id = ${filters.storeId}` : undefined,
+  );
   return sql`exists (
     select 1 from ${orders} scoped_order
     where scoped_order.id = ${returns.orderId}
