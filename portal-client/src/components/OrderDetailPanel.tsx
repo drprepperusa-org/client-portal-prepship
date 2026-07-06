@@ -1,20 +1,9 @@
-import { MapPin, Package, Truck } from 'lucide-react';
+import { MapPin, Truck } from 'lucide-react';
 import { Chip } from '@/components/ui/Display';
 import { Thumb } from '@/components/ui/Thumb';
 import { orderStatusMeta, itemCount, money, shortDate } from '@/lib/status';
 import type { PortalOrder } from '@/lib/api';
 import { cn } from '@/lib/cn';
-
-/** Weight in oz → "1 lb 5 oz". Shared by the Orders table + detail panel. */
-export function fmtWeight(oz: number | null): string {
-  if (oz == null || oz <= 0) return '—';
-  let lb = Math.floor(oz / 16);
-  let rem = Math.round((oz - lb * 16) * 10) / 10;
-  if (rem >= 16) { lb += 1; rem = 0; } // carry when the oz remainder rounds up to a full pound
-  if (lb && rem) return `${lb} lb ${rem} oz`;
-  if (lb) return `${lb} lb`;
-  return `${rem} oz`;
-}
 
 function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
@@ -38,17 +27,8 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 }
 
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
-export function OrderDetailPanel({
-  o,
-  hideWeight = false,
-  hideWeightWhenShipped = false,
-}: {
-  o: PortalOrder;
-  hideWeight?: boolean;
-  hideWeightWhenShipped?: boolean;
-}) {
+export function OrderDetailPanel({ o }: { o: PortalOrder }) {
   const meta = orderStatusMeta(o.orderStatus);
-  const hideWeightCard = hideWeight || (hideWeightWhenShipped && o.orderStatus === 'shipped');
   // CP-018: this is a CUSTOMER-facing page — it shows the customer shipping rate
   // only (backend-owned: billed customer shipping, fallback buyer-paid store
   // shipping), never the internal selected/best/label rate, carrier, or service.
@@ -87,10 +67,9 @@ export function OrderDetailPanel({
         {o.clientName && <p className="mt-1 break-words text-xs text-ink-3">{o.clientName}</p>}
       </div>
 
-      {/* CP-009: shipping AMOUNT + optional weight only — never carrier or service. */}
-      <div className={cn('grid gap-3', hideWeightCard ? 'grid-cols-1' : 'grid-cols-2')}>
+      {/* CP-009: shipping AMOUNT only — never carrier, service, provider, or package measurements. */}
+      <div className="grid gap-3">
         <Detail icon={<Truck size={14} />} label="Customer Shipping Rate" value={shipping != null ? money(shipping) : '—'} />
-        {!hideWeightCard && <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />}
       </div>
 
       {o.costSummary && o.costSummary.length > 0 && (

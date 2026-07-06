@@ -172,7 +172,6 @@ export interface PortalOrder {
   carrierCode: string | null;
   serviceCode: string | null;
   trackingNumber: string | null;
-  weightOz: number | null;
   shippingService?: string | null;
   items: PortalItemIdentity[];
   orderTotal?: number | string | null;
@@ -364,7 +363,6 @@ export interface PortalInventory {
   isLow?: boolean | null;
   isOut?: boolean | null;
   // v4 Stock-Levels parity
-  weightOz: number | null;
   length: number | null;
   width: number | null;
   height: number | null;

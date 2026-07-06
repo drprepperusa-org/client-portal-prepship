@@ -138,15 +138,12 @@ assert(
 );
 
 assert(
-  shipmentsPage.includes('<OrderDetailLoader id={orderId} hideWeight') &&
-    orderDetailLoader.includes('hideWeight?: boolean') &&
-    orderDetailLoader.includes('<OrderDetailPanel') &&
-    orderDetailLoader.includes('o={q.data.data}') &&
-    orderDetailLoader.includes('hideWeight={hideWeight}') &&
-    orderDetailPanel.includes('hideWeight?: boolean') &&
-    orderDetailPanel.includes('!hideWeight') &&
-    orderDetailPanel.includes('label="Weight"'),
-  'Shipments drawer hides the embedded order Weight card while reusing the canonical order detail panel',
+  shipmentsPage.includes('<OrderDetailLoader id={orderId} />') &&
+    !shipmentsPage.includes('hideWeight') &&
+    !orderDetailLoader.includes('hideWeight') &&
+    !orderDetailPanel.includes('label="Weight"') &&
+    !orderDetailPanel.includes('weightOz'),
+  'Shipments drawer reuses the canonical order detail panel without any Weight display',
 );
 
 if (failed) process.exit(1);

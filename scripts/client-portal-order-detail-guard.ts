@@ -207,11 +207,11 @@ check(
   'CP-022: Orders no longer passes the raw list row into OrderDetailPanel (it fetches /orders/:id first)',
 );
 check(
-  ordersPage.includes('<OrderDetailLoader id={selected.id} hideWeightWhenShipped') &&
-    loader.includes('hideWeightWhenShipped?: boolean') &&
-    panel.includes('hideWeightWhenShipped?: boolean') &&
-    panel.includes("hideWeightWhenShipped && o.orderStatus === 'shipped'"),
-  'Orders shipped drawer hides the Weight card based on the canonical order DTO status',
+  !ordersPage.includes("header: 'Weight'") &&
+    !ordersPage.includes("key: 'weight'") &&
+    !panel.includes('label="Weight"') &&
+    !loader.includes('hideWeight'),
+  'Orders and order detail do not render Weight anywhere in the Client Portal UI',
 );
 
 if (failed) process.exit(1);

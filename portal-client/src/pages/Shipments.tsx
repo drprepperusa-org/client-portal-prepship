@@ -331,5 +331,5 @@ function Field({ label, value }: { label: string; value: string }) {
  *  address, line items with prices, cost summary) — carrier/service redacted. */
 function ShipmentOrderDetail({ orderId }: { orderId: number }) {
   // CP-022: render through the ONE canonical order-detail loader.
-  return <OrderDetailLoader id={orderId} hideWeight />;
+  return <OrderDetailLoader id={orderId} />;
 }

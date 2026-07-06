@@ -11,7 +11,6 @@ import { Drawer } from '@/components/ui/Drawer';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Undo2 } from 'lucide-react';
-import { fmtWeight } from '@/components/OrderDetailPanel';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { Button } from '@/components/ui/Button';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
@@ -245,7 +244,6 @@ export default function Orders() {
       render: (o) => <OrderTotalCell value={o.orderTotal} />,
       sortAccessor: (o) => Number(o.orderTotal) || 0,
     },
-    { key: 'weight', header: 'Weight', defaultWidth: 110, render: (o) => <span className="tnum text-ink-2">{fmtWeight(o.weightOz)}</span>, sortAccessor: (o) => o.weightOz ?? 0 },
     {
       // CP-018: the client sees the CUSTOMER shipping rate only — billed customer
       // shipping (fallback buyer-paid store shipping), never the internal
@@ -378,7 +376,7 @@ export default function Orders() {
             the table, never the modal's business fields. */}
         {selected && (
           <div className="space-y-5">
-            <OrderDetailLoader id={selected.id} hideWeightWhenShipped />
+            <OrderDetailLoader id={selected.id} />
             {/* CP-029: start-return entry point — opens the create-return modal
                 for this order. The modal renders the backend order DTO only; no
                 rate/carrier/billing math happens here. */}

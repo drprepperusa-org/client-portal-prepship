@@ -20,15 +20,6 @@ const trimNum = (n: number) => String(Number(n.toFixed(2))); // 11.0 -> "11"
 const WHSE_SHIPPED_TOOLTIP =
   'Units shipped from the warehouse in the last 30 days (inventory ledger ship events, by ship date). ' +
   'Not order/sales units — see Analysis for units ordered.';
-function fmtWeight(oz: number | null): string {
-  if (oz == null || oz <= 0) return '—';
-  const whole = Math.round(oz); // round to whole oz first so the remainder can't overflow to 16
-  const lb = Math.floor(whole / 16);
-  const rem = whole - lb * 16;
-  if (lb && rem) return `${lb} lb ${rem} oz`;
-  if (lb) return `${lb} lb`;
-  return `${rem} oz`;
-}
 const dims = (l: number | null, w: number | null, h: number | null) =>
   l != null && w != null && h != null ? `${trimNum(l)}×${trimNum(w)}×${trimNum(h)}` : '—';
 function fmtDateTime(iso: string | null): string {
@@ -128,7 +119,6 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
     },
     { key: 'name', header: 'Name', defaultWidth: 240, render: (s) => <span className="block truncate text-ink" title={s.name ?? ''}>{s.name ?? '—'}</span>, sortAccessor: (s) => s.name ?? '' },
     { key: 'client', header: 'Client', defaultWidth: 130, render: (s) => <span className="text-ink-3">{s.clientName ?? '—'}</span>, sortAccessor: (s) => s.clientName ?? '' },
-    { key: 'weight', header: 'Weight', defaultWidth: 110, render: (s) => <span className="tnum">{fmtWeight(s.weightOz)}</span>, sortAccessor: (s) => s.weightOz ?? 0 },
     { key: 'dims', header: 'Dims (LxWxH)', defaultWidth: 130, render: (s) => <span className="tnum text-ink-3">{dims(s.length, s.width, s.height)}</span>, sortAccessor: (s) => Number(s.length) || 0 },
     { key: 'cuft', header: 'Cu Ft/Unit', defaultWidth: 110, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.cuFt != null ? s.cuFt.toFixed(3) : '—'}</span>, sortAccessor: (s) => s.cuFt ?? 0 },
     { key: 'package', header: 'Package', defaultWidth: 120, render: (s) => <span className="tnum text-ink-3">{s.packageLength != null ? dims(s.packageLength, s.packageWidth, s.packageHeight) : s.packageName ?? '—'}</span> },
