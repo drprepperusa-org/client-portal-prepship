@@ -123,6 +123,7 @@
     "test:client-portal-invoice-export-range": "node scripts/client-portal-invoice-export-range-guard.mjs",
     "test:ps-382-billing-date-range": "tsx scripts/ps-382-billing-date-range-guard.ts",
     "test:ps-384-high-volume-billing-parity": "tsx scripts/ps-384-high-volume-billing-parity-guard.ts",
+    "test:ps-380-billing-summary-cache-freshness": "tsx scripts/ps-380-billing-summary-cache-freshness-guard.ts",
     "test:client-portal-mobile-nav": "node scripts/client-portal-mobile-nav-guard.mjs",
     "test:client-portal-invoice-items": "tsx scripts/client-portal-invoice-items-guard.ts",
     "test:client-portal-shipments-item-identity": "tsx scripts/client-portal-shipments-item-identity-guard.ts",
