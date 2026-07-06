@@ -163,6 +163,30 @@ export default function Returns() {
         sortAccessor: (r) => r.trackingNumber ?? '',
       },
       {
+        key: 'labelPdf',
+        header: 'Label PDF',
+        defaultWidth: 140,
+        render: (r) =>
+          r.pdfAvailable ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedId(r.id);
+              }}
+              className="focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-glass-sm bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-100 transition-colors hover:bg-brand-100"
+              title="Open return detail to download the PDF"
+            >
+              <Download size={13} /> Download
+            </button>
+          ) : (
+            <span className="inline-flex h-8 items-center rounded-glass-sm bg-slate-50 px-2.5 text-xs font-medium text-ink-3 ring-1 ring-slate-200">
+              Label pending
+            </span>
+          ),
+        sortAccessor: (r) => (r.pdfAvailable ? 1 : 0),
+      },
+      {
         key: 'price',
         header: 'Price',
         defaultWidth: 110,
@@ -339,6 +363,15 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
             >
               <Download size={15} /> Download return label
             </a>
+          )}
+
+          {!pdfHref && (
+            <div className="rounded-glass-sm bg-amber-50/80 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+              <p className="font-semibold">Return label PDF is not ready yet.</p>
+              <p className="mt-1 text-xs text-amber-700">
+                Once PrepShip creates the return label, the download button will appear here.
+              </p>
+            </div>
           )}
 
           {d.reason && (
