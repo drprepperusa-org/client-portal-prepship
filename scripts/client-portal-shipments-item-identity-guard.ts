@@ -27,6 +27,7 @@ const route = read('src/routes/client-portal/shipments.ts');
 const shipmentsReadModel = read('src/lib/client-portal/read-models/shipments.ts');
 const dto = read('src/lib/client-portal/dto.ts');
 const predicates = read('src/lib/client-portal/predicates.ts');
+const shippingRate = read('src/lib/client-portal/customer-shipping-rate.ts');
 const api = read('portal-client/src/lib/api.ts');
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
@@ -80,12 +81,15 @@ assert(
   shipmentsRouteBlock.length > 0 &&
     shipmentsRouteBlock.includes('listPortalShipments(') &&
     shipmentsReadModel.includes('orderItems: orders.items') &&
-    shipmentsReadModel.includes('shippingCost:') &&
-    shipmentsReadModel.includes('from billing_line_items bli') &&
-    shipmentsReadModel.includes("bli.line_type = 'shipping'") &&
+    shipmentsReadModel.includes('shippingCost: shipmentCustomerShippingRateSql()') &&
+    shippingRate.includes('export function shipmentCustomerShippingRateSql') &&
+    shippingRate.includes('from billing_line_items bli') &&
+    shippingRate.includes('export function projectedCustomerShippingRateSql') &&
+    shippingRate.includes('billingConfig.shippingRateOverrideTriggerBelow') &&
+    shippingRate.includes("bli.line_type = 'shipping'") &&
     !shipmentsReadModel.includes('coalesce(${shipments.labelCost}') &&
     shipmentsReadModel.includes('{ includeFinancials: scope.canViewFinancials }'),
-  'shipments read model selects order items and BILLED (never label-cost) shipping, and passes financial visibility to the DTO',
+  'shipments read model selects order items and backend-owned customer shipping rate (frozen billing first, projected fallback), and passes financial visibility to the DTO',
 );
 
 assert(

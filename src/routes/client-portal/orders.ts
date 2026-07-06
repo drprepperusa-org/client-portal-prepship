@@ -4,10 +4,12 @@
 import { Hono } from 'hono';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
+import { billingConfig } from '../../db/schema/billing';
 import { clients } from '../../db/schema/clients';
-import { orders } from '../../db/schema/orders';
+import { orderOverrides, orders } from '../../db/schema/orders';
 import { shipments } from '../../db/schema/shipments';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { shipmentCustomerShippingRateSql } from '../../lib/client-portal/customer-shipping-rate';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { shipmentScopePredicate } from '../../lib/client-portal/predicates';
 import { toPortalShipmentDto } from '../../lib/client-portal/dto';
@@ -66,18 +68,15 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
-      // Billed shipping only (matches the Billing surfaces) — never the
-      // internal label cost.
-      shippingCost: sql<string | null>`(
-        select sum(bli.total_cost)
-        from billing_line_items bli
-        where bli.shipment_id = ${shipments.id}
-          and bli.line_type = 'shipping'
-      )::text`,
+      // Frozen billed shipping first; projected backend customer-rate fallback
+      // only until Admin Billing freezes the period into billing_line_items.
+      shippingCost: shipmentCustomerShippingRateSql(),
     })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
     .leftJoin(orders, eq(orders.id, shipments.orderId))
+    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
+    .leftJoin(billingConfig, eq(billingConfig.clientId, shipments.clientId))
     .where(and(eq(shipments.orderId, orderId), eq(shipments.voided, false), shipmentScopePredicate(scope)))
     .orderBy(desc(shipments.id))
     .limit(20);

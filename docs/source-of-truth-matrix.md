@@ -937,7 +937,7 @@ Guard: `client-portal-order-detail-guard.ts`.
 | Delivery status | `trackingStatus` | `trackingStatus` | `shipments.tracking_status` (live) | tracking event | presentation-only |
 | Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at` | delivery event | presentation-only |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
-| Shipping cost | `shippingCost` | `shippingCost` (financially gated) | `shipments.shipping_cost` | label time | presentation-only (gated) |
+| Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → live projection from `shipments.cost`/`label_cost` + `other_cost`, `billing_config` markup/override, and `order_overrides` ref rates via `customer-shipping-rate.ts` | billing / label time | derived-from-canonical (backend-owned, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
 
 Owner: `toPortalShipmentDto` over `shipments`. Route:

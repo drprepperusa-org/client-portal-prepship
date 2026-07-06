@@ -1,8 +1,10 @@
 import { and, desc, eq, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
+import { billingConfig } from '../../../db/schema/billing';
 import { clients } from '../../../db/schema/clients';
-import { orders } from '../../../db/schema/orders';
+import { orderOverrides, orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
+import { shipmentCustomerShippingRateSql } from '../customer-shipping-rate';
 import { toPortalShipmentDto } from '../dto';
 import {
   shipmentScopePredicate,
@@ -69,19 +71,16 @@ export async function listPortalShipments(
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
-      // BILLED shipping (the customer-facing C. Shipping Rate from billing
-      // line items) — never the internal label cost, so the Shipments page
-      // always matches Billing. Null (—) until the period is billed.
-      shippingCost: sql<string | null>`(
-        select sum(bli.total_cost)
-        from billing_line_items bli
-        where bli.shipment_id = ${shipments.id}
-          and bli.line_type = 'shipping'
-      )::text`,
+      // Customer Shipping Rate: frozen billing line first; if this shipment has
+      // not been billed yet, project the same backend-owned billing formula from
+      // canonical shipment/config inputs. Never expose carrier/service identity.
+      shippingCost: shipmentCustomerShippingRateSql(),
     })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
     .leftJoin(orders, eq(orders.id, shipments.orderId))
+    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
+    .leftJoin(billingConfig, eq(billingConfig.clientId, shipments.clientId))
     .where(where)
     .orderBy(desc(shipments.shipDate), desc(shipments.id))
     .limit(pageSize)
