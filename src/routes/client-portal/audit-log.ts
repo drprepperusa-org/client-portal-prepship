@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, desc, ilike, or } from 'drizzle-orm';
+import { and, desc, ilike, ne, or } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
 import { isAdminEmail } from '../../lib/admin-emails';
@@ -34,6 +34,7 @@ app.get('/audit-log', async (c) => {
   const limit = Math.min(parsePositiveInt(c.req.query('limit')) ?? 100, 250);
   const where = and(
     ...[
+      ne(clientPortalAuditLogs.event, 'portal.audit_log.view'),
       search
         ? or(
             ilike(clientPortalAuditLogs.event, `%${search}%`),
@@ -59,8 +60,6 @@ app.get('/audit-log', async (c) => {
     .where(where)
     .orderBy(desc(clientPortalAuditLogs.createdAt), desc(clientPortalAuditLogs.id))
     .limit(limit);
-
-  await recordPortalAudit('portal.audit_log.view', scope, { rows: rows.length, search: search || null });
 
   return c.json({
     data: rows.map((row) => ({

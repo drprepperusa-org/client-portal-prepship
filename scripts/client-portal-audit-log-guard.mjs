@@ -100,10 +100,14 @@ assert(
     routeFlat.includes("app.post('/audit-log/click'") &&
     routeFlat.includes('isAdminEmail(scope.email) || scope.role ===') &&
     routeFlat.includes('clientPortalAuditLogs') &&
-    routeFlat.includes("portal.audit_log.view") &&
     routeFlat.includes("portal.ui.click") &&
     routeFlat.includes('desc(clientPortalAuditLogs.createdAt'),
   'audit-log route exposes admin list and authenticated click tracking',
+);
+assert(
+  !route.includes("recordPortalAudit('portal.audit_log.view") &&
+    route.includes("ne(clientPortalAuditLogs.event, 'portal.audit_log.view')"),
+  'audit-log list does not log or show its own read events',
 );
 assert(
   router.includes("import auditLogRoute from './client-portal/audit-log'") &&
