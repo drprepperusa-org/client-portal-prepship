@@ -1,7 +1,13 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { PackageCheck, Mail, Lock, ArrowRight, Truck, MapPin, Boxes, Clock, ShieldCheck, Plug } from 'lucide-react';
+import {
+  ArrowRight,
+  Lock,
+  Mail,
+  PackageCheck,
+  Truck,
+} from 'lucide-react';
 import { EmailInput, PasswordInput } from '@/components/ui/Inputs';
 import { Checkbox } from '@/components/ui/Selection';
 import { Button } from '@/components/ui/Button';
@@ -35,12 +41,12 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1fr_0.95fr]">
       {/* ============ Left: branded graphic panel ============ */}
       <BrandPanel />
 
       {/* ============ Right: sign-in form ============ */}
-      <div className="relative flex items-center justify-center bg-white px-5 py-10 sm:px-8">
+      <div className="relative flex items-center justify-center bg-white px-5 py-10 sm:px-8 lg:justify-start lg:px-12 xl:px-16 2xl:px-20">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -53,8 +59,8 @@ export default function Login() {
               <PackageCheck size={20} />
             </span>
             <div className="leading-tight">
-              <p className="font-display text-base font-bold tracking-tight text-ink">PrepShip</p>
-              <p className="text-[11px] font-medium text-ink-3">Client Portal</p>
+              <p className="font-display text-base font-bold tracking-tight text-ink">PrepShip Client Portal</p>
+              <p className="text-[11px] font-medium text-ink-3">by DR PREPPER USA</p>
             </div>
           </div>
 
@@ -95,7 +101,7 @@ export default function Login() {
 /* ===================== Branded graphic panel ===================== */
 function BrandPanel() {
   return (
-    <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-600 to-violet-700 lg:flex lg:flex-col">
+    <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-600 to-violet-700 lg:flex">
       {/* Decorative grid */}
       <div
         aria-hidden
@@ -112,19 +118,21 @@ function BrandPanel() {
       <div aria-hidden className="absolute -left-20 -top-20 h-80 w-80 rounded-full bg-white/15 blur-3xl" />
       <div aria-hidden className="absolute -bottom-24 right-0 h-96 w-96 rounded-full bg-violet-400/25 blur-3xl" />
 
+      <div className="relative z-10 ml-auto flex min-h-screen w-full max-w-[640px] flex-col justify-center px-8 py-10 xl:px-12">
+
       {/* Logo */}
-      <div className="relative z-10 flex items-center gap-3 p-10">
+      <div className="flex items-center gap-3">
         <span className="grid h-11 w-11 place-items-center rounded-glass-sm bg-white/15 text-white ring-1 ring-white/30 backdrop-blur">
           <PackageCheck size={22} />
         </span>
         <div className="leading-tight">
-          <p className="font-display text-lg font-bold tracking-tight text-white">PrepShip</p>
-          <p className="text-xs font-medium text-white/70">Client Portal</p>
+          <p className="font-display text-lg font-bold tracking-tight text-white">PrepShip Client Portal</p>
+          <p className="text-xs font-medium text-white/70">by DR PREPPER USA</p>
         </div>
       </div>
 
       {/* Headline */}
-      <div className="relative z-10 px-10">
+      <div className="mt-14">
         <motion.h2
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -139,35 +147,17 @@ function BrandPanel() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="mt-3 max-w-md text-[15px] leading-relaxed text-white/80"
+          className="mt-3 max-w-sm text-[15px] leading-relaxed text-white/80"
         >
           Your orders, inventory, shipments and billing — unified in one effortless fulfillment command center.
         </motion.p>
       </div>
 
       {/* Route illustration */}
-      <div className="relative z-10 mt-6 flex-1">
+      <div className="mt-10 h-[320px] min-h-[240px] max-h-[38vh]">
         <RouteGraphic />
       </div>
 
-      {/* Trust stats */}
-      <div className="relative z-10 grid grid-cols-3 gap-3 p-10 pt-0">
-        {[
-          { icon: Boxes, label: '2.4M+ units shipped' },
-          { icon: Clock, label: '99.2% on-time' },
-          { icon: ShieldCheck, label: 'SOC 2 secure' },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 + i * 0.08 }}
-            className="rounded-glass-sm border border-white/15 bg-white/10 p-3 backdrop-blur"
-          >
-            <s.icon size={18} className="text-white/90" />
-            <p className="mt-2 text-[13px] font-semibold leading-tight text-white">{s.label}</p>
-          </motion.div>
-        ))}
       </div>
     </div>
   );
@@ -248,9 +238,7 @@ function RouteGraphic() {
       </svg>
 
       {/* Floating glass info cards */}
-      <FloatCard className="left-6 top-2" delay={0.9} icon={<Truck size={15} />} title="Order PS-24817" subtitle="Out for delivery · Denver" />
-      <FloatCard className="bottom-6 right-8" delay={1.2} icon={<MapPin size={15} />} title="98.3% fulfillment" subtitle="This week · on target" />
-      <FloatCard className="bottom-20 left-10" delay={1.5} icon={<Plug size={15} />} title="4 channels synced" subtitle="Shopify · Amazon · eBay" />
+      <FloatCard className="left-3 top-2" delay={0.9} icon={<Truck size={15} />} title="Order PS-24817" subtitle="Out for delivery · Denver" />
     </div>
   );
 }

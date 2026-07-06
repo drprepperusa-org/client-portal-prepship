@@ -107,9 +107,9 @@ export default function Dashboard() {
                     clock — NOT shipped units); "Shipments Created" (below) =
                     shipments rows by ship_date (shipment clock). */}
                 <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" onPeek={edit ? undefined : openPeek('open')} />
-                <StatCard label={`Shipped orders (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" hint="orders.order_status = shipped" onPeek={edit ? undefined : openPeek('shipped')} />
+                <StatCard label={`Shipped orders (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" onPeek={edit ? undefined : openPeek('shipped')} />
                 <StatCard label={`Ordered units (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} onPeek={edit ? undefined : openPeek('units')} />
-                <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" hint="Visible if permitted" onPeek={edit ? undefined : openPeek('revenue')} />
+                <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" onPeek={edit ? undefined : openPeek('revenue')} />
               </>
             )}
           </motion.div>
