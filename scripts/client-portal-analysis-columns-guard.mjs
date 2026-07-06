@@ -35,6 +35,26 @@ assert(
   'Analysis table no longer renders the "N ext" external-shipped pill',
 );
 
+// ── CP-035: internal financial/ship columns removed from the CUSTOMER view ──
+// DJ: customers must not see Std ship / Exp ship / Selling Fees / Profit. These
+// are hidden by REMOVAL (not CSS / not a toggle), and there is no React Profit
+// derivation. Backend std/exp/selling-fee fields may still exist for admin use.
+for (const [header, label] of [
+  ["header: 'Std ship'", 'Std ship'],
+  ["header: 'Exp ship'", 'Exp ship'],
+  ["header: 'Selling Fees'", 'Selling Fees'],
+  ["header: 'Profit'", 'Profit'],
+]) {
+  assert(!analysis.includes(header), `CP-035: Analysis customer table no longer renders a "${label}" column`);
+}
+for (const key of ["key: 'std'", "key: 'exp'", "key: 'fees'", "key: 'profit'"]) {
+  assert(!analysis.includes(key), `CP-035: Analysis customer table has no column with ${key}`);
+}
+assert(
+  !/num\(r\.total_revenue\)\s*-\s*num\(r\.total_shipping\)\s*-\s*num\(r\.total_selling_fee\)/.test(analysis),
+  'CP-035: Analysis no longer computes Profit in React (revenue − shipping − selling_fee derivation removed)',
+);
+
 // ── The metrics that MUST survive the removal (the rest of the table) ──
 const required = [
   "header: 'Item Name'",
@@ -46,6 +66,7 @@ const required = [
   "header: 'Units Trend'",
   "header: 'Avg Sell Price'",
   "header: 'Total Revenue'",
+  "header: 'Total Shipping'",
 ];
 for (const header of required) {
   assert(analysis.includes(header), `Analysis table still has ${header}`);

@@ -62,10 +62,25 @@ interface DataTableProps<T> {
    * customization in-memory only (resets on unmount).
    */
   tableId?: string;
+  /**
+   * CP-035: gate column customization (the Columns x/x chooser, Reset,
+   * drag-to-reorder, and resize) behind an EXPLICIT opt-in. Defaults to false so
+   * Client Portal customer tables are fixed — no toggling, and stale localStorage
+   * layouts are ignored (a removed/hidden column can never resurrect). Admin/
+   * internal surfaces may pass true, gated by role at the call site — never
+   * inferred from tableId alone.
+   */
+  allowColumnCustomization?: boolean;
 }
 
-export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId, footer, defaultSort = null, sort: controlledSort, onSortChange }: DataTableProps<T>) {
-  const layout = useColumnLayout(tableId, columns);
+export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId, footer, defaultSort = null, sort: controlledSort, onSortChange, allowColumnCustomization = false }: DataTableProps<T>) {
+  // CP-035: customization (controls + drag/reorder/resize + persisted layout) is
+  // enabled ONLY when a tableId is present AND the caller explicitly opts in.
+  // When off, tableId is NOT passed to the layout hook, so persisted localStorage
+  // order/width/hidden is ignored entirely — the table renders exactly the
+  // columns it was given, in order, at their default widths.
+  const customizable = Boolean(tableId) && allowColumnCustomization;
+  const layout = useColumnLayout(customizable ? tableId : undefined, columns);
   const byKey = Object.fromEntries(columns.map((c) => [c.key, c])) as Record<string, Column<T>>;
   const ordered = layout.visibleOrder.map((k) => byKey[k]).filter(Boolean) as Column<T>[];
 
@@ -187,7 +202,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
     <>
       {/* ---- Desktop / tablet: resizable + reorderable table ---- */}
       <div className="hidden md:block">
-        {tableId && (
+        {customizable && (
           <div className="flex items-center justify-end gap-2 px-1 pb-2">
             {layout.isCustomized && (
               <button
@@ -259,8 +274,8 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
             <thead>
               <tr className="border-b border-slate-200/70 text-left">
                 {ordered.map((c) => {
-                  const canDrag = c.draggable !== false;
-                  const canResize = c.resizable !== false;
+                  const canDrag = customizable && c.draggable !== false;
+                  const canResize = customizable && c.resizable !== false;
                   const isDragging = dragKey === c.key;
                   const isDropTarget = overKey === c.key && dragKey !== c.key;
                   return (

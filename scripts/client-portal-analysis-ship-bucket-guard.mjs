@@ -1,6 +1,14 @@
-// CP-020 — the Analysis Std/Exp columns must pair the COUNT with the SAME filter
-// predicate as the DOLLAR (std_ship_count ↔ std_total) and label the $ as
-// allocated shipping cost, not revenue. Static source-pin.
+// CP-020 (customer layer SUPERSEDED by CP-035) — the Std/Exp ship-bucket SOT.
+//
+// CP-020 made the Analysis Std/Exp columns honest: the COUNT (std_ship_count) is
+// predicate-matched to the DOLLAR (std_total = allocated shipping cost, not
+// revenue). CP-035 then REMOVED those columns from the CUSTOMER Analysis view.
+//
+// So this guard now pins:
+//   1. The customer Analysis page no longer renders the Std/Exp columns (CP-035).
+//   2. The BACKEND bucket contract is still intact — the analysis read-model
+//      still emits the predicate-matched std/exp count + total fields (retained
+//      for admin/operator use), and the frontend row TYPE still declares them.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -15,45 +23,34 @@ const assert = (c, m) => {
   }
 };
 
+// ── 1. CP-035: the customer Analysis view no longer renders Std/Exp columns ──
 const page = read('portal-client/src/pages/Analysis.tsx');
 assert(
-  page.includes('num(r.std_ship_count)') && page.includes('num(r.exp_ship_count)'),
-  'Std/Exp render std_ship_count / exp_ship_count (predicate-matched to the $ total)',
+  !/key:\s*'std'/.test(page) && !/key:\s*'exp'/.test(page),
+  'CP-035: the Std/Exp ship columns are removed from the customer Analysis view',
 );
 assert(
-  !/\{num\(r\.std_orders\)\}/.test(page) && !/\{num\(r\.exp_orders\)\}/.test(page),
-  'Std/Exp no longer render the wider std_orders/exp_orders count beside the cost-only $',
-);
-assert(
-  page.includes('sortAccessor: (r) => num(r.std_ship_count)') &&
-    page.includes('sortAccessor: (r) => num(r.exp_ship_count)'),
-  'Std/Exp sortAccessors sort by the displayed shipment count',
-);
-assert(
-  /allocated shipping COST/i.test(page) && /not revenue/i.test(page),
-  'a tooltip labels the Std/Exp $ as allocated shipping cost, not revenue',
-);
-// Build-safety: the UI tooltip (not the recharts one) is wired in.
-assert(
-  /Tooltip as InfoTooltip/.test(page) && /<InfoTooltip\b/.test(page),
-  'Analysis uses the aliased UI InfoTooltip (avoids the recharts Tooltip collision)',
+  !page.includes("header: 'Std ship'") && !page.includes("header: 'Exp ship'"),
+  'CP-035: no Std ship / Exp ship customer headers remain',
 );
 
-// Frontend TYPE must declare the fields the page reads, or build:web fails.
+// ── 2. Backend bucket contract still intact (retained for admin/operator use) ──
+// Frontend row TYPE still declares the fields (harmless; not rendered as a
+// customer column, but kept so admin/internal consumers + the SOT stay stable).
 const api = read('portal-client/src/lib/api.ts');
 assert(
   api.includes('std_ship_count') && api.includes('exp_ship_count'),
-  'AnalysisSkuRow declares std_ship_count/exp_ship_count',
+  'AnalysisSkuRow still declares std_ship_count / exp_ship_count',
 );
 
-// Backend contract the UI depends on (SQL alias AND row type).
+// Backend read-model still emits the predicate-matched count + $ total.
 const analysis = read('src/routes/analysis.ts');
 assert(
   analysis.includes('as std_ship_count') &&
     analysis.includes('as exp_ship_count') &&
     analysis.includes('as std_total') &&
     analysis.includes('as exp_total'),
-  'analysis.ts SQL still emits std_ship_count/exp_ship_count/std_total/exp_total',
+  'analysis.ts SQL still emits std_ship_count/exp_ship_count/std_total/exp_total (bucket SOT retained)',
 );
 assert(
   /std_ship_count:\s*number/.test(analysis) && /exp_ship_count:\s*number/.test(analysis),
@@ -68,4 +65,4 @@ assert(
 );
 
 if (failed) process.exit(1);
-console.log('\nCP-020 analysis ship-bucket guard passed.');
+console.log('\nCP-020/CP-035 analysis ship-bucket guard passed.');
