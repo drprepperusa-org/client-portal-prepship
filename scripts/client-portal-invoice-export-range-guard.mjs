@@ -19,6 +19,7 @@ function assert(condition, message) {
 }
 
 const invoices = read('portal-client/src/pages/Invoices.tsx');
+const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
 const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -42,7 +43,7 @@ assert(
   'a paginated fetch-all helper exists',
 );
 assert(
-  invoices.includes('res.pagination?.totalPages') && invoices.includes('pageSize: PAGE_SIZE'),
+  invoiceRows.includes('res.pagination?.totalPages') && invoiceRows.includes('pageSize: INVOICE_EXPORT_PAGE_SIZE'),
   'fetchAllInvoiceRows walks every page via pagination.totalPages',
 );
 assert(

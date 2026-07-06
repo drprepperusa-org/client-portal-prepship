@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useClients, useInvoiceDetailsRange, useInvoicePeriodSummaryRange, useOrderShipments } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
+import { fetchAllInvoiceRows as fetchAllInvoiceRowsPaged } from '@/lib/invoiceRows';
 import { exportInvoiceExcel } from '@/lib/invoiceExcel';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
@@ -59,30 +60,21 @@ const EMPTY_TOTALS: BillingTotals = {
   fee: 0,
 };
 
-
-// Walk the paginated invoice-details endpoint to gather EVERY line item for a
-// client + range. The unpaginated endpoint caps at 5000 rows (1000 for a whole
-// scope), so a multi-month "export all" would silently truncate there — page
-// through instead (200/page server max) and accumulate, flagging (never hiding)
-// a hard ceiling.
+// Walk the paginated invoice-details endpoint via the shared helper so exports
+// gather every line item without relying on the capped unpaginated route.
 async function fetchAllInvoiceRows(
   token: string,
   clientId: number | undefined,
   rangeFrom: string,
   rangeTo: string,
 ): Promise<{ rows: BillingInvoiceDetailRow[]; truncated: boolean }> {
-  const PAGE_SIZE = 200;
-  const MAX_PAGES = 250; // 50k-row ceiling — covers any real range, guards a runaway loop
-  const rows: BillingInvoiceDetailRow[] = [];
-  let page = 1;
-  let totalPages = 1;
-  do {
-    const res = await portalApi.invoiceDetailsRange(token, rangeFrom, rangeTo, clientId, { page, pageSize: PAGE_SIZE });
-    rows.push(...(res.data ?? []));
-    totalPages = res.pagination?.totalPages ?? 1;
-    page += 1;
-  } while (page <= totalPages && page <= MAX_PAGES);
-  return { rows, truncated: totalPages > MAX_PAGES };
+  return fetchAllInvoiceRowsPaged({
+    fetcher: portalApi.invoiceDetailsRange,
+    token,
+    clientId,
+    rangeFrom,
+    rangeTo,
+  });
 }
 
 export default function Invoices({ from, to }: { from: string; to: string }) {
