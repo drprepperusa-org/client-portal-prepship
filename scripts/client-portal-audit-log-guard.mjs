@@ -30,6 +30,7 @@ const schema = schemaExists ? read('src/db/schema/client-portal-audit-logs.ts') 
 const migration = migrationExists ? read('drizzle/0036_client_portal_audit_logs.sql') : '';
 const migrationLower = migration.toLowerCase();
 const schemaIndex = read('src/db/schema/index.ts');
+const drizzleConfig = read('drizzle.config.ts');
 const audit = read('src/lib/client-portal/audit.ts');
 const route = routeExists ? read('src/routes/client-portal/audit-log.ts') : '';
 const routeFlat = flat(route);
@@ -80,6 +81,10 @@ assert(
 assert(
   schemaIndex.includes("export * from './client-portal-audit-logs'"),
   'schema index exports audit-log table',
+);
+assert(
+  drizzleConfig.includes("./src/db/schema/client-portal-audit-logs.ts"),
+  'drizzle config includes audit-log schema for future migrations',
 );
 assert(
   audit.includes("from '../../db/client'") &&
