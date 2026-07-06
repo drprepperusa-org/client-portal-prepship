@@ -26,6 +26,7 @@ const route = read('src/routes/client-portal/shipments.ts');
 // the route is a thin delegate, so query-shape pins live against this file.
 const shipmentsReadModel = read('src/lib/client-portal/read-models/shipments.ts');
 const dto = read('src/lib/client-portal/dto.ts');
+const predicates = read('src/lib/client-portal/predicates.ts');
 const api = read('portal-client/src/lib/api.ts');
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
@@ -85,6 +86,15 @@ assert(
     !shipmentsReadModel.includes('coalesce(${shipments.labelCost}') &&
     shipmentsReadModel.includes('{ includeFinancials: scope.canViewFinancials }'),
   'shipments read model selects order items and BILLED (never label-cost) shipping, and passes financial visibility to the DTO',
+);
+
+assert(
+  shipmentsReadModel.includes('visibleClientPortalShipmentsPredicate()') &&
+    predicates.includes('export function visibleClientPortalShipmentsPredicate') &&
+    predicates.includes("ilike 'SEAuto-%'") &&
+    predicates.includes('${shipments.orderId} is null') &&
+    predicates.includes('${shipments.clientId} is null'),
+  'Shipments list hides ownerless SEAuto placeholder rows from the Client Portal',
 );
 
 assert(

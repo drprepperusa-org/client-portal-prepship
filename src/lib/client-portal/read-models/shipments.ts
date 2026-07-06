@@ -4,7 +4,11 @@ import { clients } from '../../../db/schema/clients';
 import { orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
 import { toPortalShipmentDto } from '../dto';
-import { shipmentScopePredicate, shipmentSearchPredicate } from '../predicates';
+import {
+  shipmentScopePredicate,
+  shipmentSearchPredicate,
+  visibleClientPortalShipmentsPredicate,
+} from '../predicates';
 import type { ClientPortalScope } from '../scope';
 
 export const SHIPMENT_STATUS_FILTERS = new Set([
@@ -54,6 +58,7 @@ export async function listPortalShipments(
   const where = and(
     // Voided shipments are hidden unless explicitly filtered for.
     status === 'voided' ? eq(shipments.voided, true) : eq(shipments.voided, false),
+    visibleClientPortalShipmentsPredicate(),
     shipmentStatusFilterPredicate(status),
     shipmentScopePredicate(scope, { clientId, storeId }),
     shipmentSearchPredicate(search),

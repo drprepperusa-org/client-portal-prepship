@@ -124,6 +124,14 @@ export function shipmentSearchPredicate(search: string): SQL | undefined {
   );
 }
 
+export function visibleClientPortalShipmentsPredicate(): SQL {
+  return sql`not (
+    ${shipments.orderId} is null
+    and ${shipments.clientId} is null
+    and coalesce(${shipments.orderNumber}, '') ilike 'SEAuto-%'
+  )`;
+}
+
 export function inventorySearchPredicate(search: string): SQL | undefined {
   if (!search) return undefined;
   const pattern = `%${search}%`;
