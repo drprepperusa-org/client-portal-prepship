@@ -65,6 +65,7 @@
     "test:billing-shipping-override": "tsx scripts/billing-shipping-override-guard.ts",
     "test:client-portal-carrier-redaction": "tsx scripts/client-portal-carrier-redaction-guard.ts",
     "test:client-portal-client-nav-connections": "node scripts/client-portal-client-nav-connections-guard.mjs",
+    "test:client-portal-billing-column-order": "node scripts/client-portal-billing-column-order-guard.mjs",
     "test:marketplace-order-auth-cors": "node scripts/marketplace-order-auth-cors-guard.mjs",
     "test:dashboard-client-scope": "node scripts/dashboard-client-store-scope-guard.mjs",
     "test:dashboard-bar-chart-top-skus": "tsx scripts/dashboard-bar-chart-top-skus-guard.ts",

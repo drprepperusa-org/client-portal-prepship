@@ -29,6 +29,8 @@ export interface InvoiceTotals {
   packageTotal: number;
   shippingTotal: number;
   storageTotal: number;
+  returnProcessingTotal: number;
+  returnPostageTotal: number;
   grandTotal: number;
 }
 
@@ -156,20 +158,25 @@ export function renderPortalInvoiceHtml(input: {
       'export the period from the Billing page for every line.</div>'
     : '';
   const detailRows = details
-    .map((detail) => `
+    .map((detail) => {
+      const skus = detail.skus ?? detail.itemNames ?? '';
+      return `
       <tr>
         <td>${escHtml(shortDate(detail.shipDate))}</td>
         <td class="order-link">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
-        <td class="mono item-name">${escHtml(detail.itemNames ?? detail.skus ?? '')}</td>
-        <td>${escHtml(detail.boxSize ?? '')}</td>
-        <td class="num">${moneyOrDash(detail.packageTotal)}</td>
+        <td class="mono item-name">${escHtml(skus)}</td>
         <td class="num">${Number(detail.qty ?? 0)}</td>
         <td class="num">${money(detail.pickpackTotal)}</td>
         <td class="num">${moneyOrDash(detail.additionalTotal)}</td>
+        <td class="num">${moneyOrDash(detail.packageTotal)}</td>
+        <td>${escHtml(detail.boxSize ?? '')}</td>
         <td class="num">${moneyOrDash(detail.shippingTotal)}</td>
         <td class="num">${moneyOrDash(detail.storageTotal)}</td>
+        <td class="num">${moneyOrDash(detail.returnProcessingTotal)}</td>
+        <td class="num">${moneyOrDash(detail.returnPostageTotal)}</td>
         <td class="num bold">${money(detail.rowTotal)}</td>
-      </tr>`)
+      </tr>`;
+    })
     .join('');
   return `<!doctype html>
 <html>
@@ -202,21 +209,25 @@ export function renderPortalInvoiceHtml(input: {
   ${truncNote}
   <table>
     <thead><tr>
-      <th>Ship Date (Los Angeles)</th><th>Order #</th><th>SKU(s)</th><th>Box Size</th>
-      <th class="num">Box Cost</th><th class="num">Qty</th><th class="num">Pick &amp; Pack</th>
-      <th class="num">Add'l Units</th><th class="num">Shipping</th><th class="num">Storage</th>
+      <th>Ship Date</th><th>Order #</th><th>SKU(s)</th><th class="num">Qty</th>
+      <th class="num">Pick &amp; Pack</th><th class="num">Addl Units</th>
+      <th class="num">Box Cost</th><th>Box Size</th><th class="num">Shipping</th>
+      <th class="num">Storage</th><th class="num">Return Processing</th><th class="num">Return Postage</th>
       <th class="num">Fulfillment Fee</th>
     </tr></thead>
-    <tbody>${detailRows || '<tr><td colspan="11">No billable order rows found for this period.</td></tr>'}</tbody>
+    <tbody>${detailRows || '<tr><td colspan="13">No billable order rows found for this period.</td></tr>'}</tbody>
     <tfoot>
       <tr>
-        <td colspan="4">${invoiceTotals.orderCount} orders / ${invoiceTotals.qty} qty</td>
-        <td class="num">${money(invoiceTotals.packageTotal)}</td>
+        <td colspan="3">${invoiceTotals.orderCount} orders</td>
         <td class="num">${invoiceTotals.qty}</td>
         <td class="num">${money(invoiceTotals.pickPackTotal)}</td>
         <td class="num">${money(invoiceTotals.additionalTotal)}</td>
+        <td class="num">${money(invoiceTotals.packageTotal)}</td>
+        <td></td>
         <td class="num">${money(invoiceTotals.shippingTotal)}</td>
         <td class="num">${money(invoiceTotals.storageTotal)}</td>
+        <td class="num">${money(invoiceTotals.returnProcessingTotal)}</td>
+        <td class="num">${money(invoiceTotals.returnPostageTotal)}</td>
         <td class="num">${money(invoiceTotals.grandTotal)}</td>
       </tr>
     </tfoot>

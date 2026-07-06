@@ -165,6 +165,8 @@ app.get('/invoice', async (c) => {
         packageTotal: sumDetails((d) => d.packageTotal),
         shippingTotal: sumDetails((d) => d.shippingTotal),
         storageTotal: sumDetails((d) => d.storageTotal),
+        returnProcessingTotal: sumDetails((d) => d.returnProcessingTotal),
+        returnPostageTotal: sumDetails((d) => d.returnPostageTotal),
         grandTotal: sumDetails((d) => d.rowTotal),
       }
     : {
@@ -175,6 +177,8 @@ app.get('/invoice', async (c) => {
         packageTotal: Number(row?.packageTotal ?? 0),
         shippingTotal: Number(row?.shippingTotal ?? 0),
         storageTotal: Number(row?.storageTotal ?? 0),
+        returnProcessingTotal: Number(row?.returnProcessingTotal ?? 0),
+        returnPostageTotal: Number(row?.returnPostageTotal ?? 0),
         grandTotal: Number(row?.grandTotal ?? 0),
       };
   // No silent truncation: the itemized list is row-capped only on the normal

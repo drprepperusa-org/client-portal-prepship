@@ -3,9 +3,9 @@ import type { BillingInvoiceDetailRow } from '@/lib/api';
 // Excel (.xlsx) export for the per-client invoice line items. Column set and
 // order mirror the billing line-items table (client-safe fields only — no
 // carrier / selected rate / shipping margin):
-//   Order # | Ship Date | Item Name | SKU | Qty | Pick & Pack |
-//   Addl Units | Box Cost | Box Size | Shipping | Storage |
-//   Return Postage | Return Processing | Fulfillment Fee
+//   Ship Date | Order # | SKU(s) | Qty | Pick & Pack | Addl Units |
+//   Box Cost | Box Size | Shipping | Storage | Return Processing |
+//   Return Postage | Fulfillment Fee
 // Money cells are written as real numbers (2-decimal format) so Excel can sum
 // and pivot them; the final row is a bold totals row. write-excel-file is
 // loaded via dynamic import so the writer only ships when Export is clicked.
@@ -14,10 +14,9 @@ const num = (v: unknown) => Number(v ?? 0) || 0;
 const MONEY_FORMAT = '#,##0.00';
 
 const HEADERS = [
-  'Order #',
   'Ship Date',
-  'Item Name',
-  'SKU',
+  'Order #',
+  'SKU(s)',
   'Qty',
   'Pick & Pack',
   'Addl Units',
@@ -25,12 +24,12 @@ const HEADERS = [
   'Box Size',
   'Shipping',
   'Storage',
-  'Return Postage',
   'Return Processing',
+  'Return Postage',
   'Fulfillment Fee',
 ] as const;
 
-const COLUMN_WIDTHS = [10, 12, 30, 26, 6, 12, 11, 10, 12, 10, 10, 13, 15, 14];
+const COLUMN_WIDTHS = [12, 10, 28, 6, 12, 11, 10, 12, 10, 10, 15, 13, 14];
 
 function slugify(name: string): string {
   const slug = name
@@ -57,10 +56,9 @@ export async function exportInvoiceExcel(
 
   const dataRows = rows.map((r) => [
     ...clientCol({ type: String, value: r.clientName ?? '' }),
-    { type: String, value: r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
     { type: String, value: r.shipDate ?? '' },
-    { type: String, value: r.itemNames ?? '', wrap: true },
-    { type: String, value: r.skus ?? '', wrap: true },
+    { type: String, value: r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
+    { type: String, value: r.skus ?? r.itemNames ?? '', wrap: true },
     { type: Number, value: num(r.qty) },
     { type: Number, value: num(r.pickpackTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.additionalTotal), format: MONEY_FORMAT },
@@ -68,8 +66,8 @@ export async function exportInvoiceExcel(
     { type: String, value: r.boxSize ?? '' },
     { type: Number, value: num(r.shippingTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.storageTotal), format: MONEY_FORMAT },
-    { type: Number, value: num(r.returnPostageTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.returnProcessingTotal), format: MONEY_FORMAT },
+    { type: Number, value: num(r.returnPostageTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.rowTotal), format: MONEY_FORMAT },
   ]);
 
@@ -81,7 +79,6 @@ export async function exportInvoiceExcel(
     { type: String, value: 'Total', ...bold },
     null,
     null,
-    null,
     { type: Number, value: sum((r) => r.qty), ...bold },
     { type: Number, value: sum((r) => r.pickpackTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.additionalTotal), format: MONEY_FORMAT, ...bold },
@@ -89,8 +86,8 @@ export async function exportInvoiceExcel(
     null,
     { type: Number, value: sum((r) => r.shippingTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.storageTotal), format: MONEY_FORMAT, ...bold },
-    { type: Number, value: sum((r) => r.returnPostageTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.returnProcessingTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.returnPostageTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.rowTotal), format: MONEY_FORMAT, ...bold },
   ];
 

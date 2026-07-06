@@ -106,17 +106,20 @@ assert(
 
 assert(
   printableInvoiceBlock.includes('.item-name { white-space: pre-line; }') &&
-    printableInvoiceBlock.includes('<td class="mono item-name">${escHtml(detail.itemNames ?? detail.skus ?? \'\')}</td>'),
-  'backend printable invoice preserves itemNames line breaks',
+    printableInvoiceBlock.includes('const skus = detail.skus ?? detail.itemNames ??') &&
+    printableInvoiceBlock.includes('<td class="mono item-name">${escHtml(skus)}</td>'),
+  'backend printable invoice uses SKU(s) first while preserving itemNames line breaks as fallback',
 );
 
-// CP-007: the Billing line-items table renders structured item lines via the
-// shared ItemIdentityLines components (qty-aware, one line per item/SKU) —
-// the successor to the pre-line itemNames string cell.
+// CP-007: the Billing line-items table renders structured SKU lines via the
+// shared ItemIdentityLines component (qty-aware, one line per SKU). The
+// separate Item Name column was intentionally removed from the client billing
+// standard; rows with no structured SKUs still fall back to itemNames.
 assert(
-  activeInvoices.includes('<ItemNameLines items={r.items}') &&
-    activeInvoices.includes('<SkuLines items={r.items}'),
-  'active portal invoice item cells render structured qty-aware item/SKU lines',
+  !activeInvoices.includes("header: 'Item Name'") &&
+    activeInvoices.includes('<SkuLines items={r.items}') &&
+    activeInvoices.includes('r.skus ?? r.itemNames'),
+  'active portal invoice item cell renders a structured qty-aware SKU(s) column with itemNames fallback',
 );
 
 assert(
