@@ -564,8 +564,9 @@ app.post('/returns', async (c) => {
 
 // ── POST /returns/:id/label — create the return label (CP-027 service) ───────
 // Delegates to createReturnLabel, which owns rate-shopping/purchase (or the
-// offline mock) and returns a CLIENT-SAFE result (price / tracking / status /
-// PDF availability — never carrier/service/provider). We only pass identifiers
+// offline mock) and returns a CLIENT-SAFE result (returnCustomerShippingRate /
+// tracking / status / PDF availability — never carrier/service/provider). We
+// only pass identifiers
 // and surface the service's redacted result verbatim.
 app.post('/returns/:id{[0-9]+}/label', async (c) => {
   const scope = scopeOrResponse(c);
