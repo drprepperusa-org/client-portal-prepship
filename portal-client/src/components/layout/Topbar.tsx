@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Bell, Menu, RefreshCw, ChevronDown, Check } from 'lucide-react';
+import { Search, Bell, Menu, ChevronDown, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, Tooltip } from '@/components/ui/Display';
+import { Avatar } from '@/components/ui/Display';
 import { useAuth } from '@/auth';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
@@ -18,25 +18,18 @@ const RANGES = [
 export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
   const nav = useNavigate();
   const { email } = useAuth();
-  const { clientId, setClientId, days, setDays, refreshAll } = usePortalFilters();
+  const { clientId, setClientId, days, setDays } = usePortalFilters();
   const clientsQuery = useClients();
   const sync = useSyncStatus();
   const [bellOpen, setBellOpen] = useState(false);
   const [rangeOpen, setRangeOpen] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
 
   const clients = clientsQuery.data?.data ?? [];
   const showClientSwitcher = clients.length > 1;
   const activeClientName = clientId ? clients.find((c) => c.id === clientId)?.name ?? 'Client' : 'All clients';
   const lastSync = (sync.data?.lastSyncAt as string | null | undefined) ?? null;
-
-  function doRefresh() {
-    setRefreshing(true);
-    refreshAll();
-    window.setTimeout(() => setRefreshing(false), 800);
-  }
 
   function submitSearch(e: FormEvent) {
     e.preventDefault();
@@ -120,13 +113,6 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
             )}
           </AnimatePresence>
         </div>
-
-        {/* Refresh */}
-        <Tooltip label={lastSync ? `Synced ${shortDate(lastSync)}` : 'Refresh data'} side="top">
-          <button onClick={doRefresh} aria-label="Refresh data" className="focus-ring relative grid h-10 w-10 cursor-pointer place-items-center rounded-glass-sm text-ink-2 transition-colors hover:bg-slate-100">
-            <RefreshCw size={18} className={cn(refreshing && 'animate-spin')} />
-          </button>
-        </Tooltip>
 
         {/* Notifications */}
         <div className="relative">

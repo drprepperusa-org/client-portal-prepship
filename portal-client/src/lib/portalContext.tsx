@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 
 interface PortalFilters {
@@ -9,14 +8,11 @@ interface PortalFilters {
   /** Lookback window in days for date-ranged endpoints. */
   days: number;
   setDays: (d: number) => void;
-  /** Force a refetch of all portal data. */
-  refreshAll: () => void;
 }
 
 const Ctx = createContext<PortalFilters | null>(null);
 
 export function PortalFiltersProvider({ children }: { children: ReactNode }) {
-  const qc = useQueryClient();
   const { userId } = useAuth();
   const [clientId, setClientId] = useState<number | undefined>(undefined);
   const [days, setDays] = useState(30);
@@ -38,9 +34,8 @@ export function PortalFiltersProvider({ children }: { children: ReactNode }) {
       setClientId,
       days,
       setDays,
-      refreshAll: () => qc.invalidateQueries(),
     }),
-    [clientId, days, qc],
+    [clientId, days],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Check, Zap, AlertCircle } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { GlassPanel } from '@/components/ui/Glass';
@@ -14,13 +12,10 @@ import { Undo2 } from 'lucide-react';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { Button } from '@/components/ui/Button';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
-import { useOrders, useSyncStatus } from '@/lib/hooks';
+import { useOrders } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
-import { usePortalFilters } from '@/lib/portalContext';
-import { useAuth } from '@/auth';
-import { portalApi } from '@/lib/api';
-import { itemCount, money, shortDate } from '@/lib/status';
-import type { PortalOrder, BackfillJob } from '@/lib/api';
+import { itemCount, money } from '@/lib/status';
+import type { PortalOrder } from '@/lib/api';
 import { type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
 
@@ -105,95 +100,6 @@ export default function Orders() {
   const query = useOrders({ status: tab, search: debouncedQ, page });
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
-
-  // ── Sync: re-pull the latest order data across ALL pages of the active tab ──
-  // The portal's /backfill endpoint is intentionally disabled server-side
-  // (rate/carrier computation is operator-gated), so this refreshes whatever the
-  // backend has already synced — it cannot fabricate "pending" rates client-side.
-  const qc = useQueryClient();
-  const { accessToken } = useAuth();
-  const { clientId } = usePortalFilters();
-  const syncStatus = useSyncStatus();
-  const lastSync = (syncStatus.data?.lastSyncAt as string | null | undefined) ?? null;
-  const [syncing, setSyncing] = useState(false);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
-
-  async function handleSync() {
-    if (!accessToken || syncing) return;
-    setSyncing(true);
-    setSyncedAt(null);
-    try {
-      // Refresh sync status + the awaiting badge, and invalidate every cached
-      // orders query (all tabs/pages already in cache refetch immediately).
-      await Promise.all([
-        syncStatus.refetch(),
-        qc.invalidateQueries({ queryKey: ['awaiting-count'] }),
-        qc.invalidateQueries({ queryKey: ['orders'] }),
-      ]);
-      // Backfill ALL pages of the CURRENT tab into cache so paging is fresh +
-      // instant. Key shape must match useTokenQuery (trailing `true` = has token).
-      const totalPages = Math.max(1, pg?.totalPages ?? 1);
-      for (let p = 1; p <= totalPages; p++) {
-        await qc.prefetchQuery({
-          queryKey: ['orders', tab, debouncedQ, p, 50, clientId ?? 'scope', true],
-          queryFn: () => portalApi.orders(accessToken, { status: tab, search: debouncedQ, page: p, clientId }),
-        });
-      }
-      setSyncedAt(`${totalPages} page${totalPages > 1 ? 's' : ''}`);
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  // ── Fill rates: trigger the server-side best-rate backfill, poll progress, ──
-  // then refresh so awaiting orders can use the latest server-side rate data.
-  // This fetches live ShipStation rate QUOTES (no postage/labels) and writes
-  // additively to orderOverrides — see /api/client-portal/backfill.
-  const [backfill, setBackfill] = useState<{ running: boolean; job: BackfillJob | null; error: string | null }>({
-    running: false,
-    job: null,
-    error: null,
-  });
-  const backfillActive = useRef(false);
-  useEffect(() => () => { backfillActive.current = false; }, []);
-
-  async function handleFillRates() {
-    if (!accessToken || backfill.running) return;
-    setBackfill({ running: true, job: null, error: null });
-    backfillActive.current = true;
-    try {
-      // Scope to the active client filter when one is selected; "All clients"
-      // (admin) backfills every awaiting order in scope.
-      const start = await portalApi.backfillRates(accessToken, clientId ? { clientId } : {});
-      setBackfill((s) => ({ ...s, job: start.job }));
-      while (backfillActive.current) {
-        await new Promise((r) => setTimeout(r, 1500));
-        if (!backfillActive.current) break;
-        const { job } = await portalApi.backfillStatus(accessToken);
-        setBackfill((s) => ({ ...s, job }));
-        if (!job || job.status === 'done' || job.status === 'error') break;
-      }
-      // Surface the newly-filled rates.
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['orders'] }),
-        qc.invalidateQueries({ queryKey: ['awaiting-count'] }),
-      ]);
-    } catch (err) {
-      setBackfill((s) => ({ ...s, error: err instanceof Error ? err.message : 'Backfill failed' }));
-    } finally {
-      backfillActive.current = false;
-      setBackfill((s) => ({ ...s, running: false }));
-    }
-  }
-
-  const bf = backfill.job;
-  const bfProgress = backfill.running
-    ? bf && bf.total > 0
-      ? `Filling rates… ${bf.updated} filled · ${bf.processed}/${bf.total}`
-      : 'Starting rate backfill…'
-    : bf && bf.status === 'done'
-      ? `Filled ${bf.updated} of ${bf.total} order${bf.total === 1 ? '' : 's'}`
-      : null;
 
   const columns: Column<PortalOrder>[] = [
     {
@@ -281,59 +187,13 @@ export default function Orders() {
         ))}
       </GlassPanel>
 
-      <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <GlassPanel className="p-4">
         <SearchInput
           value={q}
           onChange={setQ}
           placeholder="Search by order #, customer, SKU…"
           ariaLabel="Search orders"
         />
-
-        <div className="flex items-center gap-3 sm:shrink-0">
-          <span className="hidden max-w-[22rem] truncate text-xs sm:inline" aria-live="polite">
-            {backfill.error
-              ? <span className="inline-flex items-center gap-1 text-rose-600"><AlertCircle size={13} /> {backfill.error}</span>
-              : bfProgress
-                ? <span className={cn('inline-flex items-center gap-1', backfill.running ? 'text-brand-600' : 'text-emerald-600')}>{!backfill.running && <Check size={13} />}{bfProgress}</span>
-                : syncing
-                  ? <span className="text-ink-3">Syncing all pages…</span>
-                  : syncedAt
-                    ? <span className="inline-flex items-center gap-1 text-emerald-600"><Check size={13} /> Synced {syncedAt}</span>
-                    : lastSync
-                      ? <span className="text-ink-3">Last synced {shortDate(lastSync)}</span>
-                      : ''}
-          </span>
-
-          {tab === 'awaiting_shipment' && (
-            <button
-              onClick={handleFillRates}
-              disabled={backfill.running || syncing}
-              title="Fetch live carrier rate quotes for awaiting orders (no labels are purchased)"
-              className={cn(
-                'focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm',
-                'bg-white/70 px-4 text-sm font-semibold text-brand-700 ring-1 ring-brand-200',
-                'transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60',
-              )}
-            >
-              <Zap size={15} className={cn(backfill.running && 'animate-pulse')} />
-              {backfill.running ? 'Filling' : 'Fill rates'}
-            </button>
-          )}
-
-          <button
-            onClick={handleSync}
-            disabled={syncing || backfill.running}
-            title="Re-pull the latest order data across every page of this tab"
-            className={cn(
-              'focus-ring inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-glass-sm',
-              'bg-gradient-to-br from-brand-400 to-brand-600 px-4 text-sm font-semibold text-white',
-              'shadow-glass transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60',
-            )}
-          >
-            <RefreshCw size={15} className={cn(syncing && 'animate-spin')} />
-            {syncing ? 'Syncing' : 'Sync'}
-          </button>
-        </div>
       </GlassPanel>
 
       {/* Search escape hatch: a search that misses inside a status tab is the
