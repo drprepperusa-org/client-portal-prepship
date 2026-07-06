@@ -161,6 +161,20 @@ assert(
 );
 // Return-line descriptions include the return shipment id so multiple returns on
 // one order don't collide on the (order_id, line_type, description) unique key.
+// The customer-visible copy stays safe and canonical: no internal below-trigger
+// / override policy wording can leak into the Billing SOT.
+assert(
+  returnBlock.includes('description: `Order ${r.orderNumber ?? r.orderId} · return postage · return #${r.shipmentId}`'),
+  'return_postage description is customer-safe: Order <orderNumber> · return postage · return #<shipmentId>',
+);
+assert(
+  returnBlock.includes('description: `Order ${r.orderNumber ?? r.orderId} · return processing fee · return #${r.shipmentId}`'),
+  'return_processing_fee description is customer-safe: Order <orderNumber> · return processing fee · return #<shipmentId>',
+);
+assert(
+  !/Return postage \(below-\$|description:[\s\S]{0,180}?override/i.test(returnBlock),
+  'return billing descriptions do not expose below-trigger / override policy wording',
+);
 assert(
   billing.includes('return #${r.shipmentId}'),
   'return line descriptions are keyed by the return shipment id (unique per return under the order_id/line_type/description constraint)',

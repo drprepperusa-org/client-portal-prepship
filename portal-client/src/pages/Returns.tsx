@@ -190,12 +190,16 @@ export default function Returns() {
         sortAccessor: (r) => (r.pdfAvailable ? 1 : 0),
       },
       {
-        key: 'price',
-        header: 'Price',
+        key: 'returnCustomerShippingRate',
+        header: 'Return postage',
         defaultWidth: 110,
         className: 'text-right',
-        render: (r) => <span className="font-semibold text-ink tnum">{r.price != null ? money(r.price) : '—'}</span>,
-        sortAccessor: (r) => r.price ?? -1,
+        render: (r) => (
+          <span className="font-semibold text-ink tnum">
+            {r.returnCustomerShippingRate != null ? money(r.returnCustomerShippingRate) : '—'}
+          </span>
+        ),
+        sortAccessor: (r) => r.returnCustomerShippingRate ?? -1,
       },
       {
         key: 'created',
@@ -339,7 +343,9 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
             <Field label="Delivery" value={d.deliveryMethod ? DELIVERY_LABEL[d.deliveryMethod] ?? d.deliveryMethod : '—'} />
             <Field label="Delivery status" value={d.deliveryStatus ?? '—'} />
             <Field label="Created" value={shortDate(d.createdAt)} />
-            {d.price != null && <Field label="Price" value={money(d.price)} />}
+            {d.returnCustomerShippingRate != null && (
+              <Field label="Return postage" value={money(d.returnCustomerShippingRate)} />
+            )}
           </div>
 
           {/* Tracking */}

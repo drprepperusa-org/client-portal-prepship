@@ -876,7 +876,7 @@ export async function generateLineItems(input: GenerateInput) {
     const houseCost = (toNum(r.cost) || toNum(r.labelCost)) + toNum(r.otherCost);
     if (houseCost > 0) {
       const triggerBelow = toNum(cfg.returnShippingRateOverrideTriggerBelow);
-      const { returnRate, overrideApplied } = resolveReturnPostageRate({
+      const { returnRate } = resolveReturnPostageRate({
         houseCost,
         markupPct: toNum(cfg.returnPostageMarkupPct),
         markupFlat: toNum(cfg.returnPostageMarkupFlat),
@@ -893,9 +893,7 @@ export async function generateLineItems(input: GenerateInput) {
           lineType: 'return_postage',
           // shipmentId keeps the description unique per return label, so multiple
           // returns on one order don't collide on (order_id, line_type, description).
-          description: overrideApplied
-            ? `Return postage (below-$${triggerBelow.toFixed(2)} override $${returnRate.toFixed(2)}) · return #${r.shipmentId} · order ${r.orderNumber ?? r.orderId}`
-            : `Return postage · return #${r.shipmentId} · order ${r.orderNumber ?? r.orderId}`,
+          description: `Order ${r.orderNumber ?? r.orderId} · return postage · return #${r.shipmentId}`,
           qty: '1',
           unitCost: returnRate.toFixed(2),
           totalCost: returnRate.toFixed(2),
@@ -915,7 +913,7 @@ export async function generateLineItems(input: GenerateInput) {
         shipmentId: r.shipmentId,
         shipDate: labelDate,
         lineType: 'return_processing_fee',
-        description: `Return processing fee · return #${r.shipmentId} · order ${r.orderNumber ?? r.orderId}`,
+        description: `Order ${r.orderNumber ?? r.orderId} · return processing fee · return #${r.shipmentId}`,
         qty: '1',
         unitCost: processingFee.toFixed(2),
         totalCost: processingFee.toFixed(2),

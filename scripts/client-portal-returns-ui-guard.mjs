@@ -119,6 +119,14 @@ assert(dtoBuilder.length > 0, 'the returns route builds a client-safe DTO (toCli
 for (const id of forbidden) {
   assert(!new RegExp(id).test(dtoBuilder), `the client-safe return row DTO never sets ${id}`);
 }
+assert(
+  /returnCustomerShippingRate/.test(dtoBuilder) && !/\bprice\s*:/.test(dtoBuilder),
+  'the client-safe return row DTO uses returnCustomerShippingRate, not generic price',
+);
+assert(
+  !/\breturnCost\b/.test(stripComments(route)),
+  'the returns route never names returnCost on its client-facing/API contract',
+);
 // The whole route file must not project a carrier/service onto a client DTO. It
 // legitimately never selects carrierCode/serviceCode from shipments; assert the
 // forbidden identifiers are entirely absent from the route module's CODE (the
@@ -136,6 +144,15 @@ assert(apiReturnType.length > 0, 'the frontend declares a PortalReturnRow type')
 for (const id of forbidden) {
   assert(!new RegExp(id).test(apiReturnType), `PortalReturnRow never exposes ${id}`);
 }
+assert(
+  /returnCustomerShippingRate/.test(apiReturnType) && !/\bprice\s*:/.test(apiReturnType),
+  'PortalReturnRow uses returnCustomerShippingRate, not generic price',
+);
+const apiReturnLabelResult = sliceBlock(api, /export interface ReturnLabelResult\s*\{/);
+assert(
+  /returnCustomerShippingRate/.test(apiReturnLabelResult) && !/\bprice\s*:/.test(apiReturnLabelResult),
+  'ReturnLabelResult uses returnCustomerShippingRate, not generic price',
+);
 
 // ── 4. Create/label/deliver delegate to the backend services ──
 assert(
@@ -190,6 +207,13 @@ assert(
 assert(
   /pdfUrl/.test(page) && /Download/.test(page),
   'the Returns page exposes a return-label PDF download (pdfUrl)',
+);
+assert(
+  /Return postage/.test(page) &&
+    /returnCustomerShippingRate/.test(page) &&
+    !/\b[rd]\.price\b/.test(page) &&
+    !/key:\s*'price'/.test(page),
+  'the Returns page renders returnCustomerShippingRate as Return postage, not generic Price',
 );
 
 // ── 7. The create flow POSTs to the backend ──
@@ -254,7 +278,7 @@ assert(
 // the raw house/label cost.
 assert(
   /resolveReturnCustomerPrice/.test(route),
-  'the returns DTO price uses the billing-policy resolveReturnCustomerPrice (never the raw label/house cost)',
+  'the returns DTO returnCustomerShippingRate uses the billing-policy resolveReturnCustomerPrice (never the raw label/house cost)',
 );
 // The label/deliver client methods post to the backend too. Match each method's
 // definition through its apiPost call (non-greedy, across the arrow body).

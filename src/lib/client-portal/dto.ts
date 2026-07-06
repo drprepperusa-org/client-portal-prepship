@@ -24,7 +24,6 @@ export function safeItems(value: unknown, includeFinancials = false): Array<Reco
       name: typeof row.name === 'string' ? row.name : null,
       quantity: row.quantity ?? row.qty ?? null,
       ...(includeFinancials ? { unitPrice: row.unitPrice ?? row.unit_price ?? row.price ?? null } : {}),
-      weightOz: row.weightOz ?? row.weight_oz ?? null,
       imageUrl:
         typeof row.imageUrl === 'string'
           ? row.imageUrl
@@ -251,8 +250,6 @@ export function toPortalOrderDto(
     carrierCode: null,
     serviceCode: null,
     trackingNumber: row.override?.trackingNumber ?? null,
-    weightOz: row.weightOz,
-    rateWeightOz: row.override?.rateWeightOz ?? null,
     shippingService: null,
     items,
     ...(options.includeFinancials
@@ -396,7 +393,6 @@ export function toPortalInventoryDto(
     isOut,
     updatedAt: iso(row.updatedAt),
     // ── v4 Stock-Levels parity fields ──
-    weightOz: row.weightOz ?? null,
     length,
     width,
     height,

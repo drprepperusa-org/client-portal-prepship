@@ -33,8 +33,8 @@ import type { Rate } from '../lib/shipstation';
 // PrepShip backend creates and OWNS the return-label workflow. It selects the
 // cheapest eligible rate backend-side, purchases (or offline-mocks) the label,
 // persists the canonical shipments row, and hands the caller a CLIENT-SAFE
-// result that exposes only price / tracking / status / PDF availability — never
-// carrier / service / provider / selected-rate.
+// result that exposes only returnCustomerShippingRate / tracking / status / PDF
+// availability — never carrier / service / provider / selected-rate.
 //
 // SAFETY: no real postage is purchasable by default. The live ShipStation
 // purchase path may run ONLY when `env.RETURNS_LIVE_LABELS` is truthy AND the
@@ -59,7 +59,7 @@ export type CreateReturnLabelInput = {
  * full shipments row separately.
  */
 export type ClientSafeReturnResult = {
-  price: number;
+  returnCustomerShippingRate: number;
   trackingNumber: string | null;
   trackingStatus: string | null;
   labelAvailable: boolean;
@@ -189,7 +189,7 @@ const toNum = (v: string | number | null | undefined): number => {
 };
 
 /**
- * CP-027 client-facing return price — derived from the SAME backend billing
+ * CP-027 client-facing returnCustomerShippingRate — derived from the SAME backend billing
  * policy that generates the `return_postage` billing line (CP-031's
  * `resolveReturnPostageRate` in billing.ts), so the price a customer is quoted
  * equals the amount that will actually be billed. ONE definition, no drift.
@@ -208,7 +208,7 @@ const toNum = (v: string | number | null | undefined): number => {
  * sites too, or the quote (single rawCost) would drift from the billed line.
  *
  * The raw house/label cost is NEVER surfaced to the client — only this
- * policy-derived amount ever reaches ClientSafeReturnResult.price.
+ * policy-derived amount ever reaches ClientSafeReturnResult.returnCustomerShippingRate.
  */
 export async function resolveReturnCustomerPrice(rawCost: number, clientId: number | null): Promise<number> {
   const houseCost = toNum(rawCost);
@@ -246,7 +246,7 @@ export async function resolveReturnCustomerPrice(rawCost: number, clientId: numb
 }
 
 function toClientSafeResult(args: {
-  price: number;
+  returnCustomerShippingRate: number;
   trackingNumber: string | null;
   trackingStatus: string | null;
   labelUrl: string | null;
@@ -255,7 +255,7 @@ function toClientSafeResult(args: {
 }): ClientSafeReturnResult {
   const hasLabel = Boolean(args.labelUrl);
   return {
-    price: args.price,
+    returnCustomerShippingRate: args.returnCustomerShippingRate,
     trackingNumber: args.trackingNumber,
     trackingStatus: args.trackingStatus,
     labelAvailable: hasLabel,
@@ -582,7 +582,7 @@ export async function createReturnLabel(
     if (returnRow) await markReturnLabelCreated(returnRow.id, returnShipmentId);
 
     return toClientSafeResult({
-      price: await resolveReturnCustomerPrice(0, clientId),
+      returnCustomerShippingRate: await resolveReturnCustomerPrice(0, clientId),
       trackingNumber: fakeTracking,
       trackingStatus: null,
       labelUrl: mockLabelUrl,
@@ -640,7 +640,7 @@ export async function createReturnLabel(
   if (returnRow) await markReturnLabelCreated(returnRow.id, returnShipmentId);
 
   return toClientSafeResult({
-    price: await resolveReturnCustomerPrice(created.cost || rateCost, clientId),
+    returnCustomerShippingRate: await resolveReturnCustomerPrice(created.cost || rateCost, clientId),
     trackingNumber: created.trackingNumber,
     trackingStatus: null,
     labelUrl,

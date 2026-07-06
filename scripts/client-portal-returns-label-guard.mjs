@@ -157,13 +157,19 @@ for (const id of forbidden) {
     `the client-safe result object never sets ${id}`,
   );
 }
-// The client-safe result exposes only the whitelisted fields.
-for (const field of ['price', 'trackingNumber', 'trackingStatus', 'returnShipmentId', 'createdAt']) {
+// The client-safe result exposes only the whitelisted fields. CP-036 keeps the
+// customer-facing return amount intent-named; the generic `price` field is not
+// allowed on the client contract.
+for (const field of ['returnCustomerShippingRate', 'trackingNumber', 'trackingStatus', 'returnShipmentId', 'createdAt']) {
   assert(
     new RegExp(field).test(resultType),
     `ClientSafeReturnResult exposes the whitelisted field ${field}`,
   );
 }
+assert(
+  !/\bprice\s*:/.test(resultType) && !/\bprice\s*:/.test(builder),
+  'ClientSafeReturnResult never exposes the generic price field',
+);
 assert(
   /pdfAvailable/.test(resultType) || /labelAvailable/.test(resultType),
   'ClientSafeReturnResult exposes label/PDF availability (boolean, not a URL/provider)',
@@ -189,8 +195,8 @@ assert(
 // Every client-price call site must pass through the policy helper with the
 // client id, never a bare raw cost.
 assert(
-  /price:\s*await resolveReturnCustomerPrice\(/.test(service) || /=\s*await resolveReturnCustomerPrice\(/.test(service),
-  'the client-safe result price is awaited from resolveReturnCustomerPrice at the call sites',
+  /returnCustomerShippingRate:\s*await resolveReturnCustomerPrice\(/.test(service),
+  'the client-safe returnCustomerShippingRate is awaited from resolveReturnCustomerPrice at the call sites',
 );
 
 // ── 7. Admin-override audit path ──

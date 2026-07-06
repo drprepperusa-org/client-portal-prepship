@@ -24,6 +24,7 @@ const shipments = read('portal-client/src/pages/Shipments.tsx');
 const orderDetailPanel = read('portal-client/src/components/OrderDetailPanel.tsx');
 const orderDetailLoader = read('portal-client/src/components/OrderDetailLoader.tsx');
 const api = read('portal-client/src/lib/api.ts');
+const dto = read('src/lib/client-portal/dto.ts');
 
 check(
   pkg.scripts?.['test:client-portal-weight-redaction'] ===
@@ -71,6 +72,11 @@ check(
 check(
   !api.includes('weightOz'),
   'frontend API types do not expose weightOz to Client Portal UI code',
+);
+
+check(
+  !dto.includes('weightOz') && !dto.includes('rateWeightOz'),
+  'client-portal DTO payloads do not expose weight fields',
 );
 
 if (failed) process.exit(1);

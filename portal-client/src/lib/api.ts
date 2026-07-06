@@ -235,9 +235,10 @@ export interface PortalShipment {
 // CP-029 — Returns. The client return DTO is CARRIER/SERVICE/PROVIDER-FREE by
 // contract (mirrors the CP-027/028 client-safe results): it carries order
 // identity, lifecycle status, delivery method/status, tracking, PDF
-// availability, and a financially-gated price — NEVER carrierCode/serviceCode/
-// provider/account/selectedRate. The frontend renders these; it never computes
-// rates, picks a carrier, or makes billing/duplicate/override decisions.
+// availability, and a financially-gated returnCustomerShippingRate — NEVER
+// carrierCode/serviceCode/provider/account/selectedRate. The frontend renders
+// these; it never computes rates, picks a carrier, or makes billing/duplicate/
+// override decisions.
 export interface PortalReturnRow {
   id: number;
   orderId: number | null;
@@ -253,7 +254,7 @@ export interface PortalReturnRow {
   // CP-034: backend-built OFFICIAL carrier tracking URL, or null when unknown.
   trackingUrl: string | null;
   pdfAvailable: boolean;
-  price: number | null;
+  returnCustomerShippingRate: number | null;
   createdAt: string | null;
 }
 
@@ -299,7 +300,7 @@ export interface PortalReturnDetail extends PortalReturnRow {
 
 /** Result of creating a return label (CP-027 client-safe result, verbatim). */
 export interface ReturnLabelResult {
-  price: number;
+  returnCustomerShippingRate: number;
   trackingNumber: string | null;
   trackingStatus: string | null;
   labelAvailable: boolean;

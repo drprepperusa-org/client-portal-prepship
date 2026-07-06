@@ -152,9 +152,10 @@ function iso(value: Date | string | null | undefined): string | null {
 /**
  * Client-safe return LIST row. Deliberately CARRIER/SERVICE/PROVIDER-FREE:
  * exposes order identity, lifecycle status, delivery method/status, tracking,
- * PDF availability, and (financially gated) price — never carrierCode /
- * serviceCode / carrierProvider / providerAccountId / selectedRate. Price comes
- * from the canonical return shipment cost only when the caller can view money.
+ * PDF availability, and (financially gated) returnCustomerShippingRate — never
+ * carrierCode / serviceCode / carrierProvider / providerAccountId /
+ * selectedRate. The customer rate comes from the canonical return shipment cost
+ * only when the caller can view money.
  */
 async function toClientSafeReturnRow(
   row: {
@@ -166,7 +167,7 @@ async function toClientSafeReturnRow(
     // to build the official tracking URL below, never surfaced in the DTO.
     returnCarrier: string | null;
     returnLabelUrl: string | null;
-    returnCost: string | null;
+    internalReturnLabelCost: string | null;
   },
   options: { includeFinancials: boolean },
 ) {
@@ -188,12 +189,13 @@ async function toClientSafeReturnRow(
     trackingUrl: trackingUrlForCarrier(row.returnCarrier, row.returnTracking) || null,
     // Availability booleans only — never the raw provider URL in the LIST DTO.
     pdfAvailable: Boolean(row.returnLabelUrl),
-    // CP-032: the client-facing price is the SAME billing-policy amount billing
-    // charges (resolveReturnCustomerPrice), NEVER the raw house/label cost. Null
-    // until priced (no return-shipment cost yet) or for non-financial callers.
-    price:
-      options.includeFinancials && row.returnCost != null
-        ? await resolveReturnCustomerPrice(Number(row.returnCost), row.ret.clientId)
+    // CP-032 / CP-036: the client-facing returnCustomerShippingRate is the SAME
+    // billing-policy amount billing charges (resolveReturnCustomerPrice), NEVER
+    // the raw house/label cost. Null until priced (no return-shipment cost yet)
+    // or for non-financial callers.
+    returnCustomerShippingRate:
+      options.includeFinancials && row.internalReturnLabelCost != null
+        ? await resolveReturnCustomerPrice(Number(row.internalReturnLabelCost), row.ret.clientId)
         : null,
     createdAt: iso(row.ret.createdAt),
   };
@@ -231,7 +233,7 @@ app.get('/returns', async (c) => {
       // CP-034: canonical return-shipment carrier for the official tracking URL.
       returnCarrier: shipments.labelCarrier,
       returnLabelUrl: shipments.labelUrl,
-      returnCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
+      internalReturnLabelCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
     })
     .from(returns)
     .leftJoin(orders, eq(orders.id, returns.orderId))
@@ -300,7 +302,7 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
       // CP-034: canonical return-shipment carrier for the official tracking URL.
       returnCarrier: shipments.labelCarrier,
       returnLabelUrl: shipments.labelUrl,
-      returnCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
+      internalReturnLabelCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
     })
     .from(returns)
     .leftJoin(orders, eq(orders.id, returns.orderId))
@@ -352,7 +354,7 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
       returnTracking: row.returnTracking,
       returnCarrier: row.returnCarrier,
       returnLabelUrl: row.returnLabelUrl,
-      returnCost: row.returnCost,
+      internalReturnLabelCost: row.internalReturnLabelCost,
     },
     { includeFinancials },
   );
