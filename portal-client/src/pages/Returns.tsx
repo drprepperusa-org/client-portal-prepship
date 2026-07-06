@@ -104,6 +104,7 @@ export default function Returns() {
     clientId: effectiveClientId,
     orderId: orderFilter,
   });
+  const returnsFetchFailed = query.failureCount > 0;
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
 
@@ -259,8 +260,8 @@ export default function Returns() {
 
       <GlassPanel className="p-2 sm:p-3">
         <QueryState
-          isLoading={query.isLoading}
-          isError={query.isError}
+          isLoading={query.isLoading && !returnsFetchFailed}
+          isError={query.isError || returnsFetchFailed}
           error={query.error}
           isEmpty={rows.length === 0}
           onRetry={() => query.refetch()}

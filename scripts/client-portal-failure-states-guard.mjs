@@ -9,7 +9,9 @@
 //      are THROWN (never swallowed behind empty fallbacks).
 //   2. Shared QueryState UI renders an explicit error state with a recoverable
 //      Retry action.
-//   3. The live Orders page wires its query error/refetch into that UI.
+//   3. The live Orders + Returns pages wire their query error/refetch into that
+//      UI. Returns also flips out of skeletons once a fetch has failed and React
+//      Query is retrying, so the page never looks frozen on a retrying request.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -82,6 +84,20 @@ assert(orders.includes('isError={query.isError}'), 'Orders passes the live query
 assert(
   orders.includes('onRetry={() => query.refetch()}'),
   'Orders offers a recoverable Retry that refetches the orders query',
+);
+const returns = read('portal-client/src/pages/Returns.tsx');
+assert(returns.includes('returnsFetchFailed'), 'Returns derives a retry/failure signal from the live returns query');
+assert(
+  returns.includes('isLoading={query.isLoading && !returnsFetchFailed}'),
+  'Returns stops showing skeleton rows after the first failed returns fetch',
+);
+assert(
+  returns.includes('isError={query.isError || returnsFetchFailed}'),
+  'Returns shows the recoverable error state while a failed returns request is retrying',
+);
+assert(
+  returns.includes('onRetry={() => query.refetch()}'),
+  'Returns offers a recoverable Retry that refetches the returns query',
 );
 
 // ── package.json wiring ──
