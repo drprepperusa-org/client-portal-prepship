@@ -39,12 +39,22 @@ check(dto.includes('export function safeItems'), 'safeItems shaper is the shared
 const api = read('portal-client/src/lib/api.ts');
 check(api.includes('items?: PortalItemIdentity[];'), 'BillingInvoiceDetailRow exposes structured items');
 
-// 3) Billing line items render Orders-standard identity (image + name + qty,
-//    per-SKU qty lines) — never a collapsed/truncated string.
+// 3) Billing line items render Orders-standard structured identity from the
+//    shared backend-owned ItemIdentityLines component — never a collapsed /
+//    truncated string. Per 8c4dc49 ("standardize billing column order") the
+//    detail table merged the separate "Item Name" column into a single
+//    qty-aware SKU(s) column (<SkuLines items={r.items}>); the ItemNameLines /
+//    SkuLines identity renderer stays in use for the billing shipment view
+//    (s.items). This SKU(s) standard is also pinned by
+//    client-portal-invoice-items-guard.ts + client-portal-billing-column-order-guard.mjs.
 const invoicesPage = read('portal-client/src/pages/Invoices.tsx');
 check(
-  invoicesPage.includes('<ItemNameLines items={r.items}') && invoicesPage.includes('<SkuLines items={r.items}'),
-  'Billing line items render ItemNameLines/SkuLines from backend items',
+  invoicesPage.includes('<SkuLines items={r.items}') && !invoicesPage.includes("header: 'Item Name'"),
+  'Billing detail line items render the structured qty-aware SKU(s) column from backend items (no separate Item Name column)',
+);
+check(
+  invoicesPage.includes('ItemNameLines') && invoicesPage.includes('<SkuLines items={s.items}'),
+  'the shared ItemNameLines/SkuLines identity renderer is still used for billing item identity (shipment view)',
 );
 const itemIdentity = read('portal-client/src/components/ItemIdentityLines.tsx');
 check(
