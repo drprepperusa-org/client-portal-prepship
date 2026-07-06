@@ -31,6 +31,8 @@ const shippingRate = read('src/lib/client-portal/customer-shipping-rate.ts');
 const api = read('portal-client/src/lib/api.ts');
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
+const orderDetailLoader = read('portal-client/src/components/OrderDetailLoader.tsx');
+const orderDetailPanel = read('portal-client/src/components/OrderDetailPanel.tsx');
 const itemIdentity = read('portal-client/src/components/ItemIdentityLines.tsx');
 
 // End-sentinel is now the handler's own col-0 `});` (the old `app.get('/inventory'`
@@ -133,6 +135,16 @@ assert(
 assert(
   shipmentsPage.includes('OrderDetailLoader') && shipmentsPage.includes('ShipmentOrderDetail'),
   'Shipments drawer shows the full order detail (address + items + cost) via the canonical OrderDetailLoader (CP-022)',
+);
+
+assert(
+  shipmentsPage.includes('<OrderDetailLoader id={orderId} hideWeight') &&
+    orderDetailLoader.includes('hideWeight?: boolean') &&
+    orderDetailLoader.includes('<OrderDetailPanel o={q.data.data} hideWeight={hideWeight}') &&
+    orderDetailPanel.includes('hideWeight?: boolean') &&
+    orderDetailPanel.includes('!hideWeight') &&
+    orderDetailPanel.includes('label="Weight"'),
+  'Shipments drawer hides the embedded order Weight card while reusing the canonical order detail panel',
 );
 
 if (failed) process.exit(1);

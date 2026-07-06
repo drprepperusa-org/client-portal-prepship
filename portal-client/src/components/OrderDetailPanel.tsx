@@ -38,7 +38,7 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 }
 
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
-export function OrderDetailPanel({ o }: { o: PortalOrder }) {
+export function OrderDetailPanel({ o, hideWeight = false }: { o: PortalOrder; hideWeight?: boolean }) {
   const meta = orderStatusMeta(o.orderStatus);
   // CP-018: this is a CUSTOMER-facing page — it shows the customer shipping rate
   // only (backend-owned: billed customer shipping, fallback buyer-paid store
@@ -78,10 +78,10 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
         {o.clientName && <p className="mt-1 break-words text-xs text-ink-3">{o.clientName}</p>}
       </div>
 
-      {/* CP-009: shipping AMOUNT + weight only — never carrier or service. */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* CP-009: shipping AMOUNT + optional weight only — never carrier or service. */}
+      <div className={cn('grid gap-3', hideWeight ? 'grid-cols-1' : 'grid-cols-2')}>
         <Detail icon={<Truck size={14} />} label="Customer Shipping Rate" value={shipping != null ? money(shipping) : '—'} />
-        <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />
+        {!hideWeight && <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />}
       </div>
 
       {o.costSummary && o.costSummary.length > 0 && (
