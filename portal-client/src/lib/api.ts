@@ -26,6 +26,8 @@ export const API_BASE = import.meta.env.DEV ? '' : (configured ?? '').replace(/\
 const TIMEOUT_MS = 30000;
 
 export type QueryValue = string | number | boolean | null | undefined;
+export type ApiRequestOptions = { auditSource?: 'background' };
+export const backgroundRequest: ApiRequestOptions = { auditSource: 'background' };
 
 export interface PortalDateRange {
   dateFrom: string;
@@ -48,12 +50,20 @@ function queryString(params: Record<string, QueryValue>) {
   return out ? `?${out}` : '';
 }
 
-async function request(token: string, path: string, params: Record<string, QueryValue>, accept: string): Promise<Response> {
+async function request(
+  token: string,
+  path: string,
+  params: Record<string, QueryValue>,
+  accept: string,
+  options: ApiRequestOptions = {},
+): Promise<Response> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: accept };
+  if (options.auditSource === 'background') headers['X-Portal-Audit-Source'] = 'background';
   try {
     return await fetch(`${API_BASE}${path}${queryString(params)}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: accept },
+      headers,
       signal: controller.signal,
     });
   } finally {
@@ -79,8 +89,13 @@ async function fail(res: Response): Promise<never> {
   throw err;
 }
 
-export async function apiGet<T>(token: string, path: string, params: Record<string, QueryValue> = {}): Promise<T> {
-  const res = await request(token, path, params, 'application/json');
+export async function apiGet<T>(
+  token: string,
+  path: string,
+  params: Record<string, QueryValue> = {},
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const res = await request(token, path, params, 'application/json', options);
   if (!res.ok) await fail(res);
   return (await res.json()) as T;
 }
@@ -784,7 +799,12 @@ function firstStoreId(token: string): number | undefined {
  * GET a paginated list, fanning out per client when a restricted user has >1
  * client (the API filters by a single clientId), then merging data + totals.
  */
-async function scopedList<T>(token: string, path: string, params: Record<string, QueryValue>): Promise<Paginated<T>> {
+async function scopedList<T>(
+  token: string,
+  path: string,
+  params: Record<string, QueryValue>,
+  options: ApiRequestOptions = {},
+): Promise<Paginated<T>> {
   // ONE request — the backend scopes every list by the caller's full JWT
   // client/store scope (order/shipment/inventoryScopePredicate all use
   // inArray(scope.clientIds)) and paginates the union server-side. Pass an
@@ -795,13 +815,23 @@ async function scopedList<T>(token: string, path: string, params: Record<string,
   // for restricted multi-client users — which made a single page render up to
   // N×pageSize rows while the pager reported pageSize 50 + a summed total, so
   // page counts and boundaries never lined up. Server-side pagination is correct.
-  return apiGet<Paginated<T>>(token, path, {
-    ...params,
-    storeId: params.storeId ?? firstStoreId(token),
-  });
+  return apiGet<Paginated<T>>(
+    token,
+    path,
+    {
+      ...params,
+      storeId: params.storeId ?? firstStoreId(token),
+    },
+    options,
+  );
 }
 
-async function scopedDashboard(token: string, rangeInput: PortalDateRange, clientId?: number): Promise<DashboardSummary> {
+async function scopedDashboard(
+  token: string,
+  rangeInput: PortalDateRange,
+  clientId?: number,
+  options: ApiRequestOptions = {},
+): Promise<DashboardSummary> {
   const scope = portalScopeFromToken(token);
   // CP-010: send dateFrom/dateTo timestamps (identical to the Analysis client)
   // so Dashboard and Analysis evaluate the exact same date window — no more
@@ -810,8 +840,8 @@ async function scopedDashboard(token: string, rangeInput: PortalDateRange, clien
   // Explicit client filter from the top-bar switcher → one scoped request for
   // that client. The backend re-checks the client against the caller's scope,
   // so passing it can only ever narrow, never widen, visibility.
-  if (clientId !== undefined) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', { ...range, clientId });
-  if (!scope.isRestricted) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range);
+  if (clientId !== undefined) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', { ...range, clientId }, options);
+  if (!scope.isRestricted) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range, options);
   if (!scope.clientIds.length && !scope.storeIds.length) return { revenue: 0, units: 0, bySku: [], daily: [], dailyRevenue: [] };
   const ids = scope.clientIds.length ? scope.clientIds : [undefined];
   const pages = await Promise.all(
@@ -820,7 +850,7 @@ async function scopedDashboard(token: string, rangeInput: PortalDateRange, clien
         ...range,
         clientId,
         storeId: clientId === undefined ? firstStoreId(token) : undefined,
-      }),
+      }, options),
     ),
   );
   // Restricted users with >1 client get one response per client; combine by SKU
@@ -874,12 +904,17 @@ async function scopedDashboard(token: string, rangeInput: PortalDateRange, clien
   };
 }
 
-async function scopedDailyCounts(token: string, rangeInput: PortalDateRange, clientId?: number): Promise<{ data: DailyCount[] }> {
+async function scopedDailyCounts(
+  token: string,
+  rangeInput: PortalDateRange,
+  clientId?: number,
+  options: ApiRequestOptions = {},
+): Promise<{ data: DailyCount[] }> {
   const scope = portalScopeFromToken(token);
   const range = dailyRangeParams(rangeInput);
   // Explicit client filter from the top-bar switcher → one scoped request.
-  if (clientId !== undefined) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', { ...range, clientId });
-  if (!scope.isRestricted) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', range);
+  if (clientId !== undefined) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', { ...range, clientId }, options);
+  if (!scope.isRestricted) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', range, options);
   if (!scope.clientIds.length && !scope.storeIds.length) return { data: [] };
   const ids = scope.clientIds.length ? scope.clientIds : [undefined];
   const pages = await Promise.all(
@@ -888,7 +923,7 @@ async function scopedDailyCounts(token: string, rangeInput: PortalDateRange, cli
         ...range,
         clientId,
         storeId: clientId === undefined ? firstStoreId(token) : undefined,
-      }),
+      }, options),
     ),
   );
   const byDay = new Map<string, DailyCount>();
@@ -939,7 +974,8 @@ export const portalApi = {
     }),
   auditClick: (token: string, body: PortalAuditClickInput) =>
     apiPost<{ ok: true }>(token, '/api/client-portal/audit-log/click', body),
-  clients: (token: string) => apiGet<{ data: PortalClientRow[] }>(token, '/api/client-portal/clients'),
+  clients: (token: string, options: ApiRequestOptions = backgroundRequest) =>
+    apiGet<{ data: PortalClientRow[] }>(token, '/api/client-portal/clients', {}, options),
   accessList: (token: string) => apiGet<{ data: PortalAccessUser[] }>(token, '/api/client-portal/access-list'),
   updateAccessUser: (token: string, id: string, patch: AccessUserPatch) =>
     apiPatch<{ ok: true }>(token, `/api/client-portal/access-list/${id}`, patch),
@@ -955,6 +991,10 @@ export const portalApi = {
 
   dashboard: (token: string, range: PortalDateRange, clientId?: number) => scopedDashboard(token, range, clientId),
   dailyCounts: (token: string, range: PortalDateRange, clientId?: number) => scopedDailyCounts(token, range, clientId),
+  backgroundDashboard: (token: string, range: PortalDateRange, clientId?: number) =>
+    scopedDashboard(token, range, clientId, backgroundRequest),
+  backgroundDailyCounts: (token: string, range: PortalDateRange, clientId?: number) =>
+    scopedDailyCounts(token, range, clientId, backgroundRequest),
   dailyShipments: (token: string, range: PortalDateRange, clientId?: number) =>
     apiGet<{ data: Array<{ day: string; shipments: number }> }>(token, '/api/client-portal/daily-shipments', {
       ...dashboardRangeParams(range),
@@ -972,6 +1012,19 @@ export const portalApi = {
       search: opts.search,
       clientId: opts.clientId,
     }),
+  backgroundOrders: (token: string, opts: ListOpts = {}) =>
+    scopedList<PortalOrder>(
+      token,
+      '/api/client-portal/orders',
+      {
+        page: opts.page ?? 1,
+        pageSize: opts.pageSize ?? 50,
+        status: opts.status && opts.status !== 'all' ? opts.status : undefined,
+        search: opts.search,
+        clientId: opts.clientId,
+      },
+      backgroundRequest,
+    ),
   order: (token: string, id: number) => apiGet<{ data: PortalOrder }>(token, `/api/client-portal/orders/${id}`),
   skuOrders: (token: string, inventoryId: number, dateFrom?: string, dateTo?: string) =>
     apiGet<SkuOrdersResult>(token, '/api/client-portal/analysis/sku-orders', { inventoryId, dateFrom, dateTo }),
@@ -982,7 +1035,7 @@ export const portalApi = {
       // applies when no explicit client is chosen.
       clientId,
       storeId: clientId === undefined ? firstStoreId(token) : undefined,
-    }),
+    }, backgroundRequest),
 
   shipments: (token: string, opts: ListOpts = {}) =>
     scopedList<PortalShipment>(token, '/api/client-portal/shipments', {
@@ -1013,6 +1066,19 @@ export const portalApi = {
       clientId: opts.clientId,
       lowStock: opts.lowStock ? 1 : undefined,
     }),
+  backgroundInventory: (token: string, opts: ListOpts = {}) =>
+    scopedList<PortalInventory>(
+      token,
+      '/api/client-portal/inventory',
+      {
+        page: opts.page ?? 1,
+        pageSize: opts.pageSize ?? 100,
+        search: opts.search,
+        clientId: opts.clientId,
+        lowStock: opts.lowStock ? 1 : undefined,
+      },
+      backgroundRequest,
+    ),
 
   inventoryHistory: (token: string, opts: { page?: number; sku?: string; type?: string; days?: number; dateRange?: PortalDateRange } = {}) => {
     const r = opts.dateRange ? { from: opts.dateRange.dateFrom, to: opts.dateRange.dateTo } : defaultRange(opts.days ?? 30);

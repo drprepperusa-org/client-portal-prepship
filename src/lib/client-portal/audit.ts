@@ -29,9 +29,11 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 
 export async function recordPortalAudit(
   event: string,
-  scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds'>,
+  scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds' | 'auditSource'>,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
+  if (scope.auditSource === 'background') return;
+
   const safeMetadata = metadataRecord(sanitizePortalAuditMetadata(metadata));
   try {
     await db.insert(clientPortalAuditLogs).values({

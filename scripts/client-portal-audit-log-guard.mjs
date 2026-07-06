@@ -35,6 +35,7 @@ const audit = read('src/lib/client-portal/audit.ts');
 const route = routeExists ? read('src/routes/client-portal/audit-log.ts') : '';
 const routeFlat = flat(route);
 const router = read('src/routes/client-portal.ts');
+const scope = read('src/lib/client-portal/scope.ts');
 const api = read('portal-client/src/lib/api.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
 const nav = read('portal-client/src/nav.ts');
@@ -94,6 +95,12 @@ assert(
     audit.includes("console.warn('[client-portal:audit] persist failed'"),
   'recordPortalAudit persists sanitized events without blocking portal flows',
 );
+assert(
+  scope.includes('auditSource') &&
+    scope.includes("'x-portal-audit-source'") &&
+    audit.includes("scope.auditSource === 'background'"),
+  'background preload/API reads are tagged at scope resolution and skipped by audit persistence',
+);
 assert(routeExists, 'audit-log route file exists');
 assert(
   routeFlat.includes("app.get('/audit-log'") &&
@@ -121,15 +128,21 @@ assert(
     api.includes('clientNames: string[]') &&
     api.includes('storeNames: string[]') &&
     api.includes('scopeLabel: string') &&
+    api.includes('X-Portal-Audit-Source') &&
+    api.includes('backgroundRequest') &&
     api.includes('auditLog: (token: string') &&
     api.includes("'/api/client-portal/audit-log'") &&
     api.includes('auditClick: (token: string'),
-  'portal API exposes audit-log readable scope fields and helpers',
+  'portal API exposes audit-log readable scope fields, helpers, and background request tagging',
 );
 assert(
   hooks.includes('export function useAuditLog') &&
     hooks.includes('portalApi.auditLog') &&
-    hooks.includes("['audit-log'"),
+    hooks.includes("['audit-log'") &&
+    hooks.includes('backgroundRequest') &&
+    hooks.includes('portalApi.backgroundDashboard') &&
+    hooks.includes('portalApi.backgroundOrders') &&
+    hooks.includes('portalApi.backgroundInventory'),
   'frontend hook fetches audit log',
 );
 assert(
@@ -160,6 +173,8 @@ assert(
     page.includes('useAuditLog') &&
     page.includes('return row.scopeLabel') &&
     !page.includes("Stores ${row.storeIds.join(', ')}") &&
+    page.includes('Session scope') &&
+    !page.includes('Client scope') &&
     page.includes('Search event or user') &&
     page.includes('Event') &&
     page.includes('User') &&

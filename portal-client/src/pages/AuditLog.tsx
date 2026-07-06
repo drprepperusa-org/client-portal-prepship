@@ -153,7 +153,7 @@ export default function AuditLog() {
                     <th scope="col" className="w-44 px-4 py-3 text-left font-bold">When</th>
                     <th scope="col" className="w-64 px-4 py-3 text-left font-bold">Event</th>
                     <th scope="col" className="w-56 px-4 py-3 text-left font-bold">User</th>
-                    <th scope="col" className="w-52 px-4 py-3 text-left font-bold">Client scope</th>
+                    <th scope="col" className="w-52 px-4 py-3 text-left font-bold">Session scope</th>
                     <th scope="col" className="px-4 py-3 text-left font-bold">Details</th>
                   </tr>
                 </thead>

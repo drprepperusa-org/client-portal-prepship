@@ -37,9 +37,9 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(/dailyCounts:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(api), 'portalApi.dailyCounts accepts clientId');
   assert(/dailyShipments:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(api), 'portalApi.dailyShipments accepts clientId');
   assert(/awaitingCount:\s*\(token: string, clientId\?: number\)/.test(api), 'portalApi.awaitingCount accepts clientId');
-  assert(/async function scopedDashboard\(token: string, rangeInput: PortalDateRange, clientId\?: number\)/.test(api), 'scopedDashboard threads clientId');
+  assert(/async function scopedDashboard\(\s*token: string,\s*rangeInput: PortalDateRange,\s*clientId\?: number,?/.test(api), 'scopedDashboard threads clientId');
   assert(api.includes('if (clientId !== undefined) return apiGet<DashboardSummary>'), 'scopedDashboard short-circuits to a single scoped request for an explicit client');
-  assert(/async function scopedDailyCounts\(token: string, rangeInput: PortalDateRange, clientId\?: number\)/.test(api), 'scopedDailyCounts threads clientId');
+  assert(/async function scopedDailyCounts\(\s*token: string,\s*rangeInput: PortalDateRange,\s*clientId\?: number,?/.test(api), 'scopedDailyCounts threads clientId');
 }
 
 // ── Backend honors the explicit client filter for GLOBAL admins too ──

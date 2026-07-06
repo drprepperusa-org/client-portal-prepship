@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/auth';
-import { portalApi, type ListOpts } from './api';
+import { backgroundRequest, portalApi, type ListOpts } from './api';
 // ListOpts is re-used by useReturns below (returns filter shape mirrors it).
 import { usePortalFilters } from './portalContext';
 
@@ -34,7 +34,7 @@ export function useAuditLog(search = '', limit = 100) {
     refetchOnWindowFocus: true,
   });
 }
-export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
+export const useClients = () => useTokenQuery(['clients'], (t) => portalApi.clients(t, backgroundRequest));
 export const useAccessList = () => useTokenQuery(['access-list'], portalApi.accessList);
 export const useSyncStatus = () => useTokenQuery(['sync-status'], portalApi.syncStatus);
 export function useAwaitingCount() {
@@ -246,11 +246,11 @@ export function usePrefetchPortal() {
   useEffect(() => {
     if (!accessToken) return;
     const t = accessToken;
-    qc.prefetchQuery({ queryKey: ['dashboard', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.dashboard(t, dateRange) });
-    qc.prefetchQuery({ queryKey: ['daily-counts', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.dailyCounts(t, dateRange) });
+    qc.prefetchQuery({ queryKey: ['dashboard', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDashboard(t, dateRange) });
+    qc.prefetchQuery({ queryKey: ['daily-counts', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDailyCounts(t, dateRange) });
     // Match the Orders page's first view exactly (awaiting tab, default pageSize)
     // so the prefetch actually warms it instead of a key nothing reads.
-    qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.orders(t, { status: 'awaiting_shipment' }) });
-    qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.inventory(t, {}) });
+    qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.backgroundOrders(t, { status: 'awaiting_shipment' }) });
+    qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.backgroundInventory(t, {}) });
   }, [accessToken, dateRange, qc]);
 }
