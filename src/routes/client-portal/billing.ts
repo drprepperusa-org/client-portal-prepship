@@ -5,15 +5,12 @@ import { Hono, type Context } from 'hono';
 import { eq, ilike, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema/settings';
-import { generateLineItems } from '../../services/billing';
 import { billingSummary } from '../../services/billing-summaries';
 import { listMarkupCarrierGroups } from '../../services/rates';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { requestedClientId, scopeOrResponse } from '../../lib/client-portal/query-params';
-
-const BILLING_LAST_GENERATED_KEY = 'billing_last_generated';
 
 const app = new Hono();
 
@@ -97,61 +94,33 @@ app.get('/reports', async (c) => {
   });
 });
 
-// Generate / regenerate billing line items for a date range (admin-only).
-// Idempotent (upsert) — safe to re-run. Scope-restricted for non-global users
-// so a tenant can only (re)generate their own billing.
+// PS-379: Client Portal is read-only for generated billing rows. PrepShip
+// Admin owns billing generation with the full billing SOT, box review, fee
+// waiver, and summary-refresh policy; this route stays as an authenticated
+// conflict response so stale clients get a clear failure instead of a 404.
 app.post('/billing/generate', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials || (!scope.isGlobal && !scope.permissions.includes('settings:write'))) {
     return c.json({ error: 'Admin access required' }, 403);
   }
-  const body = (await c.req.json().catch(() => ({}))) as { dateFrom?: string; dateTo?: string; clientId?: number };
-  const range = requireBillingDayRange(c, body.dateFrom, body.dateTo);
-  if (range instanceof Response) return range;
-  const clientId = typeof body.clientId === 'number' ? body.clientId : undefined;
-  if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
-    return c.json({ error: 'Requested client is outside your access scope.' }, 403);
-  }
-
-  const result = await generateLineItems({
-    clientId,
-    dateFrom: range.fromUtc,
-    dateTo: range.toUtcExclusive,
-    scopeClientIds: scope.isGlobal ? undefined : scope.clientIds,
-    scopeStoreIds: scope.isGlobal ? undefined : scope.storeIds,
-    scopeRestricted: !scope.isGlobal,
+  const body = (await c.req.json().catch(() => ({}))) as {
+    dateFrom?: string;
+    dateTo?: string;
+    clientId?: number;
+  };
+  await recordPortalAudit('portal.billing.generate.blocked', scope, {
+    dateFrom: typeof body.dateFrom === 'string' ? body.dateFrom : null,
+    dateTo: typeof body.dateTo === 'string' ? body.dateTo : null,
+    clientId: typeof body.clientId === 'number' ? body.clientId : null,
+    reason: 'prep_ship_billing_sot',
   });
-
-  // Persist a "last generated" marker so the portal can show when billing was
-  // last refreshed.
-  const generatedAt = new Date().toISOString();
-  try {
-    const value = JSON.stringify({
-      at: generatedAt,
-      dateFrom: range.fromDay,
-      dateTo: range.toDay,
-      generated: result.generated,
-      total: result.total,
-      by: scope.email ?? scope.userId ?? null,
-    });
-    await db.insert(settings).values({ key: BILLING_LAST_GENERATED_KEY, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
-  } catch (err) {
-    console.warn('[client-portal] failed to persist billing last-generated:', err instanceof Error ? err.message : err);
-  }
-
-  // CP-019: record the SCOPE SHAPE (not customer data) on the destructive
-  // generate → delete → recreate path so a scoped regeneration is auditable.
-  await recordPortalAudit('portal.billing.generate', scope, {
-    dateFrom: range.fromDay,
-    dateTo: range.toDay,
-    clientId,
-    generated: result.generated,
-    scopeClients: scope.isGlobal ? 'all' : scope.clientIds.length,
-    scopeStores: scope.isGlobal ? 'all' : scope.storeIds.length,
-    scopeRestricted: !scope.isGlobal,
-  });
-  return c.json({ generated: result.generated, total: result.total, skipped: result.skipped, message: result.message, lastGeneratedAt: generatedAt });
+  return c.json({
+    error: 'PrepShip Billing owns billing generation.',
+    code: 'prep_ship_billing_sot',
+    message:
+      'Client Portal reads billing_line_items and billing summaries, but generation must run from PrepShip Admin Billing.',
+  }, 409);
 });
 
 app.get('/markups', async (c) => {

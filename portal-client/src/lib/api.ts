@@ -1104,7 +1104,7 @@ export const portalApi = {
 
   reportsRange: (token: string, dateFrom: string, dateTo: string) => scopedReportsRange(token, dateFrom, dateTo),
 
-  /** Generate/regenerate billing line items for a range (admin-only, idempotent). */
+  /** Legacy trigger; backend returns 409 because PrepShip Admin owns generation. */
   generateBilling: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
     apiPost<{ generated: number; total: number; skipped: number; message: string; lastGeneratedAt?: string }>(token, '/api/client-portal/billing/generate', {
       ...billingRangeParams({ from: dateFrom, to: dateTo }),

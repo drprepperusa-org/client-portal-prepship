@@ -61,13 +61,15 @@ check('invoice routes normalize billing ranges before read-model calls',
     /renderPortalInvoiceHtml\(\{ clientName: client\.name, dateFrom: range\.fromDay, dateTo: range\.toDay/.test(invoiceRoute));
 
 const billingRoute = read('src/routes/client-portal/billing.ts');
-check('billing reports and generate routes normalize to exclusive bounds',
+check('billing reports normalize to exclusive bounds and generation is blocked by Billing SOT',
   /import \{[^}]*billingDayRange[^}]*\} from '..\/..\/lib\/client-portal\/billing-day'/.test(billingRoute) &&
     /const range = requireBillingDayRange\(c/.test(billingRoute) &&
     /dateFrom: range\.fromUtc/.test(billingRoute) &&
     /dateTo: range\.toUtcExclusive/.test(billingRoute) &&
-    /dateFrom: range\.fromDay/.test(billingRoute) &&
-    /dateTo: range\.toDay/.test(billingRoute));
+    /app\.post\('\/billing\/generate'/.test(billingRoute) &&
+    /prep_ship_billing_sot/.test(billingRoute) &&
+    /PrepShip Billing owns billing generation/.test(billingRoute) &&
+    !/generateLineItems\(/.test(billingRoute));
 
 const invoiceReadModel = read('src/lib/client-portal/read-models/invoice-details.ts');
 check('invoice read models use strict upper bound',
