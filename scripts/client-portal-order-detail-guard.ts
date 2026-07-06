@@ -189,7 +189,7 @@ check(panel.includes('o.orderNumber'), 'order detail: panel shows the order numb
 //    page's list row can never change the visible detail truth. ──
 const loader = read('portal-client/src/components/OrderDetailLoader.tsx');
 check(
-  loader.includes('useOrder(id)') && loader.includes('<OrderDetailPanel o={q.data.data}'),
+  loader.includes('useOrder(id)') && loader.includes('<OrderDetailPanel') && loader.includes('o={q.data.data}'),
   'CP-022: OrderDetailLoader fetches the canonical /orders/:id DTO and renders the panel',
 );
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
@@ -205,6 +205,13 @@ for (const [name, src] of [
 check(
   !/<OrderDetailPanel\s+o=\{selected\}/.test(ordersPage),
   'CP-022: Orders no longer passes the raw list row into OrderDetailPanel (it fetches /orders/:id first)',
+);
+check(
+  ordersPage.includes('<OrderDetailLoader id={selected.id} hideWeightWhenShipped') &&
+    loader.includes('hideWeightWhenShipped?: boolean') &&
+    panel.includes('hideWeightWhenShipped?: boolean') &&
+    panel.includes("hideWeightWhenShipped && o.orderStatus === 'shipped'"),
+  'Orders shipped drawer hides the Weight card based on the canonical order DTO status',
 );
 
 if (failed) process.exit(1);

@@ -140,7 +140,9 @@ assert(
 assert(
   shipmentsPage.includes('<OrderDetailLoader id={orderId} hideWeight') &&
     orderDetailLoader.includes('hideWeight?: boolean') &&
-    orderDetailLoader.includes('<OrderDetailPanel o={q.data.data} hideWeight={hideWeight}') &&
+    orderDetailLoader.includes('<OrderDetailPanel') &&
+    orderDetailLoader.includes('o={q.data.data}') &&
+    orderDetailLoader.includes('hideWeight={hideWeight}') &&
     orderDetailPanel.includes('hideWeight?: boolean') &&
     orderDetailPanel.includes('!hideWeight') &&
     orderDetailPanel.includes('label="Weight"'),

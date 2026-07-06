@@ -378,7 +378,7 @@ export default function Orders() {
             the table, never the modal's business fields. */}
         {selected && (
           <div className="space-y-5">
-            <OrderDetailLoader id={selected.id} />
+            <OrderDetailLoader id={selected.id} hideWeightWhenShipped />
             {/* CP-029: start-return entry point — opens the create-return modal
                 for this order. The modal renders the backend order DTO only; no
                 rate/carrier/billing math happens here. */}

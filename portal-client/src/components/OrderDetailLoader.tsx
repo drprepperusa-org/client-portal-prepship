@@ -9,7 +9,15 @@ import { OrderDetailPanel } from '@/components/OrderDetailPanel';
  * row only drives the table — it can never change the visible detail truth,
  * because the modal always re-reads the single backend-owned order DTO.
  */
-export function OrderDetailLoader({ id, hideWeight = false }: { id: number; hideWeight?: boolean }) {
+export function OrderDetailLoader({
+  id,
+  hideWeight = false,
+  hideWeightWhenShipped = false,
+}: {
+  id: number;
+  hideWeight?: boolean;
+  hideWeightWhenShipped?: boolean;
+}) {
   const q = useOrder(id);
   if (q.isLoading) {
     return (
@@ -22,5 +30,11 @@ export function OrderDetailLoader({ id, hideWeight = false }: { id: number; hide
   if (q.isError || !q.data?.data) {
     return <p className="text-sm text-ink-3">Couldn’t load this order.</p>;
   }
-  return <OrderDetailPanel o={q.data.data} hideWeight={hideWeight} />;
+  return (
+    <OrderDetailPanel
+      o={q.data.data}
+      hideWeight={hideWeight}
+      hideWeightWhenShipped={hideWeightWhenShipped}
+    />
+  );
 }

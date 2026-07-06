@@ -38,8 +38,17 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 }
 
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
-export function OrderDetailPanel({ o, hideWeight = false }: { o: PortalOrder; hideWeight?: boolean }) {
+export function OrderDetailPanel({
+  o,
+  hideWeight = false,
+  hideWeightWhenShipped = false,
+}: {
+  o: PortalOrder;
+  hideWeight?: boolean;
+  hideWeightWhenShipped?: boolean;
+}) {
   const meta = orderStatusMeta(o.orderStatus);
+  const hideWeightCard = hideWeight || (hideWeightWhenShipped && o.orderStatus === 'shipped');
   // CP-018: this is a CUSTOMER-facing page — it shows the customer shipping rate
   // only (backend-owned: billed customer shipping, fallback buyer-paid store
   // shipping), never the internal selected/best/label rate, carrier, or service.
@@ -79,9 +88,9 @@ export function OrderDetailPanel({ o, hideWeight = false }: { o: PortalOrder; hi
       </div>
 
       {/* CP-009: shipping AMOUNT + optional weight only — never carrier or service. */}
-      <div className={cn('grid gap-3', hideWeight ? 'grid-cols-1' : 'grid-cols-2')}>
+      <div className={cn('grid gap-3', hideWeightCard ? 'grid-cols-1' : 'grid-cols-2')}>
         <Detail icon={<Truck size={14} />} label="Customer Shipping Rate" value={shipping != null ? money(shipping) : '—'} />
-        {!hideWeight && <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />}
+        {!hideWeightCard && <Detail icon={<Package size={14} />} label="Weight" value={fmtWeight(o.weightOz)} />}
       </div>
 
       {o.costSummary && o.costSummary.length > 0 && (
