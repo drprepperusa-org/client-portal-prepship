@@ -239,6 +239,23 @@ assert(
   /useReturnLocations/.test(hooks),
   'the frontend exposes a useReturnLocations react-query hook',
 );
+
+// ── CP-032: the create-return modal creates the LABEL immediately (PDF-only) ──
+assert(
+  /portalApi\.createReturnLabel\(/.test(createModal),
+  'the create-return modal creates the label immediately after the return (portalApi.createReturnLabel), not just a request',
+);
+// CP-032: a supplied orderItemId is validated against the order + its SKU.
+assert(
+  /does not belong to this order/.test(route),
+  'the create endpoint validates a supplied orderItemId belongs to the order + matches the SKU',
+);
+// CP-032: the client-facing returns price is the billing-policy amount, never
+// the raw house/label cost.
+assert(
+  /resolveReturnCustomerPrice/.test(route),
+  'the returns DTO price uses the billing-policy resolveReturnCustomerPrice (never the raw label/house cost)',
+);
 // The label/deliver client methods post to the backend too. Match each method's
 // definition through its apiPost call (non-greedy, across the arrow body).
 assert(

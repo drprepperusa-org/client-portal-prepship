@@ -90,9 +90,32 @@ export function ReturnCreateModal({
         returnToLocationId: returnToLocationId ?? undefined,
         items: chosen,
       });
+      const returnId = res.data.id;
+
+      // CP-032: PrepShip creates the label IMMEDIATELY (PDF-only) — the modal no
+      // longer stops at "request recorded". Rate-shopping + cheapest-eligible
+      // selection + label creation are all backend-owned; we just trigger it and
+      // surface the outcome. A label failure still leaves the return created and
+      // retryable from its detail.
+      let labelReady = false;
+      try {
+        const label = await portalApi.createReturnLabel(accessToken, returnId);
+        labelReady = label.data.pdfAvailable;
+      } catch (labelErr) {
+        console.error('[returns] label creation failed:', labelErr);
+      }
+
       await qc.invalidateQueries({ queryKey: ['returns'] });
-      toast.success('Return created', 'The return request was recorded.');
-      onCreated?.(res.data.id);
+      await qc.invalidateQueries({ queryKey: ['return', returnId] });
+      if (labelReady) {
+        toast.success('Return label ready', 'The PrepShip return label PDF is ready to download from the return detail.');
+      } else {
+        toast.warning(
+          'Return created — label pending',
+          'The return was created; its label is still being prepared. Open the return to download the PDF once ready.',
+        );
+      }
+      onCreated?.(returnId);
       onClose();
     } catch (err) {
       toast.error('Could not create return', err instanceof Error ? err.message : 'Please try again.');
@@ -187,7 +210,7 @@ export function ReturnCreateModal({
             <div className="flex gap-2">
               <Button variant="secondary" onClick={onClose}>Cancel</Button>
               <Button leadingIcon={<Undo2 size={16} />} onClick={submit} disabled={saving || selectedCount === 0}>
-                {saving ? 'Creating…' : 'Create return'}
+                {saving ? 'Creating label…' : 'Create return & label'}
               </Button>
             </div>
           </div>

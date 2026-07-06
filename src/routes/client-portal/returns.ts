@@ -34,8 +34,9 @@ import {
   type Return,
   type ReturnItem,
 } from '../../db/schema/returns';
-import { createReturnLabel } from '../../services/returns';
+import { createReturnLabel, resolveReturnCustomerPrice } from '../../services/returns';
 import { deliverReturn } from '../../services/return-delivery';
+import { trackingUrlForCarrier } from '../../lib/tracking-url';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
 import { orderScopePredicate } from '../../lib/client-portal/predicates';
@@ -127,12 +128,15 @@ function iso(value: Date | string | null | undefined): string | null {
  * serviceCode / carrierProvider / providerAccountId / selectedRate. Price comes
  * from the canonical return shipment cost only when the caller can view money.
  */
-function toClientSafeReturnRow(
+async function toClientSafeReturnRow(
   row: {
     ret: Return;
     orderNumber: string | null;
     clientName: string | null;
     returnTracking: string | null;
+    // CP-034: the return shipment's canonical carrier (labelCarrier) — used ONLY
+    // to build the official tracking URL below, never surfaced in the DTO.
+    returnCarrier: string | null;
     returnLabelUrl: string | null;
     returnCost: string | null;
   },
@@ -150,10 +154,19 @@ function toClientSafeReturnRow(
     deliveryMethod: row.ret.deliveryMethod,
     deliveryStatus: row.ret.deliveryStatus,
     trackingNumber: row.returnTracking,
+    // CP-034: a backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx)
+    // from the canonical return-shipment carrier — never 17track, and never the
+    // carrier identity itself. '' (unknown carrier) → null (no external link).
+    trackingUrl: trackingUrlForCarrier(row.returnCarrier, row.returnTracking) || null,
     // Availability booleans only — never the raw provider URL in the LIST DTO.
     pdfAvailable: Boolean(row.returnLabelUrl),
-    // Financially gated: null (→ "—") for callers without money access.
-    price: options.includeFinancials && row.returnCost != null ? Number(row.returnCost) : null,
+    // CP-032: the client-facing price is the SAME billing-policy amount billing
+    // charges (resolveReturnCustomerPrice), NEVER the raw house/label cost. Null
+    // until priced (no return-shipment cost yet) or for non-financial callers.
+    price:
+      options.includeFinancials && row.returnCost != null
+        ? await resolveReturnCustomerPrice(Number(row.returnCost), row.ret.clientId)
+        : null,
     createdAt: iso(row.ret.createdAt),
   };
 }
@@ -187,6 +200,8 @@ app.get('/returns', async (c) => {
       orderNumber: orders.orderNumber,
       clientName: clients.name,
       returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
+      // CP-034: canonical return-shipment carrier for the official tracking URL.
+      returnCarrier: shipments.labelCarrier,
       returnLabelUrl: shipments.labelUrl,
       returnCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
     })
@@ -209,7 +224,9 @@ app.get('/returns', async (c) => {
 
   await recordPortalAudit('portal.returns.list', scope, { page, pageSize, status: status ?? null, clientId, search });
   return c.json({
-    data: rows.map((row) => toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials })),
+    data: await Promise.all(
+      rows.map((row) => toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials })),
+    ),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
   });
 });
@@ -252,6 +269,8 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
       clientName: clients.name,
       returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
       returnTrackingStatus: shipments.trackingStatus,
+      // CP-034: canonical return-shipment carrier for the official tracking URL.
+      returnCarrier: shipments.labelCarrier,
       returnLabelUrl: shipments.labelUrl,
       returnCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
     })
@@ -297,13 +316,26 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
   );
 
   const includeFinancials = scope.canViewFinancials;
+  const safeRow = await toClientSafeReturnRow(
+    {
+      ret: row.ret,
+      orderNumber: row.orderNumber,
+      clientName: row.clientName,
+      returnTracking: row.returnTracking,
+      returnCarrier: row.returnCarrier,
+      returnLabelUrl: row.returnLabelUrl,
+      returnCost: row.returnCost,
+    },
+    { includeFinancials },
+  );
   await recordPortalAudit('portal.returns.detail.view', scope, { returnId: id });
   return c.json({
     data: {
-      ...toClientSafeReturnRow(
-        { ret: row.ret, orderNumber: row.orderNumber, clientName: row.clientName, returnTracking: row.returnTracking, returnLabelUrl: row.returnLabelUrl, returnCost: row.returnCost },
-        { includeFinancials },
-      ),
+      ...safeRow,
+      // CP-033: `status` above is the canonical, backend-owned return lifecycle.
+      // `trackingStatus` here is the return shipment's carrier tracking state —
+      // a DISTINCT, tracking-only signal that must NEVER be used to infer the
+      // lifecycle status (warehouse receiving owns received/inspected).
       trackingStatus: row.returnTrackingStatus ?? null,
       deliveryError: row.ret.deliveryError,
       returnToLocationId: row.ret.returnToLocationId,
@@ -413,8 +445,12 @@ app.post('/returns', async (c) => {
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
   const orderedBySku = new Map<string, { qty: number; id: number; name: string | null }>();
+  // CP-032: also index by orderItemId so a supplied id can be validated against
+  // THIS order + its SKU (never trust an arbitrary / foreign orderItemId).
+  const orderedById = new Map<number, { sku: string; qty: number }>();
   for (const r of orderedRows) {
     orderedBySku.set(r.sku.toLowerCase(), { qty: Number(r.quantity) || 0, id: r.id, name: r.name });
+    orderedById.set(r.id, { sku: r.sku, qty: Number(r.quantity) || 0 });
   }
 
   const rawItems = Array.isArray(body.items) ? body.items : [];
@@ -427,11 +463,27 @@ app.post('/returns', async (c) => {
     if (ordered && quantity > ordered.qty) {
       return c.json({ error: `Return quantity for ${sku} (${quantity}) exceeds the ordered quantity (${ordered.qty})` }, 400);
     }
+    // CP-032: a supplied orderItemId MUST belong to this order AND match the
+    // submitted SKU — reject a mismatched / foreign id rather than silently
+    // trusting it. When omitted, resolve the id from the ordered SKU.
+    let orderItemId: number | null;
+    if (typeof it?.orderItemId === 'number') {
+      const owned = orderedById.get(it.orderItemId);
+      if (!owned || owned.sku.toLowerCase() !== sku.toLowerCase()) {
+        return c.json(
+          { error: `orderItemId ${it.orderItemId} does not belong to this order or does not match SKU ${sku}` },
+          400,
+        );
+      }
+      orderItemId = it.orderItemId;
+    } else {
+      orderItemId = ordered?.id ?? null;
+    }
     cleanItems.push({
       sku,
       name: (it?.name ?? ordered?.name ?? '').trim() || null,
       quantity,
-      orderItemId: typeof it?.orderItemId === 'number' ? it.orderItemId : ordered?.id ?? null,
+      orderItemId,
     });
   }
   if (!cleanItems.length) return c.json({ error: 'At least one returned item with a positive quantity is required' }, 400);

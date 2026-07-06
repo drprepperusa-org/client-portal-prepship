@@ -3,6 +3,7 @@ import type { Order, OrderOverrides } from '../../db/schema/orders';
 import type { Shipment } from '../../db/schema/shipments';
 import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
 import { isDiscountLine } from './dashboard-aggregate';
+import { trackingUrlForCarrier } from '../tracking-url';
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -321,6 +322,16 @@ export function toPortalShipmentDto(
     serviceCode: null,
     trackingNumber: row.trackingNumber,
     labelTracking: row.labelTracking,
+    // CP-034: a backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx) so
+    // the link opens the real carrier site, never 17track. The carrier identity
+    // stays redacted (carrierCode/serviceCode above are null) — only the URL,
+    // built from the canonical labelCarrier (SOT at label time; carrierCode is
+    // the pre-label attempt), crosses the wire. '' when carrier is unknown.
+    trackingUrl:
+      trackingUrlForCarrier(
+        row.labelCarrier ?? row.carrierCode,
+        row.labelTracking ?? row.trackingNumber,
+      ) || null,
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),
     trackingStatus: row.trackingStatus ?? null,
     trackingStatusDetail: row.trackingStatusDetail ?? null,

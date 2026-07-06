@@ -4,6 +4,7 @@
 import type { orders } from '../db/schema/orders';
 import type { CreatedExternalLabel } from '../lib/shipstation/labels';
 import { inferStoreProvider } from './fulfillment/outbox';
+import { carrierNameForMarketplace, trackingUrlForCarrier } from '../lib/tracking-url';
 
 type MarketplaceConfirmationProvider = 'shipstation' | 'walmart' | 'ebay';
 
@@ -46,23 +47,9 @@ export function confirmationProviderForOrder(order: typeof orders.$inferSelect):
   return fromExternalId ?? 'shipstation';
 }
 
-function carrierNameForMarketplace(carrierCode: string | null | undefined): string {
-  const code = firstText(carrierCode).toLowerCase();
-  if (code.includes('fedex')) return 'FedEx';
-  if (code.includes('ups')) return 'UPS';
-  if (code.includes('usps') || code.includes('stamps')) return 'USPS';
-  return firstText(carrierCode, 'Other');
-}
-
-function trackingUrlForCarrier(carrierCode: string | null | undefined, trackingNumber: string | null | undefined): string {
-  const tracking = firstText(trackingNumber);
-  if (!tracking) return '';
-  const carrier = carrierNameForMarketplace(carrierCode).toLowerCase();
-  if (carrier === 'fedex') return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(tracking)}`;
-  if (carrier === 'ups') return `https://www.ups.com/track?tracknum=${encodeURIComponent(tracking)}`;
-  if (carrier === 'usps') return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(tracking)}`;
-  return '';
-}
+// CP-034: carrierNameForMarketplace + trackingUrlForCarrier moved to the shared
+// src/lib/tracking-url.ts so the Client Portal DTOs reuse the SAME official-URL
+// logic (no duplication, no drift).
 
 export function marketplaceConfirmationPayload(
   order: typeof orders.$inferSelect,

@@ -1,23 +1,16 @@
-// CP-028 — return-delivery resolver guard.
+// CP-032 (supersedes CP-028) — return-delivery is PDF-ONLY.
 //
-// Statically pins the safety + correctness invariants of the return-delivery
-// resolver (src/services/return-delivery.ts) that decides how a PrepShip-created
-// return label reaches the customer:
-//   1. The RETURNS_SHOPIFY_DELIVERY env gate exists and defaults OFF.
-//   2. The resolver picks 'shopify_native' ONLY when the store is Shopify-capable
-//      AND the flag is on; otherwise 'manual_pdf'.
-//   3. Shopify capability = a LIVE 'shipment.confirm' store connector (the stub
-//      is 'registered_stub', so it is not capable) — resolved via the shared
-//      resolveStoreConnector, defaulting to manual_pdf when undetectable.
-//   4. Delivery NEVER lets Shopify mint its own label — it pushes OUR PrepShip
-//      tracking (labelTracking / trackingNumber) via confirmShipment.
-//   5. On any Shopify failure/unavailability it degrades to manual_pdf, records
-//      deliveryStatus 'failed' + deliveryError, and keeps the PDF available.
-//   6. No live customer/marketplace notification by default (notifyCustomer /
-//      notifyMarketplace false).
-//   7. The CLIENT-SAFE delivery result never carries carrier/service/provider/
-//      account/raw identifiers — only method/status/pdf/tracking.
-//   8. The additive delivery columns exist on the returns table + a migration.
+// DJ's final return decision removed the CP-028 Shopify-native delivery path.
+// This guard pins the PDF-only contract of the delivery resolver
+// (src/services/return-delivery.ts):
+//   1. resolveReturnDelivery ALWAYS returns 'manual_pdf' — there is no active
+//      shopify_native decision.
+//   2. deliverReturn touches NO store connector (no confirmShipment / Shopify
+//      call) and creates/purchases NO label.
+//   3. No live customer/marketplace notification exists in the active flow.
+//   4. The CLIENT-SAFE result never carries carrier/service/provider/account/raw
+//      identifiers — only method/status/pdf/tracking; PDF is always exposed.
+//   5. The additive delivery columns still exist on the returns table + migration.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -36,106 +29,47 @@ function assert(cond, msg) {
 }
 
 const service = read('src/services/return-delivery.ts');
-const envFile = read('src/lib/env.ts');
 const schema = read('src/db/schema/returns.ts');
 const pkg = JSON.parse(read('package.json'));
 
 assert(service.length > 0, 'src/services/return-delivery.ts exists');
 
-// ── 1. RETURNS_SHOPIFY_DELIVERY gate + default OFF ──
+// ── 1. Resolver is PDF-only: always manual_pdf ──
 assert(
-  /RETURNS_SHOPIFY_DELIVERY/.test(envFile),
-  'env module declares the RETURNS_SHOPIFY_DELIVERY approval flag',
+  /export function resolveReturnDelivery\([^)]*\)\s*:\s*\{\s*method:\s*ReturnDeliveryMethod\s*\}\s*\{\s*return\s*\{\s*method:\s*'manual_pdf'\s*\}/.test(
+    service.replace(/\n/g, ' ').replace(/\s+/g, ' '),
+  ),
+  "resolveReturnDelivery ALWAYS returns { method: 'manual_pdf' } (no active shopify_native decision)",
 );
 assert(
-  /RETURNS_SHOPIFY_DELIVERY:\s*booleanFlag\(false\)/.test(envFile),
-  'RETURNS_SHOPIFY_DELIVERY defaults to false (OFF) in the env module',
-);
-assert(
-  /env\.RETURNS_SHOPIFY_DELIVERY/.test(service),
-  'the delivery service reads env.RETURNS_SHOPIFY_DELIVERY to gate the Shopify path',
+  /'manual_pdf'/.test(service),
+  "the delivery service produces 'manual_pdf'",
 );
 
-// ── 2. resolver: shopify_native ONLY when capable AND flagged ──
-// The resolver condition must AND the flag with the Shopify-capability check and
-// otherwise fall to manual_pdf.
-assert(
-  /env\.RETURNS_SHOPIFY_DELIVERY\s*&&\s*isShopifyDeliveryCapable\s*\(/.test(service),
-  "resolver picks 'shopify_native' only when RETURNS_SHOPIFY_DELIVERY && isShopifyDeliveryCapable(...)",
-);
-assert(
-  /'shopify_native'/.test(service) && /'manual_pdf'/.test(service),
-  "the resolver returns one of 'shopify_native' | 'manual_pdf'",
-);
-assert(
-  /:\s*'manual_pdf'/.test(service),
-  "manual_pdf is the fallback branch of the resolver's ternary/decision",
-);
-
-// ── 3. Shopify capability = LIVE shipment.confirm store connector ──
-assert(
-  /resolveStoreConnector\s*\(/.test(service) && /'shipment\.confirm'/.test(service),
-  "capability detection reuses resolveStoreConnector(..., 'shipment.confirm')",
-);
-assert(
-  /implementation\.status\s*===\s*'live'/.test(service),
-  'a store is Shopify-capable only when its connector implementation status is live (the stub is registered_stub)',
-);
-assert(
-  /isShopifyDeliveryCapable/.test(service),
-  'an isShopifyDeliveryCapable helper encapsulates the Shopify capability check',
-);
-
-// ── 4. PrepShip label is canonical — push OUR tracking, never let Shopify mint ──
-assert(
-  /confirmShipment\s*\(/.test(service),
-  'shopify_native delivers via the existing store connector confirmShipment interface',
-);
-assert(
-  /labelTracking/.test(service) && /trackingNumber/.test(service),
-  'the Shopify path pushes OUR PrepShip return tracking (labelTracking / trackingNumber) so Shopify never mints its own label',
-);
-// It must NOT call any label-creation/purchase surface on the Shopify path.
+// ── 2. No Shopify/native delivery in the active flow ──
+// The active flow must not call a store connector or confirmShipment, and must
+// not gate on the (now-dormant) Shopify flag or capability helper.
+for (const bad of ['confirmShipment', 'resolveStoreConnector', 'isShopifyDeliveryCapable', 'RETURNS_SHOPIFY_DELIVERY']) {
+  assert(!new RegExp(bad).test(service), `the PDF-only delivery service never references ${bad}`);
+}
+// It must NOT create/purchase a label either (PrepShip label is canonical).
 assert(
   !/createLabel|purchaseLabel|buyLabel|mintLabel/.test(service),
-  'the delivery service never creates/purchases a new label (PrepShip label is canonical)',
+  'the delivery service never creates/purchases a label (PrepShip label is canonical)',
+);
+// No live customer/marketplace notification exists in the active flow.
+assert(
+  !/notifyCustomer:\s*true/.test(service) && !/notifyMarketplace:\s*true/.test(service),
+  'the delivery service never fires a live customer/marketplace notification',
 );
 
-// ── 5. Graceful fallback: failure keeps PDF, records failed + deliveryError ──
+// ── 3. deliverReturn exposes the PDF ──
 assert(
-  /catch\s*\(/.test(service),
-  'the Shopify attempt is wrapped so any failure is caught (never blocks label access)',
-);
-assert(
-  /'failed'/.test(service) && /deliveryError/.test(service),
-  "a Shopify failure records deliveryStatus 'failed' + a deliveryError",
-);
-// On failure the method degrades back to manual_pdf.
-{
-  const failIdx = service.indexOf("'failed'");
-  const manualNearFail = service.indexOf("persistDeliveryOutcome(returnId, 'manual_pdf', 'failed'");
-  assert(
-    manualNearFail !== -1,
-    'a Shopify failure degrades to manual_pdf (persists manual_pdf + failed)',
-  );
-  assert(failIdx !== -1, "the failed status literal is present");
-}
-// PDF stays available regardless — pdfAvailable derives from the label PDF, and
-// pdfUrl/pdfAvailable are always in the client-safe result.
-assert(
-  /pdfAvailable/.test(service) && /pdfUrl/.test(service),
-  'the client-safe result always carries pdfAvailable + pdfUrl (PDF never blocked on Shopify failure)',
+  /deliverReturn/.test(service) && /pdfAvailable/.test(service) && /pdfUrl/.test(service),
+  'deliverReturn returns a client-safe result that always carries pdfAvailable + pdfUrl',
 );
 
-// ── 6. No live customer/marketplace notification by default ──
-assert(
-  /notifyCustomer:\s*false/.test(service) && /notifyMarketplace:\s*false/.test(service),
-  'the Shopify confirmation sends notifyCustomer:false + notifyMarketplace:false (no live notification by default)',
-);
-
-// ── 7. Client-safe delivery result omits carrier/service/provider/account ──
-// Slice the ClientSafeDeliveryResult type block + the toClientSafe builder and
-// assert neither references a forbidden identifier.
+// ── 4. Client-safe delivery result omits carrier/service/provider/account ──
 function sliceBlock(src, startRe) {
   const m = src.match(startRe);
   if (!m) return '';
@@ -156,48 +90,25 @@ const forbidden = [
   'selectedRateJson',
 ];
 for (const id of forbidden) {
-  assert(
-    !new RegExp(id).test(resultType),
-    `ClientSafeDeliveryResult type never exposes ${id}`,
-  );
+  assert(!new RegExp(id).test(resultType), `ClientSafeDeliveryResult type never exposes ${id}`);
 }
 const builder = sliceBlock(service, /function toClientSafe\s*\(/);
 assert(builder.length > 0, 'toClientSafe builder exists');
 for (const id of forbidden) {
-  assert(
-    !new RegExp(id).test(builder),
-    `the client-safe delivery object never sets ${id}`,
-  );
+  assert(!new RegExp(id).test(builder), `the client-safe delivery object never sets ${id}`);
 }
-// The client-safe result exposes exactly the whitelisted fields.
-for (const field of [
-  'deliveryMethod',
-  'deliveryStatus',
-  'pdfAvailable',
-  'pdfUrl',
-  'trackingNumber',
-  'trackingStatus',
-]) {
-  assert(
-    new RegExp(field).test(resultType),
-    `ClientSafeDeliveryResult exposes the whitelisted field ${field}`,
-  );
+for (const field of ['deliveryMethod', 'deliveryStatus', 'pdfAvailable', 'pdfUrl', 'trackingNumber', 'trackingStatus']) {
+  assert(new RegExp(field).test(resultType), `ClientSafeDeliveryResult exposes the whitelisted field ${field}`);
 }
-// The result must NOT expose a generic 'provider' field name either.
-assert(
-  !/\bprovider\s*:/.test(resultType),
-  'ClientSafeDeliveryResult never exposes a provider field',
-);
+assert(!/\bprovider\s*:/.test(resultType), 'ClientSafeDeliveryResult never exposes a provider field');
 
-// ── 8. Additive delivery columns on the returns table + migration ──
+// ── 5. Additive delivery columns on the returns table + migration ──
 assert(
   /deliveryMethod:\s*text\(\)/.test(schema) &&
     /deliveryStatus:\s*text\(\)/.test(schema) &&
     /deliveryError:\s*text\(\)/.test(schema),
   'the returns table declares additive deliveryMethod / deliveryStatus / deliveryError text columns',
 );
-
-// A migration adds the three columns to "returns" (additive ALTER ... ADD COLUMN).
 const drizzleDir = path.join(root, 'drizzle');
 const migrationSql = fs.existsSync(drizzleDir)
   ? fs
@@ -221,4 +132,4 @@ assert(
 );
 
 if (failed) process.exit(1);
-console.log('\nCP-028 return-delivery resolver guard passed.');
+console.log('\nCP-032 return-delivery PDF-only guard passed.');

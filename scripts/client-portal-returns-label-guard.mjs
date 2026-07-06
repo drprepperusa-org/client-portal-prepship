@@ -76,6 +76,15 @@ assert(
   );
 }
 
+// ── 1b. CP-032: PrepShip owns the workflow — NO ShipStation-return shortcut ──
+// Return-label creation must ALWAYS rate-shop the cheapest eligible rate
+// backend-side; the old delegate-to-ShipStation shortcut (createReturnLabelV2
+// when the outbound row had a labelShipmentId) is removed.
+assert(
+  !/createReturnLabelV2\(/.test(service) && !/import[^;]*createReturnLabelV2/.test(service),
+  'the return-label service no longer imports/calls the ShipStation createReturnLabelV2 shortcut (rate-shop is the sole path)',
+);
+
 // ── 2. clients.isTest guard ──
 assert(
   /clients\.isTest/.test(service) && /clientIsTest/.test(service),

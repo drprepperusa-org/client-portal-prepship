@@ -57,11 +57,10 @@ const DELIVERY_LABEL: Record<string, string> = {
   shopify_native: 'Store delivery',
 };
 
-/** Neutral tracker — takes only the tracking number, never revealing the carrier. */
-function trackingUrl(tracking: string | null | undefined): string | null {
-  if (!tracking) return null;
-  return `https://t.17track.net/en#nums=${encodeURIComponent(tracking)}`;
-}
+// CP-034: return tracking links open the REAL carrier site (USPS/UPS/FedEx) via
+// the backend-built `r.trackingUrl` / `d.trackingUrl` — never a 17track link.
+// When trackingUrl is null (unknown carrier), the number renders as copyable
+// text with no external link. Carrier identity itself stays redacted.
 
 export default function Returns() {
   const { clientId: globalClientId } = usePortalFilters();
@@ -143,7 +142,7 @@ export default function Returns() {
         header: 'Tracking #',
         defaultWidth: 180,
         render: (r) => {
-          const url = trackingUrl(r.trackingNumber);
+          const url = r.trackingUrl;
           if (!r.trackingNumber) return <span className="text-ink-3">—</span>;
           return url ? (
             <a
@@ -300,19 +299,33 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
               <p className="truncate font-mono text-sm text-ink">{d.trackingNumber ?? '—'}</p>
               {d.trackingStatus && <p className="text-xs text-ink-3">{d.trackingStatus}</p>}
             </div>
-            {d.trackingNumber && (
-              <Button
-                variant="icon"
-                size="sm"
-                aria-label="Copy tracking number"
-                onClick={() => {
-                  navigator.clipboard?.writeText(d.trackingNumber!);
-                  toast.success('Copied', 'Tracking number copied to clipboard');
-                }}
-              >
-                <Copy size={15} />
-              </Button>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              {/* CP-034: open the real carrier site when the carrier is known. */}
+              {d.trackingUrl && (
+                <a
+                  href={d.trackingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="focus-ring inline-flex items-center gap-1 rounded-glass-sm bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
+                  title="Track on carrier site"
+                >
+                  <ExternalLink size={13} /> Track
+                </a>
+              )}
+              {d.trackingNumber && (
+                <Button
+                  variant="icon"
+                  size="sm"
+                  aria-label="Copy tracking number"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(d.trackingNumber!);
+                    toast.success('Copied', 'Tracking number copied to clipboard');
+                  }}
+                >
+                  <Copy size={15} />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* PDF download — shown for manual_pdf delivery / when Shopify delivery

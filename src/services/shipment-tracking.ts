@@ -68,6 +68,41 @@ export type TrackingRefreshResult = {
   updated: Array<{ id: number; trackingStatus: string; deliveredAt: string | null }>;
 };
 
+/**
+ * CP-033 — advance the canonical RETURN lifecycle from return-shipment tracking.
+ *
+ * When a RETURN shipment (shipments.isReturn) shows carrier MOVEMENT
+ * ('in_transit' or 'delivered'), advance its linked return label_created →
+ * in_transit. Backend-owned (returns.status is the SOT); never frontend-inferred.
+ *
+ * SAFE RULE (documented per the card): carrier 'delivered' advances a return AT
+ * MOST to 'in_transit' — it NEVER auto-marks 'received'. Warehouse receiving
+ * (POST /returns/:id/inspection) is the SOLE authority for received / inspected.
+ * A closed / cancelled / received / inspected return is NEVER regressed (the
+ * update only ever touches rows still at 'label_created').
+ */
+async function advanceReturnsFromTracking(shipmentIds: number[]): Promise<void> {
+  const ids = shipmentIds.filter((id) => Number.isFinite(id) && id > 0);
+  if (!ids.length) return;
+  try {
+    await db.execute(sql`
+      update returns r
+      set status = 'in_transit', updated_at = now()
+      from shipments s
+      where r.return_shipment_id = s.id
+        and s.id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        and s.is_return = true
+        and coalesce(s.tracking_status, '') in ('in_transit', 'delivered')
+        and r.status = 'label_created'
+    `);
+  } catch (err) {
+    console.warn(
+      '[shipment-tracking] CP-033 return lifecycle advance failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 export async function refreshShipmentTracking(shipmentIds: number[]): Promise<TrackingRefreshResult> {
   const ids = [...new Set(shipmentIds)].filter((id) => Number.isFinite(id) && id > 0).slice(0, MAX_PER_REFRESH);
   if (!ids.length) return { checked: 0, updated: [] };
@@ -141,6 +176,11 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
       .where(eq(shipments.id, row.id));
     updated.push({ id: row.id, trackingStatus: status, deliveredAt: deliveredAt ? deliveredAt.toISOString() : null });
   }
+
+  // CP-033: advance the canonical return lifecycle for any RETURN shipments in
+  // this batch that just moved (label_created → in_transit). Received/inspected
+  // stay warehouse-owned — see advanceReturnsFromTracking.
+  await advanceReturnsFromTracking(updated.map((u) => u.id));
 
   return { checked: trackable.length, updated };
 }

@@ -29,12 +29,10 @@ function clientAccent(name: string | null): Accent {
   return CLIENT_ACCENTS[h];
 }
 
-/** CP-018: neutral tracker for every shipment — takes only the tracking number,
- *  so the client-facing tracking link never reveals the carrier. */
-function trackingUrl(tracking: string | null | undefined): string | null {
-  if (!tracking) return null;
-  return `https://t.17track.net/en#nums=${encodeURIComponent(tracking)}`;
-}
+// CP-034: tracking links open the REAL carrier site (USPS/UPS/FedEx) via the
+// backend-built `s.trackingUrl` — the portal no longer builds a neutral 17track
+// link. When trackingUrl is null (unknown carrier), the number renders as
+// copyable text with no external link. Carrier identity itself stays redacted.
 
 // Server-side status filter: values match the backend's SHIPMENT_STATUS_FILTERS,
 // so "Delivered" searches all shipments — not just the loaded page.
@@ -136,7 +134,7 @@ export default function Shipments() {
         defaultWidth: 190,
         render: (s) => {
           const tn = s.trackingNumber ?? s.labelTracking;
-          const url = trackingUrl(tn);
+          const url = s.trackingUrl;
           if (!tn) return <span className="text-ink-3">—</span>;
           return url ? (
             <a
@@ -265,9 +263,9 @@ export default function Shipments() {
               )}
             </div>
 
-            {trackingUrl(selected.trackingNumber ?? selected.labelTracking) && (
+            {selected.trackingUrl && (
               <a
-                href={trackingUrl(selected.trackingNumber ?? selected.labelTracking)!}
+                href={selected.trackingUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="focus-ring flex w-full items-center justify-center gap-2 rounded-glass-sm bg-gradient-to-br from-brand-400 to-brand-600 py-2.5 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95"

@@ -199,6 +199,10 @@ export interface PortalShipment {
   storeName: string | null;
   trackingNumber: string | null;
   labelTracking: string | null;
+  // CP-034: backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx), or null
+  // when the carrier is unknown. The frontend renders it directly — it never
+  // builds a tracking URL or a generic 17track link itself.
+  trackingUrl: string | null;
   shipDate: string | null;
   trackingStatus?: string | null;
   trackingStatusDetail?: string | null;
@@ -226,6 +230,8 @@ export interface PortalReturnRow {
   deliveryMethod: string | null;
   deliveryStatus: string | null;
   trackingNumber: string | null;
+  // CP-034: backend-built OFFICIAL carrier tracking URL, or null when unknown.
+  trackingUrl: string | null;
   pdfAvailable: boolean;
   price: number | null;
   createdAt: string | null;

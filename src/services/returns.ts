@@ -14,7 +14,6 @@ import {
   type CreatedExternalLabel,
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
-import { createReturnLabelV2 } from './labels';
 import { resolveReturnPostageRate } from './billing';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
 import {
@@ -211,7 +210,7 @@ const toNum = (v: string | number | null | undefined): number => {
  * The raw house/label cost is NEVER surfaced to the client — only this
  * policy-derived amount ever reaches ClientSafeReturnResult.price.
  */
-async function resolveReturnCustomerPrice(rawCost: number, clientId: number | null): Promise<number> {
+export async function resolveReturnCustomerPrice(rawCost: number, clientId: number | null): Promise<number> {
   const houseCost = toNum(rawCost);
   if (houseCost <= 0) return 0;
   if (clientId == null) return Number(houseCost.toFixed(2));
@@ -456,31 +455,14 @@ export async function createReturnLabel(
   const createdAt = new Date();
   const liveEligible = env.RETURNS_LIVE_LABELS && !isTest;
 
-  // ── Path A: preferred delegation to createReturnLabelV2 when we have a real
-  //    ShipStation shipment id on the outbound row AND live purchase is allowed.
-  //    createReturnLabelV2 itself re-blocks isTest clients and requires
-  //    labelShipmentId, so this only ever buys real postage when truly eligible.
-  if (liveEligible && outbound.labelShipmentId) {
-    const v2 = await createReturnLabelV2(outbound.id, { reason });
-    const price = await resolveReturnCustomerPrice(v2.cost, clientId);
-    if (returnRow && v2.returnShipmentId != null) {
-      await markReturnLabelCreated(returnRow.id, outbound.id);
-    }
-    return toClientSafeResult({
-      price,
-      trackingNumber: v2.returnTrackingNumber,
-      trackingStatus: null,
-      // v2 persists a return shipments row with a labelUrl; report a PDF as
-      // available since the ShipStation return endpoint returns a label.
-      labelUrl: 'pdf',
-      returnShipmentId: v2.returnShipmentId,
-      createdAt,
-    });
-  }
-
-  // ── Path B: rate-shop backend-side, pick cheapest ELIGIBLE, then purchase
-  //    (live) or offline-mock (default). Used when there is no labelShipmentId
-  //    (non-ShipStation store) OR whenever live purchase is not permitted.
+  // ── CP-032: PrepShip OWNS the return workflow ────────────────────────────────
+  // The old ShipStation-return shortcut (delegate to createReturnLabelV2 when the
+  // outbound row had a labelShipmentId) is REMOVED. Return-label creation now
+  // ALWAYS rate-shops the cheapest ELIGIBLE rate backend-side and buys (live) or
+  // offline-mocks (default) the label through PrepShip provider code. ShipStation
+  // (and any carrier API) is only ever a provider implementation detail behind
+  // this single path — never the owner of the workflow, price choice, customer
+  // delivery, or billing truth.
   const weightOz = outbound.weightOz ?? order.weightOz ?? 1;
   const rateInput: RateInput = {
     weightOz,
