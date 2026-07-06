@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Building2, Filter, Download, MapPin, Copy, ExternalLink, PackageCheck } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -10,11 +11,12 @@ import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/auth';
 import { useReturns, useReturnDetail, useClients, useMe } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shortDate } from '@/lib/status';
-import { API_BASE, type PortalReturnRow } from '@/lib/api';
+import { API_BASE, portalApi, type PortalReturnRow } from '@/lib/api';
 import { type Accent } from '@/lib/accents';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ReturnReceivingModal } from '@/components/returns/ReturnReceivingModal';
@@ -287,12 +289,35 @@ export default function Returns() {
  *  inspection notes/media. Carrier/service identity is never shown. */
 function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
   const toast = useToast();
+  const qc = useQueryClient();
+  const { accessToken } = useAuth();
   const q = useReturnDetail(id);
   const d = q.data?.data;
+  const [creatingLabel, setCreatingLabel] = useState(false);
 
   // The return label PDF is served by the existing /labels/... route the return
   // shipment's labelUrl points at. Resolve it to an absolute URL for download.
   const pdfHref = d?.pdfUrl ? (d.pdfUrl.startsWith('http') ? d.pdfUrl : `${API_BASE}${d.pdfUrl}`) : null;
+
+  async function createLabel() {
+    if (!accessToken || id == null || creatingLabel) return;
+    setCreatingLabel(true);
+    try {
+      const result = await portalApi.createReturnLabel(accessToken, id);
+      await qc.invalidateQueries({ queryKey: ['returns'] });
+      await qc.invalidateQueries({ queryKey: ['return', id] });
+      await q.refetch();
+      if (result.data.pdfAvailable) {
+        toast.success('Return label ready', 'The PDF is ready to download.');
+      } else {
+        toast.warning('Label still pending', 'PrepShip created the return, but no PDF is available yet.');
+      }
+    } catch (err) {
+      toast.error('Could not create return label', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setCreatingLabel(false);
+    }
+  }
 
   return (
     <Drawer open={id != null} onClose={onClose} title={d ? `Return #${d.id}` : 'Return'}>
@@ -366,11 +391,16 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
           )}
 
           {!pdfHref && (
-            <div className="rounded-glass-sm bg-amber-50/80 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
-              <p className="font-semibold">Return label PDF is not ready yet.</p>
-              <p className="mt-1 text-xs text-amber-700">
-                Once PrepShip creates the return label, the download button will appear here.
-              </p>
+            <div className="space-y-3 rounded-glass-sm bg-amber-50/80 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+              <div>
+                <p className="font-semibold">Return label PDF is not ready yet.</p>
+                <p className="mt-1 text-xs text-amber-700">
+                  PrepShip has the return request, but no label PDF has been created.
+                </p>
+              </div>
+              <Button leadingIcon={<PackageCheck size={16} />} onClick={createLabel} disabled={creatingLabel || !accessToken}>
+                {creatingLabel ? 'Creating label...' : 'Create return label'}
+              </Button>
             </div>
           )}
 

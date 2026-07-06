@@ -29,6 +29,8 @@ assert(/r\.pdfAvailable/.test(page), 'Returns table renders the backend pdfAvail
 assert(/Download/.test(page) && /setSelectedId\(r\.id\)/.test(page), 'Returns table has an obvious Download entry that opens the return detail');
 assert(/Label pending/.test(page), 'Returns table explains when the label PDF is pending');
 assert(/Return label PDF is not ready yet/.test(page), 'Return detail explains why no PDF button is shown yet');
+assert(/Create return label/.test(page), 'Return detail lets a pending return retry PrepShip label creation');
+assert(/portalApi\.createReturnLabel/.test(page), 'Return detail retry delegates to the backend return-label endpoint');
 assert(/Download return label/.test(page) && /pdfHref/.test(page), 'Return detail still exposes the actual PDF download link when ready');
 
 if (failed) process.exit(1);
