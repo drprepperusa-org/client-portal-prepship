@@ -32,6 +32,7 @@ app.get('/analysis', async (c) => {
     canViewFinancials: scope.canViewFinancials,
     hideTestOrders: false,
     includeCancelled: false,
+    includeOrderCombinations: true,
   });
   await recordPortalAudit('portal.analysis.view', scope);
   // CP-010: redact per-SKU revenue for non-financial users so the table stays
@@ -48,6 +49,7 @@ app.get('/analysis', async (c) => {
     // frontend renders these instead of reducing the SKU rows itself.
     totalRevenue: result.totalRevenue,
     totalUnits: result.totalUnits,
+    orderCombinations: result.orderCombinations,
   });
 });
 

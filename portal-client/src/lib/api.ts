@@ -603,6 +603,21 @@ export interface AnalysisSkuRow {
   daily_qty?: number[];
 }
 
+export interface AnalysisOrderCombinationItem {
+  sku: string;
+  name: string | null;
+  quantity: number;
+  imageUrl: string | null;
+}
+
+export interface AnalysisOrderCombination {
+  combinationKey: string;
+  label: string;
+  orderCount: number;
+  totalUnits: number;
+  items: AnalysisOrderCombinationItem[];
+}
+
 export interface AnalysisBreakdown {
   data: AnalysisSkuRow[];
   dateBuckets?: string[];
@@ -613,6 +628,7 @@ export interface AnalysisBreakdown {
   // can never drift from the Dashboard Revenue/Units KPIs.
   totalRevenue?: number;
   totalUnits?: number;
+  orderCombinations?: AnalysisOrderCombination[];
 }
 
 export interface SkuOrderRow {

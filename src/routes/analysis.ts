@@ -445,7 +445,182 @@ const skuBreakdownQuery = rangeQuery.extend({
   includeCancelled: z.coerce.boolean().optional().default(false),
 });
 
-export type SkuBreakdownQuery = z.infer<typeof skuBreakdownQuery> & ClientStoreScopeQuery;
+export type SkuBreakdownQuery = z.infer<typeof skuBreakdownQuery> &
+  ClientStoreScopeQuery & { includeOrderCombinations?: boolean };
+
+export interface AnalysisOrderCombinationItem {
+  sku: string;
+  name: string | null;
+  quantity: number;
+  imageUrl: string | null;
+}
+
+export interface AnalysisOrderCombination {
+  combinationKey: string;
+  label: string;
+  orderCount: number;
+  totalUnits: number;
+  items: AnalysisOrderCombinationItem[];
+}
+
+// Source contract for the customer-visible order-combinations metric.
+// source inputs: orders.id, orders.client_id/store_id/status, orders.order_date,
+// order_items.sku/name/image_url, and order_items.quantity. Event clock:
+// orders.order_date. Formula owner: this backend read model groups each order's
+// positive order_items quantities into one SKU+quantity combination key, then
+// counts sold orders per key. The portal only renders the DTO.
+export const orderCombinationsSourceInputs = {
+  eventClock: 'orders.order_date',
+  quantityInput: 'order_items.quantity',
+  owner: 'src/routes/analysis.ts getOrderCombinationsFromOrderItems',
+} as const;
+
+type OrderCombinationSqlRow = {
+  combination_key: string;
+  items: unknown;
+  order_count: number;
+  total_units: number;
+};
+
+function recordFromUnknown(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function nonEmptyText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function combinationDisplayRank(item: AnalysisOrderCombinationItem): number {
+  const text = `${item.name ?? ''} ${item.sku}`.toLowerCase();
+  return text.includes('booster') ? 1 : 0;
+}
+
+function normalizeCombinationItems(raw: unknown): AnalysisOrderCombinationItem[] {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  const items = parsed
+    .map((entry) => {
+      const item = recordFromUnknown(entry);
+      if (!item) return null;
+      const sku = nonEmptyText(item.sku);
+      if (!sku) return null;
+      const quantity = Math.max(0, Math.trunc(Number(item.quantity ?? 0) || 0));
+      if (quantity <= 0) return null;
+      return {
+        sku,
+        name: nonEmptyText(item.name),
+        quantity,
+        imageUrl: nonEmptyText(item.imageUrl ?? item.image_url),
+      };
+    })
+    .filter((item): item is AnalysisOrderCombinationItem => item !== null);
+
+  return items.sort((a, b) => {
+    const rank = combinationDisplayRank(a) - combinationDisplayRank(b);
+    if (rank !== 0) return rank;
+    return (a.name ?? a.sku).localeCompare(b.name ?? b.sku);
+  });
+}
+
+function formatCombinationLabel(items: AnalysisOrderCombinationItem[]): string {
+  if (!items.length) return 'Unknown item mix';
+  return items
+    .map((item) => {
+      const displayName = item.name ?? item.sku;
+      return item.quantity > 1 ? `${item.quantity} ${displayName}` : displayName;
+    })
+    .join(' + ');
+}
+
+export async function getOrderCombinationsFromOrderItems(
+  q: SkuBreakdownQuery,
+): Promise<AnalysisOrderCombination[]> {
+  const fromIso = new Date(q.dateFrom).toISOString();
+  const toIso = new Date(q.dateTo).toISOString();
+  const cid: number | null = q.clientId ?? null;
+  const cancelledFilter = q.includeCancelled
+    ? sql`true`
+    : sql`coalesce(o.order_status, '') <> 'cancelled'`;
+  const testOrderFilter = q.hideTestOrders
+    ? sql`and not (
+        coalesce(c.is_test, false) = true
+        or coalesce(o.order_number, '') ilike 'TESTING-%'
+        or o.raw @> '{"test": true}'::jsonb
+        or o.raw @> '{"testing": true}'::jsonb
+      )`
+    : sql``;
+
+  const rows = await db.execute<OrderCombinationSqlRow>(sql`
+    with order_sku_rows as (
+      select
+        o.id                                                               as order_id,
+        min(oi.id)::int                                                    as first_item_id,
+        oi.sku                                                             as sku,
+        coalesce(nullif((array_agg(oi.name order by length(oi.name) desc))[1], ''), oi.sku) as name,
+        nullif((array_agg(oi.image_url order by oi.id))[1], '')            as image_url,
+        sum(greatest(0, coalesce(oi.quantity, 0)))::int                    as qty
+      from order_items oi
+      join orders o on o.id = oi.order_id
+      left join clients c on c.id = o.client_id
+      where ${cancelledFilter}
+        and o.order_date >= ${fromIso}::timestamptz
+        and o.order_date <= ${toIso}::timestamptz
+        ${testOrderFilter}
+        and (${cid}::int is null or o.client_id = ${cid}::int)
+        and ${analysisOrderScopePredicate(q)}
+        and oi.quantity > 0
+        and oi.sku <> ''
+        and (o.client_id is null or coalesce(c.active, true) = true)
+      group by o.id, oi.sku
+    ),
+    order_combos as (
+      select
+        order_id,
+        string_agg(lower(sku) || ':' || qty::text, '|' order by lower(sku)) as combination_key,
+        jsonb_agg(
+          jsonb_build_object(
+            'sku', sku,
+            'name', name,
+            'quantity', qty,
+            'imageUrl', image_url
+          )
+          order by first_item_id, lower(sku)
+        ) as items,
+        sum(qty)::int as total_units
+      from order_sku_rows
+      group by order_id
+    )
+    select
+      combination_key,
+      (array_agg(items order by order_id))[1] as items,
+      count(*)::int as order_count,
+      sum(total_units)::int as total_units
+    from order_combos
+    group by combination_key
+    order by order_count desc, total_units desc, combination_key asc
+    limit 50
+  `);
+
+  return rows.map((row) => {
+    const items = normalizeCombinationItems(row.items);
+    return {
+      combinationKey: row.combination_key,
+      label: formatCombinationLabel(items),
+      orderCount: Number(row.order_count) || 0,
+      totalUnits: Number(row.total_units) || 0,
+      items,
+    };
+  });
+}
 
 // CP-010: the one canonical customer-visible sales-metrics query. Dashboard and
 // Analysis both consume THIS for their Revenue/Units KPIs so the two screens can
@@ -836,7 +1011,12 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
   // CP-010: canonical KPI totals from the single sales-metrics owner. These are
   // set-based (no LIMIT), so the Revenue/Units KPI never truncates and always
   // equals the roll-up of the per-SKU rows above (same filter set).
-  const salesTotals = await getClientPortalSalesTotals(q);
+  const [salesTotals, orderCombinations] = await Promise.all([
+    getClientPortalSalesTotals(q),
+    q.includeOrderCombinations === true
+      ? getOrderCombinationsFromOrderItems(q)
+      : Promise.resolve([] as AnalysisOrderCombination[]),
+  ]);
 
   const dateBuckets = buildDateBuckets(fromIso, toIso);
   const canViewFinancials = q.canViewFinancials !== false;
@@ -867,6 +1047,7 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
     // CP-010: backend-owned canonical KPI totals (already financially redacted).
     totalRevenue: salesTotals.revenue,
     totalUnits: salesTotals.units,
+    orderCombinations,
   };
 }
 

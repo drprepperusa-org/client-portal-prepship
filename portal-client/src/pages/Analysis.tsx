@@ -16,7 +16,7 @@ import { staggerContainer } from '@/lib/motion';
 import { useAnalysis, useSkuOrders } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate, orderStatusMeta } from '@/lib/status';
-import type { AnalysisSkuRow, SkuOrdersResult } from '@/lib/api';
+import type { AnalysisOrderCombination, AnalysisSkuRow, SkuOrdersResult } from '@/lib/api';
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const TOP_N = 5;
@@ -31,6 +31,7 @@ export default function Analysis() {
 
   const rows = (analysis.data?.data ?? []) as AnalysisSkuRow[];
   const buckets = analysis.data?.dateBuckets ?? [];
+  const orderCombinations = analysis.data?.orderCombinations ?? [];
 
   // CP-010: the Revenue/Units KPIs come from the backend-owned canonical
   // sales-metrics totals (the same owner the Dashboard uses), NOT from reducing
@@ -150,6 +151,20 @@ export default function Analysis() {
         )}
       </GlassPanel>
 
+      {/* Order combinations */}
+      <GlassPanel className="p-5">
+        <SectionTitle title="Order combinations" subtitle={`Sold order mixes (${days}d)`} />
+        <div className="mt-4">
+          {loading ? (
+            <Skeleton className="h-48" />
+          ) : orderCombinations.length ? (
+            <OrderCombinationsTable rows={orderCombinations} />
+          ) : (
+            <EmptyState icon={<Inbox size={24} />} title="No combinations yet" message="Order combinations will appear here once orders are synced." />
+          )}
+        </div>
+      </GlassPanel>
+
       {/* SKU drill-down panel */}
       <Drawer open={!!selectedSku} onClose={() => setSelectedSku(null)} title={selectedSku?.name ?? selectedSku?.sku ?? 'SKU detail'} width={560}>
         {selectedSku && <SkuPanel row={selectedSku} onOpenOrder={setDetailOrderId} />}
@@ -160,6 +175,79 @@ export default function Analysis() {
         {detailOrderId != null && <OrderDetailLoader id={detailOrderId} />}
       </Modal>
     </div>
+  );
+}
+
+function OrderCombinationsTable({ rows }: { rows: AnalysisOrderCombination[] }) {
+  return (
+    <>
+      <div
+        className="divide-y divide-slate-100 rounded-glass-sm bg-white/55 ring-1 ring-slate-200/80 sm:hidden"
+        role="list"
+        aria-label="Order combinations"
+      >
+        {rows.map((row) => (
+          <div key={row.combinationKey} className="px-4 py-3" role="listitem">
+            <p className="font-semibold text-ink">{row.label}</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {row.items.map((item) => (
+                <span
+                  key={`${row.combinationKey}-${item.sku}`}
+                  className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-ink-3 ring-1 ring-slate-200"
+                  title={item.sku}
+                >
+                  {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.sku}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="font-bold uppercase tracking-wide text-ink-3">Orders</p>
+                <p className="mt-0.5 tnum text-base font-semibold text-ink">{num(row.orderCount).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="font-bold uppercase tracking-wide text-ink-3">Units</p>
+                <p className="mt-0.5 tnum text-base text-ink-2">{num(row.totalUnits).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-glass-sm ring-1 ring-slate-200/80 sm:block">
+        <table className="w-full divide-y divide-slate-200/80 text-sm" aria-label="Order combinations">
+          <thead className="bg-slate-50/70 text-[11px] uppercase tracking-wide text-ink-3">
+            <tr>
+              <th scope="col" className="px-4 py-3 text-left font-bold">Combination</th>
+              <th scope="col" className="w-28 px-4 py-3 text-right font-bold">Orders</th>
+              <th scope="col" className="w-28 px-4 py-3 text-right font-bold">Units</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white/55">
+            {rows.map((row) => (
+              <tr key={row.combinationKey} className="transition-colors hover:bg-brand-50/45">
+                <td className="px-4 py-3">
+                  <p className="font-semibold text-ink">{row.label}</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {row.items.map((item) => (
+                      <span
+                        key={`${row.combinationKey}-${item.sku}`}
+                        className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-ink-3 ring-1 ring-slate-200"
+                        title={item.sku}
+                      >
+                        {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.sku}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right tnum font-semibold text-ink">{num(row.orderCount).toLocaleString()}</td>
+                <td className="px-4 py-3 text-right tnum text-ink-2">{num(row.totalUnits).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
