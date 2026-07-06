@@ -8,21 +8,15 @@ import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
-
-const RANGES = [
-  { days: 7, label: 'Last 7 days' },
-  { days: 30, label: 'Last 30 days' },
-  { days: 90, label: 'Last 90 days' },
-];
+import { DateRangeFilter } from './DateRangeFilter';
 
 export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
   const nav = useNavigate();
   const { email } = useAuth();
-  const { clientId, setClientId, days, setDays } = usePortalFilters();
+  const { clientId, setClientId } = usePortalFilters();
   const clientsQuery = useClients();
   const sync = useSyncStatus();
   const [bellOpen, setBellOpen] = useState(false);
-  const [rangeOpen, setRangeOpen] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
   const [q, setQ] = useState('');
 
@@ -73,46 +67,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         )}
 
         {/* Date range */}
-        <div className="relative hidden sm:block">
-          <button
-            onClick={() => setRangeOpen((o) => !o)}
-            className="focus-ring flex h-10 cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90"
-          >
-            {RANGES.find((r) => r.days === days)?.label ?? `${days}d`}
-            <ChevronDown size={15} className={cn('text-ink-3 transition-transform', rangeOpen && 'rotate-180')} />
-          </button>
-          <AnimatePresence>
-            {rangeOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setRangeOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.14 }}
-                  className="glass-strong absolute right-0 z-20 mt-2 w-44 rounded-glass-sm p-1.5 shadow-glass-lg"
-                >
-                  {RANGES.map((r) => (
-                    <button
-                      key={r.days}
-                      onClick={() => {
-                        setDays(r.days);
-                        setRangeOpen(false);
-                      }}
-                      className={cn(
-                        'flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors',
-                        r.days === days ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100',
-                      )}
-                    >
-                      {r.label}
-                      {r.days === days && <Check size={15} className="text-brand-600" />}
-                    </button>
-                  ))}
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
+        <DateRangeFilter />
 
         {/* Notifications */}
         <div className="relative">

@@ -39,27 +39,27 @@ export function useAwaitingCount() {
 }
 
 export function useDashboard() {
-  const { days, clientId } = usePortalFilters();
-  return useTokenQuery(['dashboard', days, clientId ?? 'scope'], (t) => portalApi.dashboard(t, days, clientId));
+  const { dateRange, clientId } = usePortalFilters();
+  return useTokenQuery(['dashboard', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.dashboard(t, dateRange, clientId));
 }
 export function useDailyCounts() {
-  const { days, clientId } = usePortalFilters();
-  return useTokenQuery(['daily-counts', days, clientId ?? 'scope'], (t) => portalApi.dailyCounts(t, days, clientId));
+  const { dateRange, clientId } = usePortalFilters();
+  return useTokenQuery(['daily-counts', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.dailyCounts(t, dateRange, clientId));
 }
 export function useDailyShipments() {
-  const { days, clientId } = usePortalFilters();
-  return useTokenQuery(['daily-shipments', days, clientId ?? 'scope'], (t) => portalApi.dailyShipments(t, days, clientId));
+  const { dateRange, clientId } = usePortalFilters();
+  return useTokenQuery(['daily-shipments', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.dailyShipments(t, dateRange, clientId));
 }
 export function useAnalysis() {
   // CP-010: include the top-bar clientId in the key + request (like useDashboard)
   // so Analysis re-fetches when the client switcher changes and stays in
   // lock-step with the Dashboard's scope.
-  const { days, clientId } = usePortalFilters();
-  return useTokenQuery(['analysis', days, clientId ?? 'scope'], (t) => portalApi.analysis(t, days, clientId));
+  const { dateRange, clientId } = usePortalFilters();
+  return useTokenQuery(['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.analysis(t, dateRange, clientId));
 }
 export function useReports() {
-  const { days } = usePortalFilters();
-  return useTokenQuery(['reports', days], (t) => portalApi.reports(t, days));
+  const { dateRange } = usePortalFilters();
+  return useTokenQuery(['reports', dateRange.dateFrom, dateRange.dateTo], (t) => portalApi.reports(t, dateRange));
 }
 /** Billing report for an explicit YYYY-MM-DD range. */
 export function useReportsRange(dateFrom: string, dateTo: string) {
@@ -75,8 +75,8 @@ export const useBillingStatus = () =>
 /** Carrier rate markups (Settings → Markups). */
 export const useMarkups = () => useTokenQuery(['markups'], portalApi.markups);
 export function useInvoiceDetails() {
-  const { days, clientId } = usePortalFilters();
-  return useTokenQuery(['invoice-details', days, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, days, clientId));
+  const { dateRange, clientId } = usePortalFilters();
+  return useTokenQuery(['invoice-details', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, dateRange, clientId));
 }
 /** Invoice detail for an explicit YYYY-MM-DD range (Billing page drill-in).
  *  Server-paginated — rendering thousands of rows at once made Billing lag —
@@ -168,10 +168,10 @@ export function useInventory(opts: ListOpts = {}) {
 }
 
 export function useInventoryHistory(opts: { page?: number; sku?: string; type?: string } = {}) {
-  const { days } = usePortalFilters();
+  const { dateRange } = usePortalFilters();
   return useTokenQuery(
-    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, days],
-    (t) => portalApi.inventoryHistory(t, { ...opts, days }),
+    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, dateRange.dateFrom, dateRange.dateTo],
+    (t) => portalApi.inventoryHistory(t, { ...opts, dateRange }),
   );
 }
 export const useIntegrations = () => useTokenQuery(['integrations'], portalApi.integrations);
@@ -235,16 +235,16 @@ export function useOrder(id: number | null) {
  */
 export function usePrefetchPortal() {
   const { accessToken } = useAuth();
-  const { days } = usePortalFilters();
+  const { dateRange } = usePortalFilters();
   const qc = useQueryClient();
   useEffect(() => {
     if (!accessToken) return;
     const t = accessToken;
-    qc.prefetchQuery({ queryKey: ['dashboard', days, 'scope', true], queryFn: () => portalApi.dashboard(t, days) });
-    qc.prefetchQuery({ queryKey: ['daily-counts', days, 'scope', true], queryFn: () => portalApi.dailyCounts(t, days) });
+    qc.prefetchQuery({ queryKey: ['dashboard', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.dashboard(t, dateRange) });
+    qc.prefetchQuery({ queryKey: ['daily-counts', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.dailyCounts(t, dateRange) });
     // Match the Orders page's first view exactly (awaiting tab, default pageSize)
     // so the prefetch actually warms it instead of a key nothing reads.
     qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.orders(t, { status: 'awaiting_shipment' }) });
     qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.inventory(t, {}) });
-  }, [accessToken, days, qc]);
+  }, [accessToken, dateRange, qc]);
 }

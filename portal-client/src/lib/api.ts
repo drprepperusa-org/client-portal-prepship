@@ -27,6 +27,12 @@ const TIMEOUT_MS = 30000;
 
 export type QueryValue = string | number | boolean | null | undefined;
 
+export interface PortalDateRange {
+  dateFrom: string;
+  dateTo: string;
+  preset?: string;
+}
+
 export interface Paginated<T> {
   data: T[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
@@ -720,6 +726,18 @@ function billingRangeParams(r = defaultRange()) {
   return { dateFrom: r.from, dateTo: r.to };
 }
 
+function dashboardRangeParams(range: PortalDateRange) {
+  return rangeToTimestamps({ from: range.dateFrom, to: range.dateTo });
+}
+
+function dailyRangeParams(range: PortalDateRange) {
+  return { from: range.dateFrom, to: range.dateTo };
+}
+
+function billingRangeFromPortal(range: PortalDateRange) {
+  return billingRangeParams({ from: range.dateFrom, to: range.dateTo });
+}
+
 /** First store id when the session is scoped to exactly one store. */
 function firstStoreId(token: string): number | undefined {
   const s = portalScopeFromToken(token);
@@ -747,12 +765,12 @@ async function scopedList<T>(token: string, path: string, params: Record<string,
   });
 }
 
-async function scopedDashboard(token: string, days: number, clientId?: number): Promise<DashboardSummary> {
+async function scopedDashboard(token: string, rangeInput: PortalDateRange, clientId?: number): Promise<DashboardSummary> {
   const scope = portalScopeFromToken(token);
   // CP-010: send dateFrom/dateTo timestamps (identical to the Analysis client)
   // so Dashboard and Analysis evaluate the exact same date window — no more
   // "to = today midnight" vs "to = end of today" off-by-a-day drift.
-  const range = rangeToTimestamps(defaultRange(days));
+  const range = dashboardRangeParams(rangeInput);
   // Explicit client filter from the top-bar switcher → one scoped request for
   // that client. The backend re-checks the client against the caller's scope,
   // so passing it can only ever narrow, never widen, visibility.
@@ -820,9 +838,9 @@ async function scopedDashboard(token: string, days: number, clientId?: number): 
   };
 }
 
-async function scopedDailyCounts(token: string, days: number, clientId?: number): Promise<{ data: DailyCount[] }> {
+async function scopedDailyCounts(token: string, rangeInput: PortalDateRange, clientId?: number): Promise<{ data: DailyCount[] }> {
   const scope = portalScopeFromToken(token);
-  const range = defaultRange(days);
+  const range = dailyRangeParams(rangeInput);
   // Explicit client filter from the top-bar switcher → one scoped request.
   if (clientId !== undefined) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', { ...range, clientId });
   if (!scope.isRestricted) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', range);
@@ -851,9 +869,9 @@ async function scopedDailyCounts(token: string, days: number, clientId?: number)
   return { data: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)) };
 }
 
-async function scopedReports(token: string, days: number): Promise<PortalReports> {
+async function scopedReports(token: string, rangeInput: PortalDateRange): Promise<PortalReports> {
   const scope = portalScopeFromToken(token);
-  const range = billingRangeParams(defaultRange(days));
+  const range = billingRangeFromPortal(rangeInput);
   // CP-012: the backend scopes /reports by the caller's full client/store scope
   // AND owns the Finance aggregates (breakdown, billable orders, avg cost/order),
   // so ONE request returns everything — no per-client fan-out or frontend merge
@@ -892,11 +910,11 @@ export const portalApi = {
   backfillStatus: (token: string) =>
     apiGet<{ job: BackfillJob | null }>(token, '/api/client-portal/backfill/status'),
 
-  dashboard: (token: string, days = 30, clientId?: number) => scopedDashboard(token, days, clientId),
-  dailyCounts: (token: string, days = 30, clientId?: number) => scopedDailyCounts(token, days, clientId),
-  dailyShipments: (token: string, days = 30, clientId?: number) =>
+  dashboard: (token: string, range: PortalDateRange, clientId?: number) => scopedDashboard(token, range, clientId),
+  dailyCounts: (token: string, range: PortalDateRange, clientId?: number) => scopedDailyCounts(token, range, clientId),
+  dailyShipments: (token: string, range: PortalDateRange, clientId?: number) =>
     apiGet<{ data: Array<{ day: string; shipments: number }> }>(token, '/api/client-portal/daily-shipments', {
-      ...rangeToTimestamps(defaultRange(days)),
+      ...dashboardRangeParams(range),
       // Explicit client filter overrides the single-store fallback; otherwise
       // keep restricting a single-store session to its store.
       clientId,
@@ -953,8 +971,8 @@ export const portalApi = {
       lowStock: opts.lowStock ? 1 : undefined,
     }),
 
-  inventoryHistory: (token: string, opts: { page?: number; sku?: string; type?: string; days?: number } = {}) => {
-    const r = defaultRange(opts.days ?? 30);
+  inventoryHistory: (token: string, opts: { page?: number; sku?: string; type?: string; days?: number; dateRange?: PortalDateRange } = {}) => {
+    const r = opts.dateRange ? { from: opts.dateRange.dateFrom, to: opts.dateRange.dateTo } : defaultRange(opts.days ?? 30);
     return apiGet<Paginated<InventoryMovement>>(token, '/api/client-portal/inventory-history', {
       page: opts.page ?? 1,
       pageSize: 50,
@@ -1030,9 +1048,9 @@ export const portalApi = {
   importInbound: (token: string, shipments: NewInboundInput[]) =>
     apiPost<{ data: { created: number; itemsCreated: number; skipped: number } }>(token, '/api/client-portal/inbound/import', { shipments }),
 
-  analysis: (token: string, days = 30, clientId?: number) =>
+  analysis: (token: string, range: PortalDateRange, clientId?: number) =>
     apiGet<AnalysisBreakdown>(token, '/api/client-portal/analysis', {
-      ...rangeToTimestamps(defaultRange(days)),
+      ...dashboardRangeParams(range),
       limit: 200,
       // CP-010: honor the top-bar client switcher (same as the Dashboard) so
       // both screens scope to the same client/store and can't diverge.
@@ -1040,11 +1058,11 @@ export const portalApi = {
       storeId: clientId === undefined ? firstStoreId(token) : undefined,
     }),
 
-  reports: (token: string, days = 30) => scopedReports(token, days),
+  reports: (token: string, range: PortalDateRange) => scopedReports(token, range),
 
-  invoiceDetails: (token: string, days = 30, clientId?: number) =>
+  invoiceDetails: (token: string, range: PortalDateRange, clientId?: number) =>
     apiGet<{ data: BillingInvoiceDetailRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-details', {
-      ...billingRangeParams(defaultRange(days)),
+      ...billingRangeFromPortal(range),
       clientId,
     }),
   /** Invoice detail for an explicit date range (YYYY-MM-DD). Powers Billing.

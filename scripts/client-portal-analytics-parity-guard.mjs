@@ -120,17 +120,19 @@ assert(
 
 // ── 7. Selected client/store carried in BOTH query keys + requests ──
 assert(
-  hooks.includes("['analysis', days, clientId ?? 'scope']") &&
-    hooks.includes('portalApi.analysis(t, days, clientId)'),
+  hooks.includes("['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope']") &&
+    hooks.includes('portalApi.analysis(t, dateRange, clientId)'),
   'useAnalysis includes clientId in its query key + request (parity with useDashboard)',
 );
 assert(
-  /analysis: \(token: string, days = 30, clientId\?: number\)/.test(api),
+  /analysis: \(token: string, range: PortalDateRange, clientId\?: number\)/.test(api),
   'api.analysis accepts and forwards clientId',
 );
 assert(
-  apiFlat.includes('const range = rangeToTimestamps(defaultRange(days));'),
-  'scopedDashboard sends dateFrom/dateTo timestamps (identical window to Analysis)',
+  apiFlat.includes('function dashboardRangeParams(range: PortalDateRange)') &&
+    apiFlat.includes('const range = dashboardRangeParams(rangeInput);') &&
+    apiFlat.includes('...dashboardRangeParams(range),'),
+  'Dashboard and Analysis send dateFrom/dateTo from the same explicit PortalDateRange helper',
 );
 
 // ── 8. Wired into the suite ──

@@ -68,6 +68,7 @@
     "test:dashboard-client-scope": "node scripts/dashboard-client-store-scope-guard.mjs",
     "test:dashboard-bar-chart-top-skus": "tsx scripts/dashboard-bar-chart-top-skus-guard.ts",
     "test:dashboard-client-filter": "node scripts/dashboard-client-filter-guard.mjs",
+    "test:dashboard-date-range-filter": "node scripts/dashboard-date-range-filter-guard.mjs",
     "test:dashboard-kpi-peek": "node scripts/dashboard-kpi-peek-guard.mjs",
     "test:dashboard-chart-drilldown": "node scripts/dashboard-chart-drilldown-guard.mjs",
     "test:dashboard-customize": "node scripts/dashboard-customize-guard.mjs",    "test:analysis-client-scope": "node scripts/analysis-client-store-scope-guard.mjs",
