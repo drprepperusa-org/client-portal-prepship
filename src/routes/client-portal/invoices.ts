@@ -1,11 +1,12 @@
 // Client-portal sub-router — extracted from the former single-file
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { billingSummary } from '../../services/billing-summaries';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
@@ -15,6 +16,17 @@ import { HERITAGE_PREP_FEE_CLIENT_NAME, heritagePrepFeeRowsForRange } from '../.
 
 const app = new Hono();
 
+function requireBillingDayRange(
+  c: Context,
+  rawFrom: string | null | undefined,
+  rawTo: string | null | undefined,
+): BillingDayRange | Response {
+  if (!rawFrom || !rawTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const range = billingDayRange(rawFrom, rawTo);
+  if (!range) return c.json({ error: 'Invalid dateFrom/dateTo; expected YYYY-MM-DD' }, 400);
+  return range;
+}
+
 app.get('/invoice-details', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -22,9 +34,8 @@ app.get('/invoice-details', async (c) => {
     await recordPortalAudit('portal.invoice_details.denied', scope);
     return c.json({ data: [], billingVisible: false }, 403);
   }
-  const dateFrom = c.req.query('dateFrom');
-  const dateTo = c.req.query('dateTo');
-  if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const range = requireBillingDayRange(c, c.req.query('dateFrom'), c.req.query('dateTo'));
+  if (range instanceof Response) return range;
   const clientId = requestedClientId(c);
 
   // Paged mode (portal drill-in): page + pageSize present → return a slice
@@ -37,8 +48,8 @@ app.get('/invoice-details', async (c) => {
     const sortBy = c.req.query('sortBy');
     const sortDir = c.req.query('sortDir');
     const [rows, total] = await Promise.all([
-      portalInvoiceDetails(scope, { clientId, dateFrom, dateTo, page, pageSize, sortBy, sortDir }),
-      portalInvoiceDetailCount(scope, { clientId, dateFrom, dateTo }),
+      portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive, page, pageSize, sortBy, sortDir }),
+      portalInvoiceDetailCount(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive }),
     ]);
     await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length, page });
     return c.json({
@@ -48,7 +59,7 @@ app.get('/invoice-details', async (c) => {
     });
   }
 
-  const rows = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
+  const rows = await portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
   await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length });
   return c.json({ data: rows, billingVisible: true });
 });
@@ -63,9 +74,8 @@ app.get('/invoice-summary', async (c) => {
     await recordPortalAudit('portal.invoice_summary.denied', scope);
     return c.json({ data: [], billingVisible: false }, 403);
   }
-  const dateFrom = c.req.query('dateFrom');
-  const dateTo = c.req.query('dateTo');
-  if (!dateFrom || !dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const range = requireBillingDayRange(c, c.req.query('dateFrom'), c.req.query('dateTo'));
+  if (range instanceof Response) return range;
   const clientId = requestedClientId(c);
   // groupBy=period → one row per client per billing period; granularity
   // 'half' (default, 1st–15th / 16th–EOM) or 'month' (combined 1st–EOM).
@@ -74,11 +84,11 @@ app.get('/invoice-summary', async (c) => {
     c.req.query('groupBy') === 'period'
       ? await portalInvoicePeriodSummary(scope, {
           clientId,
-          dateFrom,
-          dateTo,
+          dateFrom: range.fromUtc,
+          dateTo: range.toUtcExclusive,
           granularity: c.req.query('granularity') === 'month' ? 'month' : 'half',
         })
-      : await portalInvoiceSummary(scope, { clientId, dateFrom, dateTo });
+      : await portalInvoiceSummary(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
   // CP-011: grand totals across all summary rows are backend-owned, so the
   // Billing footer renders these instead of the frontend reducing per-period
   // subtotals. Computed over the full SQL-aggregated set (no row cap).
@@ -106,9 +116,9 @@ app.get('/invoice', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) return c.text('Invoice visibility required', 403);
   const clientId = requestedClientId(c);
-  const dateFrom = c.req.query('dateFrom');
-  const dateTo = c.req.query('dateTo');
-  if (!clientId || !dateFrom || !dateTo) return c.text('clientId, dateFrom, and dateTo are required', 400);
+  const range = requireBillingDayRange(c, c.req.query('dateFrom'), c.req.query('dateTo'));
+  if (range instanceof Response) return range;
+  if (!clientId) return c.text('clientId, dateFrom, and dateTo are required', 400);
   const [client] = await db
     .select({ id: clients.id, name: clients.name })
     .from(clients)
@@ -117,14 +127,14 @@ app.get('/invoice', async (c) => {
   if (!client) return c.text('Client not found', 404);
   const summary = await billingSummary({
     clientId,
-    dateFrom,
-    dateTo,
+    dateFrom: range.fromUtc,
+    dateTo: range.toUtcExclusive,
     scopeClientIds: scope.clientIds,
     scopeStoreIds: scope.storeIds,
     scopeRestricted: scope.isRestricted,
   });
   const row = summary.clients[0];
-  const details = await portalInvoiceDetails(scope, { clientId, dateFrom, dateTo });
+  const details = await portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
   // qty is a display count and is always summed from the rendered detail rows.
   const orderedQty = details.reduce((n, detail) => n + Number(detail.qty ?? 0), 0);
   // CP-024: the printable invoice's MONEY totals (amount due + section totals)
@@ -145,7 +155,7 @@ app.get('/invoice', async (c) => {
   // short-circuit. Outside that range Heritage falls through to billing_line_items
   // and then uses the canonical summary + real truncation like any other client.
   const isOverrideSourced =
-    client.name === HERITAGE_PREP_FEE_CLIENT_NAME && heritagePrepFeeRowsForRange(dateFrom, dateTo).length > 0;
+    client.name === HERITAGE_PREP_FEE_CLIENT_NAME && heritagePrepFeeRowsForRange(range.fromDay, range.toDay).length > 0;
   const invoiceTotals = isOverrideSourced
     ? {
         orderCount: details.length,
@@ -175,7 +185,7 @@ app.get('/invoice', async (c) => {
   const truncated =
     !isOverrideSourced &&
     details.filter((d) => d.orderId != null).length < invoiceTotals.orderCount;
-  return c.html(renderPortalInvoiceHtml({ clientName: client.name, dateFrom, dateTo, invoiceTotals, details, truncated }));
+  return c.html(renderPortalInvoiceHtml({ clientName: client.name, dateFrom: range.fromDay, dateTo: range.toDay, invoiceTotals, details, truncated }));
 });
 
 export default app;

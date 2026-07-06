@@ -7,6 +7,7 @@ import {
   HERITAGE_PREP_FEE_CLIENT_NAME,
   heritagePrepFeeRowsForRange,
 } from '../../heritage-prep-fee-overrides';
+import { billingDayBefore } from '../billing-day';
 import { safeItems } from '../dto';
 import { invoiceItemNameLinesSql } from '../invoice-items';
 import { clientFilterPredicate, invoiceLineScopePredicate } from '../predicates';
@@ -53,6 +54,7 @@ type PortalInvoiceSummaryRow = {
  * Per-client billing rollup computed entirely in SQL — no row cap, so the
  * Billing summary shows true order counts and totals no matter how many
  * line rows the range contains (the detail query is capped; this is not).
+ * dateTo is the EXCLUSIVE UTC-midnight upper bound from billingDayRange.
  */
 export async function portalInvoiceSummary(
   scope: ClientPortalScope,
@@ -75,7 +77,7 @@ export async function portalInvoiceSummary(
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
       and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date <= ${input.dateTo}::timestamptz
+      and b.ship_date < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name
@@ -108,7 +110,7 @@ export async function portalInvoiceDetailCount(
       .where(clientFilterPredicate(scope, input.clientId, null))
       .limit(1);
     if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
-      const overrideRows = heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo);
+      const overrideRows = heritagePrepFeeRowsForRange(input.dateFrom, billingDayBefore(input.dateTo) ?? input.dateTo);
       if (overrideRows.length > 0) return overrideRows.length;
     }
   }
@@ -119,7 +121,7 @@ export async function portalInvoiceDetailCount(
       left join ${clients} c on c.id = b.client_id
       where coalesce(c.active, true) = true
         and b.ship_date >= ${input.dateFrom}::timestamptz
-        and b.ship_date <= ${input.dateTo}::timestamptz
+        and b.ship_date < ${input.dateTo}::timestamptz
         ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
         ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
       group by b.client_id, c.name, b.order_id, b.order_number
@@ -178,7 +180,7 @@ export async function portalInvoicePeriodSummary(
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
       and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date <= ${input.dateTo}::timestamptz
+      and b.ship_date < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, 3, 4
@@ -328,7 +330,7 @@ export async function portalInvoiceDetails(
     if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
       // CP-016: sort the FULL override set before slicing this page.
       const allOverrideRows = sortHeritageOverrideRows(
-        heritagePrepFeeRowsForRange(input.dateFrom, input.dateTo),
+        heritagePrepFeeRowsForRange(input.dateFrom, billingDayBefore(input.dateTo) ?? input.dateTo),
         input.sortBy,
         input.sortDir,
       );
@@ -406,7 +408,7 @@ export async function portalInvoiceDetails(
     left join ${orderOverrides} oo on oo.order_id = b.order_id
     where coalesce(c.active, true) = true
       and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date <= ${input.dateTo}::timestamptz
+      and b.ship_date < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, b.order_id, b.order_number

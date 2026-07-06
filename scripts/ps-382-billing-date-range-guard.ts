@@ -1,0 +1,101 @@
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+
+let failures = 0;
+
+function check(name: string, condition: boolean) {
+  if (!condition) {
+    failures += 1;
+    console.error(`FAIL: ${name}`);
+  } else {
+    console.log(`ok: ${name}`);
+  }
+}
+
+function read(path: string): string {
+  return readFileSync(path, 'utf8');
+}
+
+const ownerPath = 'src/lib/client-portal/billing-day.ts';
+check('canonical billing day owner exists', existsSync(ownerPath));
+
+if (existsSync(ownerPath)) {
+  const mod = await import(pathToFileURL(`${process.cwd()}/${ownerPath}`).href);
+  const billingDayRange = mod.billingDayRange as (from: string, to: string) => null | {
+    fromDay: string;
+    toDay: string;
+    fromUtc: string;
+    toUtcExclusive: string;
+  };
+  const billingDayOf = mod.billingDayOf as (value: string | null | undefined) => string | null;
+
+  assert.deepEqual(billingDayRange('2026-05-15', '2026-05-15'), {
+    fromDay: '2026-05-15',
+    toDay: '2026-05-15',
+    fromUtc: '2026-05-15T00:00:00.000Z',
+    toUtcExclusive: '2026-05-16T00:00:00.000Z',
+  });
+  assert.equal(billingDayRange('2026-02-28', '2026-02-28')?.toUtcExclusive, '2026-03-01T00:00:00.000Z');
+  assert.equal(billingDayRange('2028-02-28', '2028-02-29')?.toUtcExclusive, '2028-03-01T00:00:00.000Z');
+  assert.equal(billingDayOf('2026-04-30T23:59:59.999Z'), '2026-04-30');
+  check('billingDayRange returns UTC-midnight exclusive upper bounds', true);
+}
+
+const api = read('portal-client/src/lib/api.ts');
+check('billing API calls send selected days, not client-minted end-of-day instants',
+  /function billingRangeParams/.test(api) &&
+    /dateFrom:\s*r\.from,\s*dateTo:\s*r\.to/.test(api) &&
+    !/invoiceDetailsRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?invoiceSummaryRange:/.test(api) &&
+    !/invoiceSummaryRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?invoicePeriodSummaryRange:/.test(api) &&
+    !/invoicePeriodSummaryRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?invoiceHtml:/.test(api) &&
+    !/invoiceHtmlRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?reportsRange:/.test(api) &&
+    !/generateBilling:[\s\S]*?T23:59:59\.999Z[\s\S]*?billingStatus:/.test(api));
+
+const invoiceRoute = read('src/routes/client-portal/invoices.ts');
+check('invoice routes normalize billing ranges before read-model calls',
+  /import \{[^}]*billingDayRange[^}]*\} from '..\/..\/lib\/client-portal\/billing-day'/.test(invoiceRoute) &&
+    /const range = requireBillingDayRange\(c/.test(invoiceRoute) &&
+    /dateFrom: range\.fromUtc/.test(invoiceRoute) &&
+    /dateTo: range\.toUtcExclusive/.test(invoiceRoute) &&
+    /renderPortalInvoiceHtml\(\{ clientName: client\.name, dateFrom: range\.fromDay, dateTo: range\.toDay/.test(invoiceRoute));
+
+const billingRoute = read('src/routes/client-portal/billing.ts');
+check('billing reports and generate routes normalize to exclusive bounds',
+  /import \{[^}]*billingDayRange[^}]*\} from '..\/..\/lib\/client-portal\/billing-day'/.test(billingRoute) &&
+    /const range = requireBillingDayRange\(c/.test(billingRoute) &&
+    /dateFrom: range\.fromUtc/.test(billingRoute) &&
+    /dateTo: range\.toUtcExclusive/.test(billingRoute) &&
+    /dateFrom: range\.fromDay/.test(billingRoute) &&
+    /dateTo: range\.toDay/.test(billingRoute));
+
+const invoiceReadModel = read('src/lib/client-portal/read-models/invoice-details.ts');
+check('invoice read models use strict upper bound',
+  !/b\.ship_date <= \$\{input\.dateTo\}/.test(invoiceReadModel) &&
+    (invoiceReadModel.match(/b\.ship_date < \$\{input\.dateTo\}/g) ?? []).length >= 4);
+
+const summaries = read('src/services/billing-summaries.ts');
+check('billing summaries use strict upper bound',
+  !/ship_date <= \$\{input\.dateTo\}/.test(summaries) &&
+    !/lte\(billingLineItems\.shipDate, to\)/.test(summaries) &&
+    /lt\(billingLineItems\.shipDate, to\)/.test(summaries));
+
+const billing = read('src/services/billing.ts');
+check('billing generation treats dateTo as exclusive and dates storage inside the period',
+  /dateTo: string; \/\/ ISO, UTC midnight, EXCLUSIVE/.test(billing) &&
+    !/<= \$\{toIso\}::timestamptz/.test(billing) &&
+    !/<= \$\{input\.dateTo\}::timestamptz/.test(billing) &&
+    /< \$\{toIso\}::timestamptz/.test(billing) &&
+    /const storageShipDate = new Date\(periodEnd\.getTime\(\) - STORAGE_LINE_DAY_MS\)/.test(billing) &&
+    /shipDate: storageShipDate/.test(billing));
+
+const packageJson = read('package.json');
+check('package.json wires test:ps-382-billing-date-range',
+  /"test:ps-382-billing-date-range":\s*"tsx scripts\/ps-382-billing-date-range-guard\.ts"/.test(packageJson));
+
+if (failures > 0) {
+  console.error(`\nPS-382 billing date-range guard FAILED with ${failures} failure(s).`);
+  process.exit(1);
+}
+
+console.log('\nPS-382 billing date-range guard passed.');

@@ -1,7 +1,7 @@
 // Billing summary + invoice-detail read models — extracted verbatim from
 // services/billing.ts (C4 decomposition). generateLineItems and the PS-366
 // shipping override resolver stay in billing.ts.
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { billingLineItems } from '../db/schema/billing';
 import { shipments } from '../db/schema/shipments';
@@ -66,7 +66,7 @@ async function hasBillingLineItemsForSummary(input: GenerateInput): Promise<bool
       select 1
       from billing_line_items
       where ship_date >= ${input.dateFrom}::timestamptz
-        and ship_date <= ${input.dateTo}::timestamptz
+        and ship_date < ${input.dateTo}::timestamptz
         ${input.clientId !== undefined ? sql`and client_id = ${input.clientId}` : sql``}
         and ${billingLineItemScopePredicate(input)}
       limit 1
@@ -219,7 +219,7 @@ export async function billingSummary(
     left join billing_line_items b
       on b.client_id = c.id
       and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date <= ${input.dateTo}::timestamptz
+      and b.ship_date < ${input.dateTo}::timestamptz
     where c.active = true
       and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       ${input.clientId !== undefined ? sql`and c.id = ${input.clientId}` : sql``}
@@ -312,7 +312,7 @@ export async function billingDetails(input: GenerateInput & { limit?: number }) 
     .where(
       and(
         gte(billingLineItems.shipDate, from),
-        lte(billingLineItems.shipDate, to),
+        lt(billingLineItems.shipDate, to),
         input.clientId !== undefined
           ? eq(billingLineItems.clientId, input.clientId)
           : undefined,

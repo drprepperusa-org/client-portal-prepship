@@ -718,6 +718,10 @@ function rangeToTimestamps(r = defaultRange()) {
   return { dateFrom: `${r.from}T00:00:00.000Z`, dateTo: `${r.to}T23:59:59.999Z` };
 }
 
+function billingRangeParams(r = defaultRange()) {
+  return { dateFrom: r.from, dateTo: r.to };
+}
+
 /** First store id when the session is scoped to exactly one store. */
 function firstStoreId(token: string): number | undefined {
   const s = portalScopeFromToken(token);
@@ -851,7 +855,7 @@ async function scopedDailyCounts(token: string, days: number, clientId?: number)
 
 async function scopedReports(token: string, days: number): Promise<PortalReports> {
   const scope = portalScopeFromToken(token);
-  const range = rangeToTimestamps(defaultRange(days));
+  const range = billingRangeParams(defaultRange(days));
   // CP-012: the backend scopes /reports by the caller's full client/store scope
   // AND owns the Finance aggregates (breakdown, billable orders, avg cost/order),
   // so ONE request returns everything — no per-client fan-out or frontend merge
@@ -863,7 +867,7 @@ async function scopedReports(token: string, days: number): Promise<PortalReports
 
 async function scopedReportsRange(token: string, dateFrom: string, dateTo: string) {
   const scope = portalScopeFromToken(token);
-  const range = { dateFrom: `${dateFrom}T00:00:00.000Z`, dateTo: `${dateTo}T23:59:59.999Z` };
+  const range = billingRangeParams({ from: dateFrom, to: dateTo });
   type Resp = { data: BillingSummaryRow[]; clients?: BillingSummaryRow[]; grandTotal?: number | string; billingVisible?: boolean };
   if (!scope.isRestricted || scope.clientIds.length <= 1) {
     return apiGet<Resp>(token, '/api/client-portal/reports', { ...range, clientId: scope.isRestricted ? scope.clientIds[0] : undefined });
@@ -1042,7 +1046,7 @@ export const portalApi = {
 
   invoiceDetails: (token: string, days = 30, clientId?: number) =>
     apiGet<{ data: BillingInvoiceDetailRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-details', {
-      ...rangeToTimestamps(defaultRange(days)),
+      ...billingRangeParams(defaultRange(days)),
       clientId,
     }),
   /** Invoice detail for an explicit date range (YYYY-MM-DD). Powers Billing.
@@ -1061,8 +1065,7 @@ export const portalApi = {
       billingVisible?: boolean;
       pagination?: { page: number; pageSize: number; total: number; totalPages: number };
     }>(token, '/api/client-portal/invoice-details', {
-      dateFrom: `${dateFrom}T00:00:00.000Z`,
-      dateTo: `${dateTo}T23:59:59.999Z`,
+      ...billingRangeParams({ from: dateFrom, to: dateTo }),
       clientId,
       page: opts.page,
       pageSize: opts.pageSize,
@@ -1073,8 +1076,7 @@ export const portalApi = {
   /** Per-client billing rollup for a range — SQL-aggregated, no row cap. */
   invoiceSummaryRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
     apiGet<{ data: BillingInvoiceSummaryRow[]; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
-      dateFrom: `${dateFrom}T00:00:00.000Z`,
-      dateTo: `${dateTo}T23:59:59.999Z`,
+      ...billingRangeParams({ from: dateFrom, to: dateTo }),
       clientId,
     }),
 
@@ -1088,8 +1090,7 @@ export const portalApi = {
     granularity: 'half' | 'month' = 'half',
   ) =>
     apiGet<{ data: BillingInvoicePeriodSummaryRow[]; totals?: BillingInvoiceTotals; billingVisible?: boolean }>(token, '/api/client-portal/invoice-summary', {
-      dateFrom: `${dateFrom}T00:00:00.000Z`,
-      dateTo: `${dateTo}T23:59:59.999Z`,
+      ...billingRangeParams({ from: dateFrom, to: dateTo }),
       clientId,
       groupBy: 'period',
       granularity,
@@ -1097,17 +1098,16 @@ export const portalApi = {
 
   /** Returns the invoice HTML (the backend renders a printable page). */
   invoiceHtml: (token: string, clientId: number, days = 30) =>
-    apiText(token, '/api/client-portal/invoice', { clientId, ...rangeToTimestamps(defaultRange(days)) }),
+    apiText(token, '/api/client-portal/invoice', { clientId, ...billingRangeParams(defaultRange(days)) }),
   invoiceHtmlRange: (token: string, clientId: number, dateFrom: string, dateTo: string) =>
-    apiText(token, '/api/client-portal/invoice', { clientId, dateFrom: `${dateFrom}T00:00:00.000Z`, dateTo: `${dateTo}T23:59:59.999Z` }),
+    apiText(token, '/api/client-portal/invoice', { clientId, ...billingRangeParams({ from: dateFrom, to: dateTo }) }),
 
   reportsRange: (token: string, dateFrom: string, dateTo: string) => scopedReportsRange(token, dateFrom, dateTo),
 
   /** Generate/regenerate billing line items for a range (admin-only, idempotent). */
   generateBilling: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
     apiPost<{ generated: number; total: number; skipped: number; message: string; lastGeneratedAt?: string }>(token, '/api/client-portal/billing/generate', {
-      dateFrom: `${dateFrom}T00:00:00.000Z`,
-      dateTo: `${dateTo}T23:59:59.999Z`,
+      ...billingRangeParams({ from: dateFrom, to: dateTo }),
       clientId,
     }),
   billingStatus: (token: string) =>

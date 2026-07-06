@@ -79,7 +79,7 @@ assert(
 // those canonical assertions — this is stronger than name-locking a variable.
 assert(
   route.includes('const isOverrideSourced = client.name === HERITAGE_PREP_FEE_CLIENT_NAME') &&
-    route.includes('heritagePrepFeeRowsForRange(dateFrom, dateTo).length > 0') &&
+    route.includes('heritagePrepFeeRowsForRange(range.fromDay, range.toDay).length > 0') &&
     route.includes('const invoiceTotals = isOverrideSourced'),
   'the /invoice handler only detail-sums money totals when the Heritage override actually covers the range; all others (incl. Heritage fall-through) use the canonical summary',
 );

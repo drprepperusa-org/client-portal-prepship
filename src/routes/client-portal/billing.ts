@@ -9,12 +9,34 @@ import { generateLineItems } from '../../services/billing';
 import { billingSummary } from '../../services/billing-summaries';
 import { listMarkupCarrierGroups } from '../../services/rates';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { requestedClientId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const BILLING_LAST_GENERATED_KEY = 'billing_last_generated';
 
 const app = new Hono();
+
+function dayOf(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultBillingDays(days = 30) {
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 86_400_000);
+  return { from: dayOf(from), to: dayOf(to) };
+}
+
+function requireBillingDayRange(
+  c: Context,
+  rawFrom: string | null | undefined,
+  rawTo: string | null | undefined,
+): BillingDayRange | Response {
+  if (!rawFrom || !rawTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const range = billingDayRange(rawFrom, rawTo);
+  if (!range) return c.json({ error: 'Invalid dateFrom/dateTo; expected YYYY-MM-DD' }, 400);
+  return range;
+}
 
 // ── Carrier rate markups (Settings → Markups) ───────────────────────────────
 // Per-carrier-account % or flat markup applied to live rate quotes (the profit
@@ -36,12 +58,13 @@ app.get('/reports', async (c) => {
     await recordPortalAudit('portal.reports.denied', scope);
     return c.json({ data: [], grandTotal: 0, billingVisible: false, breakdown: [], billableOrders: 0, totalCharges: 0, avgCostPerOrder: 0 });
   }
-  const dateFrom = c.req.query('dateFrom') ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const dateTo = c.req.query('dateTo') ?? new Date().toISOString();
+  const defaults = defaultBillingDays();
+  const range = requireBillingDayRange(c, c.req.query('dateFrom') ?? defaults.from, c.req.query('dateTo') ?? defaults.to);
+  if (range instanceof Response) return range;
   const summary = await billingSummary({
     clientId: requestedClientId(c) ?? undefined,
-    dateFrom,
-    dateTo,
+    dateFrom: range.fromUtc,
+    dateTo: range.toUtcExclusive,
     scopeClientIds: scope.clientIds,
     scopeStoreIds: scope.storeIds,
     scopeRestricted: scope.isRestricted,
@@ -84,7 +107,8 @@ app.post('/billing/generate', async (c) => {
     return c.json({ error: 'Admin access required' }, 403);
   }
   const body = (await c.req.json().catch(() => ({}))) as { dateFrom?: string; dateTo?: string; clientId?: number };
-  if (!body.dateFrom || !body.dateTo) return c.json({ error: 'dateFrom and dateTo are required' }, 400);
+  const range = requireBillingDayRange(c, body.dateFrom, body.dateTo);
+  if (range instanceof Response) return range;
   const clientId = typeof body.clientId === 'number' ? body.clientId : undefined;
   if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
     return c.json({ error: 'Requested client is outside your access scope.' }, 403);
@@ -92,8 +116,8 @@ app.post('/billing/generate', async (c) => {
 
   const result = await generateLineItems({
     clientId,
-    dateFrom: body.dateFrom,
-    dateTo: body.dateTo,
+    dateFrom: range.fromUtc,
+    dateTo: range.toUtcExclusive,
     scopeClientIds: scope.isGlobal ? undefined : scope.clientIds,
     scopeStoreIds: scope.isGlobal ? undefined : scope.storeIds,
     scopeRestricted: !scope.isGlobal,
@@ -105,8 +129,8 @@ app.post('/billing/generate', async (c) => {
   try {
     const value = JSON.stringify({
       at: generatedAt,
-      dateFrom: body.dateFrom,
-      dateTo: body.dateTo,
+      dateFrom: range.fromDay,
+      dateTo: range.toDay,
       generated: result.generated,
       total: result.total,
       by: scope.email ?? scope.userId ?? null,
@@ -119,8 +143,8 @@ app.post('/billing/generate', async (c) => {
   // CP-019: record the SCOPE SHAPE (not customer data) on the destructive
   // generate → delete → recreate path so a scoped regeneration is auditable.
   await recordPortalAudit('portal.billing.generate', scope, {
-    dateFrom: body.dateFrom,
-    dateTo: body.dateTo,
+    dateFrom: range.fromDay,
+    dateTo: range.toDay,
     clientId,
     generated: result.generated,
     scopeClients: scope.isGlobal ? 'all' : scope.clientIds.length,

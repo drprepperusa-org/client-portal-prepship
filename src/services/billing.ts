@@ -11,8 +11,12 @@ import { refreshBillingSummaryMetrics } from './reporting-metrics';
 
 export type GenerateInput = {
   clientId?: number;
-  dateFrom: string; // ISO
-  dateTo: string; // ISO
+  // Client-portal billing routes pass UTC-midnight calendar-day bounds from
+  // billingDayRange. dateFrom is inclusive; dateTo is EXCLUSIVE day-after
+  // midnight. Every ship_date comparison in this file must use
+  // `>= dateFrom AND < dateTo`.
+  dateFrom: string; // ISO, UTC midnight, inclusive
+  dateTo: string; // ISO, UTC midnight, EXCLUSIVE
   scopeClientIds?: number[];
   scopeStoreIds?: number[];
   scopeRestricted?: boolean;
@@ -388,7 +392,7 @@ export async function generateLineItems(input: GenerateInput) {
         eq(orders.externallyShipped, false),
         sql`coalesce(${orders.raw}->>'externallyFulfilled', 'false') <> 'true'`,
         sql`coalesce(${shipments.shipDate}, ${orders.orderDate}) >= ${fromIso}::timestamptz`,
-        sql`coalesce(${shipments.shipDate}, ${orders.orderDate}) <= ${toIso}::timestamptz`,
+        sql`coalesce(${shipments.shipDate}, ${orders.orderDate}) < ${toIso}::timestamptz`,
         // CP-019: never pull orders outside the caller's tenant scope.
         billingOrderScopePredicate(input)
       )
@@ -484,7 +488,7 @@ export async function generateLineItems(input: GenerateInput) {
   await db.delete(billingLineItems).where(
     and(
       sql`${billingLineItems.shipDate} >= ${fromIso}::timestamptz`,
-      sql`${billingLineItems.shipDate} <= ${toIso}::timestamptz`,
+      sql`${billingLineItems.shipDate} < ${toIso}::timestamptz`,
       // CP-019: ALWAYS restrict the destructive delete to the caller's tenant
       // scope. Without this, an omitted clientId deleted every tenant's billing
       // rows in the range; a restricted caller with no resolvable scope now
@@ -837,7 +841,7 @@ export async function generateLineItems(input: GenerateInput) {
         // Skip voided return labels — a voided return is never billed.
         eq(shipments.voided, false),
         sql`coalesce(${shipments.labelShipDate}, ${shipments.shipDate}, ${orders.orderDate}) >= ${fromIso}::timestamptz`,
-        sql`coalesce(${shipments.labelShipDate}, ${shipments.shipDate}, ${orders.orderDate}) <= ${toIso}::timestamptz`,
+        sql`coalesce(${shipments.labelShipDate}, ${shipments.shipDate}, ${orders.orderDate}) < ${toIso}::timestamptz`,
         // CP-019 tenant scope — never pull returns outside the caller's scope.
         billingOrderScopePredicate(input)
       )
@@ -965,8 +969,10 @@ export async function generateLineItems(input: GenerateInput) {
   // v2 charged storage per cuft/month on current inventory on hand. v4
   // approximates: for each client with storageFeePerCuFt > 0, compute
   // SUM(stock_qty × cuFt_per_unit) × feeRate, emitted as one line item
-  // dated at the period's end.
+  // dated on the last billed day so it remains inside [dateFrom, dateTo).
   const periodEnd = new Date(input.dateTo);
+  const STORAGE_LINE_DAY_MS = 24 * 60 * 60 * 1000;
+  const storageShipDate = new Date(periodEnd.getTime() - STORAGE_LINE_DAY_MS);
   for (const [clientId, cfg] of configByClient.entries()) {
     const storageRate = toNum(cfg.storageFeePerCuFt ?? 0);
     if (storageRate <= 0) continue;
@@ -1002,7 +1008,7 @@ export async function generateLineItems(input: GenerateInput) {
           orderId: null,
           orderNumber: null,
           shipmentId: null,
-          shipDate: periodEnd,
+          shipDate: storageShipDate,
           lineType: 'storage',
           description: `Storage — ${totalCuFt.toFixed(2)} cuft × $${storageRate.toFixed(4)}/cuft`,
           qty: totalCuFt.toFixed(2),

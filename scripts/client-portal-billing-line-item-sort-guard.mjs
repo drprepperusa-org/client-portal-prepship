@@ -61,7 +61,7 @@ assert(
 assert(
   route.includes("const sortBy = c.req.query('sortBy')") &&
     route.includes("const sortDir = c.req.query('sortDir')") &&
-    route.includes('portalInvoiceDetails(scope, { clientId, dateFrom, dateTo, page, pageSize, sortBy, sortDir })'),
+    route.includes('portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive, page, pageSize, sortBy, sortDir })'),
   '/invoice-details paged mode reads sortBy/sortDir and passes them to the read-model',
 );
 

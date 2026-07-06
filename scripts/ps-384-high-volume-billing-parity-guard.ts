@@ -56,8 +56,8 @@ check('Billing footer consumes backend summary totals instead of reducing visibl
     !/summary\.reduce/.test(totalsBlock));
 
 check('detail endpoint returns a paginated slice plus full grouped-row count',
-  /portalInvoiceDetails\(scope, \{ clientId, dateFrom, dateTo, page, pageSize, sortBy, sortDir \}\)/.test(routes) &&
-    /portalInvoiceDetailCount\(scope, \{ clientId, dateFrom, dateTo \}\)/.test(routes) &&
+  /portalInvoiceDetails\(scope, \{ clientId, dateFrom: range\.fromUtc, dateTo: range\.toUtcExclusive, page, pageSize, sortBy, sortDir \}\)/.test(routes) &&
+    /portalInvoiceDetailCount\(scope, \{ clientId, dateFrom: range\.fromUtc, dateTo: range\.toUtcExclusive \}\)/.test(routes) &&
     /pagination: \{ page, pageSize, total, totalPages/.test(routes));
 
 check('detail read model caps only the visible/unpaginated detail path, not summary truth',

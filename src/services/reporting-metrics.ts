@@ -516,7 +516,7 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
       left join billing_line_items b
         on b.client_id = c.id
         and b.ship_date >= ${from.toISOString()}::timestamptz
-        and b.ship_date <= ${to.toISOString()}::timestamptz
+        and b.ship_date < ${to.toISOString()}::timestamptz
       where c.active = true
         and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       group by c.id
