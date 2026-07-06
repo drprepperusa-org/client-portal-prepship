@@ -14,6 +14,7 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   '/billing': () => import('@/pages/Billing'),
   '/rates': () => import('@/pages/Rates'),
   '/connections': () => import('@/pages/Connections'),
+  '/audit-log': () => import('@/pages/AuditLog'),
   '/settings': () => import('@/pages/Settings'),
   '/components': () => import('@/pages/Components'),
 };

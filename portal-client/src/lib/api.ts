@@ -452,6 +452,23 @@ export interface PortalMe {
   canViewFinancials?: boolean;
 }
 
+export interface PortalAuditLogRow {
+  id: number;
+  event: string;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  clientIds: number[];
+  storeIds: number[];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface PortalAuditClickInput {
+  target: string;
+  to?: string;
+  from?: string;
+}
+
 export interface PortalClientRow {
   id: number;
   name: string | null;
@@ -912,6 +929,13 @@ async function scopedReportsRange(token: string, dateFrom: string, dateTo: strin
 
 export const portalApi = {
   me: (token: string) => apiGet<PortalMe>(token, '/api/client-portal/me'),
+  auditLog: (token: string, opts: { search?: string; limit?: number } = {}) =>
+    apiGet<{ data: PortalAuditLogRow[] }>(token, '/api/client-portal/audit-log', {
+      search: opts.search,
+      limit: opts.limit ?? 100,
+    }),
+  auditClick: (token: string, body: PortalAuditClickInput) =>
+    apiPost<{ ok: true }>(token, '/api/client-portal/audit-log/click', body),
   clients: (token: string) => apiGet<{ data: PortalClientRow[] }>(token, '/api/client-portal/clients'),
   accessList: (token: string) => apiGet<{ data: PortalAccessUser[] }>(token, '/api/client-portal/access-list'),
   updateAccessUser: (token: string, id: string, patch: AccessUserPatch) =>

@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useAwaitingCount, useMe } from '@/lib/hooks';
 import { prefetchRoute } from '@/lib/routePrefetch';
+import { portalApi } from '@/lib/api';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -17,7 +18,19 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-function Row({ item, collapsed, onNavigate, badge }: { item: NavItem; collapsed: boolean; onNavigate?: () => void; badge?: number }) {
+function Row({
+  item,
+  collapsed,
+  onNavigate,
+  onItemClick,
+  badge,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  onNavigate?: () => void;
+  onItemClick?: (item: NavItem) => void;
+  badge?: number;
+}) {
   const { pathname } = useLocation();
   const active = item.to === '/' ? pathname === '/' : pathname.startsWith(item.to);
   const showBadge = typeof badge === 'number' && badge > 0;
@@ -26,6 +39,10 @@ function Row({ item, collapsed, onNavigate, badge }: { item: NavItem; collapsed:
   const link = (
     <NavLink
       to={item.to}
+      onPointerDown={() => onItemClick?.(item)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onItemClick?.(item);
+      }}
       onClick={onNavigate}
       onMouseEnter={() => prefetchRoute(item.to)}
       onFocus={() => prefetchRoute(item.to)}
@@ -72,17 +89,26 @@ function Row({ item, collapsed, onNavigate, badge }: { item: NavItem; collapsed:
 
 export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const nav = useNavigate();
+  const location = useLocation();
   const toast = useToast();
-  const { signOut, email } = useAuth();
+  const { signOut, email, accessToken } = useAuth();
   const me = useMe();
   const isAdmin = me.data?.isAdmin ?? false;
   const displayName = email ? email.split('@')[0] : 'Account';
   const awaitingCount = useAwaitingCount().data?.count ?? 0;
   // Settings is admin-only — hide it from the rail for non-admins so the nav
   // mirrors the route guard (server also enforces admin scope).
-  const navItems = isAdmin ? NAV : NAV.filter((item) => item.to !== '/settings');
+  const navItems = isAdmin ? NAV : NAV.filter((item) => item.to !== '/settings' && item.to !== '/audit-log');
+
+  function handleNavItemClick(item: NavItem) {
+    if (!accessToken) return;
+    void portalApi.auditClick(accessToken, { target: item.label, to: item.to, from: location.pathname }).catch(() => undefined);
+  }
 
   async function handleLogout() {
+    if (accessToken) {
+      void portalApi.auditClick(accessToken, { target: 'Sign out', from: location.pathname }).catch(() => undefined);
+    }
     await signOut();
     onNavigate?.();
     toast.info('Signed out', 'You have been logged out.');
@@ -107,7 +133,14 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3">
         {navItems.map((item) => (
-          <Row key={item.to} item={item} collapsed={collapsed} onNavigate={onNavigate} badge={item.to === '/orders' ? awaitingCount : undefined} />
+          <Row
+            key={item.to}
+            item={item}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+            onItemClick={handleNavItemClick}
+            badge={item.to === '/orders' ? awaitingCount : undefined}
+          />
         ))}
       </nav>
 

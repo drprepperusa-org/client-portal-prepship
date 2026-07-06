@@ -21,6 +21,7 @@ import integrationsRoute from './client-portal/integrations';
 import inboundRoute from './client-portal/inbound';
 import returnsRoute from './client-portal/returns';
 import syncRoute from './client-portal/sync';
+import auditLogRoute from './client-portal/audit-log';
 
 const app = new Hono();
 
@@ -36,5 +37,6 @@ app.route('/', integrationsRoute);
 app.route('/', inboundRoute);
 app.route('/', returnsRoute);
 app.route('/', syncRoute);
+app.route('/', auditLogRoute);
 
 export default app;

@@ -28,6 +28,12 @@ function useTokenQuery<T>(key: unknown[], fn: (token: string) => Promise<T>, ena
 const LIVE_ORDERS_MS = 45_000;
 
 export const useMe = () => useTokenQuery(['me'], portalApi.me);
+export function useAuditLog(search = '', limit = 100) {
+  return useTokenQuery(['audit-log', search, limit], (t) => portalApi.auditLog(t, { search, limit }), true, {
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
 export const useAccessList = () => useTokenQuery(['access-list'], portalApi.accessList);
 export const useSyncStatus = () => useTokenQuery(['sync-status'], portalApi.syncStatus);

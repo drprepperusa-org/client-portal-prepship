@@ -9,6 +9,7 @@ import {
   ReceiptText,
   Tags,
   Plug,
+  ClipboardList,
   Settings,
   Component,
   type LucideIcon,
@@ -33,6 +34,7 @@ export const NAV: NavItem[] = [
   { to: '/billing', label: 'Billing', icon: ReceiptText, accent: 'sky' },
   { to: '/rates', label: 'Rate Sheet', icon: Tags, accent: 'amber' },
   { to: '/connections', label: 'Connections', icon: Plug, accent: 'teal' },
+  { to: '/audit-log', label: 'Audit log', icon: ClipboardList, accent: 'indigo' },
   { to: '/settings', label: 'Settings', icon: Settings, accent: 'violet' },
 ];
 

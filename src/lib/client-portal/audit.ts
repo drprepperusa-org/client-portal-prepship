@@ -1,3 +1,5 @@
+import { db } from '../../db/client';
+import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
 import type { ClientPortalScope } from './scope';
 
 const SENSITIVE_KEY_PATTERN =
@@ -19,12 +21,31 @@ export function sanitizePortalAuditMetadata(value: unknown): unknown {
   return out;
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object') return { value };
+  if (Array.isArray(value)) return { items: value };
+  return value as Record<string, unknown>;
+}
+
 export async function recordPortalAudit(
   event: string,
   scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds'>,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
-  const safeMetadata = sanitizePortalAuditMetadata(metadata);
+  const safeMetadata = metadataRecord(sanitizePortalAuditMetadata(metadata));
+  try {
+    await db.insert(clientPortalAuditLogs).values({
+      event,
+      actorUserId: scope.userId || null,
+      actorEmail: scope.email ?? null,
+      clientIds: scope.clientIds,
+      storeIds: scope.storeIds,
+      metadata: safeMetadata,
+    });
+  } catch (error) {
+    console.warn('[client-portal:audit] persist failed', error);
+  }
+
   console.info('[client-portal:audit]', {
     event,
     userId: scope.userId || null,

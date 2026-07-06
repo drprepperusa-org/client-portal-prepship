@@ -19,6 +19,7 @@ const Finance = lazy(() => import('./pages/Finance'));
 const Billing = lazy(() => import('./pages/Billing'));
 const Rates = lazy(() => import('./pages/Rates'));
 const Connections = lazy(() => import('./pages/Connections'));
+const AuditLog = lazy(() => import('./pages/AuditLog'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Components = lazy(() => import('./pages/Components'));
 
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="/invoices" element={<Navigate to="/billing" replace />} />
         <Route path="/rates" element={<Lazy el={<Rates />} />} />
         <Route path="/connections" element={<Lazy el={<Connections />} />} />
+        <Route path="/audit-log" element={<RequireAdmin><Lazy el={<AuditLog />} /></RequireAdmin>} />
         <Route path="/settings" element={<RequireAdmin><Lazy el={<Settings />} /></RequireAdmin>} />
         <Route path="/components" element={<Lazy el={<Components />} />} />
       </Route>

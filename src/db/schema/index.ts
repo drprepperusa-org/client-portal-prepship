@@ -23,3 +23,4 @@ export * from './fulfillment-outbox';
 export * from './analytics-cache';
 export * from './workflows';
 export * from './inbound';
+export * from './client-portal-audit-logs';
