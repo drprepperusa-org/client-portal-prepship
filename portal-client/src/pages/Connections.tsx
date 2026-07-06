@@ -32,7 +32,8 @@ export default function Connections() {
   // (source='portal', inactive — no sync path uses it) and it stays visible
   // across reloads until an operator activates or removes it.
   const pending = rows.filter(isPending);
-  const live = rows.filter((r) => !isPending(r));
+  const live = rows.filter((r) => !isPending(r) && r.type !== 'carrier');
+  const visibleRows = [...pending, ...live];
 
   async function handleConnect(draft: ConnectDraft) {
     if (!accessToken) return;
@@ -52,7 +53,7 @@ export default function Connections() {
   return (
     <div className="space-y-4">
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <SectionTitle title="Connections" subtitle="Sales channels & carriers linked to your PrepShip account" />
+        <SectionTitle title="Connections" subtitle="Sales channels linked to your PrepShip account" />
         {isAdmin && (
           <Button leadingIcon={<Plus size={16} />} onClick={() => setModalOpen(true)}>
             Add store
@@ -65,10 +66,10 @@ export default function Connections() {
           isLoading={query.isLoading}
           isError={query.isError}
           error={query.error}
-          isEmpty={rows.length === 0}
+          isEmpty={visibleRows.length === 0}
           onRetry={() => query.refetch()}
           emptyTitle="No connections yet"
-          emptyMessage={isAdmin ? 'Click “Add store” to connect a sales channel or marketplace.' : 'Your operator manages store and carrier connections.'}
+          emptyMessage={isAdmin ? 'Click “Add store” to connect a sales channel or marketplace.' : 'Your operator manages sales channel connections.'}
         >
           <motion.div variants={staggerContainer} initial="initial" animate="enter" className="grid grid-cols-1 gap-4 p-2 sm:grid-cols-2 xl:grid-cols-3">
             {/* Pending (operator-gated) connections — floating, no flip. */}
