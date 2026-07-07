@@ -25,9 +25,10 @@
 //   3. billing_line_items.description NEVER reaches a client-facing surface: no
 //      src/lib/client-portal read-model and no src/routes/client-portal route
 //      selects a billing-line description column. Client invoices aggregate by
-//      lineType into backend-owned totals only, so internal billing wording
-//      (e.g. an outbound "below-$X override $Y" note) provably cannot leak into a
-//      client invoice / export.
+//      lineType into backend-owned totals only, so internal billing wording in a
+//      description provably cannot leak into a client invoice / export. (That
+//      wording is itself now removed from the generator's outbound shipping line
+//      and kept out of every description by billing-description-policy-free-guard.mjs.)
 //
 // STATIC ONLY — no db / live / generation.
 import fs from 'node:fs';

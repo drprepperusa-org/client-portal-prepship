@@ -746,7 +746,7 @@ export async function generateLineItems(input: GenerateInput) {
       // PS-366: below-trigger override — the trigger tests the actual
       // selected/purchased cost (labelCost), never the marked-up amount.
       const triggerBelow = toNum(cfg.shippingRateOverrideTriggerBelow);
-      const { cShippingRate, overrideApplied } = resolveCustomerShippingRate({
+      const { cShippingRate } = resolveCustomerShippingRate({
         selectedCost: labelCost,
         markedUpCost: shipCost,
         triggerBelow,
@@ -759,9 +759,13 @@ export async function generateLineItems(input: GenerateInput) {
         shipmentId: s.id,
         shipDate: s.shipDate,
         lineType: 'shipping',
-        description: overrideApplied
-          ? `Shipping (below-$${triggerBelow.toFixed(2)} override $${cShippingRate.toFixed(2)}) · order ${s.orderNumber ?? s.orderId}`
-          : `Shipping${pct > 0 || flat > 0 ? ` (${pct}% + $${flat.toFixed(2)})` : ''} · order ${s.orderNumber ?? s.orderId}`,
+        // CP-036: policy-free description — no internal markup / override /
+        // below-trigger wording may appear in a billing description (pinned by
+        // scripts/billing-description-policy-free-guard.mjs). shipmentId keeps it
+        // unique per label so multiple shipments on one order can't collide on
+        // the (order_id, line_type, description) unique key — mirrors the return
+        // lines below.
+        description: `Order ${s.orderNumber ?? s.orderId} · shipping · shipment #${s.id}`,
         qty: '1',
         unitCost: cShippingRate.toFixed(2),
         totalCost: cShippingRate.toFixed(2),
