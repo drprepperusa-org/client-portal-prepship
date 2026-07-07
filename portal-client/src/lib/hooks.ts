@@ -85,8 +85,6 @@ export const useBillingStatus = () =>
     refetchOnWindowFocus: true,
   });
 
-/** Carrier rate markups (Settings → Markups). */
-export const useMarkups = () => useTokenQuery(['markups'], portalApi.markups);
 export function useInvoiceDetails() {
   const { dateRange, clientId } = usePortalFilters();
   return useTokenQuery(['invoice-details', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.invoiceDetails(t, dateRange, clientId));

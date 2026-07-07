@@ -14,9 +14,11 @@ import path from 'node:path';
 const root = process.cwd();
 const assetsDir = path.join(root, 'portal-client/dist/assets');
 
-// Specific house/internal tokens only. Deliberately NOT bare `margin`/`profit`:
-// `margin` ships as a Recharts chart-prop key in the compiled JS, and markup /
-// "profit layer" vocabulary lives only in the allowlisted admin Settings chunk.
+// Specific house/internal tokens only. Deliberately NOT bare `margin`/`profit`/
+// `markup`: `margin` ships as a Recharts chart-prop key, and `markup` appears as a
+// coincidental substring in vendor chunks (charts / write-excel-file). The
+// DISTINCTIVE admin-markup tokens below are safe (verified absent from every
+// vendor chunk) and are now forbidden EVERYWHERE — no chunk is allowlisted.
 const FORBIDDEN = [
   'label_cost',
   'labelCost',
@@ -26,12 +28,18 @@ const FORBIDDEN = [
   'avgStandardShippingCost', // CP-038 renamed this summary key to avgShippingCharge — backstop its regression
   'shipAlloc',
   'shipUnits',
+  // CP-038b: admin Carrier-Markups vocabulary must never ship in the customer bundle.
+  'profit layer',
+  'MarkupsEditor',
+  'MarkupValue',
+  'MarkupGroup',
+  'client-portal/markups',
 ];
 
-// Chunks allowed to contain admin vocabulary. The Markups admin UI is RequireAdmin-gated
-// and code-split; relocating it out of the customer bundle is the tracked follow-up
-// (CP-038b). Until then its chunk is allowlisted by filename prefix.
-const ALLOWLIST_PREFIXES = ['Settings-'];
+// CP-038b DONE: the Markups admin UI (MarkupsEditor + markups API client + Markup*
+// types) was removed from the Client Portal, so NO chunk is allowlisted — every
+// built chunk must be free of the forbidden admin/internal vocabulary above.
+const ALLOWLIST_PREFIXES = [];
 const isAllowlisted = (file) => ALLOWLIST_PREFIXES.some((p) => file.startsWith(p));
 
 if (!fs.existsSync(assetsDir)) {

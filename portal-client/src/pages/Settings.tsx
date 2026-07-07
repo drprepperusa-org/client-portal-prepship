@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Bell, Users, CreditCard, Percent } from 'lucide-react';
-import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
-import { MarkupsEditor } from '@/components/MarkupsEditor';
+import { User, Bell, Users, CreditCard } from 'lucide-react';
+import { GlassPanel } from '@/components/ui/Glass';
 import { ProfileTab } from '@/components/settings/ProfileTab';
 import { NotificationsTab } from '@/components/settings/NotificationsTab';
 import { AccessTab } from '@/components/settings/AccessTab';
@@ -14,7 +13,6 @@ const TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'team', label: 'Access', icon: Users },
   { id: 'billing', label: 'Billing', icon: CreditCard },
-  { id: 'markups', label: 'Markups', icon: Percent },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -54,12 +52,6 @@ export default function Settings() {
             {tab === 'notifications' && <NotificationsTab />}
             {tab === 'team' && <AccessTab />}
             {tab === 'billing' && <BillingTab />}
-            {tab === 'markups' && (
-              <div className="space-y-5">
-                <SectionTitle title="Carrier markups" subtitle="Per-carrier % or flat markup added to live rates (your profit layer)" />
-                <MarkupsEditor />
-              </div>
-            )}
           </motion.div>
         </AnimatePresence>
       </GlassPanel>

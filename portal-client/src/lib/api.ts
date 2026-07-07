@@ -1248,28 +1248,13 @@ export const portalApi = {
     }),
   billingStatus: (token: string) =>
     apiGet<{ lastGenerated: BillingLastGenerated | null }>(token, '/api/client-portal/billing/status'),
-
-  /** Carrier rate markups (Settings → Markups). Admin-only. */
-  markups: (token: string) =>
-    apiGet<{ groups: MarkupGroup[]; markups: Record<string, MarkupValue> }>(token, '/api/client-portal/markups'),
-  setMarkup: (token: string, carrierId: number | string, body: MarkupValue | { value: null }) =>
-    apiPut<{ ok: boolean }>(token, '/api/client-portal/markups', { carrierId, ...body }),
+  // CP-038b: the Carrier Markups admin UI (MarkupsEditor) + its markups/setMarkup
+  // API client methods and Markup* types were removed from the Client Portal so
+  // NO markup / "profit layer" vocabulary ships in the customer-downloadable
+  // bundle (a route guard is not a secrecy boundary). Markup management is owned
+  // by the admin app; the backend /api/client-portal/markups route stays
+  // (server-side, admin RBAC-gated) but has no client-portal caller.
 };
-
-export interface MarkupCarrier {
-  id: number;
-  carrierCode: string;
-  nickname: string;
-}
-export interface MarkupGroup {
-  key: string;
-  label: string;
-  carriers: MarkupCarrier[];
-}
-export interface MarkupValue {
-  type: 'pct' | 'flat';
-  value: number;
-}
 
 export interface BillingLastGenerated {
   at: string;
