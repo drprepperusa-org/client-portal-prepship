@@ -44,4 +44,15 @@ assert.match(ordersReadModel, /billedShipping/, 'list read-model selects billed 
 assert.match(ordersReadModel, /line_type = 'shipping'/, 'list billed-shipping filters line_type=shipping');
 assert.match(ordersReadModel, /shippingCharged:\s*row\.billedShipping/, 'list threads billedShipping into the DTO');
 
+// CP-039: the buyer-paid store-shipping fallback (orders.shippingAmount) is
+// status-gated — it must NOT surface a rate for the awaiting/pending bucket. The
+// DTO gates the fallback behind an awaiting-bucket check; behavioral coverage
+// lives in client-portal-orders-shipping-status-guard.ts.
+assert.match(dto, /isAwaitingBucket/, 'DTO gates the buyer-paid shipping fallback on the awaiting/pending bucket (CP-039)');
+assert.match(
+  dto,
+  /!isAwaitingBucket && Number\(row\.shippingAmount\) > 0/,
+  'DTO only falls back to buyer-paid shippingAmount when the order is NOT awaiting/pending (CP-039)',
+);
+
 console.log('Client portal Orders customer-shipping-rate guard passed.');

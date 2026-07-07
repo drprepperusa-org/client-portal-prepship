@@ -280,14 +280,23 @@ export function toPortalOrderDto(
     items,
     ...(options.includeFinancials
       ? (() => {
-          // CP-018: the ONE customer-facing shipping value. Billed customer
-          // shipping when > 0, else buyer-paid store shipping when > 0, else null
-          // → "—". NEVER the internal selected/label/best rate. Computed once and
-          // reused for the shipping row of the cost summary.
+          // CP-018 / CP-039: the ONE customer-facing shipping value. Billed
+          // customer shipping (billing_line_items line_type='shipping') is the
+          // canonical rate for EVERY status. Buyer-paid store shipping
+          // (orders.shippingAmount) is only a fallback ONCE the order is out of
+          // the awaiting/pending bucket — an awaiting/pending row must show "—",
+          // not a rate, just because the marketplace buyer paid shipping at
+          // checkout (CP-039). NEVER the internal selected/label/best rate.
+          const orderStatusLc = String(row.orderStatus ?? '').toLowerCase();
+          const isAwaitingBucket =
+            orderStatusLc === 'awaiting_shipment' ||
+            orderStatusLc === 'awaiting_payment' ||
+            orderStatusLc === 'pending' ||
+            orderStatusLc === 'on_hold';
           const customerShippingRate =
             Number(row.shippingCharged) > 0
               ? row.shippingCharged
-              : Number(row.shippingAmount) > 0
+              : !isAwaitingBucket && Number(row.shippingAmount) > 0
                 ? row.shippingAmount
                 : null;
           // CP-017: extract ONLY the money keys the summary needs from raw — never
