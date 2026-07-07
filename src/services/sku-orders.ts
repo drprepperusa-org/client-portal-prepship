@@ -1,8 +1,11 @@
 // READ-ONLY analytics helper. Returns the per-SKU "Recent Orders" payload
-// used by the SKU detail drawer on both the operator Inventory view and the
-// client-portal Analysis page. This file only SELECTs from orders / order_items
-// / shipments — it never writes, so it is safe under the shipped/cancelled
-// data lockdown (analytics reads are explicitly allowed).
+// consumed by the client-portal Analysis page SKU detail drawer. (The operator
+// Inventory drawer uses a separate skuOrdersAnalytics service; post-CP-038 this
+// helper's only live caller is the client portal, which passes
+// shippingBasis: 'customer_billed' — the 'house_markup' default is retained but
+// has no live caller.) This file only SELECTs from orders / order_items /
+// shipments — it never writes, so it is safe under the shipped/cancelled data
+// lockdown (analytics reads are explicitly allowed).
 //
 // The query is parametrized by `orderScopeSql`: a raw predicate against the
 // orders table aliased as `o`. Callers pass their own tenant scope (operator

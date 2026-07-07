@@ -23,6 +23,7 @@ const FORBIDDEN = [
   'selectedRate',
   'selected_rate',
   'standard_shipping_cost',
+  'avgStandardShippingCost', // CP-038 renamed this summary key to avgShippingCharge — backstop its regression
   'shipAlloc',
   'shipUnits',
 ];
