@@ -2,17 +2,15 @@ import { useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Bell, Menu, ChevronDown, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar } from '@/components/ui/Display';
-import { useAuth } from '@/auth';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
 import { DateRangeFilter } from './DateRangeFilter';
+import { AccountMenu } from './AccountMenu';
 
 export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
   const nav = useNavigate();
-  const { email } = useAuth();
   const { clientId, setClientId } = usePortalFilters();
   const clientsQuery = useClients();
   const sync = useSyncStatus();
@@ -95,10 +93,8 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
           </AnimatePresence>
         </div>
 
-        {/* Avatar */}
-        <button aria-label="Account" className="focus-ring cursor-pointer rounded-full transition-transform hover:scale-105">
-          <Avatar name={email ?? 'User'} size={38} />
-        </button>
+        {/* Account */}
+        <AccountMenu />
       </div>
     </header>
   );

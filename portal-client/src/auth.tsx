@@ -9,8 +9,11 @@ interface AuthApi {
   accessToken: string | null;
   email: string | null;
   userId: string | null;
+  lastSignInAt: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  signOutAllDevices: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthCtx = createContext<AuthApi | null>(null);
@@ -73,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken: session?.access_token ?? null,
       email: session?.user?.email ?? null,
       userId: session?.user?.id ?? null,
+      lastSignInAt: session?.user?.last_sign_in_at ?? null,
       signIn: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -88,6 +92,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.clear();
         cachedUserId.current = null;
         setSession(null);
+      },
+      signOutAllDevices: async () => {
+        // scope: 'global' revokes every refresh token for this user, ending
+        // sessions on all other browsers/devices too (this one included). Mirror
+        // signOut's deterministic cache wipe.
+        await supabase.auth.signOut({ scope: 'global' });
+        queryClient.clear();
+        cachedUserId.current = null;
+        setSession(null);
+      },
+      changePassword: async (currentPassword, newPassword) => {
+        const currentEmail = session?.user?.email;
+        if (!currentEmail) throw new Error('You are not signed in.');
+        // Re-authenticate with the current password first: updateUser alone
+        // trusts the existing session, which would let anyone at an unlocked
+        // screen reset the password. This proves the person knows the old one.
+        const { error: reauthError } = await supabase.auth.signInWithPassword({
+          email: currentEmail,
+          password: currentPassword,
+        });
+        if (reauthError) throw new Error('Your current password is incorrect.');
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw new Error(error.message);
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
