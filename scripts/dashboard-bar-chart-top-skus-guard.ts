@@ -107,10 +107,11 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(dashboard.includes('Unit Count Last 30 Days'), 'Top SKUs table has a "Unit Count Last 30 Days" column');
   assert(dashboard.includes('Avg Shipping Price'), 'Top SKUs table has an "Avg Shipping Price" column');
   assert(dashboard.includes('avgShippingPrice == null') && dashboard.includes("'—'"), 'avg shipping renders — when null instead of $0.00');
-  // The value cell shows the literal calculation as a tooltip: alloc ÷ units = avg.
+  // CP-038: the internal allocation-math tooltip (shipAlloc ÷ shipUnits = avg) was removed —
+  // the value is now the client's billed shipping CHARGE, rendered as a plain cell.
   assert(
-    dashboard.includes('money(s.shipAlloc)') && dashboard.includes('s.shipUnits') && dashboard.includes('÷'),
-    'Avg Shipping Price cell renders the calculation ($shipAlloc ÷ shipUnits = avg) as a tooltip',
+    dashboard.includes('money(s.avgShippingPrice)') && !dashboard.includes('money(s.shipAlloc)') && !dashboard.includes('s.shipUnits'),
+    'Avg Shipping Price cell renders the plain billed charge (CP-038: no shipAlloc÷shipUnits tooltip)',
   );
 }
 
@@ -131,7 +132,7 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 {
   const api = read('portal-client/src/lib/api.ts');
   assert(api.includes('avgShippingPrice'), 'DashboardSummary.bySku exposes avgShippingPrice');
-  assert(api.includes('shipAlloc') && api.includes('shipUnits'), 'DashboardSummary.bySku exposes shipAlloc/shipUnits for the calculation tooltip');
+  assert(api.includes('billedShippingTotal') && api.includes('chargedUnits'), 'DashboardSummary.bySku exposes billedShippingTotal/chargedUnits for the exact multi-client combine (CP-038)');
   assert(/daily:\s*Array<\{\s*day:\s*string;\s*orders:\s*number;\s*units:\s*number/.test(api), 'DashboardSummary exposes a daily orders/units series');
 
   const route = read('src/routes/client-portal/dashboard.ts').replace(/\s+/g, ' ');

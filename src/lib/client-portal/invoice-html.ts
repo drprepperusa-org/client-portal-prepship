@@ -211,7 +211,7 @@ export function renderPortalInvoiceHtml(input: {
     <thead><tr>
       <th>Ship Date</th><th>Order #</th><th>SKU(s)</th><th class="num">Qty</th>
       <th class="num">Pick &amp; Pack</th><th class="num">Addl Units</th>
-      <th class="num">Box Cost</th><th>Box Size</th><th class="num">Shipping</th>
+      <th class="num">Box Charge</th><th>Box Size</th><th class="num">Shipping</th>
       <th class="num">Storage</th><th class="num">Return Processing</th><th class="num">Return Postage</th>
       <th class="num">Fulfillment Fee</th>
     </tr></thead>
