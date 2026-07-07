@@ -230,7 +230,7 @@ export default function Shipments() {
               : 'Outbound shipments will appear here once orders ship.'
           }
         >
-          <DataTable tableId="shipments" columns={columns} rows={rows} rowKey={(s) => String(s.id)} onRowClick={setSelected} stickyHeader />
+          <DataTable tableId="shipments" columns={columns} rows={rows} rowKey={(s) => String(s.id)} rowClassName={(s) => (s.voided ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined)} onRowClick={setSelected} stickyHeader />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>

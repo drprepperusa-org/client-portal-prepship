@@ -42,6 +42,9 @@ interface DataTableProps<T> {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
+  /** Optional per-row class (e.g. a status highlight). Merged onto the row
+   *  element on both the desktop table rows and the mobile cards. */
+  rowClassName?: (row: T) => string | undefined;
   onRowClick?: (row: T) => void;
   empty?: ReactNode;
   /** Optional footer row(s) (e.g. a totals row), rendered in <tfoot>. */
@@ -88,6 +91,7 @@ export function DataTable<T>({
   columns,
   rows,
   rowKey,
+  rowClassName,
   onRowClick,
   empty,
   tableId,
@@ -388,7 +392,7 @@ export function DataTable<T>({
                   key={rowKey(row)}
                   variants={staggerItem}
                   onClick={() => onRowClick?.(row)}
-                  className={cn('border-b border-slate-100 transition-colors last:border-0 hover:bg-brand-50/50', onRowClick && 'cursor-pointer')}
+                  className={cn('border-b border-slate-100 transition-colors last:border-0 hover:bg-brand-50/50', onRowClick && 'cursor-pointer', rowClassName?.(row))}
                 >
                   {ordered.map((c) => (
                     <td key={c.key} className={cn('overflow-hidden px-4 py-3.5 align-middle text-ink-2', c.className)}>
@@ -427,7 +431,7 @@ export function DataTable<T>({
             key={rowKey(row)}
             variants={staggerItem}
             onClick={() => onRowClick?.(row)}
-            className={cn('glass rounded-glass-sm p-4', onRowClick && 'cursor-pointer')}
+            className={cn('glass rounded-glass-sm p-4', onRowClick && 'cursor-pointer', rowClassName?.(row))}
           >
             {ordered.map((c) => (
               <div key={c.key} className="flex items-start justify-between gap-3 py-1.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-slate-100">
