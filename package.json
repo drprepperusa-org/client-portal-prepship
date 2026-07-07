@@ -134,6 +134,7 @@
     "test:settings-backfill": "node scripts/settings-backfill-guard.mjs",
     "test:client-portal-orders-selected-rate": "node scripts/client-portal-orders-selected-rate-guard.mjs",
     "test:client-portal-orders-shipping-status": "tsx scripts/client-portal-orders-shipping-status-guard.ts",
+    "test:client-portal-no-fill-rates": "node scripts/client-portal-no-fill-rates-guard.mjs",
     "test:client-portal-order-detail": "tsx scripts/client-portal-order-detail-guard.ts",
     "test:client-portal-orders-search": "node scripts/client-portal-orders-search-guard.mjs",
     "test:client-portal-invoice-export-range": "node scripts/client-portal-invoice-export-range-guard.mjs",

@@ -745,22 +745,6 @@ export interface SyncStatus {
   worker?: Record<string, unknown>;
 }
 
-/** Progress of a best-rate backfill job (mirror of the scope-safe API projection). */
-export interface BackfillJob {
-  jobId: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-  total: number;
-  processed: number;
-  updated: number;
-  skipped: number;
-  failed: number;
-  message: string;
-  error: string | null;
-  startedAt: string;
-  finishedAt: string | null;
-  failureSamples?: string[];
-}
-
 export interface ListOpts {
   status?: string;
   search?: string;
@@ -993,12 +977,10 @@ export const portalApi = {
   deleteAccessUser: (token: string, id: string) =>
     apiDelete<{ ok: true }>(token, `/api/client-portal/access-list/${id}`),
   syncStatus: (token: string) => apiGet<SyncStatus>(token, '/api/client-portal/sync-status'),
-
-  /** Trigger a best-rate backfill (rate quotes only; additive). Admin/scoped. */
-  backfillRates: (token: string, opts: { clientId?: number; limit?: number; maxAgeHours?: number } = {}) =>
-    apiPost<{ jobId: string; status: string; job: BackfillJob | null }>(token, '/api/client-portal/backfill', opts),
-  backfillStatus: (token: string) =>
-    apiGet<{ job: BackfillJob | null }>(token, '/api/client-portal/backfill/status'),
+  // CP #1193: the best-rate "Fill Rates" backfill controls were removed from the
+  // Client Portal — no client method triggers or polls a rate backfill now, and
+  // the rate-quote job type is gone from the bundle. The backend backfill route
+  // stays (admin/ops, server-side). Pinned by client-portal-no-fill-rates-guard.mjs.
 
   dashboard: (token: string, range: PortalDateRange, clientId?: number) => scopedDashboard(token, range, clientId),
   dailyCounts: (token: string, range: PortalDateRange, clientId?: number) => scopedDailyCounts(token, range, clientId),
