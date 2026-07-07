@@ -49,6 +49,32 @@ export async function listPortalOrders(
         from billing_line_items bli
         where bli.order_id = ${orders.id} and bli.line_type = 'shipping'
       )`,
+      // Canonical signals for the backend-owned order fulfillment status
+      // (see lib/client-portal/order-status.ts): the latest ACTIVE (non-voided)
+      // shipment's tracking status, plus whether the order has any active / any
+      // voided shipment. Matched by the exact order_id, or — for shipments
+      // synced without a linked order_id — by order_number scoped to the SAME
+      // client (s.client_id = orders.client_id). The client scope on the
+      // order_number fallback is required for tenant isolation: two clients can
+      // share an order number, so an unscoped order_number match could surface a
+      // different client's shipment status.
+      activeTrackingStatus: sql<string | null>`(
+        select s.tracking_status from shipments s
+        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+          and coalesce(s.voided, false) = false
+        order by s.id desc
+        limit 1
+      )`,
+      hasActiveShipment: sql<boolean>`exists (
+        select 1 from shipments s
+        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+          and coalesce(s.voided, false) = false
+      )`,
+      hasVoidedShipment: sql<boolean>`exists (
+        select 1 from shipments s
+        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+          and coalesce(s.voided, false) = true
+      )`,
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -73,6 +99,9 @@ export async function listPortalOrders(
           override: row.override,
           // CP-018: list now provides the billed customer shipping charge.
           shippingCharged: row.billedShipping,
+          activeTrackingStatus: row.activeTrackingStatus,
+          hasActiveShipment: row.hasActiveShipment,
+          hasVoidedShipment: row.hasVoidedShipment,
         },
         { includeFinancials: scope.canViewFinancials },
       ),
@@ -99,6 +128,25 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
         from billing_line_items bli
         where bli.order_id = ${orders.id} and bli.line_type = 'shipping'
       )`,
+      // Canonical signals for the backend-owned order fulfillment status
+      // (see lib/client-portal/order-status.ts).
+      activeTrackingStatus: sql<string | null>`(
+        select s.tracking_status from shipments s
+        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+          and coalesce(s.voided, false) = false
+        order by s.id desc
+        limit 1
+      )`,
+      hasActiveShipment: sql<boolean>`exists (
+        select 1 from shipments s
+        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+          and coalesce(s.voided, false) = false
+      )`,
+      hasVoidedShipment: sql<boolean>`exists (
+        select 1 from shipments s
+        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+          and coalesce(s.voided, false) = true
+      )`,
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -107,7 +155,16 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
     .limit(1);
   if (!row) return null;
   return toPortalOrderDto(
-    { ...row.order, clientName: row.clientName, storeName: row.clientName, override: row.override, shippingCharged: row.billedShipping },
+    {
+      ...row.order,
+      clientName: row.clientName,
+      storeName: row.clientName,
+      override: row.override,
+      shippingCharged: row.billedShipping,
+      activeTrackingStatus: row.activeTrackingStatus,
+      hasActiveShipment: row.hasActiveShipment,
+      hasVoidedShipment: row.hasVoidedShipment,
+    },
     { includeFinancials: scope.canViewFinancials },
   );
 }

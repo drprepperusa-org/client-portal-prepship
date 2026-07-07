@@ -89,6 +89,7 @@
     "test:client-portal-returns-delivery": "node scripts/client-portal-returns-delivery-guard.mjs",
     "test:client-portal-returns-ui": "node scripts/client-portal-returns-ui-guard.mjs",
     "test:client-portal-returns-canonical-fields": "node scripts/client-portal-returns-canonical-fields-guard.mjs",
+    "test:client-portal-order-status": "tsx scripts/client-portal-order-status-guard.ts",
     "test:client-portal-returns-pdf-download": "node scripts/client-portal-returns-pdf-download-guard.mjs",
     "test:client-portal-returns-scope": "node scripts/client-portal-returns-scope-guard.mjs",
     "test:client-portal-returns-receiving": "node scripts/client-portal-returns-receiving-guard.mjs",

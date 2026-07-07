@@ -4,6 +4,7 @@ import type { Shipment } from '../../db/schema/shipments';
 import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
 import { isDiscountLine } from './dashboard-aggregate';
 import { trackingUrlForCarrier } from '../tracking-url';
+import { resolveOrderFulfillmentStatus } from './order-status';
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -191,6 +192,11 @@ export function toPortalOrderDto(
     /** Billed shipping for this order (Σ billing_line_items line_type='shipping')
      *  — the customer-facing shipping charge, supplied by the route layer. */
     shippingCharged?: number | string | null;
+    /** Canonical signals for the backend-owned fulfillment-status resolver
+     *  (order-status.ts), supplied by the read-model from the shipments table. */
+    activeTrackingStatus?: string | null;
+    hasActiveShipment?: boolean;
+    hasVoidedShipment?: boolean;
   },
   options: { includeFinancials?: boolean } = {}
 ) {
@@ -235,6 +241,16 @@ export function toPortalOrderDto(
     sourceProvider: row.sourceProvider,
     sourceStoreId: row.sourceAccountId,
     orderStatus: row.orderStatus,
+    // Backend-owned order fulfillment status (Pending / In Transit / Delivered /
+    // Cancelled / Voided). Resolved by resolveOrderFulfillmentStatus from the
+    // order status + the order's shipment voided/tracking truth — the frontend
+    // renders this enum, it never re-derives the status. See order-status.ts.
+    fulfillmentStatus: resolveOrderFulfillmentStatus({
+      orderStatus: row.orderStatus,
+      activeTrackingStatus: row.activeTrackingStatus ?? null,
+      hasActiveShipment: row.hasActiveShipment ?? false,
+      hasVoidedShipment: row.hasVoidedShipment ?? false,
+    }),
     orderDate: iso(row.orderDate),
     shipToName: row.shipToName,
     shipToLine1: shipToStr('street1'),

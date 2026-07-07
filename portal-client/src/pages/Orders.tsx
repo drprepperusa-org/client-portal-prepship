@@ -40,6 +40,33 @@ function clientAccent(name: string | null): Accent {
   for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i)) % CLIENT_ACCENTS.length;
   return CLIENT_ACCENTS[h];
 }
+
+// Presentation only: the backend (src/lib/client-portal/order-status.ts) OWNS
+// the fulfillment status value. This maps each canonical enum to a label +
+// badge style and must cover exactly the five PortalOrder['fulfillmentStatus']
+// values — the frontend never derives the status from order/tracking fields.
+const ORDER_STATUS_META: Record<PortalOrder['fulfillmentStatus'], { label: string; cls: string }> = {
+  pending: { label: 'Pending', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  in_transit: { label: 'In Transit', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  delivered: { label: 'Delivered', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  cancelled: { label: 'Cancelled', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  voided: { label: 'Voided', cls: 'bg-slate-100 text-slate-600 ring-slate-300' },
+};
+
+function OrderStatusBadge({ status }: { status: PortalOrder['fulfillmentStatus'] }) {
+  const meta = ORDER_STATUS_META[status] ?? ORDER_STATUS_META.pending;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
+        meta.cls,
+      )}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+      {meta.label}
+    </span>
+  );
+}
 function fmtDateTime(iso: string | null): { date: string; time: string } {
   if (!iso) return { date: '—', time: '' };
   const d = new Date(iso);
@@ -118,6 +145,7 @@ export default function Orders() {
       sortAccessor: (o) => o.orderDate ?? '',
     },
     { key: 'client', header: 'Client', defaultWidth: 130, render: (o) => <Chip accent={clientAccent(o.clientName)} dot={false}>{o.clientName ?? '—'}</Chip>, sortAccessor: (o) => o.clientName ?? '' },
+    { key: 'status', header: 'Status', defaultWidth: 120, render: (o) => <OrderStatusBadge status={o.fulfillmentStatus} />, sortAccessor: (o) => o.fulfillmentStatus },
     { key: 'order', header: 'Order #', defaultWidth: 130, render: (o) => <span className="font-semibold text-brand-700">{o.orderNumber ?? `#${o.id}`}</span>, sortAccessor: (o) => o.orderNumber ?? '' },
     {
       key: 'items',
