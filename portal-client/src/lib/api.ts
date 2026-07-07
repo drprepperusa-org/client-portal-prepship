@@ -213,10 +213,10 @@ export interface PortalOrder {
   customerShippingRatePending?: boolean;
   // CP-014: backend-owned product subtotal (Σ line totals). Financially gated.
   productSubtotal?: number | string | null;
-  // CP-017: backend-owned cost summary. Non-'total' rows sum to orderTotal to the
-  // cent. Financially gated — undefined for callers without money access, so the
-  // panel renders nothing.
-  costSummary?: PortalOrderCostSummaryRow[];
+  // CP-017/CP-038: backend-owned charge summary. Non-'total' rows sum to orderTotal
+  // to the cent. Financially gated — undefined for callers without money access, so
+  // the panel renders nothing.
+  chargeSummary?: PortalOrderCostSummaryRow[];
 }
 
 export interface PortalShipment {
@@ -562,7 +562,7 @@ export interface PortalReports {
   breakdown?: PortalReportsBreakdownRow[];
   billableOrders?: number;
   totalCharges?: number | string;
-  avgCostPerOrder?: number | string;
+  avgChargePerOrder?: number | string;
 }
 
 export interface BillingInvoiceSummaryRow {
@@ -643,7 +643,9 @@ export interface AnalysisSkuRow {
   exp_ship_count?: number | null;
   exp_total?: string | null;
   total_qty?: number | null;
-  total_shipping?: string | null;
+  // CP-038: client-facing billed shipping (customer_billed basis), renamed from the
+  // internal owner's `total_shipping` at the /analysis boundary.
+  billedShippingTotal?: string | null;
   total_revenue?: string | null;
   total_selling_fee?: string | null;
   /** Per-day units, aligned to dateBuckets — feeds the Units Trend sparkline. */

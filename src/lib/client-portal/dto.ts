@@ -319,11 +319,12 @@ export function toPortalOrderDto(
             customerShippingRatePending: customerShippingRate == null && Boolean(row.hasActiveShipment),
             // CP-014: backend-owned product subtotal (Σ line totals).
             productSubtotal,
-            // CP-017: backend-owned, always-reconciling cost summary. Non-'total'
-            // rows sum to orderTotal to the cent (a balancing refund/adjustment row
-            // absorbs any residual). Financially gated — absent for callers without
-            // money access, so the panel renders nothing.
-            costSummary: buildCostSummary({
+            // CP-017/CP-038: backend-owned, always-reconciling charge summary (client-
+            // facing name; buildCostSummary is the internal owner). Non-'total' rows
+            // sum to orderTotal to the cent (a balancing refund/adjustment row absorbs
+            // any residual). Financially gated — absent for callers without money
+            // access, so the panel renders nothing.
+            chargeSummary: buildCostSummary({
               orderTotal: row.orderTotal,
               orderStatus: row.orderStatus,
               items, // returned items (discount-stripped, lineTotal attached)

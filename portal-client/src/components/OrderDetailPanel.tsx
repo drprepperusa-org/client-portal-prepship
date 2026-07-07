@@ -37,7 +37,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
     .map((value) => (value == null ? NaN : Number(value)))
     .find((n) => Number.isFinite(n) && n > 0);
   // CP-014/CP-017: per-line totals and the cost-summary rows are backend-owned
-  // money. The panel renders o.costSummary verbatim and does no receipt math.
+  // money. The panel renders o.chargeSummary verbatim and does no receipt math.
   const lineTotal = (it: PortalOrder['items'][number]): number | null => {
     const t = Number(it.lineTotal);
     return Number.isFinite(t) ? t : null;
@@ -72,17 +72,17 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
         <Detail icon={<Truck size={14} />} label="Customer Shipping Rate" value={shipping != null ? money(shipping) : '—'} />
       </div>
 
-      {o.costSummary && o.costSummary.length > 0 && (
+      {o.chargeSummary && o.chargeSummary.length > 0 && (
         <div className="space-y-2 rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Order charges</p>
           {/* CP-017: backend-owned rows rendered verbatim — the panel does no
               receipt math. Non-total rows (subtotal, discount, shipping, tax,
               refund/adjustment), then a divider + the bold Order total. Negative
               amounts render as -$X.XX via money(). */}
-          {o.costSummary.filter((r) => r.kind !== 'total').map((r, i) => (
+          {o.chargeSummary.filter((r) => r.kind !== 'total').map((r, i) => (
             <CostRow key={i} label={r.label} value={money(r.amount)} />
           ))}
-          {o.costSummary.filter((r) => r.kind === 'total').map((r, i) => (
+          {o.chargeSummary.filter((r) => r.kind === 'total').map((r, i) => (
             <div key={`t-${i}`}>
               <div className="my-1 border-t border-slate-200/70" />
               <CostRow label={r.label} value={money(r.amount)} strong />

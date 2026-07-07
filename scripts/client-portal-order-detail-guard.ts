@@ -85,7 +85,7 @@ check(client.shipToLine1 === '123 Main St' && client.shipToPostalCode === '02101
 check(!('shippingCharged' in client), 'order detail: shippingCharged is financially gated');
 check(!('customerShippingRate' in client), 'CP-018: customerShippingRate is financially gated (omitted for non-financial clients)');
 
-// ── CP-017: costSummary is a backend-owned, always-reconciling receipt ──
+// ── CP-017: chargeSummary is a backend-owned, always-reconciling receipt ──
 // DJ's shape, BALANCED via a negative promo line (the only real discount source
 // in this system): 148.70 (goods) − 29.54 (promo) + 14.67 (shipping) = 133.83.
 const dj: any = dto.toPortalOrderDto(
@@ -103,35 +103,35 @@ const dj: any = dto.toPortalOrderDto(
   },
   { includeFinancials: true },
 );
-check(Array.isArray(dj.costSummary), 'CP-017: financial DTO returns a costSummary array');
+check(Array.isArray(dj.chargeSummary), 'CP-017: financial DTO returns a chargeSummary array');
 check(
-  dj.costSummary.every(
+  dj.chargeSummary.every(
     (r: any) =>
       ['subtotal', 'discount', 'shipping', 'tax', 'adjustment', 'refund', 'total'].includes(r.kind) &&
       typeof r.label === 'string' &&
       typeof r.amount === 'number',
   ),
-  'CP-017: every costSummary row is {label:string, amount:number, kind:enum}',
+  'CP-017: every chargeSummary row is {label:string, amount:number, kind:enum}',
 );
-const rowByKind = (k: string) => dj.costSummary.find((r: any) => r.kind === k);
+const rowByKind = (k: string) => dj.chargeSummary.find((r: any) => r.kind === k);
 check(Math.round(rowByKind('subtotal').amount * 100) === 14870, 'CP-017: subtotal row = $148.70 (Σ line cents)');
 check(Math.round(rowByKind('discount').amount * 100) === -2954, 'CP-017: discount row = −$29.54 (recovered negative promo line)');
 check(Math.round(rowByKind('shipping').amount * 100) === 1467, 'CP-017: shipping row = $14.67');
 check(Math.round(rowByKind('total').amount * 100) === 13383, 'CP-017: total row = $133.83');
-check(!dj.costSummary.some((r: any) => r.kind === 'adjustment' || r.kind === 'refund'), 'CP-017: a fully-explained receipt emits NO balancing row');
-const djSum = dj.costSummary.filter((r: any) => r.kind !== 'total').reduce((c: number, r: any) => c + Math.round(r.amount * 100), 0);
+check(!dj.chargeSummary.some((r: any) => r.kind === 'adjustment' || r.kind === 'refund'), 'CP-017: a fully-explained receipt emits NO balancing row');
+const djSum = dj.chargeSummary.filter((r: any) => r.kind !== 'total').reduce((c: number, r: any) => c + Math.round(r.amount * 100), 0);
 check(djSum === 13383, 'CP-017: non-total rows sum EXACTLY to orderTotal (reconciliation)');
 const lineCentsSum = dj.items.reduce((c: number, it: any) => c + Math.round(Number(it.lineTotal) * 100), 0);
 check(Math.round(rowByKind('subtotal').amount * 100) === lineCentsSum, 'CP-017: subtotal row equals the sum of the per-item lineTotal column to the cent');
 
 // baseRow is unbalanced: subtotal 30 − promo 2 + shipping 5.99 = 33.99; the
 // +$1.01 residual surfaces as ONE positive balancing row labeled "Other".
-const plug = admin.costSummary.find((r: any) => r.kind === 'adjustment' || r.kind === 'refund');
+const plug = admin.chargeSummary.find((r: any) => r.kind === 'adjustment' || r.kind === 'refund');
 check(
   !!plug && Math.round(plug.amount * 100) === 101 && plug.kind === 'adjustment' && plug.label === 'Other',
   'CP-017: a positive residual surfaces as a single +$1.01 "Other" adjustment (not a discount label)',
 );
-const baseSum = admin.costSummary.filter((r: any) => r.kind !== 'total').reduce((c: number, r: any) => c + Math.round(r.amount * 100), 0);
+const baseSum = admin.chargeSummary.filter((r: any) => r.kind !== 'total').reduce((c: number, r: any) => c + Math.round(r.amount * 100), 0);
 check(baseSum === Math.round(Number(baseRow.orderTotal) * 100), 'CP-017: even the unbalanced base fixture reconciles to orderTotal to the cent');
 
 // A cancelled order below goods value → a Refund row, not a "100% discount".
@@ -140,11 +140,11 @@ const cancelled: any = dto.toPortalOrderDto(
   { includeFinancials: true },
 );
 check(
-  cancelled.costSummary.some((r: any) => r.kind === 'refund' && Math.round(r.amount * 100) === -3000 && r.label === 'Refund'),
+  cancelled.chargeSummary.some((r: any) => r.kind === 'refund' && Math.round(r.amount * 100) === -3000 && r.label === 'Refund'),
   'CP-017: a cancelled order with a negative residual emits a Refund row (not a discount)',
 );
 check(
-  cancelled.costSummary.filter((r: any) => r.kind !== 'total').reduce((c: number, r: any) => c + Math.round(r.amount * 100), 0) === 0,
+  cancelled.chargeSummary.filter((r: any) => r.kind !== 'total').reduce((c: number, r: any) => c + Math.round(r.amount * 100), 0) === 0,
   'CP-017: the cancelled receipt still reconciles to $0.00',
 );
 
@@ -153,11 +153,11 @@ const zeroSub: any = dto.toPortalOrderDto(
   { ...baseRow, orderTotal: '5.99', shippingCharged: '5.99', shippingAmount: '5.99', items: [] },
   { includeFinancials: true },
 );
-check(!zeroSub.costSummary.some((r: any) => r.kind === 'subtotal'), 'CP-017: a zero subtotal emits no subtotal row (no $0.00 noise)');
+check(!zeroSub.chargeSummary.some((r: any) => r.kind === 'subtotal'), 'CP-017: a zero subtotal emits no subtotal row (no $0.00 noise)');
 
 // Non-financial omission + redaction (the summary never surfaces carrier/rate).
-check(!('costSummary' in client), 'CP-017: non-financial DTO omits costSummary');
-check(!JSON.stringify(dj.costSummary).match(/carrier|service|account|rate/i), 'CP-017: costSummary rows contain no carrier/service/account/rate strings');
+check(!('chargeSummary' in client), 'CP-017: non-financial DTO omits chargeSummary');
+check(!JSON.stringify(dj.chargeSummary).match(/carrier|service|account|rate/i), 'CP-017: chargeSummary rows contain no carrier/service/account/rate strings');
 
 // ── Frontend: OrderDetailPanel renders backend fields, no local math/JSON parse ──
 const panel = read('portal-client/src/components/OrderDetailPanel.tsx');
@@ -167,11 +167,11 @@ check(!panel.includes('p * (Number(it.quantity) || 1)'), 'CP-014: panel no longe
 check(!panel.includes('o.bestRateAmount'), 'CP-018: panel no longer reads the internal best-rate amount');
 check(!panel.includes('o.bestRateJson') && !panel.includes('o.selectedRate'), 'CP-018: panel no longer parses raw bestRateJson or reads selectedRate');
 
-// ── CP-017: panel renders the backend costSummary verbatim, no receipt math ──
-check(panel.includes('o.costSummary'), 'CP-017: panel renders the backend costSummary array');
-check(/o\.costSummary[\s\S]*\.map\(/.test(panel), 'CP-017: panel iterates costSummary rows');
+// ── CP-017: panel renders the backend chargeSummary verbatim, no receipt math ──
+check(panel.includes('o.chargeSummary'), 'CP-017: panel renders the backend chargeSummary array');
+check(/o\.chargeSummary[\s\S]*\.map\(/.test(panel), 'CP-017: panel iterates chargeSummary rows');
 check(!panel.includes('label="Product subtotal"'), 'CP-017: panel no longer hard-codes the Product subtotal row from a separate DTO field');
-check(!/o\.costSummary[\s\S]*\.reduce\(/.test(panel), 'CP-017: panel does no receipt math on costSummary (no .reduce) — the backend owns the total');
+check(!/o\.chargeSummary[\s\S]*\.reduce\(/.test(panel), 'CP-017: panel does no receipt math on chargeSummary (no .reduce) — the backend owns the total');
 
 // ── CP-009: the customer-facing order detail never shows carrier or service ──
 check(!panel.includes('CarrierBadge') && !panel.includes('o.carrierCode'), 'CP-009: panel does not render the carrier');

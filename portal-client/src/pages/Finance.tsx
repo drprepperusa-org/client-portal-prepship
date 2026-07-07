@@ -24,7 +24,7 @@ export default function Finance() {
   const charges = (query.data?.breakdown ?? []).map((b) => ({ label: b.label, amount: num(b.amount), accent: ACCENT_BY_KEY[b.key] ?? 'indigo' }));
   const totalCharges = num(query.data?.totalCharges ?? query.data?.grandTotal);
   const orders = num(query.data?.billableOrders);
-  const avgCostPerOrder = num(query.data?.avgCostPerOrder);
+  const avgChargePerOrder = num(query.data?.avgChargePerOrder);
 
   if (!billingVisible) {
     return (
@@ -44,7 +44,7 @@ export default function Finance() {
           <>
             <StatCard label={`Charges (${days}d)`} value={money(totalCharges)} icon={Wallet} accent="amber" hint="Across all clients" />
             <StatCard label={`Billable orders (${days}d)`} value={orders.toLocaleString()} icon={Boxes} accent="indigo" />
-            <StatCard label="Avg. charge / order" value={money(avgCostPerOrder)} icon={TrendingUp} accent="emerald" />
+            <StatCard label="Avg. charge / order" value={money(avgChargePerOrder)} icon={TrendingUp} accent="emerald" />
           </>
         )}
       </motion.div>

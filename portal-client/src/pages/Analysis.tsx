@@ -108,7 +108,7 @@ export default function Analysis() {
     // backend may still compute std/exp/selling-fee fields for admin/operator
     // use; they are simply never surfaced as customer-facing columns here. (No
     // frontend Profit derivation either — that computed column is gone.)
-    { key: 'shipping', header: 'Total Shipping', defaultWidth: 130, className: 'text-right', render: (r) => <span className="tnum text-ink-2">{money(num(r.total_shipping))}</span>, sortAccessor: (r) => num(r.total_shipping) },
+    { key: 'shipping', header: 'Total Shipping', defaultWidth: 130, className: 'text-right', render: (r) => <span className="tnum text-ink-2">{money(num(r.billedShippingTotal))}</span>, sortAccessor: (r) => num(r.billedShippingTotal) },
   ];
 
   return (

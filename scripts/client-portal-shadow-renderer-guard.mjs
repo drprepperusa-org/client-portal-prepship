@@ -123,7 +123,7 @@ const MATRIX_FIELDS = [
   'customerShippingRate',
   'effectiveStock',
   'warehouseShipped30d',
-  'costSummary',
+  'chargeSummary',
   'trackingNumber',
 ];
 for (const fld of MATRIX_FIELDS) {
@@ -173,7 +173,7 @@ for (const g of ENFORCEMENT) {
 // intent-named fields actually live there (strip comments so the doc-comments
 // naming these fields don't satisfy the pin — we want the real code).
 const dtoCode = stripComments(readRaw('src/lib/client-portal/dto.ts'));
-for (const fld of ['customerShippingRate', 'effectiveStock', 'warehouseShipped30d', 'costSummary']) {
+for (const fld of ['customerShippingRate', 'effectiveStock', 'warehouseShipped30d', 'chargeSummary']) {
   assert(dtoCode.includes(fld), `dto.ts (code, comments stripped) still owns the intent-named field ${fld}`);
 }
 

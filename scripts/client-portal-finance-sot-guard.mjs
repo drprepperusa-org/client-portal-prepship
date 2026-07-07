@@ -32,12 +32,12 @@ assert(
 assert(route.includes('const billableOrders = sumBy'), 'reports route computes billableOrders backend-side');
 assert(
   route.includes('billableOrders > 0 ? totalCharges / billableOrders : 0'),
-  'reports route computes avgCostPerOrder with a zero-orders guard',
+  'reports route computes avgChargePerOrder with a zero-orders guard',
 );
 assert(
   route.includes('breakdown,') && route.includes('billableOrders,') &&
-    route.includes('avgCostPerOrder,') && route.includes('totalCharges,'),
-  'reports response returns breakdown / billableOrders / avgCostPerOrder / totalCharges',
+    route.includes('avgChargePerOrder,') && route.includes('totalCharges,'),
+  'reports response returns breakdown / billableOrders / avgChargePerOrder / totalCharges',
 );
 assert(
   route.includes('if (!scope.canViewFinancials)') && route.includes('billingVisible: false'),
@@ -47,8 +47,8 @@ assert(
 // ── Frontend Finance renders backend values, reduces nothing ──
 assert(finance.includes('query.data?.breakdown'), 'Finance renders the backend breakdown');
 assert(
-  finance.includes('num(query.data?.avgCostPerOrder)') && finance.includes('num(query.data?.billableOrders)'),
-  'Finance renders backend avgCostPerOrder + billableOrders',
+  finance.includes('num(query.data?.avgChargePerOrder)') && finance.includes('num(query.data?.billableOrders)'),
+  'Finance renders backend avgChargePerOrder + billableOrders',
 );
 assert(
   !/rows\.reduce\(\(n, r\) => n \+ num\(r\.(pickPackTotal|packageTotal|shippingTotal|storageTotal|orderCount)/.test(finance),

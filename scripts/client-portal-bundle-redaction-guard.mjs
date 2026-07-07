@@ -34,6 +34,13 @@ const FORBIDDEN = [
   'MarkupValue',
   'MarkupGroup',
   'client-portal/markups',
+  // CP-038: the client-facing DTO fields were renamed to charge/billed intent names
+  // (avgCostPerOrder→avgChargePerOrder, costSummary→chargeSummary, total_shipping→
+  // billedShippingTotal). Backstop the old cost/allocation-named keys so a rename
+  // regression can't reintroduce cost vocabulary into the customer bundle.
+  'avgCostPerOrder',
+  'costSummary',
+  'total_shipping',
 ];
 
 // CP-038b DONE: the Markups admin UI (MarkupsEditor + markups API client + Markup*

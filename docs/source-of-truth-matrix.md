@@ -862,7 +862,7 @@ truth. Any customer-visible or operationally authoritative computation is pushed
 into a **backend DTO / read-model** so PrepShip and the portal share one
 definition and cannot drift. Backend Client Portal APIs expose **intent-named
 DTO fields** (`customerShippingRate`, `effectiveStock`, `warehouseShipped30d`,
-`shippingCharged`, `costSummary`, `expectedUnits`, …) that delegate to the
+`shippingCharged`, `chargeSummary`, `expectedUnits`, …) that delegate to the
 canonical owner; generic names are used only when the DTO docs already name the
 source + event clock + formula. The Client Portal must never invent source data,
 rank/select rates from competing internal fields, create an alternate
@@ -921,7 +921,7 @@ selected/label/best rate leaks), `client-portal-orders-search-guard.mjs`,
 | Line item name/sku/qty | `items[]` | `items[]` (`safeItems`) | `orders.items` jsonb → canonical `order_items` | order time | presentation-only |
 | Line total | `lineTotal` | `lineTotal` (unitPrice × qty) | backend-computed in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
 | Product subtotal | `productSubtotal` | `productSubtotal` | Σ line totals in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
-| Cost summary receipt | `costSummary[]` | `costSummary[]` | `buildCostSummary` — reconciles to `orders.orderTotal` to the cent | order time | backend-owned-truth (CP-017) |
+| Charge summary receipt | `chargeSummary[]` | `chargeSummary[]` | `buildCostSummary` — reconciles to `orders.orderTotal` to the cent | order time | backend-owned-truth (CP-017/CP-038) |
 
 Owner: one canonical loader — every entry point (Orders list, Shipments drawer)
 fetches `/orders/:id` and renders the shared `OrderDetailLoader` /
@@ -968,7 +968,7 @@ ships not order units), `client-portal-inventory-status-guard.ts` (CP-013).
 | --- | --- | --- | --- | --- | --- |
 | Ordered units | `totalUnits` | `totalUnits` | `getClientPortalSalesTotals` — Σ `order_items.quantity` (set-based) | order date | backend-owned-truth (CP-010) |
 | Revenue | `totalRevenue` | `totalRevenue` | `getClientPortalSalesTotals` — Σ `unit_price × qty` (financially gated) | order date | backend-owned-truth (CP-010) |
-| Top-SKU rows | `rows[]` (`total_qty`, `total_revenue`, `total_shipping`) | same | `getSkuBreakdownFromOrderItems` (set-based over `order_items`) | order date | backend-owned-truth |
+| Top-SKU rows | `rows[]` (`total_qty`, `total_revenue`, `billedShippingTotal`) | owner `total_qty`/`total_revenue`/`total_shipping` | `getSkuBreakdownFromOrderItems` (set-based over `order_items`); `/analysis` renames `total_shipping`→`billedShippingTotal` at the client boundary (CP-038) | order date | backend-owned-truth |
 | Std/Exp ship counts | `std_total`/`exp_total` | same | cost-gated `shipments` COUNT paired with the SAME filter as `std_qty_total` | ship date | backend-owned-truth (CP-020) |
 
 Owner: `src/routes/analysis.ts` (`getClientPortalSalesTotals`,
@@ -986,7 +986,7 @@ Guards: `client-portal-analytics-parity-guard.mjs` (CP-010),
 | Charge breakdown | `breakdown[]` | `breakdown[]` (`pick_pack`, `shipping`, …) | `/reports` route over `billing_line_items` | billing time | backend-owned-truth (CP-012) |
 | Total charges | `totalCharges` | `totalCharges` | `/reports` route (backend sum) | billing time | backend-owned-truth (CP-012) |
 | Billable orders | `billableOrders` | `billableOrders` | `/reports` route (backend count) | billing time | backend-owned-truth (CP-012) |
-| Avg cost / order | `avgCostPerOrder` | `avgCostPerOrder` | `totalCharges / billableOrders` (zero-guarded, backend) | billing time | backend-owned-truth (CP-012) |
+| Avg charge / order | `avgChargePerOrder` | `avgChargePerOrder` | `totalCharges / billableOrders` (zero-guarded, backend) | billing time | backend-owned-truth (CP-012/CP-038) |
 
 Owner: `src/routes/client-portal/billing.ts` (`/reports`). Redacted
 (`billingVisible:false`) for non-financial callers. Frontend issues ONE scoped

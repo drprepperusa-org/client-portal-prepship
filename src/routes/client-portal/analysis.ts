@@ -39,9 +39,17 @@ app.get('/analysis', async (c) => {
   await recordPortalAudit('portal.analysis.view', scope);
   // CP-010: redact per-SKU revenue for non-financial users so the table stays
   // consistent with the (already redacted) canonical Revenue KPI below.
+  // CP-038: expose the canonical per-SKU billed shipping under the client-facing
+  // intent name `billedShippingTotal` (customer_billed basis, see above). The
+  // internal owner keeps `total_shipping`; only this boundary DTO is renamed, so
+  // no cost/allocation-named key reaches the customer bundle or network payload.
+  const toClientRow = ({ total_shipping, ...r }: (typeof result.rows)[number]) => ({
+    ...r,
+    billedShippingTotal: total_shipping,
+  });
   const rows = scope.canViewFinancials
-    ? result.rows
-    : result.rows.map((r) => ({ ...r, total_revenue: '0' }));
+    ? result.rows.map(toClientRow)
+    : result.rows.map((r) => toClientRow({ ...r, total_revenue: '0' }));
   return c.json({
     data: rows,
     dateBuckets: result.dateBuckets,

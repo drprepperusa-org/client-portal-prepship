@@ -53,7 +53,7 @@ app.get('/reports', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) {
     await recordPortalAudit('portal.reports.denied', scope);
-    return c.json({ data: [], grandTotal: 0, billingVisible: false, breakdown: [], billableOrders: 0, totalCharges: 0, avgCostPerOrder: 0 });
+    return c.json({ data: [], grandTotal: 0, billingVisible: false, breakdown: [], billableOrders: 0, totalCharges: 0, avgChargePerOrder: 0 });
   }
   const defaults = defaultBillingDays();
   const range = requireBillingDayRange(c, c.req.query('dateFrom') ?? defaults.from, c.req.query('dateTo') ?? defaults.to);
@@ -81,7 +81,7 @@ app.get('/reports', async (c) => {
   ];
   const billableOrders = sumBy((r) => Number(r.orderCount ?? 0));
   const totalCharges = Number(summary.grandTotal) || 0;
-  const avgCostPerOrder = billableOrders > 0 ? totalCharges / billableOrders : 0;
+  const avgChargePerOrder = billableOrders > 0 ? totalCharges / billableOrders : 0;
   return c.json({
     data: clientRows,
     clients: clientRows,
@@ -90,7 +90,7 @@ app.get('/reports', async (c) => {
     breakdown,
     billableOrders,
     totalCharges,
-    avgCostPerOrder,
+    avgChargePerOrder,
   });
 });
 

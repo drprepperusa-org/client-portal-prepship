@@ -51,7 +51,7 @@ for (const key of ["key: 'std'", "key: 'exp'", "key: 'fees'", "key: 'profit'"]) 
   assert(!analysis.includes(key), `CP-035: Analysis customer table has no column with ${key}`);
 }
 assert(
-  !/num\(r\.total_revenue\)\s*-\s*num\(r\.total_shipping\)\s*-\s*num\(r\.total_selling_fee\)/.test(analysis),
+  !/num\(r\.total_revenue\)\s*-\s*num\(r\.billedShippingTotal\)\s*-\s*num\(r\.total_selling_fee\)/.test(analysis),
   'CP-035: Analysis no longer computes Profit in React (revenue − shipping − selling_fee derivation removed)',
 );
 
