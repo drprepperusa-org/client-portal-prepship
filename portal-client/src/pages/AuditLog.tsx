@@ -26,14 +26,102 @@ function eventTone(event: string): 'indigo' | 'teal' | 'amber' | 'rose' {
   return 'indigo';
 }
 
-function metadataText(metadata: Record<string, unknown>): string {
-  const entries = Object.entries(metadata ?? {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
-  if (!entries.length) return 'No details';
+// ── Human-readable audit details ────────────────────────────────────────────
+// The metadata is a small flat key/value object (page/pageSize/status, click
+// to/from/target, orderId, tracking counts, …). Render it as labeled pills
+// instead of raw JSON so an operator can scan it at a glance.
+const DETAIL_KEY_LABELS: Record<string, string> = {
+  to: 'To',
+  from: 'From',
+  target: 'Clicked',
+  page: 'Page',
+  pageSize: 'Per page',
+  status: 'Status',
+  orderId: 'Order',
+  shipmentId: 'Shipment',
+  returnId: 'Return',
+  clientId: 'Client',
+  storeId: 'Store',
+  checked: 'Checked',
+  updated: 'Updated',
+  requested: 'Requested',
+  count: 'Count',
+  query: 'Search',
+  q: 'Search',
+  reason: 'Reason',
+};
+
+const ROUTE_LABELS: Record<string, string> = {
+  '/': 'Dashboard',
+  '/orders': 'Orders',
+  '/shipments': 'Shipments',
+  '/returns': 'Returns',
+  '/inbound': 'Inbound',
+  '/inventory': 'Inventory',
+  '/analysis': 'Analysis',
+  '/billing': 'Billing',
+  '/rate-sheet': 'Rate Sheet',
+  '/connections': 'Connections',
+  '/audit-log': 'Audit log',
+  '/settings': 'Settings',
+};
+
+function humanizeKey(key: string): string {
+  if (DETAIL_KEY_LABELS[key]) return DETAIL_KEY_LABELS[key];
+  // camelCase / snake_case → "Title Case".
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function routeLabel(path: string): string {
+  if (ROUTE_LABELS[path]) return ROUTE_LABELS[path];
+  const base = path.replace(/^\//, '').split(/[/?]/)[0];
+  if (!base) return 'Dashboard';
+  return base.replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function formatDetailValue(value: unknown): string {
+  if (typeof value === 'string') return value.startsWith('/') ? routeLabel(value) : value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return `${value.length}`;
   try {
-    return JSON.stringify(Object.fromEntries(entries));
+    return JSON.stringify(value);
   } catch {
-    return 'Details unavailable';
+    return '—';
   }
+}
+
+function detailEntries(metadata: Record<string, unknown>): Array<{ label: string; value: string }> {
+  return Object.entries(metadata ?? {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => ({ label: humanizeKey(key), value: formatDetailValue(value) }));
+}
+
+// Plain one-line version for hover titles + accessibility.
+function detailPlain(metadata: Record<string, unknown>): string {
+  const entries = detailEntries(metadata);
+  return entries.length ? entries.map((e) => `${e.label}: ${e.value}`).join(' · ') : 'No details';
+}
+
+function DetailPills({ metadata }: { metadata: Record<string, unknown> }) {
+  const entries = detailEntries(metadata);
+  if (!entries.length) return <span className="text-xs italic text-ink-3">No details</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {entries.map((entry, index) => (
+        <span
+          key={`${entry.label}-${index}`}
+          className="inline-flex max-w-full items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs ring-1 ring-slate-200/70"
+          title={`${entry.label}: ${entry.value}`}
+        >
+          <span className="shrink-0 text-ink-3">{entry.label}</span>
+          <span className="truncate font-semibold text-ink-2">{entry.value}</span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function scopeLabel(row: PortalAuditLogRow): string {
@@ -41,7 +129,6 @@ function scopeLabel(row: PortalAuditLogRow): string {
 }
 
 function LogMobileRow({ row }: { row: PortalAuditLogRow }) {
-  const details = metadataText(row.metadata);
   return (
     <div className="space-y-3 border-b border-slate-100 px-4 py-4 last:border-b-0">
       <div className="flex items-start justify-between gap-3">
@@ -65,9 +152,9 @@ function LogMobileRow({ row }: { row: PortalAuditLogRow }) {
           <span className="truncate">{scopeLabel(row)}</span>
         </p>
       </div>
-      <p className="line-clamp-2 rounded-glass-sm bg-slate-50/80 px-3 py-2 font-mono text-xs text-ink-2 ring-1 ring-slate-200/70" title={details}>
-        {details}
-      </p>
+      <div className="rounded-glass-sm bg-slate-50/80 px-3 py-2 ring-1 ring-slate-200/70" title={detailPlain(row.metadata)}>
+        <DetailPills metadata={row.metadata} />
+      </div>
     </div>
   );
 }
@@ -159,7 +246,6 @@ export default function AuditLog() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white/55">
                   {visibleRows.map((row) => {
-                    const details = metadataText(row.metadata);
                     return (
                       <tr key={row.id} className="transition-colors hover:bg-brand-50/40">
                         <td className="px-4 py-3 align-top text-xs font-medium text-ink-3">{formatDate(row.createdAt)}</td>
@@ -177,9 +263,9 @@ export default function AuditLog() {
                           <span className="line-clamp-2" title={scopeLabel(row)}>{scopeLabel(row)}</span>
                         </td>
                         <td className="px-4 py-3 align-top">
-                          <p className="line-clamp-2 max-w-xl font-mono text-xs leading-relaxed text-ink-2" title={details}>
-                            {details}
-                          </p>
+                          <div className="max-w-xl" title={detailPlain(row.metadata)}>
+                            <DetailPills metadata={row.metadata} />
+                          </div>
                         </td>
                       </tr>
                     );
