@@ -63,6 +63,14 @@ assert(
   'useAwaitingCount sends the active client filter to the badge endpoint',
 );
 assert(
+  hooks.includes('export function useOrders') &&
+    hooks.includes('const qc = useQueryClient()') &&
+    hooks.includes("qc.setQueryData(['awaiting-count'") &&
+    hooks.includes("merged.status !== 'awaiting_shipment'") &&
+    hooks.includes('query.data.pagination.total'),
+  'Awaiting Orders list seeds the sidebar badge cache from its backend pagination total',
+);
+assert(
   sidebar.includes('badge={item.to === \'/orders\' ? awaitingCount : undefined}') &&
     bottomNav.includes("badge={item.to === '/orders' ? awaiting : 0}"),
   'desktop sidebar and mobile bottom nav render the Orders badge from useAwaitingCount',

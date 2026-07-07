@@ -145,8 +145,10 @@ export function useInvoicePeriodSummaryRange(
 
 export function useOrders(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(
+  const query = useTokenQuery(
     // pageSize MUST be in the key: the Dashboard "Open orders" peek requests this
     // same status/page with pageSize 6, and without it that 6-row response would
     // alias the full Orders list (refetchOnMount:false → sticky truncation).
@@ -158,6 +160,16 @@ export function useOrders(opts: ListOpts = {}) {
     // Sync button still invalidates + refetches immediately on click.
     { refetchInterval: LIVE_ORDERS_MS, refetchOnWindowFocus: false },
   );
+
+  useEffect(() => {
+    if (merged.status !== 'awaiting_shipment' || merged.search) return;
+    if (!query.data?.pagination) return;
+    qc.setQueryData(['awaiting-count', merged.clientId ?? 'scope', Boolean(accessToken)], {
+      count: query.data.pagination.total,
+    });
+  }, [accessToken, merged.clientId, merged.search, merged.status, qc, query.data?.pagination]);
+
+  return query;
 }
 export function useShipments(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();

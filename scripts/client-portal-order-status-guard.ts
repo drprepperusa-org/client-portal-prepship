@@ -107,7 +107,7 @@ check(
   'PortalOrder declares the 5-value fulfillmentStatus enum',
 );
 check(/header:\s*'Status'/.test(orders) && /status=\{o\.fulfillmentStatus\}/.test(orders), 'Orders table renders a Status column from fulfillmentStatus');
-for (const label of ['Pending', 'In Transit', 'Delivered', 'Cancelled', 'Voided']) {
+for (const label of ['Awaiting shipment', 'In Transit', 'Delivered', 'Cancelled', 'Voided']) {
   check(orders.includes(`'${label}'`), `Orders status label map includes ${label}`);
 }
 // The frontend must not RE-DERIVE the status: no assignment to fulfillmentStatus.

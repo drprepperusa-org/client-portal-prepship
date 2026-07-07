@@ -47,7 +47,7 @@ function clientAccent(name: string | null): Accent {
 // badge style and must cover exactly the five PortalOrder['fulfillmentStatus']
 // values — the frontend never derives the status from order/tracking fields.
 const ORDER_STATUS_META: Record<PortalOrder['fulfillmentStatus'], { label: string; cls: string }> = {
-  pending: { label: 'Pending', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  pending: { label: 'Awaiting shipment', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
   in_transit: { label: 'In Transit', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
   delivered: { label: 'Delivered', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   cancelled: { label: 'Cancelled', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
