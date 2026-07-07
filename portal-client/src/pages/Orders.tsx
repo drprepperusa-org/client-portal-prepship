@@ -254,7 +254,7 @@ export default function Orders() {
           emptyTitle="No orders"
           emptyMessage={tab === 'all' ? 'No orders match this search.' : 'No orders match this tab and search.'}
         >
-          <DataTable tableId="orders" columns={columns} rows={rows} rowKey={(o) => String(o.id)} onRowClick={setSelected} />
+          <DataTable tableId="orders" columns={columns} rows={rows} rowKey={(o) => String(o.id)} onRowClick={setSelected} stickyHeader />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>
