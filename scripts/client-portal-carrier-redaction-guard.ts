@@ -102,13 +102,13 @@ check(
   clientShipment.trackingNumber === '9434' && clientShipment.trackingStatus === 'delivered',
   'client shipment DTO keeps tracking number + live status',
 );
-check(clientShipment.shippingCost === null, 'client shipment DTO still gates shipping cost');
+check(clientShipment.customerShippingRate === null, 'client shipment DTO still gates the customer shipping rate');
 const financialShipment: any = dto.toPortalShipmentDto(shipmentRow, { includeFinancials: true });
 check(
   financialShipment.carrierCode === null && financialShipment.serviceCode === null,
   'financials/admin shipment DTO ALSO exposes no carrier / service (CP-009 sweep)',
 );
-check(financialShipment.shippingCost != null, 'financials shipment DTO still exposes the (billed) shipping cost');
+check(financialShipment.customerShippingRate != null, 'financials shipment DTO still exposes the (billed) customer shipping rate');
 
 // 3) Orders-list redaction: identity keys nulled recursively for non-financial
 //    viewers (closes the ungated selectedRate.providerAccountNickname leak).

@@ -178,7 +178,7 @@
     "test:api-contracts": "node scripts/api-contracts-guard.mjs",
     "audit:client-portal-ui": "node scripts/client-portal-ui-audit.mjs",
     "test:portal-smoke": "playwright test web/e2e/portal-smoke.spec.js --reporter=line",
-    "test:full-site-certification": "npm run typecheck && npm run build:web && npm run guard:site-actions && npm run test:api-contracts && npm run test:shipstation-label-url && npm run test:print-queue-invalid-label && npm run test:portal-smoke && npm run test:client-portal-failure-states"
+    "test:full-site-certification": "npm run typecheck && npm run build:web && npm run test:client-portal-bundle-redaction && npm run guard:site-actions && npm run test:api-contracts && npm run test:shipstation-label-url && npm run test:print-queue-invalid-label && npm run test:portal-smoke && npm run test:client-portal-failure-states"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

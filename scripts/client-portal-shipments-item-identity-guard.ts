@@ -65,15 +65,15 @@ assert(
 
 assert(
   portalShipmentBlock.includes('items: PortalItemIdentity[]') &&
-    portalShipmentBlock.includes('shippingCost?: number | string | null') &&
+    portalShipmentBlock.includes('customerShippingRate?: number | string | null') &&
     !portalShipmentBlock.includes('serviceCode:'),
-  'PortalShipment exposes items and gated shippingCost, without the removed Service field',
+  'PortalShipment exposes items and gated customerShippingRate, without the removed Service field',
 );
 
 assert(
   shipmentDtoBlock.includes('options: { includeFinancials?: boolean }') &&
     shipmentDtoBlock.includes('items: safeItems(row.orderItems') &&
-    shipmentDtoBlock.includes('shippingCost: options.includeFinancials ? row.shippingCost ?? null : null') &&
+    shipmentDtoBlock.includes('customerShippingRate: options.includeFinancials ? row.shippingCost ?? null : null') &&
     shipmentDtoBlock.includes('carrierCode: null') &&
     shipmentDtoBlock.includes('serviceCode: null'),
   'toPortalShipmentDto maps order items, gates shipping cost behind financials, and NEVER exposes carrier/service (CP-005 + CP-009)',
@@ -108,7 +108,7 @@ assert(
     shipmentsPage.includes("header: 'Item Name'") &&
     shipmentsPage.includes("key: 'sku'") &&
     shipmentsPage.includes("header: 'SKU'") &&
-    shipmentsPage.includes("key: 'shippingCost'") &&
+    shipmentsPage.includes("key: 'customerShippingRate'") &&
     shipmentsPage.includes("header: 'Customer Shipping Rate'") &&
     !shipmentsPage.includes("key: 'service'") &&
     !shipmentsPage.includes("header: 'Service'") &&
@@ -117,8 +117,8 @@ assert(
 );
 
 assert(
-  shipmentsPage.includes('money(s.shippingCost)') &&
-    shipmentsPage.includes('money(selected.shippingCost)') &&
+  shipmentsPage.includes('money(s.customerShippingRate)') &&
+    shipmentsPage.includes('money(selected.customerShippingRate)') &&
     shipmentsPage.includes('Field label="Customer Shipping Rate"') &&
     !shipmentsPage.includes('Field label="Service"') &&
     !shipmentsPage.includes('serviceCode'),
