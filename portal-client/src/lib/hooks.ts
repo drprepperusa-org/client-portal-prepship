@@ -23,9 +23,13 @@ function useTokenQuery<T>(key: unknown[], fn: (token: string) => Promise<T>, ena
   });
 }
 
-// Poll orders + awaiting badge so the portal mirrors v4's continuous sync: the
-// shared worker keeps filling rates/accounts in the DB; we just keep pulling.
-const LIVE_ORDERS_MS = 45_000;
+// CP-037: Client Portal live order/return polling runs every 10 MINUTES — NOT
+// the backend sync cadence (order/shipment sync is 3 min in
+// src/services/sync-scheduler.ts, which stays unchanged). A 45s interval made
+// the customer portal re-render constantly; the DB is kept fresh by the shared
+// worker regardless, and the Orders "Sync" button forces an immediate refresh
+// on demand, so a slow background poll is all the passive views need.
+const LIVE_ORDERS_MS = 10 * 60 * 1000;
 
 export const useMe = () => useTokenQuery(['me'], portalApi.me);
 export function useAuditLog(search = '', limit = 100) {
@@ -41,6 +45,9 @@ export function useAwaitingCount() {
   const { clientId } = usePortalFilters();
   return useTokenQuery(['awaiting-count', clientId ?? 'scope'], (t) => portalApi.awaitingCount(t, clientId), true, {
     refetchInterval: LIVE_ORDERS_MS,
+    // CP-037: false so window focus can't refetch the badge (which is on every
+    // page) outside the 10-minute cadence — React Query defaults this to true.
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -148,7 +155,10 @@ export function useOrders(opts: ListOpts = {}) {
     ['orders', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.clientId ?? 'scope'],
     (t) => portalApi.orders(t, merged),
     true,
-    { refetchInterval: LIVE_ORDERS_MS, refetchOnWindowFocus: true },
+    // CP-037: refetchOnWindowFocus false so returning to the tab can't trigger an
+    // Orders refetch/render burst outside the 10-minute cadence. The Orders page
+    // Sync button still invalidates + refetches immediately on click.
+    { refetchInterval: LIVE_ORDERS_MS, refetchOnWindowFocus: false },
   );
 }
 export function useShipments(opts: ListOpts = {}) {
