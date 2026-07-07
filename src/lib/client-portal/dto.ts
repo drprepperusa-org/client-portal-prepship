@@ -266,6 +266,16 @@ export function toPortalOrderDto(
     carrierCode: null,
     serviceCode: null,
     trackingNumber: row.override?.trackingNumber ?? null,
+    // CP-034: backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx) so the
+    // order-detail tracking number links to the real carrier site, never 17track.
+    // Carrier identity stays redacted (carrierCode/serviceCode null above); only the
+    // URL — whose destination happens to be carrier-specific — crosses the wire.
+    // null when the carrier is unknown, so the number renders as plain text.
+    trackingUrl:
+      trackingUrlForCarrier(
+        row.carrierCode,
+        row.override?.trackingNumber,
+      ) || null,
     shippingService: null,
     items,
     ...(options.includeFinancials

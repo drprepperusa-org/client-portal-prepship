@@ -1,4 +1,4 @@
-import { MapPin, Truck } from 'lucide-react';
+import { MapPin, Truck, ExternalLink } from 'lucide-react';
 import { Chip } from '@/components/ui/Display';
 import { Thumb } from '@/components/ui/Thumb';
 import { orderStatusMeta, itemCount, money, shortDate } from '@/lib/status';
@@ -118,7 +118,19 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
       {o.trackingNumber && (
         <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
           <p className="text-xs text-ink-3">Tracking number</p>
-          <p className="truncate font-mono text-sm text-ink">{o.trackingNumber}</p>
+          {o.trackingUrl ? (
+            <a
+              href={o.trackingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring inline-flex max-w-full items-center gap-1.5 font-mono text-sm font-medium text-brand-700 underline decoration-dotted decoration-brand-300 underline-offset-2 hover:text-brand-800"
+            >
+              <span className="truncate">{o.trackingNumber}</span>
+              <ExternalLink size={13} className="shrink-0" />
+            </a>
+          ) : (
+            <p className="truncate font-mono text-sm text-ink">{o.trackingNumber}</p>
+          )}
         </div>
       )}
     </div>

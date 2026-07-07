@@ -197,6 +197,7 @@ export interface PortalOrder {
   carrierCode: string | null;
   serviceCode: string | null;
   trackingNumber: string | null;
+  trackingUrl: string | null;
   shippingService?: string | null;
   items: PortalItemIdentity[];
   orderTotal?: number | string | null;
