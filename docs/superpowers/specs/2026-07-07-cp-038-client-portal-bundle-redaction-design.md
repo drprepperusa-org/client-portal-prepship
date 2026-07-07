@@ -23,14 +23,20 @@ The backend DTO layer **already passes** the source-of-truth / redaction guards
 cost-like **value** is already intent-named and canonically sourced. CP-038 is therefore **not**
 DTO surgery. The remaining work splits into four distinct piles:
 
-1. **One genuine leak (not cosmetic):** the avg-shipping metric is our **house `label_cost`**
-   (carrier cost) shown to financially-enabled clients.
+1. **One genuine leak (not cosmetic):** the client Analysis/Dashboard shipping analytics
+   **re-derive the customer shipping rate inline from the markup ("profit layer") settings** —
+   `base_cost * (1 + markup)` computed inside the analytics query (the `ls` / `marked_cost` lateral
+   in `src/routes/analysis.ts:858-887` and `src/services/sku-orders.ts:154-183, 277-306`), where
+   `base_cost` is the house carrier cost and `markup` is read live from `settings`
+   `markup.<carrier>` / `markup.<pid>`. Two consequences: (a) it is a **parallel re-derivation** of
+   the customer shipping rate — a shadow-renderer / SOT violation, since the canonical owner is the
+   frozen `billing_line_items` shipping line, not an inline markup recompute that can drift; and
+   (b) where a carrier/pid has **no markup configured** it falls through to raw house `base_cost`,
+   i.e. raw carrier cost shown to the client. Surfaces:
    - Dashboard "Avg Shipping Price" + a tooltip rendering the literal math
-     `shipAlloc ÷ shipUnits = avgShippingPrice`.
-   - Analysis "Avg ship cost" and a per-order `standard_shipping_cost` chip.
-   - Provenance: `src/lib/client-portal/read-models/dashboard.ts:30-36` ("SOT = the SAME
-     internal allocated shipment `label_cost`") and `src/routes/analysis.ts:983`
-     (`total_shipping = sum(label_cost * qty / order_qty_total)`).
+     `shipAlloc ÷ shipUnits = avgShippingPrice` (`getSkuBreakdownFromOrderItems`).
+   - Analysis SKU-table avg + the SKU **detail drawer** "Avg ship cost" stat and per-order
+     `standard_shipping_cost` chips (`getSkuBreakdownFromOrderItems` + `getSkuOrdersForSku`).
 2. **Optics only:** cost-y **keys/labels** whose values are already correct/gated
    (`shippingCost` key, "Box Cost", "Cost summary", "Avg. cost / order").
 3. **Markups admin UI:** already `RequireAdmin` **and** code-split into the lazy `Settings`
@@ -54,24 +60,35 @@ DTO surgery. The remaining work splits into four distinct piles:
 
 ### A. Re-source avg-shipping to the customer's billed charge (parameterized canonical owner)
 
-`getSkuBreakdownFromOrderItems` (`src/routes/analysis.ts:813`) is shared: besides the two
-client-portal consumers it is also consumed by the base/legacy-web analytics
-(`src/routes/analysis.ts:1055`, `src/routes/dashboard.ts:485`), which legitimately want house
-cost. So we **parameterize** rather than swap the basis globally.
+**Two** shared helpers re-derive customer shipping inline from markup settings and must be
+re-sourced: `getSkuBreakdownFromOrderItems` (`src/routes/analysis.ts:813`) and `getSkuOrdersForSku`
+(`src/services/sku-orders.ts:59`). Both are also consumed by the base/legacy-web analytics
+(`src/routes/analysis.ts:1055`, `src/routes/dashboard.ts:485`, and the operator Inventory drawer),
+which keep the current inline-markup basis. So we **parameterize** each rather than swap the basis
+globally.
 
-- Add `shippingBasis: 'house_label_cost' | 'customer_billed'` to `SkuBreakdownQuery`, defaulting
-  to `'house_label_cost'`. The default keeps every existing (admin/legacy) consumer byte-for-byte
-  unchanged.
-- For `'customer_billed'`, the per-order shipping basis becomes the client's **billed shipping**:
-  `sum(total_cost)` from `billing_line_items` where `line_type = 'shipping'` for that order,
-  allocated across the order's SKUs by `qty / order_qty_total` — the same allocation shape used
-  today, and the same canonical billed-shipping owner the Orders list already uses for
-  `billedShipping` (`src/lib/client-portal/read-models/orders.ts:47-51`).
-- Only the client-portal consumers pass `'customer_billed'`:
-  - `src/routes/client-portal/analysis.ts:23`
-  - `src/lib/client-portal/read-models/dashboard.ts:56`
-- `canViewFinancials` redaction is unchanged — the canonical owner still zeroes/nulls shipping
-  and revenue for callers without money access.
+- Add `shippingBasis: 'house_markup' | 'customer_billed'` to `SkuBreakdownQuery` **and**
+  `SkuOrdersInput`, defaulting to `'house_markup'` (the current inline `base_cost × (1+markup)`
+  behaviour). The default keeps every existing operator/legacy consumer byte-for-byte unchanged.
+- For `'customer_billed'`, the per-order shipping amount (the SQL column currently aliased
+  `label_cost` / `marked_cost`) becomes the client's **billed shipping**:
+  `coalesce((select sum(b.total_cost) from billing_line_items b where b.order_id = o.id and
+  b.line_type = 'shipping'), 0)` — the same canonical billed-shipping owner the Orders list already
+  uses for `billedShipping` (`src/lib/client-portal/read-models/orders.ts:47-51`). The rest of the
+  allocation (`× qty / order_qty_total`, std/exp classification, `is_external`) is unchanged, so
+  only the amount source changes.
+- Client-portal consumers pass `'customer_billed'`:
+  - `src/routes/client-portal/analysis.ts:23` (SKU table, via `getSkuBreakdownFromOrderItems`)
+  - `src/lib/client-portal/read-models/dashboard.ts:56` (Dashboard Top-SKUs)
+  - `src/routes/client-portal/analysis.ts:99` (SKU detail drawer, via `getSkuOrdersForSku`)
+- **Client boundary key renames** (drawer): the `/analysis/sku-orders` boundary remap
+  (`src/routes/client-portal/analysis.ts:113-116`, which already nulls carrier/service) also
+  renames `standard_shipping_cost` → `shippingCharge`, `avgStandardShippingCost` →
+  `avgShippingCharge`, and drops the redundant `shipping_cost` / `shipping_total` /
+  `standard_shipping_total` from the client payload — so no cost-named key reaches the bundle and
+  the shared `SkuOrderRow` type stays intact for the operator/legacy consumer.
+- `canViewFinancials` redaction is unchanged — both helpers still zero/null shipping and revenue
+  for callers without money access.
 
 **Frontend consequences:**
 - `portal-client/src/pages/Dashboard.tsx:211` — remove the `shipAlloc ÷ shipUnits =` tooltip math;
@@ -130,9 +147,13 @@ New `scripts/client-portal-bundle-redaction-guard.mjs`:
 
 ## 5. File change list (summary)
 
-- **Backend:** `src/routes/analysis.ts` (`shippingBasis` param + billed-shipping CTE branch),
-  `src/routes/client-portal/analysis.ts`, `src/lib/client-portal/read-models/dashboard.ts`,
-  `src/lib/client-portal/dto.ts` (`shippingCost` → `customerShippingRate`).
+- **Backend:** `src/routes/analysis.ts` (`shippingBasis` on `SkuBreakdownQuery` + billed-shipping
+  branch in `getSkuBreakdownFromOrderItems`), `src/services/sku-orders.ts` (`shippingBasis` on
+  `SkuOrdersInput` + billed-shipping branch in both inner queries),
+  `src/routes/client-portal/analysis.ts` (pass `customer_billed` to both helpers + drawer boundary
+  key renames), `src/lib/client-portal/read-models/dashboard.ts` (pass `customer_billed`; drop
+  `shipAlloc`/`shipUnits` from `DashboardTopSkuRow`), `src/lib/client-portal/dto.ts`
+  (`shippingCost` → `customerShippingRate`).
 - **Frontend:** `portal-client/src/lib/api.ts` (Shipment key; drop `shipAlloc`/`shipUnits`),
   `pages/Dashboard.tsx`, `pages/Analysis.tsx`, `pages/Finance.tsx`, `pages/Invoices.tsx`,
   `components/OrderDetailPanel.tsx`, `pages/Shipments.tsx`.
