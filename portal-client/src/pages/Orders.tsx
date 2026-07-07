@@ -12,6 +12,7 @@ import { Undo2 } from 'lucide-react';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { Button } from '@/components/ui/Button';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
+import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { useOrders } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { itemCount, money } from '@/lib/status';
@@ -187,12 +188,13 @@ export default function Orders() {
       header: 'Customer Shipping Rate',
       defaultWidth: 170,
       className: 'text-right',
-      render: (o) => {
-        const amount = customerShippingRate(o);
-        return amount != null
-          ? <span className="font-semibold text-brand-700 tnum">{money(amount)}</span>
-          : <span className="text-xs text-ink-3">—</span>;
-      },
+      render: (o) => (
+        <ShippingRateCell
+          rate={o.customerShippingRate}
+          pending={o.customerShippingRatePending}
+          moneyClassName="text-brand-700"
+        />
+      ),
       sortAccessor: (o) => customerShippingRate(o) ?? -1,
     },
   ];

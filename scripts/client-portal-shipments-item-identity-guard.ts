@@ -117,7 +117,7 @@ assert(
 );
 
 assert(
-  shipmentsPage.includes('money(s.customerShippingRate)') &&
+  shipmentsPage.includes('<ShippingRateCell rate={s.customerShippingRate}') &&
     shipmentsPage.includes('money(selected.customerShippingRate)') &&
     shipmentsPage.includes('Field label="Customer Shipping Rate"') &&
     !shipmentsPage.includes('Field label="Service"') &&

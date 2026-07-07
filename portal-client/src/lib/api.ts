@@ -208,6 +208,9 @@ export interface PortalOrder {
   // falling back to buyer-paid store shipping). Financially gated. The internal
   // selected / label / best rate and provider account are never in the client DTO.
   customerShippingRate?: number | string | null;
+  // True when the order shipped but its shipping line isn't billed yet → render
+  // "Pending" instead of "—". Backend-owned (see src/lib/client-portal/dto.ts).
+  customerShippingRatePending?: boolean;
   // CP-014: backend-owned product subtotal (Σ line totals). Financially gated.
   productSubtotal?: number | string | null;
   // CP-017: backend-owned cost summary. Non-'total' rows sum to orderTotal to the
@@ -235,6 +238,9 @@ export interface PortalShipment {
   voided: boolean | null;
   items: PortalItemIdentity[];
   customerShippingRate?: number | string | null;
+  // True when this (non-voided) shipment has no billed shipping line yet →
+  // render "Pending" instead of "—". Backend-owned (see dto.ts).
+  customerShippingRatePending?: boolean;
 }
 
 // CP-029 — Returns. The client return DTO is CARRIER/SERVICE/PROVIDER-FREE by

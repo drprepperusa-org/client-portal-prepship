@@ -302,6 +302,12 @@ export function toPortalOrderDto(
             // shipping charge, replacing carrier/service.
             shippingCharged: row.shippingCharged ?? null,
             customerShippingRate,
+            // The order shipped (has an active shipment) but its shipping line
+            // isn't billed yet → the client sees "Pending" instead of a bare "—",
+            // so a not-yet-invoiced charge doesn't read as "no shipping". Backend-
+            // owned: the frontend renders this flag, it never decides WHEN it is
+            // pending. A genuinely-null rate with no shipment stays "—".
+            customerShippingRatePending: customerShippingRate == null && Boolean(row.hasActiveShipment),
             // CP-014: backend-owned product subtotal (Σ line totals).
             productSubtotal,
             // CP-017: backend-owned, always-reconciling cost summary. Non-'total'
@@ -362,6 +368,12 @@ export function toPortalShipmentDto(
     voided: row.voided,
     items: safeItems(row.orderItems, options.includeFinancials),
     customerShippingRate: options.includeFinancials ? row.shippingCost ?? null : null,
+    // A live (non-voided) shipment with no billed shipping line yet is awaiting
+    // billing → the client sees "Pending" rather than "—". Backend-owned flag;
+    // see toPortalOrderDto for the same convention.
+    customerShippingRatePending: Boolean(
+      options.includeFinancials && row.shippingCost == null && !row.voided,
+    ),
   };
 }
 

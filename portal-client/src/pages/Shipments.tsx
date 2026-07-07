@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
 import { useShipments, useClients } from '@/lib/hooks';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
+import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { Undo2 } from 'lucide-react';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
@@ -125,7 +126,7 @@ export default function Shipments() {
         header: 'Customer Shipping Rate',
         defaultWidth: 170,
         className: 'text-right',
-        render: (s) => <span className="font-semibold text-ink tnum">{s.customerShippingRate != null ? money(s.customerShippingRate) : '—'}</span>,
+        render: (s) => <ShippingRateCell rate={s.customerShippingRate} pending={s.customerShippingRatePending} />,
         sortAccessor: (s) => Number(s.customerShippingRate) || 0,
       },
       {
@@ -277,7 +278,7 @@ export default function Shipments() {
             {/* CP-009: customer-facing — the carrier identity is never shown.
                 Only the customer-safe shipping cost + dates + tracking status. */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Customer Shipping Rate" value={selected.customerShippingRate != null ? money(selected.customerShippingRate) : '—'} />
+              <Field label="Customer Shipping Rate" value={selected.customerShippingRate != null ? money(selected.customerShippingRate) : selected.customerShippingRatePending ? 'Pending' : '—'} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
               {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
               {selected.trackingStatusDetail && !selected.deliveredAt && (
