@@ -181,6 +181,10 @@ export interface PortalOrder {
   externalOrderId: string | null;
   sourceProvider: string | null;
   orderStatus: string | null;
+  // Backend-owned fulfillment lifecycle status (resolved from order status +
+  // shipment tracking/voided). The frontend renders this enum via a label map;
+  // it never derives the status itself. See src/lib/client-portal/order-status.ts.
+  fulfillmentStatus: 'pending' | 'in_transit' | 'delivered' | 'cancelled' | 'voided';
   orderDate: string | null;
   shipToName: string | null;
   // Full customer ship-to address (street lines from the raw payload).

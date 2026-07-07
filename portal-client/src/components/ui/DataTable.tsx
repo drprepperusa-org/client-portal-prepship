@@ -71,9 +71,34 @@ interface DataTableProps<T> {
    * inferred from tableId alone.
    */
   allowColumnCustomization?: boolean;
+  /**
+   * Stick the column header row to the top while the body scrolls (desktop only;
+   * default off). The table's scroll wrapper is an overflow container (needed for
+   * wide-table horizontal scroll), and page-level `position: sticky` can't reach
+   * past an overflow ancestor — so enabling this also BOUNDS the wrapper height
+   * (maxBodyHeight) to turn it into the vertical scroller the sticky header sticks
+   * within. Short tables never hit the bound, so they render unchanged.
+   */
+  stickyHeader?: boolean;
+  /** Max height of the scroll body when stickyHeader is on (any CSS length). */
+  maxBodyHeight?: string;
 }
 
-export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId, footer, defaultSort = null, sort: controlledSort, onSortChange, allowColumnCustomization = false }: DataTableProps<T>) {
+export function DataTable<T>({
+  columns,
+  rows,
+  rowKey,
+  onRowClick,
+  empty,
+  tableId,
+  footer,
+  defaultSort = null,
+  sort: controlledSort,
+  onSortChange,
+  allowColumnCustomization = false,
+  stickyHeader = false,
+  maxBodyHeight = 'calc(100vh - 15rem)',
+}: DataTableProps<T>) {
   // CP-035: customization (controls + drag/reorder/resize + persisted layout) is
   // enabled ONLY when a tableId is present AND the caller explicitly opts in.
   // When off, tableId is NOT passed to the layout hook, so persisted localStorage
@@ -262,8 +287,14 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
           </div>
         )}
 
-        {/* Horizontal scroll so wide tables scroll instead of overlapping. */}
-        <div className="overflow-x-auto rounded-glass">
+        {/* Horizontal scroll so wide tables scroll instead of overlapping. When
+            stickyHeader is on, this wrapper also becomes the VERTICAL scroller
+            (bounded height) so the sticky <th> has a scroll container to stick
+            within — page-level sticky can't reach past this overflow ancestor. */}
+        <div
+          className={cn('rounded-glass', stickyHeader ? 'overflow-auto' : 'overflow-x-auto')}
+          style={stickyHeader ? { maxHeight: maxBodyHeight } : undefined}
+        >
           <table className="border-collapse text-sm" style={{ width: layout.totalWidth, tableLayout: 'fixed' }}>
             <colgroup>
               {ordered.map((c) => (
@@ -289,7 +320,14 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, tableId
                       onClick={() => toggleSort(c)}
                       aria-sort={sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                       className={cn(
-                        'group relative select-none overflow-hidden px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-3 transition-colors',
+                        'group select-none overflow-hidden px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-3 transition-colors',
+                        // `sticky` is itself a positioning context for the absolute
+                        // drop-indicator / resize-handle children, so it replaces
+                        // `relative`. The inset shadow is the header underline —
+                        // border-collapse drops a sticky cell's real border on scroll.
+                        stickyHeader
+                          ? 'sticky top-0 z-20 bg-white/95 shadow-[inset_0_-1px_0_theme(colors.slate.200)]'
+                          : 'relative',
                         canDrag ? 'cursor-grab active:cursor-grabbing' : c.sortAccessor && 'cursor-pointer',
                         sort?.key === c.key && 'text-brand-600',
                         isDragging && 'opacity-40',
