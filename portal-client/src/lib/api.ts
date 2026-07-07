@@ -442,7 +442,7 @@ export interface DashboardSummary {
   // SKU query, so these rows equal the Analysis Top-SKUs for the same scope/date.
   // The frontend renders them in the order received — it never ranks/sorts/slices
   // an orders array or re-derives units/revenue/shipping. `name` mirrors Analysis.
-  bySku: Array<{ sku: string; name?: string | null; units30: number; revenue: number; avgShippingPrice: number | null; shipAlloc: number | null; shipUnits: number | null }>;
+  bySku: Array<{ sku: string; name?: string | null; units30: number; revenue: number; avgShippingPrice: number | null; billedShippingTotal: number | null; chargedUnits: number | null }>;
   /** Per-day order + shippable-unit counts backing the cumulative bar chart. */
   daily: Array<{ day: string; orders: number; units: number }>;
   dailyRevenue: Array<{ day: string; revenue: number }>;
@@ -676,8 +676,7 @@ export interface SkuOrderRow {
   qty: number;
   unit_price: string | null;
   item_name: string | null;
-  shipping_cost: string | null;
-  standard_shipping_cost: string | null;
+  shippingCharge: string | null;
   is_external_shipped: boolean;
 }
 
@@ -722,7 +721,7 @@ export interface SkuOrdersResult {
   name: string | null;
   totalUnits: number;
   standardShipCount: number;
-  avgStandardShippingCost: string;
+  avgShippingCharge: string;
   dailySales: Array<{ day: string; units: number }>;
   orders: SkuOrderRow[];
 }
@@ -877,11 +876,11 @@ async function scopedDashboard(
       // Combine the shipping numerator/denominator exactly, then re-derive the
       // per-unit average — no weighting approximation, and the calculation
       // tooltip's operands stay correct across the multi-client fan-out.
-      const alloc = (cur.shipAlloc ?? 0) + (s.shipAlloc ?? 0);
-      const shipUnits = (cur.shipUnits ?? 0) + (s.shipUnits ?? 0);
-      cur.shipAlloc = shipUnits > 0 ? Math.round(alloc * 100) / 100 : null;
-      cur.shipUnits = shipUnits > 0 ? shipUnits : null;
-      cur.avgShippingPrice = shipUnits > 0 ? alloc / shipUnits : null;
+      const alloc = (cur.billedShippingTotal ?? 0) + (s.billedShippingTotal ?? 0);
+      const chargedUnits = (cur.chargedUnits ?? 0) + (s.chargedUnits ?? 0);
+      cur.billedShippingTotal = chargedUnits > 0 ? Math.round(alloc * 100) / 100 : null;
+      cur.chargedUnits = chargedUnits > 0 ? chargedUnits : null;
+      cur.avgShippingPrice = chargedUnits > 0 ? alloc / chargedUnits : null;
       cur.units30 += s.units30;
       cur.revenue += s.revenue;
     }

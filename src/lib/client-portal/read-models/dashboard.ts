@@ -36,6 +36,11 @@ export interface DashboardTopSkuRow {
    * Always `null` when the caller may not view financials (shipping is zeroed upstream).
    */
   avgShippingPrice: number | null;
+  /** CP-038: the SKU's total BILLED shipping and its charged-unit denominator, so a
+   *  multi-client restricted caller can combine per-client Dashboard pages into an exact
+   *  average client-side. Both `null` exactly when `avgShippingPrice` is `null`. */
+  billedShippingTotal: number | null;
+  chargedUnits: number | null;
 }
 
 /**
@@ -65,6 +70,8 @@ export async function dashboardTopSkus(
       units30: Number(r.total_qty ?? 0),
       revenue: Number(r.total_revenue ?? 0) || 0,
       avgShippingPrice: hasShipping ? billedShipping / chargedUnits : null,
+      billedShippingTotal: hasShipping ? Math.round(billedShipping * 100) / 100 : null,
+      chargedUnits: hasShipping ? chargedUnits : null,
     };
   });
 }

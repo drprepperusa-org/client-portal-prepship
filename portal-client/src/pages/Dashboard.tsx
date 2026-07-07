@@ -207,12 +207,7 @@ export default function Dashboard() {
                                 <span tabIndex={0} className="focus-ring cursor-help rounded">{'—'}</span>
                               </Tooltip>
                             ) : (
-                              // The literal calculation: allocated shipping ÷ units with a charge = avg.
-                              <Tooltip side="top" multiline label={`${money(s.shipAlloc)} ÷ ${s.shipUnits} units = ${money(s.avgShippingPrice)}`}>
-                                <span tabIndex={0} className="focus-ring cursor-help rounded underline decoration-dotted decoration-slate-300 underline-offset-2">
-                                  {money(s.avgShippingPrice)}
-                                </span>
-                              </Tooltip>
+                              <span className="tnum">{money(s.avgShippingPrice)}</span>
                             )}
                           </td>
                         </tr>

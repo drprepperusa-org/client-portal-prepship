@@ -280,7 +280,7 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SkuStat label="30-day units" value={String(data?.totalUnits ?? 0)} />
-        <SkuStat label="Avg ship cost" value={money(Number(data?.avgStandardShippingCost ?? 0))} />
+        <SkuStat label="Avg shipping charge" value={money(Number(data?.avgShippingCharge ?? 0))} />
         <SkuStat label="Avg / day" value={avgPerDay.toFixed(1)} />
       </div>
 
@@ -318,8 +318,8 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
                   <p className="truncate text-xs text-ink-3">{o.ship_to_name ?? '—'} · {shortDate(o.order_date)}</p>
                 </div>
                 <span className="shrink-0 tnum text-xs text-ink-3">×{o.qty}</span>
-                {o.standard_shipping_cost && Number(o.standard_shipping_cost) > 0 && (
-                  <span className="shrink-0 tnum text-xs font-medium text-ink-2">{money(Number(o.standard_shipping_cost))}</span>
+                {o.shippingCharge && Number(o.shippingCharge) > 0 && (
+                  <span className="shrink-0 tnum text-xs font-medium text-ink-2">{money(Number(o.shippingCharge))}</span>
                 )}
                 <Chip accent={meta.accent} dot={false}>{meta.label}</Chip>
               </button>
