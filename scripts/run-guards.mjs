@@ -18,9 +18,10 @@ const scripts = Object.keys(pkg.scripts ?? {});
 const binDir = path.join(process.cwd(), 'node_modules', '.bin');
 const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}` };
 
-// Needs a browser / live network / credentials / a database → runs elsewhere.
-// `^test:guards` excludes THIS runner's own entries so it never recurses.
-const DENY = /(^test:guards|:browser|smoke|integration|web-bundle-budget|^test:status:|:live$|-live$|direct-carrier-labels|shipstation-label-url|marketplace-reconciliation|shipstation-awaiting-parity)/;
+// Needs a browser / live network / credentials / a database / a built bundle → runs
+// elsewhere. `^test:guards` excludes THIS runner's own entries so it never recurses.
+// `bundle-redaction` (CP-038) needs portal-client/dist → runs in test:full-site-certification.
+const DENY = /(^test:guards|:browser|smoke|integration|web-bundle-budget|bundle-redaction|^test:status:|:live$|-live$|direct-carrier-labels|shipstation-label-url|marketplace-reconciliation|shipstation-awaiting-parity)/;
 
 const guards = scripts
   .filter((s) => /^(test|guard):/.test(s))
