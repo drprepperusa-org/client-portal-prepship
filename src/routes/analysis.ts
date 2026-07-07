@@ -446,7 +446,13 @@ const skuBreakdownQuery = rangeQuery.extend({
 });
 
 export type SkuBreakdownQuery = z.infer<typeof skuBreakdownQuery> &
-  ClientStoreScopeQuery & { includeOrderCombinations?: boolean };
+  ClientStoreScopeQuery & {
+    includeOrderCombinations?: boolean;
+    // CP-038: shipping amount basis. Default 'house_markup' = the legacy inline
+    // base_cost*(1+markup) re-derivation (operator/legacy). 'customer_billed' sums the
+    // canonical billing_line_items shipping line — used by the client portal.
+    shippingBasis?: 'house_markup' | 'customer_billed';
+  };
 
 export interface AnalysisOrderCombinationItem {
   sku: string;
@@ -834,6 +840,14 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
       )`
     : sql``;
 
+  // CP-038: client portal passes 'customer_billed' to read the canonical billed shipping
+  // (billing_line_items) instead of the inline base_cost*(1+markup) re-derivation. `o` is
+  // the orders alias inside item_rows; the correlated billing subquery inherits its scope.
+  const shippingAmountExpr =
+    q.shippingBasis === 'customer_billed'
+      ? sql`coalesce((select sum(b.total_cost) from billing_line_items b where b.order_id = o.id and b.line_type = 'shipping'), 0)`
+      : sql`coalesce(ls.label_cost, 0)`;
+
   const rows = await db.execute<SkuBreakdownRow>(sql`
     with item_rows as (
       select
@@ -844,7 +858,7 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         o.order_status                                                      as order_status,
         coalesce(ls.service_code, o.service_code)                           as service_code,
         ls.order_id                                                         as shipment_order_id,
-        coalesce(ls.label_cost, 0)                                          as label_cost,
+        ${shippingAmountExpr}                                               as label_cost,
         oi.sku                                                              as sku,
         oi.sku                                                              as sku_key,
         coalesce(nullif(oi.name, ''), '-')                                  as name,
