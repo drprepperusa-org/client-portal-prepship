@@ -33,6 +33,8 @@ app.get('/analysis', async (c) => {
     hideTestOrders: false,
     includeCancelled: false,
     includeOrderCombinations: true,
+    // CP-038: the client Analysis table reads the canonical billed shipping.
+    shippingBasis: 'customer_billed',
   });
   await recordPortalAudit('portal.analysis.view', scope);
   // CP-010: redact per-SKU revenue for non-financial users so the table stays
@@ -104,15 +106,35 @@ app.get('/analysis/sku-orders', async (c) => {
     dateTo: asTimestamp(to),
     canViewFinancials: scope.canViewFinancials,
     orderScopeSql: rawOrderScopeForAlias(scope, { clientId, storeId }),
+    // CP-038: the client SKU drawer reads the canonical billed shipping.
+    shippingBasis: 'customer_billed',
   });
 
   await recordPortalAudit('portal.analysis.sku_orders', scope, { inventoryId, orders: result.orders.length });
   // CP-018: the client portal never exposes carrier/service identity. The shared
   // sku-orders service keeps carrier_code/service_code for the operator inventory
   // drawer; strip them from every row here at the client-portal boundary.
+  // CP-038: rename the per-order + summary shipping to a client-facing CHARGE and drop
+  // the internal *_cost/*_total variants so no cost-named key reaches the client bundle.
+  const { avgStandardShippingCost, ...rest } = result;
   return c.json({
-    ...result,
-    orders: result.orders.map((o) => ({ ...o, carrier_code: null, service_code: null })),
+    ...rest,
+    avgShippingCharge: avgStandardShippingCost,
+    orders: result.orders.map((o) => ({
+      order_id: o.order_id,
+      order_number: o.order_number,
+      order_date: o.order_date,
+      order_status: o.order_status,
+      ship_to_name: o.ship_to_name,
+      // CP-018: never expose carrier/service identity to the client.
+      carrier_code: null,
+      service_code: null,
+      qty: o.qty,
+      unit_price: o.unit_price,
+      item_name: o.item_name,
+      shippingCharge: o.standard_shipping_cost,
+      is_external_shipped: o.is_external_shipped,
+    })),
   });
 });
 

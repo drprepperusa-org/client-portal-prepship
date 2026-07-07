@@ -64,6 +64,7 @@
     "test:client-portal-billing-shipment-modal": "tsx scripts/client-portal-billing-shipment-modal-guard.ts",
     "test:billing-shipping-override": "tsx scripts/billing-shipping-override-guard.ts",
     "test:billing-description-policy-free": "node scripts/billing-description-policy-free-guard.mjs",
+    "test:client-portal-shipping-resource": "node scripts/client-portal-shipping-resource-guard.mjs",
     "test:client-portal-carrier-redaction": "tsx scripts/client-portal-carrier-redaction-guard.ts",
     "test:client-portal-client-nav-connections": "node scripts/client-portal-client-nav-connections-guard.mjs",
     "test:client-portal-billing-column-order": "node scripts/client-portal-billing-column-order-guard.mjs",
