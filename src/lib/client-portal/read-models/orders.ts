@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderOverrides, orders } from '../../../db/schema/orders';
@@ -18,10 +18,6 @@ import type { ClientPortalScope } from '../scope';
  * single-order detail, and the live awaiting count. Routes stay responsible
  * for param parsing, RBAC/scope resolution, auditing, and HTTP shaping.
  */
-
-function liveAwaitingSince() {
-  return new Date(Date.now() - 30 * 86_400_000);
-}
 
 export async function listPortalOrders(
   scope: ClientPortalScope,
@@ -168,21 +164,15 @@ export async function awaitingActiveOrderCount(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null },
 ) {
+  // The sidebar/mobile Orders badge mirrors the Orders page's Awaiting shipment
+  // tab count. Keep this predicate aligned with listPortalOrders(status:
+  // 'awaiting_shipment') so users do not see rows in the table with a blank
+  // badge in the nav.
   const where = and(
     orderScopePredicate(scope, filters),
     activeClientPredicate(),
     eq(orders.orderStatus, 'awaiting_shipment'),
     visibleAwaitingOrdersPredicate(),
-    gte(orders.orderDate, liveAwaitingSince()),
-    eq(orders.externallyShipped, false),
-    sql`coalesce((${orders.raw}->>'externallyFulfilled')::boolean, false) = false`,
-    sql`jsonb_array_length(coalesce(${orders.items}, '[]'::jsonb)) > 0`,
-    sql`not exists (
-      select 1
-      from ${shipments} active_shipment
-      where active_shipment.order_id = ${orders.id}
-        and active_shipment.voided = false
-    )`,
   );
   const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
   return Number(row?.count ?? 0);
