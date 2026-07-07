@@ -54,10 +54,19 @@ export type SkuOrdersInput = {
   // Raw predicate against the orders table aliased `o`. Undefined = no extra
   // tenant restriction (caller already trusts the full set).
   orderScopeSql?: SQL;
+  // CP-038: 'house_markup' (default, operator/legacy inline markup) or 'customer_billed'
+  // (client portal — canonical billing_line_items shipping).
+  shippingBasis?: 'house_markup' | 'customer_billed';
 };
 
 export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrdersResult> {
   const { sku, canViewFinancials } = input;
+  // CP-038: see getSkuBreakdownFromOrderItems. `o` is the orders alias in both inner queries;
+  // 'customer_billed' reads the canonical billed shipping instead of the inline marked_cost.
+  const shippingAmountExpr =
+    input.shippingBasis === 'customer_billed'
+      ? sql`coalesce((select sum(b.total_cost) from billing_line_items b where b.order_id = o.id and b.line_type = 'shipping'), 0)`
+      : sql`coalesce(ls.marked_cost, 0)`;
   const since = input.dateFrom
     ? new Date(input.dateFrom).toISOString()
     : input.days
@@ -143,7 +152,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         o.order_status                                                     as order_status,
         coalesce(ls.service_code, o.service_code)                          as service_code,
         ls.order_id                                                        as shipment_order_id,
-        coalesce(ls.marked_cost, 0)                                        as label_cost,
+        ${shippingAmountExpr}                                              as label_cost,
         oi.sku                                                             as sku,
         oi.sku                                                             as sku_key,
         coalesce(nullif(oi.name, ''), '-')                                 as name,
@@ -264,7 +273,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         o.carrier_code                                                     as carrier_code,
         coalesce(ls.service_code, o.service_code)                          as service_code,
         ls.order_id                                                        as shipment_order_id,
-        coalesce(ls.marked_cost, 0)                                        as label_cost,
+        ${shippingAmountExpr}                                              as label_cost,
         coalesce(o.externally_shipped, false)                              as externally_shipped_flag,
         oi.sku                                                             as sku,
         oi.sku                                                             as sku_key,
