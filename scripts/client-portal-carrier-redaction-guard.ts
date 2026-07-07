@@ -44,6 +44,10 @@ const orderRow: any = {
   weightOz: 10,
   orderTotal: '10.00',
   shippingAmount: '5.00',
+  // CP-040: the customer shipping rate resolves from billed/projected shipping
+  // (shippingCharged), NEVER the buyer-paid shippingAmount above — so this fixture
+  // carries a billed value and the DTO must surface it (5.99), not 5.00.
+  shippingCharged: '5.99',
   items: [],
   override: { trackingNumber: '1Z999' },
   latestShipment: { carrierCode: 'ups', serviceCode: 'ups_ground_saver', amount: 5.99 },

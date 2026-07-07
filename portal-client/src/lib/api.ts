@@ -201,12 +201,13 @@ export interface PortalOrder {
   shippingService?: string | null;
   items: PortalItemIdentity[];
   orderTotal?: number | string | null;
-  shippingAmount?: number | string | null;
-  // Billed shipping (customer-facing shipping charge). Financially gated.
+  // Resolved customer shipping charge (frozen billing line → projection).
+  // Financially gated.
   shippingCharged?: number | string | null;
-  // CP-018: the ONE customer-facing shipping value (billed customer shipping,
-  // falling back to buyer-paid store shipping). Financially gated. The internal
-  // selected / label / best rate and provider account are never in the client DTO.
+  // CP-018 / CP-040: the ONE customer-facing shipping value — the backend resolver's
+  // C. Shipping Rate (frozen billing line → billing-config projection). Never
+  // buyer-paid store shipping (orders.shippingAmount), and never the internal
+  // selected / label / best rate or provider account. Financially gated.
   customerShippingRate?: number | string | null;
   // True when the order shipped but its shipping line isn't billed yet → render
   // "Pending" instead of "—". Backend-owned (see src/lib/client-portal/dto.ts).

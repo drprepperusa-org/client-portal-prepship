@@ -4,6 +4,7 @@ import { clients } from '../../../db/schema/clients';
 import { orderOverrides, orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
 import { toPortalOrderDto } from '../dto';
+import { orderCustomerShippingRateSql } from '../customer-shipping-rate';
 import {
   activeClientPredicate,
   orderScopePredicate,
@@ -40,15 +41,12 @@ export async function listPortalOrders(
       override: orderOverrides,
       clientName: clients.name,
       storeIds: clients.storeIds,
-      // CP-018: billed customer shipping (Σ billing_line_items line_type='shipping')
-      // — the ONLY shipping value the Orders list needs. The internal carrier /
-      // service / selected-rate / provider-account subqueries were removed: none
-      // of that data is exposed to the client any more, so we no longer fetch it.
-      billedShipping: sql<string | null>`(
-        select coalesce(sum(bli.total_cost), 0)::text
-        from billing_line_items bli
-        where bli.order_id = ${orders.id} and bli.line_type = 'shipping'
-      )`,
+      // CP-040: the ONE customer shipping value the Orders list needs — the backend
+      // resolver's C. Shipping Rate (frozen billing_line_items shipping line per
+      // shipment → live billing-config projection), summed over the order's
+      // shipments. Never orders.shipping_amount (buyer-paid store shipping); never
+      // the internal carrier / service / selected-rate.
+      resolvedShippingRate: orderCustomerShippingRateSql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts): the latest ACTIVE (non-voided)
       // shipment's tracking status, plus whether the order has any active / any
@@ -97,8 +95,8 @@ export async function listPortalOrders(
           clientName: row.clientName,
           storeName: row.clientName,
           override: row.override,
-          // CP-018: list now provides the billed customer shipping charge.
-          shippingCharged: row.billedShipping,
+          // CP-040: list provides the resolved customer shipping rate.
+          shippingCharged: row.resolvedShippingRate,
           activeTrackingStatus: row.activeTrackingStatus,
           hasActiveShipment: row.hasActiveShipment,
           hasVoidedShipment: row.hasVoidedShipment,
@@ -121,13 +119,10 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       order: orders,
       override: orderOverrides,
       clientName: clients.name,
-      // Billed shipping for this order (customer-facing shipping charge) — the
-      // same billed shipping the Billing surfaces show, never the internal cost.
-      billedShipping: sql<string | null>`(
-        select coalesce(sum(bli.total_cost), 0)::text
-        from billing_line_items bli
-        where bli.order_id = ${orders.id} and bli.line_type = 'shipping'
-      )`,
+      // CP-040: resolved customer shipping rate (frozen billing line → projection),
+      // summed over the order's shipments — the SAME resolver the Shipments surface
+      // uses. Never orders.shipping_amount.
+      resolvedShippingRate: orderCustomerShippingRateSql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts).
       activeTrackingStatus: sql<string | null>`(
@@ -160,7 +155,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       clientName: row.clientName,
       storeName: row.clientName,
       override: row.override,
-      shippingCharged: row.billedShipping,
+      shippingCharged: row.resolvedShippingRate,
       activeTrackingStatus: row.activeTrackingStatus,
       hasActiveShipment: row.hasActiveShipment,
       hasVoidedShipment: row.hasVoidedShipment,

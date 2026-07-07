@@ -1,6 +1,6 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { billingConfig } from '../../db/schema/billing';
-import { orderOverrides } from '../../db/schema/orders';
+import { orderOverrides, orders } from '../../db/schema/orders';
 import { shipments } from '../../db/schema/shipments';
 
 function positiveNumericText(value: SQL | unknown): SQL {
@@ -66,5 +66,36 @@ export function shipmentCustomerShippingRateSql(): SQL<string | null> {
         and bli.line_type = 'shipping'
     )::text,
     ${projectedCustomerShippingRateSql()}
+  )`;
+}
+
+/**
+ * Order-grain C. Shipping Rate: the SAME per-shipment resolver above
+ * (shipmentCustomerShippingRateSql — frozen billing line → projection) applied to
+ * each of the order's NON-VOIDED shipments and summed. The Client Portal Orders
+ * list/detail read-model uses this so an order row resolves the identical value
+ * the Shipments surface shows — WITHOUT ever falling back to
+ * orders.shipping_amount. Buyer-paid store/checkout shipping is unrelated to the
+ * 3PL customer shipping rate and must not decide it (CP-040).
+ *
+ * Grain note: billing_line_items shipping rows carry BOTH order_id and
+ * shipment_id (src/services/billing.ts), so summing the per-shipment frozen value
+ * equals the order's frozen shipping. `order_overrides` is order-grain (one row
+ * per order, shared by every shipment), and `billing_config` is client-grain —
+ * both are joined inside this correlated subquery so it is self-contained.
+ *
+ * Source/clock/formula/owner: identical to shipmentCustomerShippingRateSql (this
+ * module owns it; clock = ship/bill time). Returns null when NO shipment has a
+ * frozen line or a projectable house cost — the DTO then renders "—", or
+ * "Pending" if the order still has an active shipment.
+ */
+export function orderCustomerShippingRateSql(): SQL<string | null> {
+  return sql`(
+    select sum((${shipmentCustomerShippingRateSql()})::numeric)::text
+    from ${shipments}
+    left join ${billingConfig} on ${billingConfig.clientId} = ${shipments.clientId}
+    left join ${orderOverrides} on ${orderOverrides.orderId} = ${shipments.orderId}
+    where ${shipments.orderId} = ${orders.id}
+      and coalesce(${shipments.voided}, false) = false
   )`;
 }

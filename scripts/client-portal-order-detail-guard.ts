@@ -71,10 +71,11 @@ check(admin.shipToPostalCode === '02101' && admin.shipToCountry === 'US', 'order
 check(admin.shippingCharged === '5.99', 'order detail: DTO exposes backend billed shipping (shippingCharged)');
 // CP-018: customerShippingRate = billed customer shipping when > 0.
 check(admin.customerShippingRate === '5.99', 'CP-018: customerShippingRate = billed customer shipping when > 0');
-// CP-018: a '0.00' billed value means "not billed yet" → falls through to the
-// buyer-paid store shipping, never renders $0.00.
+// CP-040: a '0.00'/unresolved billed value → the rate is null (renders "—" or
+// "Pending"), NEVER the buyer-paid store shipping. Buyer-paid store shipping
+// (orders.shippingAmount) is unrelated to the 3PL customer shipping rate.
 const zeroBilled: any = dto.toPortalOrderDto({ ...baseRow, shippingCharged: '0.00', shippingAmount: '5.00' }, { includeFinancials: true });
-check(zeroBilled.customerShippingRate === '5.00', 'CP-018: $0.00 billed shipping falls through to store shipping ($5.00), not $0.00');
+check(zeroBilled.customerShippingRate === null, 'CP-040: $0.00 resolved shipping → null (never buyer-paid store shipping)');
 
 // ── Redaction: non-financial DTO omits all product/rate money ──
 const client: any = dto.toPortalOrderDto(baseRow, { includeFinancials: false });

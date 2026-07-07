@@ -280,25 +280,16 @@ export function toPortalOrderDto(
     items,
     ...(options.includeFinancials
       ? (() => {
-          // CP-018 / CP-039: the ONE customer-facing shipping value. Billed
-          // customer shipping (billing_line_items line_type='shipping') is the
-          // canonical rate for EVERY status. Buyer-paid store shipping
-          // (orders.shippingAmount) is only a fallback ONCE the order is out of
-          // the awaiting/pending bucket — an awaiting/pending row must show "—",
-          // not a rate, just because the marketplace buyer paid shipping at
-          // checkout (CP-039). NEVER the internal selected/label/best rate.
-          const orderStatusLc = String(row.orderStatus ?? '').toLowerCase();
-          const isAwaitingBucket =
-            orderStatusLc === 'awaiting_shipment' ||
-            orderStatusLc === 'awaiting_payment' ||
-            orderStatusLc === 'pending' ||
-            orderStatusLc === 'on_hold';
+          // CP-018 / CP-040: the ONE customer-facing shipping value is the backend
+          // resolver's C. Shipping Rate — a frozen billing_line_items shipping line
+          // per shipment, else the live billing-config projection (resolved in
+          // lib/client-portal/customer-shipping-rate.ts and surfaced here as
+          // shippingCharged by read-models/orders.ts + the shipment read-models).
+          // Buyer-paid store shipping (orders.shippingAmount) is UNRELATED to the
+          // 3PL customer shipping rate and is NEVER a fallback for it (CP-040).
+          // NEVER the internal selected/label/best rate either.
           const customerShippingRate =
-            Number(row.shippingCharged) > 0
-              ? row.shippingCharged
-              : !isAwaitingBucket && Number(row.shippingAmount) > 0
-                ? row.shippingAmount
-                : null;
+            Number(row.shippingCharged) > 0 ? row.shippingCharged : null;
           // CP-017: extract ONLY the money keys the summary needs from raw — never
           // pass the full jsonb column (it carries marketplace carrier / rate /
           // account fields that CP-009/CP-018 forbid surfacing).
@@ -306,9 +297,9 @@ export function toPortalOrderDto(
             row.raw && typeof row.raw === 'object' ? (row.raw as Record<string, unknown>) : undefined;
           return {
             orderTotal: row.orderTotal,
-            shippingAmount: row.shippingAmount,
-            // Billed shipping (Σ billing_line_items shipping) — the customer-facing
-            // shipping charge, replacing carrier/service.
+            // Resolver-owned customer shipping charge (frozen billing line →
+            // projection). orders.shippingAmount (buyer-paid store shipping) is
+            // intentionally NOT exposed — it is unrelated to the rate (CP-040).
             shippingCharged: row.shippingCharged ?? null,
             customerShippingRate,
             // The order shipped (has an active shipment) but its shipping line

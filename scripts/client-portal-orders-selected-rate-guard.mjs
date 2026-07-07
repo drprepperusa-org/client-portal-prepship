@@ -37,22 +37,20 @@ assert.doesNotMatch(dto, /selectedRate:/, 'Client portal DTO must NOT project se
 assert.match(dto, /customerShippingRate:/, 'Client portal DTO must project customerShippingRate');
 assert.doesNotMatch(dto, /bestRateAmount:/, 'Client portal DTO must NOT project bestRateAmount');
 
-// CP-018 root-cause protection: the Orders LIST read-model must select billed
-// customer shipping, so the column has a real value (not the removed rate) and a
-// future refactor can't silently revert it to "—".
-assert.match(ordersReadModel, /billedShipping/, 'list read-model selects billed shipping');
-assert.match(ordersReadModel, /line_type = 'shipping'/, 'list billed-shipping filters line_type=shipping');
-assert.match(ordersReadModel, /shippingCharged:\s*row\.billedShipping/, 'list threads billedShipping into the DTO');
+// CP-040 root-cause protection: the Orders LIST/detail read-model must resolve
+// customer shipping via the backend resolver (frozen billing line -> billing-
+// config projection), so a shipped-but-unfrozen order shows a real rate and a
+// future refactor can't silently revert it to a raw billing sum or the removed
+// internal rate.
+assert.match(ordersReadModel, /orderCustomerShippingRateSql\(\)/, 'read-model resolves shipping via orderCustomerShippingRateSql');
+assert.match(ordersReadModel, /shippingCharged:\s*row\.resolvedShippingRate/, 'read-model threads the resolved rate into the DTO');
+assert.doesNotMatch(ordersReadModel, /line_type = 'shipping'/, 'read-model no longer sums billing_line_items shipping directly (uses the resolver)');
 
-// CP-039: the buyer-paid store-shipping fallback (orders.shippingAmount) is
-// status-gated — it must NOT surface a rate for the awaiting/pending bucket. The
-// DTO gates the fallback behind an awaiting-bucket check; behavioral coverage
-// lives in client-portal-orders-shipping-status-guard.ts.
-assert.match(dto, /isAwaitingBucket/, 'DTO gates the buyer-paid shipping fallback on the awaiting/pending bucket (CP-039)');
-assert.match(
-  dto,
-  /!isAwaitingBucket && Number\(row\.shippingAmount\) > 0/,
-  'DTO only falls back to buyer-paid shippingAmount when the order is NOT awaiting/pending (CP-039)',
-);
+// CP-040: orders.shipping_amount (buyer-paid store shipping) is UNRELATED to the
+// customer shipping rate and is NEVER a fallback for it, in ANY status — this
+// reverses CP-039's interim status-gated fallback. Behavioral coverage lives in
+// client-portal-orders-shipping-status-guard.ts.
+assert.doesNotMatch(dto, /isAwaitingBucket/, 'DTO no longer status-gates a buyer-paid fallback (CP-040 removed it)');
+assert.doesNotMatch(dto, /Number\(row\.shippingAmount\)/, 'DTO customerShippingRate never reads buyer-paid shippingAmount (CP-040)');
 
 console.log('Client portal Orders customer-shipping-rate guard passed.');
