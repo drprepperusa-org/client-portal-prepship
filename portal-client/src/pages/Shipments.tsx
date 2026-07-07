@@ -121,12 +121,12 @@ export default function Shipments() {
         sortAccessor: (s) => s.clientName ?? '',
       },
       {
-        key: 'shippingCost',
+        key: 'customerShippingRate',
         header: 'Customer Shipping Rate',
         defaultWidth: 170,
         className: 'text-right',
-        render: (s) => <span className="font-semibold text-ink tnum">{s.shippingCost != null ? money(s.shippingCost) : '—'}</span>,
-        sortAccessor: (s) => Number(s.shippingCost) || 0,
+        render: (s) => <span className="font-semibold text-ink tnum">{s.customerShippingRate != null ? money(s.customerShippingRate) : '—'}</span>,
+        sortAccessor: (s) => Number(s.customerShippingRate) || 0,
       },
       {
         key: 'tracking',
@@ -277,7 +277,7 @@ export default function Shipments() {
             {/* CP-009: customer-facing — the carrier identity is never shown.
                 Only the customer-safe shipping cost + dates + tracking status. */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Customer Shipping Rate" value={selected.shippingCost != null ? money(selected.shippingCost) : '—'} />
+              <Field label="Customer Shipping Rate" value={selected.customerShippingRate != null ? money(selected.customerShippingRate) : '—'} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
               {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
               {selected.trackingStatusDetail && !selected.deliveredAt && (

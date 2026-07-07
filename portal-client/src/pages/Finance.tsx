@@ -44,7 +44,7 @@ export default function Finance() {
           <>
             <StatCard label={`Charges (${days}d)`} value={money(totalCharges)} icon={Wallet} accent="amber" hint="Across all clients" />
             <StatCard label={`Billable orders (${days}d)`} value={orders.toLocaleString()} icon={Boxes} accent="indigo" />
-            <StatCard label="Avg. cost / order" value={money(avgCostPerOrder)} icon={TrendingUp} accent="emerald" />
+            <StatCard label="Avg. charge / order" value={money(avgCostPerOrder)} icon={TrendingUp} accent="emerald" />
           </>
         )}
       </motion.div>

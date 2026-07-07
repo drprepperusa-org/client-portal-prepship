@@ -74,7 +74,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
 
       {o.costSummary && o.costSummary.length > 0 && (
         <div className="space-y-2 rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Cost summary</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Order charges</p>
           {/* CP-017: backend-owned rows rendered verbatim — the panel does no
               receipt math. Non-total rows (subtotal, discount, shipping, tax,
               refund/adjustment), then a divider + the bold Order total. Negative

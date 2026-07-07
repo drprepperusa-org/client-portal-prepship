@@ -4,7 +4,7 @@ import type { BillingInvoiceDetailRow } from '@/lib/api';
 // order mirror the billing line-items table (client-safe fields only — no
 // carrier / selected rate / shipping margin):
 //   Ship Date | Order # | SKU(s) | Qty | Pick & Pack | Addl Units |
-//   Box Cost | Box Size | Shipping | Storage | Return Processing |
+//   Box Charge | Box Size | Shipping | Storage | Return Processing |
 //   Return Postage | Fulfillment Fee
 // Money cells are written as real numbers (2-decimal format) so Excel can sum
 // and pivot them; the final row is a bold totals row. write-excel-file is
@@ -20,7 +20,7 @@ const HEADERS = [
   'Qty',
   'Pick & Pack',
   'Addl Units',
-  'Box Cost',
+  'Box Charge',
   'Box Size',
   'Shipping',
   'Storage',

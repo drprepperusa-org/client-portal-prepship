@@ -229,7 +229,7 @@ export interface PortalShipment {
   deliveredAt?: string | null;
   voided: boolean | null;
   items: PortalItemIdentity[];
-  shippingCost?: number | string | null;
+  customerShippingRate?: number | string | null;
 }
 
 // CP-029 — Returns. The client return DTO is CARRIER/SERVICE/PROVIDER-FREE by

@@ -335,7 +335,7 @@ export function toPortalShipmentDto(
     deliveredAt: iso(row.deliveredAt),
     voided: row.voided,
     items: safeItems(row.orderItems, options.includeFinancials),
-    shippingCost: options.includeFinancials ? row.shippingCost ?? null : null,
+    customerShippingRate: options.includeFinancials ? row.shippingCost ?? null : null,
   };
 }
 
