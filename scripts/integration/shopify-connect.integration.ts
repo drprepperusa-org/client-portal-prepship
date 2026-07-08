@@ -36,6 +36,13 @@ async function cleanup(): Promise<void> {
   await db.execute(sql`delete from orders where source_provider = 'shopify'`);
   await db.execute(sql`delete from store_accounts where provider = 'shopify'`);
   await db.execute(sql`delete from clients where name = 'Shopify Test Client'`);
+  // Restore the push-shaped DB the sibling suite was written against: this
+  // suite installs the 0025 order_items refresh trigger, which fires on every
+  // orders INSERT and pre-populates order_items — colliding with
+  // client-portal.integration.ts's conflict-naive manual order_items seeding
+  // on a persistent local throwaway DB. (This suite re-applies 0025 at the
+  // start of every run, so dropping it here loses nothing.)
+  await db.execute(sql`drop trigger if exists prepship_order_items_refresh on orders`);
 }
 
 async function main(): Promise<number> {

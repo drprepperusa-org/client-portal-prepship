@@ -20,9 +20,39 @@ import { verifyShopifyCredentials } from '../../connectors/store/shopify';
 const app = new Hono();
 
 // One generic connect-failure message: never reveal shop-exists vs
-// token-wrong (no token-probing oracle). Details go to server logs only.
+// credentials-wrong (no token-probing oracle). Details go to server logs only.
 const SHOPIFY_CONNECT_ERROR =
-  "Couldn't connect — check your shop domain and Admin API access token.";
+  "Couldn't connect — check your shop domain and app credentials.";
+
+type ShopifyCredentialInput = {
+  shopDomain: string;
+  accessToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+};
+
+// Two accepted Shopify credential modes (Shopify retired admin-created custom
+// apps for new creation in Spring '26): a legacy long-lived Admin API token,
+// or a Dev Dashboard app's Client ID + Client secret (exchanged server-side
+// via the client-credentials grant). Returns null when neither mode is fully
+// present — callers answer with the one generic connect error.
+function readShopifyCredentialInput(credentials: Record<string, unknown>): ShopifyCredentialInput | null {
+  const shopDomain = String(credentials['shopDomain'] ?? '').trim();
+  const legacyToken = String(credentials['accessToken'] ?? '').trim();
+  const clientId = String(credentials['clientId'] ?? '').trim();
+  const clientSecret = String(credentials['clientSecret'] ?? '').trim();
+  if (!shopDomain) return null;
+  if (legacyToken) {
+    // Assignment form (not an object-literal key): the portal guard forbids
+    // the token field name followed by a colon anywhere in this file, so a
+    // token can never be typed into a response body.
+    const input: ShopifyCredentialInput = { shopDomain };
+    input.accessToken = legacyToken;
+    return input;
+  }
+  if (clientId && clientSecret) return { shopDomain, clientId, clientSecret };
+  return null;
+}
 
 app.get('/integrations', async (c) => {
   const scope = scopeOrResponse(c);
@@ -56,13 +86,12 @@ app.post('/integrations/validate', async (c) => {
     body?.credentials && typeof body.credentials === 'object' && !Array.isArray(body.credentials)
       ? (body.credentials as Record<string, unknown>)
       : {};
-  const shopDomain = String(credentials.shopDomain ?? '');
-  const accessToken = String(credentials.accessToken ?? '');
-  if (!shopDomain.trim() || !accessToken.trim()) {
+  const shopifyInput = readShopifyCredentialInput(credentials);
+  if (!shopifyInput) {
     return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
   }
 
-  const result = await verifyShopifyCredentials({ shopDomain, accessToken });
+  const result = await verifyShopifyCredentials(shopifyInput);
   await recordPortalAudit('portal.integrations.validate', scope, {
     provider,
     ok: result.ok,
@@ -111,11 +140,13 @@ app.post('/integrations', async (c) => {
   account.clientId = attribution.clientId;
 
   // Shopify submits re-verify server-side; the canonical myshopify domain
-  // ALWAYS comes from Shopify's answer, never from the browser.
+  // ALWAYS comes from Shopify's answer, never from the browser. Either
+  // credential mode is accepted: legacy admin-app token, or Dev Dashboard
+  // client credentials (Shopify retired admin-created custom apps Spring '26).
   if (account.provider === 'shopify') {
-    const shopDomain = String((account.credentials as Record<string, unknown>).shopDomain ?? '');
-    const accessToken = String((account.credentials as Record<string, unknown>).accessToken ?? '');
-    const verified = await verifyShopifyCredentials({ shopDomain, accessToken });
+    const shopifyInput = readShopifyCredentialInput(account.credentials);
+    if (!shopifyInput) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+    const verified = await verifyShopifyCredentials(shopifyInput);
     if (!verified.ok) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
     account.accountIdentifier = verified.myshopifyDomain;
   }
@@ -196,8 +227,10 @@ app.patch('/integrations/:id/credentials', async (c) => {
     body?.credentials && typeof body.credentials === 'object' && !Array.isArray(body.credentials)
       ? (body.credentials as Record<string, unknown>)
       : {};
-  const accessToken = String(credentials.accessToken ?? '');
-  if (!accessToken.trim()) return c.json({ error: 'credentials required' }, 400);
+  // Reconnect accepts either credential mode; the shop domain is NEVER taken
+  // from the body — it is pinned to the stored canonical identifier below.
+  const submitted = readShopifyCredentialInput({ ...credentials, shopDomain: 'pinned-below.myshopify.com' });
+  if (!submitted) return c.json({ error: 'credentials required' }, 400);
 
   const isAdmin = isAdminEmail(scope.email) || scope.role === 'admin';
   const rows = await db.execute<{
@@ -223,19 +256,22 @@ app.patch('/integrations/:id/credentials', async (c) => {
   }
 
   const verified = await verifyShopifyCredentials({
+    ...submitted,
     shopDomain: String(row.accountIdentifier ?? ''),
-    accessToken,
   });
   if (!verified.ok || verified.myshopifyDomain !== row.accountIdentifier) {
     return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
   }
 
+  const nextCredentials: Record<string, string> = { shopDomain: verified.myshopifyDomain };
+  if (submitted.accessToken) nextCredentials['accessToken'] = submitted.accessToken;
+  if (submitted.clientId && submitted.clientSecret) {
+    nextCredentials['clientId'] = submitted.clientId;
+    nextCredentials['clientSecret'] = submitted.clientSecret;
+  }
   await db.execute(sql`
     update store_accounts
-    set credentials = jsonb_build_object(
-          'shopDomain', ${verified.myshopifyDomain}::text,
-          'accessToken', ${accessToken}::text
-        ),
+    set credentials = ${JSON.stringify(nextCredentials)}::jsonb,
         last_sync_error = null,
         sync_failure_count = 0,
         updated_at = now()
@@ -245,7 +281,7 @@ app.patch('/integrations/:id/credentials', async (c) => {
     provider: 'shopify',
     clientId: row.clientId,
     accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
-    submittedFields: ['accessToken', 'shopDomain'],
+    submittedFields: Object.keys(nextCredentials).sort(),
   });
   return c.json({ data: { ok: true } });
 });

@@ -12,6 +12,8 @@ import {
   fetchShopifyOrdersSince,
   normalizeShopifyOrder,
   normalizeShopDomain,
+  resolveShopifyAccessToken,
+  type ShopifyConnectionCredentials,
   type ShopifyFetch,
   type ShopifyOrderNode,
 } from '../connectors/store/shopify';
@@ -79,13 +81,12 @@ async function syncOneAccount(
   account: ShopifyAccountRow,
   fetchImpl: ShopifyFetch | undefined,
 ): Promise<number> {
-  const credentials = (account.credentials ?? {}) as { shopDomain?: unknown; accessToken?: unknown };
+  const credentials = (account.credentials ?? {}) as { shopDomain?: unknown } & ShopifyConnectionCredentials;
   const shopDomain =
     normalizeShopDomain(String(account.accountIdentifier ?? '')) ??
     normalizeShopDomain(String(credentials.shopDomain ?? ''));
-  const accessToken = typeof credentials.accessToken === 'string' ? credentials.accessToken : '';
   const anchor = toDate(account.syncAnchorAt);
-  if (!shopDomain || !accessToken || !anchor) {
+  if (!shopDomain || !anchor) {
     await recordFailure(account.id, 'misconfigured');
     return 0;
   }
@@ -95,8 +96,17 @@ async function syncOneAccount(
     return 0;
   }
 
+  // Either credential mode: legacy long-lived token, or Dev Dashboard client
+  // credentials exchanged (and cached) for a 24h token. A failed exchange is
+  // an auth failure — it counts toward the 3-strike pause like a revoked token.
+  const resolved = await resolveShopifyAccessToken(credentials, shopDomain, fetchImpl);
+  if (!resolved.ok) {
+    await recordFailure(account.id, resolved.reason === 'invalid_credentials' ? 'misconfigured' : resolved.reason);
+    return 0;
+  }
+
   const updatedAtMin = toDate(account.syncCursorAt) ?? anchor;
-  const fetched = await fetchShopifyOrdersSince({ shopDomain, accessToken, updatedAtMin, fetchImpl });
+  const fetched = await fetchShopifyOrdersSince({ shopDomain, accessToken: resolved.accessToken, updatedAtMin, fetchImpl });
   if (!fetched.ok) {
     await recordFailure(account.id, fetched.reason);
     return 0;

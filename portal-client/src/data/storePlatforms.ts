@@ -52,7 +52,8 @@ export const STORE_PLATFORMS: StorePlatform[] = [
     accountPlaceholder: 'mybrand.myshopify.com',
     credentialFields: [
       { key: 'shopDomain', label: 'Shop domain', type: 'text', required: true, placeholder: 'mybrand.myshopify.com' },
-      { key: 'accessToken', label: 'Admin API access token', type: 'password', required: true },
+      { key: 'clientId', label: 'Client ID', type: 'text', required: true, placeholder: 'From your app’s Settings page' },
+      { key: 'clientSecret', label: 'Client secret', type: 'password', required: true },
     ],
     logo: { slug: 'shopify', color: '#95BF47', mono: 'S' },
   },

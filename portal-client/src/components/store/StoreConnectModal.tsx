@@ -321,12 +321,12 @@ function CredsStage({
 
         {platform.id === 'shopify' && (
           <div className="rounded-glass-sm bg-brand-50/70 p-3 text-xs leading-relaxed text-ink-3">
-            <p className="font-semibold text-ink">How to get your Admin API access token</p>
+            <p className="font-semibold text-ink">How to get your app credentials</p>
             <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-              <li>In Shopify admin: <span className="font-medium text-ink-2">Settings → Apps and sales channels → Develop apps</span></li>
-              <li>Create an app (name it e.g. "PrepShip"), open <span className="font-medium text-ink-2">Configure Admin API scopes</span></li>
-              <li>Enable <code className="rounded bg-white/70 px-1">read_orders</code> only, then <span className="font-medium text-ink-2">Install app</span></li>
-              <li>Copy the <span className="font-medium text-ink-2">Admin API access token</span> (shown once) and paste it below</li>
+              <li>Go to <span className="font-medium text-ink-2">dev.shopify.com</span> and sign in with your store's account</li>
+              <li>Create an app (name it e.g. "PrepShip"), give it the <code className="rounded bg-white/70 px-1">read_orders</code> scope, and <span className="font-medium text-ink-2">install it on your store</span></li>
+              <li>Open the app's <span className="font-medium text-ink-2">Settings</span> page and copy the <span className="font-medium text-ink-2">Client ID</span> and <span className="font-medium text-ink-2">Client secret</span></li>
+              <li>Paste them below with your <span className="font-medium text-ink-2">.myshopify.com</span> domain</li>
             </ol>
             <p className="mt-1.5 flex items-center gap-1 text-ink-3">
               <ShieldCheck size={13} className="shrink-0 text-brand-600" /> PrepShip only asks for read-only order access.

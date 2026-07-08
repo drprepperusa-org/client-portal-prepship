@@ -235,4 +235,115 @@ assert.equal(checkValidationRateLimit('user-a', T0 + 5_000), false, '6th attempt
 assert.equal(checkValidationRateLimit('user-b', T0 + 5_000), true, 'other users unaffected');
 assert.equal(checkValidationRateLimit('user-a', T0 + 61_000), true, 'window reset re-allows');
 
+// ── client credentials grant (Dev Dashboard apps, Spring '26+) ──
+import { exchangeShopifyClientCredentials, resolveShopifyAccessToken } from '../src/connectors/store/shopify';
+
+// exchange: happy path posts form-encoded grant to /admin/oauth/access_token
+{
+  const fakeFetch: ShopifyFetch = async (url, init) => {
+    assert.equal(String(url), 'https://ccgrant-a.myshopify.com/admin/oauth/access_token');
+    assert.equal(init?.method, 'POST');
+    const contentType = new Headers(init?.headers).get('Content-Type');
+    assert.equal(contentType, 'application/x-www-form-urlencoded');
+    const body = String(init?.body ?? '');
+    assert.ok(body.includes('grant_type=client_credentials'), 'grant type present');
+    assert.ok(body.includes('client_id=id-123'), 'client id present');
+    assert.ok(body.includes('client_secret=shpss_abc'), 'client secret present');
+    return jsonResponse(200, { access_token: 'shpat_minted', scope: 'read_orders', expires_in: 86399 });
+  };
+  const r = await exchangeShopifyClientCredentials({
+    shopDomain: 'ccgrant-a.myshopify.com',
+    clientId: 'id-123',
+    clientSecret: 'shpss_abc',
+    fetchImpl: fakeFetch,
+  });
+  assert.deepEqual(r, { ok: true, accessToken: 'shpat_minted', expiresIn: 86399 });
+}
+
+// exchange: rejected grant (wrong secret / app not installed / other org) -> auth
+{
+  const fakeFetch: ShopifyFetch = async () =>
+    jsonResponse(400, { error: 'invalid_client', error_description: 'Client authentication failed' });
+  const r = await exchangeShopifyClientCredentials({
+    shopDomain: 'ccgrant-b.myshopify.com',
+    clientId: 'id-123',
+    clientSecret: 'wrong',
+    fetchImpl: fakeFetch,
+  });
+  assert.deepEqual(r, { ok: false, reason: 'auth' });
+}
+
+// resolve: legacy stored token passes straight through, no network
+{
+  const fakeFetch: ShopifyFetch = async () => {
+    throw new Error('legacy token must not trigger network');
+  };
+  const r = await resolveShopifyAccessToken(
+    { accessToken: 'shpat_legacy' },
+    'ccgrant-c.myshopify.com',
+    fakeFetch,
+  );
+  assert.deepEqual(r, { ok: true, accessToken: 'shpat_legacy' });
+}
+
+// resolve: client id + secret exchange, and the minted token is CACHED per shop+client
+{
+  let exchanges = 0;
+  const fakeFetch: ShopifyFetch = async () => {
+    exchanges += 1;
+    return jsonResponse(200, { access_token: `shpat_cached_${exchanges}`, scope: 'read_orders', expires_in: 86399 });
+  };
+  const creds = { clientId: 'id-777', clientSecret: 'shpss_777' };
+  const first = await resolveShopifyAccessToken(creds, 'ccgrant-d.myshopify.com', fakeFetch);
+  const second = await resolveShopifyAccessToken(creds, 'ccgrant-d.myshopify.com', fakeFetch);
+  assert.ok(first.ok && second.ok);
+  if (first.ok && second.ok) {
+    assert.equal(first.accessToken, 'shpat_cached_1');
+    assert.equal(second.accessToken, 'shpat_cached_1', 'second resolve reuses cached token');
+  }
+  assert.equal(exchanges, 1, 'exactly one exchange for two resolves');
+}
+
+// resolve: neither mode present -> invalid_credentials
+{
+  const fakeFetch: ShopifyFetch = async () => {
+    throw new Error('must not be called');
+  };
+  const r = await resolveShopifyAccessToken({}, 'ccgrant-e.myshopify.com', fakeFetch);
+  assert.deepEqual(r, { ok: false, reason: 'invalid_credentials' });
+}
+
+// verify: client credentials mode -> exchange first, then shop query with minted token
+{
+  let call = 0;
+  const fakeFetch: ShopifyFetch = async (url, init) => {
+    call += 1;
+    if (call === 1) {
+      assert.ok(String(url).endsWith('/admin/oauth/access_token'), 'first call is the token exchange');
+      return jsonResponse(200, { access_token: 'shpat_verify', scope: 'read_orders', expires_in: 86399 });
+    }
+    assert.ok(String(url).includes('/admin/api/2026-04/graphql.json'), 'second call is the shop query');
+    const token = new Headers(init?.headers).get('X-Shopify-Access-Token');
+    assert.equal(token, 'shpat_verify', 'shop query uses the minted token');
+    return jsonResponse(200, { data: { shop: { name: 'CC Shop', myshopifyDomain: 'ccgrant-f.myshopify.com' } } });
+  };
+  const r = await verifyShopifyCredentials({
+    shopDomain: 'ccgrant-f.myshopify.com',
+    clientId: 'id-9',
+    clientSecret: 'shpss_9',
+    fetchImpl: fakeFetch,
+  });
+  assert.deepEqual(r, { ok: true, shopName: 'CC Shop', myshopifyDomain: 'ccgrant-f.myshopify.com' });
+  assert.equal(call, 2, 'exchange then verify');
+}
+
+// verify: credential-less call still fails closed
+{
+  const fakeFetch: ShopifyFetch = async () => {
+    throw new Error('must not be called');
+  };
+  const r = await verifyShopifyCredentials({ shopDomain: 'ccgrant-g.myshopify.com', fetchImpl: fakeFetch });
+  assert.deepEqual(r, { ok: false, reason: 'auth' });
+}
+
 console.log('PASS shopify order normalization');

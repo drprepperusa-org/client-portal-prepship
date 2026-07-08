@@ -222,13 +222,103 @@ async function shopifyGraphql(args: {
 }
 
 /**
+ * Client credentials grant (Dev Dashboard apps — Shopify retired admin-created
+ * custom apps for new creation, Spring '26). Exchanges the app's Client ID +
+ * Client secret for a short-lived (24h) Admin access token. Works only when
+ * the app and store belong to the same Shopify organization — a failed grant
+ * (wrong secret, app not installed, other org) surfaces as 'auth'.
+ */
+export async function exchangeShopifyClientCredentials(args: {
+  shopDomain: string;
+  clientId: string;
+  clientSecret: string;
+  fetchImpl?: ShopifyFetch;
+}): Promise<
+  | { ok: true; accessToken: string; expiresIn: number }
+  | { ok: false; reason: 'auth' | 'network' }
+> {
+  const fetchImpl = args.fetchImpl ?? fetch;
+  try {
+    const res = await fetchImpl(`https://${args.shopDomain}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: args.clientId,
+        client_secret: args.clientSecret,
+      }).toString(),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (res.status >= 400 && res.status < 500) return { ok: false, reason: 'auth' };
+    if (!res.ok) return { ok: false, reason: 'network' };
+    const json = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) return { ok: false, reason: 'network' };
+    return {
+      ok: true,
+      accessToken: json.access_token,
+      expiresIn: typeof json.expires_in === 'number' ? json.expires_in : 86_399,
+    };
+  } catch {
+    return { ok: false, reason: 'network' };
+  }
+}
+
+/** Stored portal credential shapes: legacy long-lived token OR client id+secret. */
+export type ShopifyConnectionCredentials = {
+  accessToken?: unknown;
+  clientId?: unknown;
+  clientSecret?: unknown;
+};
+
+// Minted client-credentials tokens live 24h; cache them per shop+client with a
+// 5-minute early-refresh margin so a 3-minute poll cadence does ONE exchange a
+// day per store instead of one per tick. In-memory only — never persisted.
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const clientCredentialTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+
+export async function resolveShopifyAccessToken(
+  credentials: ShopifyConnectionCredentials,
+  shopDomain: string,
+  fetchImpl?: ShopifyFetch,
+): Promise<
+  | { ok: true; accessToken: string }
+  | { ok: false; reason: 'auth' | 'network' | 'invalid_credentials' }
+> {
+  const legacyToken = typeof credentials.accessToken === 'string' ? credentials.accessToken.trim() : '';
+  if (legacyToken) return { ok: true, accessToken: legacyToken };
+
+  const clientId = typeof credentials.clientId === 'string' ? credentials.clientId.trim() : '';
+  const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret.trim() : '';
+  if (!clientId || !clientSecret) return { ok: false, reason: 'invalid_credentials' };
+
+  const cacheKey = `${shopDomain}|${clientId}`;
+  const cached = clientCredentialTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { ok: true, accessToken: cached.accessToken };
+  }
+
+  const exchanged = await exchangeShopifyClientCredentials({ shopDomain, clientId, clientSecret, fetchImpl });
+  if (!exchanged.ok) return exchanged;
+  clientCredentialTokenCache.set(cacheKey, {
+    accessToken: exchanged.accessToken,
+    expiresAt: Date.now() + exchanged.expiresIn * 1000 - TOKEN_REFRESH_MARGIN_MS,
+  });
+  return { ok: true, accessToken: exchanged.accessToken };
+}
+
+/**
  * Live credential check. Called from the portal validate endpoint AND at
  * submit time (the canonical myshopifyDomain is always derived server-side).
- * Never log or persist anything from here except shopName/myshopifyDomain.
+ * Accepts either credential mode: a legacy admin-created custom-app token
+ * (accessToken) or a Dev Dashboard app's client credentials (clientId +
+ * clientSecret, exchanged for a token first). Never log or persist anything
+ * from here except shopName/myshopifyDomain.
  */
 export async function verifyShopifyCredentials(args: {
   shopDomain: string;
-  accessToken: string;
+  accessToken?: string;
+  clientId?: string;
+  clientSecret?: string;
   fetchImpl?: ShopifyFetch;
 }): Promise<
   | { ok: true; shopName: string; myshopifyDomain: string }
@@ -236,9 +326,18 @@ export async function verifyShopifyCredentials(args: {
 > {
   const domain = normalizeShopDomain(args.shopDomain);
   if (!domain) return { ok: false, reason: 'invalid_domain' };
+  const resolved = await resolveShopifyAccessToken(
+    { accessToken: args.accessToken, clientId: args.clientId, clientSecret: args.clientSecret },
+    domain,
+    args.fetchImpl,
+  );
+  if (!resolved.ok) {
+    // Missing/blank credentials are indistinguishable from bad ones outward.
+    return { ok: false, reason: resolved.reason === 'network' ? 'network' : 'auth' };
+  }
   const result = await shopifyGraphql({
     shopDomain: domain,
-    accessToken: args.accessToken,
+    accessToken: resolved.accessToken,
     query: SHOP_VERIFY_QUERY,
     fetchImpl: args.fetchImpl,
   });

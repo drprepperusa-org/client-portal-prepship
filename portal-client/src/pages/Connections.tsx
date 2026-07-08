@@ -76,14 +76,14 @@ export default function Connections() {
   /** Replace the token on an auth-broken (lastSyncError === 'auth') Shopify
    *  connection. The backend re-verifies the new token against the same
    *  shop domain before clearing the error. */
-  async function handleReconnect(id: number, token: string) {
+  async function handleReconnect(id: number, credentials: Record<string, string>) {
     if (!accessToken) return;
     try {
-      await portalApi.reconnectIntegration(accessToken, id, { accessToken: token });
+      await portalApi.reconnectIntegration(accessToken, id, credentials);
       await qc.invalidateQueries({ queryKey: ['integrations'] });
       toast.success('Reconnected', 'Order sync will resume within a few minutes.');
     } catch (err) {
-      toast.error('Could not reconnect', err instanceof Error ? err.message : 'Check the token and try again.');
+      toast.error('Could not reconnect', err instanceof Error ? err.message : 'Check the credentials and try again.');
     }
   }
 
@@ -160,7 +160,7 @@ export default function Connections() {
                       <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', badge.className)}>
                         {badge.label}
                       </span>
-                      {status === 'reconnect' && <ReconnectForm onSubmit={(token) => handleReconnect(c.id!, token)} />}
+                      {status === 'reconnect' && <ReconnectForm onSubmit={(credentials) => handleReconnect(c.id!, credentials)} />}
                     </div>
                   )}
                 </div>
@@ -191,38 +191,57 @@ export default function Connections() {
   );
 }
 
-/** Inline reconnect strip for a `reconnect`-status store card: a single
- *  password field for the new Admin API access token. Rendered only when
+/** Inline reconnect strip for a `reconnect`-status store card. Dev Dashboard
+ *  apps reconnect with Client ID + Client secret; a legacy admin-created app
+ *  reconnects by leaving Client ID blank and pasting its long-lived access
+ *  token in the secret field. Rendered only when
  *  `storeStatus(integration) === 'reconnect'` (lastSyncError === 'auth'). */
-function ReconnectForm({ onSubmit }: { onSubmit: (token: string) => Promise<void> }) {
-  const [token, setToken] = useState('');
+function ReconnectForm({ onSubmit }: { onSubmit: (credentials: Record<string, string>) => Promise<void> }) {
+  const [clientId, setClientId] = useState('');
+  const [secret, setSecret] = useState('');
   const [busy, setBusy] = useState(false);
+  const inputCls =
+    'w-full rounded-glass-sm border border-white/80 bg-white/70 px-2.5 py-1.5 text-xs text-ink ring-1 ring-slate-200/70 backdrop-blur-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white/90 focus:outline-none';
   return (
     <form
-      className="mt-2 flex items-center gap-2"
+      className="mt-2 flex flex-col gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!token.trim() || busy) return;
+        if (!secret.trim() || busy) return;
         setBusy(true);
         try {
-          await onSubmit(token.trim());
-          setToken('');
+          const id = clientId.trim();
+          await onSubmit(
+            id ? { clientId: id, clientSecret: secret.trim() } : { accessToken: secret.trim() },
+          );
+          setClientId('');
+          setSecret('');
         } finally {
           setBusy(false);
         }
       }}
     >
       <input
-        type="password"
-        value={token}
-        onChange={(e) => setToken(e.target.value)}
-        placeholder="New Admin API access token"
-        aria-label="New Admin API access token"
-        className="w-full rounded-glass-sm border border-white/80 bg-white/70 px-2.5 py-1.5 text-xs text-ink ring-1 ring-slate-200/70 backdrop-blur-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white/90 focus:outline-none"
+        type="text"
+        value={clientId}
+        onChange={(e) => setClientId(e.target.value)}
+        placeholder="Client ID (blank if using a legacy access token)"
+        aria-label="Client ID"
+        className={inputCls}
       />
-      <Button type="submit" size="sm" disabled={busy || !token.trim()}>
-        {busy ? 'Updating…' : 'Update token'}
-      </Button>
+      <div className="flex items-center gap-2">
+        <input
+          type="password"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          placeholder="Client secret (or legacy access token)"
+          aria-label="Client secret or legacy access token"
+          className={inputCls}
+        />
+        <Button type="submit" size="sm" disabled={busy || !secret.trim()}>
+          {busy ? 'Updating…' : 'Update'}
+        </Button>
+      </div>
     </form>
   );
 }
