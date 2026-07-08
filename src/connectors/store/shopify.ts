@@ -21,6 +21,7 @@ export function createShopifyStoreConnector(): StoreConnector {
 
 export const shopifyStoreConnector = createShopifyStoreConnector();
 
+import { createHash } from 'node:crypto';
 import { buildNormalizedOrderSource } from '../../services/normalized-order-persistence';
 import { syntheticStoreIdForCredentialAccount } from '../../services/credential-accounts';
 import type { NormalizedStoreOrder } from '../../services/store-order-import';
@@ -273,13 +274,23 @@ export type ShopifyConnectionCredentials = {
 // Minted client-credentials tokens live 24h; cache them per shop+client with a
 // 5-minute early-refresh margin so a 3-minute poll cadence does ONE exchange a
 // day per store instead of one per tick. In-memory only — never persisted.
+// Each entry is FINGERPRINT-BOUND to the secret that minted it: a rotated or
+// mistyped secret can never be satisfied by a token an older secret earned.
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
-const clientCredentialTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+const clientCredentialTokenCache = new Map<
+  string,
+  { accessToken: string; expiresAt: number; secretFingerprint: string }
+>();
+
+function fingerprintSecret(secret: string): string {
+  return createHash('sha256').update(secret).digest('hex');
+}
 
 export async function resolveShopifyAccessToken(
   credentials: ShopifyConnectionCredentials,
   shopDomain: string,
   fetchImpl?: ShopifyFetch,
+  opts: { forceFresh?: boolean } = {},
 ): Promise<
   | { ok: true; accessToken: string }
   | { ok: false; reason: 'auth' | 'network' | 'invalid_credentials' }
@@ -292,16 +303,25 @@ export async function resolveShopifyAccessToken(
   if (!clientId || !clientSecret) return { ok: false, reason: 'invalid_credentials' };
 
   const cacheKey = `${shopDomain}|${clientId}`;
-  const cached = clientCredentialTokenCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { ok: true, accessToken: cached.accessToken };
+  const secretFingerprint = fingerprintSecret(clientSecret);
+  if (!opts.forceFresh) {
+    const cached = clientCredentialTokenCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now() && cached.secretFingerprint === secretFingerprint) {
+      return { ok: true, accessToken: cached.accessToken };
+    }
   }
 
   const exchanged = await exchangeShopifyClientCredentials({ shopDomain, clientId, clientSecret, fetchImpl });
-  if (!exchanged.ok) return exchanged;
+  if (!exchanged.ok) {
+    // Never leave a token minted by different/older credentials behind where
+    // the next caller could be satisfied by it.
+    clientCredentialTokenCache.delete(cacheKey);
+    return exchanged;
+  }
   clientCredentialTokenCache.set(cacheKey, {
     accessToken: exchanged.accessToken,
     expiresAt: Date.now() + exchanged.expiresIn * 1000 - TOKEN_REFRESH_MARGIN_MS,
+    secretFingerprint,
   });
   return { ok: true, accessToken: exchanged.accessToken };
 }
@@ -326,10 +346,15 @@ export async function verifyShopifyCredentials(args: {
 > {
   const domain = normalizeShopDomain(args.shopDomain);
   if (!domain) return { ok: false, reason: 'invalid_domain' };
+  // forceFresh: a verification's green light must mean THIS exact secret was
+  // just accepted by Shopify — never a warm cache entry (which would both
+  // false-green a mistyped/rotated secret and turn the validate endpoint into
+  // a shop-name oracle for anyone holding a non-secret shop+clientId pair).
   const resolved = await resolveShopifyAccessToken(
     { accessToken: args.accessToken, clientId: args.clientId, clientSecret: args.clientSecret },
     domain,
     args.fetchImpl,
+    { forceFresh: true },
   );
   if (!resolved.ok) {
     // Missing/blank credentials are indistinguishable from bad ones outward.

@@ -304,6 +304,65 @@ import { exchangeShopifyClientCredentials, resolveShopifyAccessToken } from '../
   assert.equal(exchanges, 1, 'exactly one exchange for two resolves');
 }
 
+// resolve: a DIFFERENT secret must never be satisfied by the warm cache
+// (fingerprint-bound entries; a mistyped/rotated secret forces a real
+// exchange, and its failure surfaces instead of a stale green).
+{
+  let exchanges = 0;
+  const fakeFetch: ShopifyFetch = async (_url, init) => {
+    exchanges += 1;
+    const body = String(init?.body ?? '');
+    if (body.includes('client_secret=right')) {
+      return jsonResponse(200, { access_token: `shpat_right_${exchanges}`, scope: 'read_orders', expires_in: 86399 });
+    }
+    return jsonResponse(400, { error: 'invalid_client' });
+  };
+  const good = await resolveShopifyAccessToken(
+    { clientId: 'id-rot', clientSecret: 'right' },
+    'ccgrant-h.myshopify.com',
+    fakeFetch,
+  );
+  assert.ok(good.ok, 'correct secret exchanges fine');
+  const bad = await resolveShopifyAccessToken(
+    { clientId: 'id-rot', clientSecret: 'wrong' },
+    'ccgrant-h.myshopify.com',
+    fakeFetch,
+  );
+  assert.deepEqual(bad, { ok: false, reason: 'auth' }, 'wrong secret is NOT satisfied by the warm cache');
+  assert.equal(exchanges, 2, 'fingerprint mismatch forces a real exchange');
+}
+
+// verify: NEVER satisfied by a warm cache — every verification re-exchanges
+// (a green check must mean THIS secret was just accepted by Shopify).
+{
+  let exchangeCalls = 0;
+  let queryCalls = 0;
+  const fakeFetch: ShopifyFetch = async (url) => {
+    if (String(url).endsWith('/admin/oauth/access_token')) {
+      exchangeCalls += 1;
+      return jsonResponse(200, { access_token: 'shpat_fresh', scope: 'read_orders', expires_in: 86399 });
+    }
+    queryCalls += 1;
+    return jsonResponse(200, { data: { shop: { name: 'Fresh Shop', myshopifyDomain: 'ccgrant-i.myshopify.com' } } });
+  };
+  const warm = await resolveShopifyAccessToken(
+    { clientId: 'id-fresh', clientSecret: 'shpss_fresh' },
+    'ccgrant-i.myshopify.com',
+    fakeFetch,
+  );
+  assert.ok(warm.ok, 'cache warmed');
+  assert.equal(exchangeCalls, 1);
+  const verified = await verifyShopifyCredentials({
+    shopDomain: 'ccgrant-i.myshopify.com',
+    clientId: 'id-fresh',
+    clientSecret: 'shpss_fresh',
+    fetchImpl: fakeFetch,
+  });
+  assert.ok(verified.ok, 'verify succeeds');
+  assert.equal(exchangeCalls, 2, 'verify forced a fresh exchange despite the warm cache');
+  assert.equal(queryCalls, 1, 'shop query ran once');
+}
+
 // resolve: neither mode present -> invalid_credentials
 {
   const fakeFetch: ShopifyFetch = async () => {
