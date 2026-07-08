@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { env } from '../lib/env';
 import { syncOrders } from '../services/order-sync';
 import { syncShipments } from '../services/shipment-sync';
+import { syncShopifyOrders } from '../services/shopify-order-sync';
 import { startBackfillBestRates } from '../services/rates-backfill';
 import {
   importSkusFromOrders,
@@ -73,6 +74,11 @@ app.post('/sync-shipments', async (c) => {
 
 app.get('/sync-shipments', async (c) => {
   const result = await syncShipments({});
+  return c.json(result);
+});
+
+app.post('/sync-shopify-orders', async (c) => {
+  const result = await syncShopifyOrders({});
   return c.json(result);
 });
 

@@ -2,6 +2,7 @@ import { env } from '../lib/env';
 import { sql as pg } from '../db/client';
 import { syncOrders } from './order-sync';
 import { syncShipments } from './shipment-sync';
+import { syncShopifyOrders } from './shopify-order-sync';
 import { startBackfillBestRates, getActiveBackfillJob } from './rates-backfill';
 import {
   importSkusFromOrders,
@@ -27,6 +28,8 @@ import { refreshReportingMetrics } from './reporting-metrics';
 
 const ORDER_SYNC_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes (v2 parity)
 const SHIPMENT_SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const SHOPIFY_SYNC_INTERVAL_MS = 3 * 60 * 1000;
+const SHOPIFY_SYNC_STAGGER_MS = 45 * 1000;
 // Rate backfill is expensive (one ShipStation call per order) so fire it
 // less often. maxAgeHours inside the service keeps it cheap — orders with
 // a fresh rate are skipped automatically.
@@ -51,9 +54,11 @@ let inventoryImportRunning = false;
 let syncProductsRunning = false;
 let fulfillmentOutboxRunning = false;
 let reportingRefreshRunning = false;
+let shopifySyncRunning = false;
 let heavySchedulerJobRunning: string | null = null;
 let orderTimer: NodeJS.Timeout | null = null;
 let shipmentTimer: NodeJS.Timeout | null = null;
+let shopifyTimer: ReturnType<typeof setInterval> | null = null;
 let backfillTimer: NodeJS.Timeout | null = null;
 let inventoryImportTimer: NodeJS.Timeout | null = null;
 let syncProductsTimer: NodeJS.Timeout | null = null;
@@ -145,6 +150,26 @@ export async function runOrderSync(): Promise<void> {
     );
   } finally {
     orderSyncRunning = false;
+  }
+}
+
+export async function runShopifySync(): Promise<void> {
+  if (!env.SHOPIFY_SYNC_ENABLED) return;
+  if (shopifySyncRunning) {
+    console.log('[scheduler] shopify sync already running — skipping tick');
+    return;
+  }
+  shopifySyncRunning = true;
+  try {
+    const result = await runHeavySchedulerJob('shopify orders sync', () => syncShopifyOrders({}));
+    if (!result) return;
+    console.log(
+      `[scheduler] shopify orders synced: ${result.synced} rows across ${result.accounts} store(s), ${result.errors} error(s)`,
+    );
+  } catch (err) {
+    console.error('[scheduler] shopify sync failed:', err instanceof Error ? err.message : err);
+  } finally {
+    shopifySyncRunning = false;
   }
 }
 
@@ -339,6 +364,21 @@ export function startSyncScheduler(
     }, STARTUP_DELAY_MS + 4 * 60 * 1000);
   }
 
+  // Shopify order sync has its own credentials (per store_accounts row) and
+  // its own env gate (SHOPIFY_SYNC_ENABLED) — it does not depend on
+  // ShipStation at all. This must sit BEFORE the ShipStation gate below,
+  // which `return`s early when ShipStation creds are absent; placing it
+  // after that point would silently disable Shopify sync too. Guarded on
+  // !shopifyTimer (like the fulfillment-outbox/reporting-refresh blocks
+  // above) since it isn't covered by the orderTimer/shipmentTimer
+  // duplicate-start check further down.
+  if (env.SHOPIFY_SYNC_ENABLED && !shopifyTimer) {
+    setTimeout(() => {
+      void runShopifySync();
+      shopifyTimer = setInterval(() => void runShopifySync(), SHOPIFY_SYNC_INTERVAL_MS);
+    }, STARTUP_DELAY_MS + SHOPIFY_SYNC_STAGGER_MS);
+  }
+
   // Only run in-process sync when ShipStation credentials are present.
   // Dev environments without creds would just spam errors otherwise.
   if (!env.SHIPSTATION_API_KEY || !env.SHIPSTATION_API_SECRET) {
@@ -440,6 +480,10 @@ export function stopSyncScheduler(): void {
   if (shipmentTimer) {
     clearInterval(shipmentTimer);
     shipmentTimer = null;
+  }
+  if (shopifyTimer) {
+    clearInterval(shopifyTimer);
+    shopifyTimer = null;
   }
   if (backfillTimer) {
     clearInterval(backfillTimer);
