@@ -75,6 +75,22 @@ Customer Shipping Rate = client's rate card (CP-040 resolver, unchanged)
   `shipping_amount` from Shopify is stored on the order but is NEVER used as
   the Customer Shipping Rate (CP-040 unchanged).
 
+## Surface visibility — who sees what (confirmed 2026-07-08)
+
+One shared `orders` table means a successfully synced Shopify order appears in
+BOTH apps automatically — no cross-app sync exists or is needed. But the two
+surfaces show different depths:
+
+| Surface | Sees |
+| --- | --- |
+| **Client portal** | Their own orders (client scope), order status/details, and the **Customer Shipping Rate** — their PrepShip rate card price via the CP-040 frozen→projection resolver. **Never** carrier names, service names, live/browse rates, best-rate comparisons, or provider identity — the portal's existing carrier/service/provider/rate-identity redaction guards apply to Shopify-sourced orders identically. |
+| **PrepShip v4 (admin)** | The same orders, plus full operations: browse live carrier rates (`src/routes/rates.ts` / `src/services/rates.ts` — reads order weight/ship-to, quotes YOUR carrier accounts, applies markups/filters), best-rate selection (`order_overrides.bestRateJson`), label purchase, frozen `shipments.selectedRateJson` snapshot. |
+
+Rate browsing is order-source-agnostic: it needs order fields (ship-to,
+weight), not a ShipStation origin, so it works on Shopify-sourced orders from
+day one. If a Shopify order arrives without usable weight, the operator fills
+it in the admin app before rating — same as any other order.
+
 ## Component changes
 
 Backend:
