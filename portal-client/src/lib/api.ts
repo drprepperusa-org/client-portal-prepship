@@ -545,6 +545,23 @@ export interface AccessUserPatch {
   active?: boolean;
 }
 
+export interface AccessUserInviteInput {
+  email: string;
+  displayName?: string;
+  role: 'admin' | 'client_user';
+  clientIds?: number[];
+}
+
+export interface AccessUserInviteResult {
+  ok: true;
+  user: {
+    id: string;
+    email: string;
+    role: 'admin' | 'client_user';
+    clientIds: number[];
+  };
+}
+
 export interface BillingSummaryRow {
   clientId?: number;
   clientName?: string;
@@ -986,6 +1003,10 @@ export const portalApi = {
   clients: (token: string, options: ApiRequestOptions = backgroundRequest) =>
     apiGet<{ data: PortalClientRow[] }>(token, '/api/client-portal/clients', {}, options),
   accessList: (token: string) => apiGet<{ data: PortalAccessUser[] }>(token, '/api/client-portal/access-list'),
+  inviteAccessUser: (token: string, invite: AccessUserInviteInput) =>
+    apiPost<AccessUserInviteResult>(token, '/api/client-portal/access-list/invite', invite),
+  completeAccessActivation: (token: string) =>
+    apiPost<{ ok: true }>(token, '/api/client-portal/access-list/activate'),
   updateAccessUser: (token: string, id: string, patch: AccessUserPatch) =>
     apiPatch<{ ok: true }>(token, `/api/client-portal/access-list/${id}`, patch),
   deleteAccessUser: (token: string, id: string) =>

@@ -9,6 +9,7 @@ interface AuthApi {
   accessToken: string | null;
   email: string | null;
   userId: string | null;
+  activationPending: boolean;
   lastSignInAt: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken: session?.access_token ?? null,
       email: session?.user?.email ?? null,
       userId: session?.user?.id ?? null,
+      activationPending: session?.user?.app_metadata?.portalInvitePending === true,
       lastSignInAt: session?.user?.last_sign_in_at ?? null,
       signIn: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });

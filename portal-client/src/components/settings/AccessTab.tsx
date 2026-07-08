@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, User, Store, Search, ShieldCheck, Trash2, UserX, UserCheck } from 'lucide-react';
+import { Users, User, Store, Search, ShieldCheck, Trash2, UserX, UserCheck, UserPlus } from 'lucide-react';
 import { SectionTitle } from '@/components/ui/Glass';
 import { TextInput } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +14,7 @@ import { ACCENTS, type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
 import { AccessUserCard, type ConfirmKind } from './AccessUserCard';
 import { AccessEditModal } from './AccessEditModal';
+import { AccessInviteModal } from './AccessInviteModal';
 
 type RoleFilter = 'all' | 'admin' | 'client' | 'global';
 
@@ -71,6 +72,7 @@ export function AccessTab() {
   // and a richer edit modal for role/stores/name.
   const [confirm, setConfirm] = useState<{ kind: ConfirmKind; user: PortalAccessUser } | null>(null);
   const [editTarget, setEditTarget] = useState<PortalAccessUser | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function runConfirm() {
@@ -96,7 +98,15 @@ export function AccessTab() {
 
   return (
     <div className="space-y-5">
-      <SectionTitle title="Account access" subtitle="Emails and the client stores each login handles" />
+      <SectionTitle
+        title="Account access"
+        subtitle="Emails and the client stores each login handles"
+        right={
+          <Button size="sm" leadingIcon={<UserPlus size={16} />} onClick={() => setInviteOpen(true)}>
+            Invite User
+          </Button>
+        }
+      />
 
       {/* Roster roll-up tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -236,6 +246,16 @@ export function AccessTab() {
           onSaved={async () => {
             await accessList.refetch();
             setEditTarget(null);
+          }}
+        />
+      )}
+      {inviteOpen && (
+        <AccessInviteModal
+          clients={allClients.length ? allClients : clients}
+          token={accessToken}
+          onClose={() => setInviteOpen(false)}
+          onInvited={async () => {
+            await accessList.refetch();
           }}
         />
       )}

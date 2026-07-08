@@ -6,6 +6,7 @@ import { useMe } from './lib/hooks';
 
 // Eager: the login screen is the entry point for unauthenticated users.
 import Login from './pages/Login';
+import ActivateAccount from './pages/ActivateAccount';
 
 // Lazy: each authenticated page is its own chunk, loaded on navigation.
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -39,11 +40,14 @@ function AuthSplash() {
 }
 
 function RequireAuth({ children }: { children: JSX.Element }) {
-  const { isAuthed, loading } = useAuth();
+  const { isAuthed, loading, activationPending } = useAuth();
   const location = useLocation();
   if (loading) return <AuthSplash />;
   if (!isAuthed) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  if (activationPending && location.pathname !== '/activate') {
+    return <Navigate to="/activate" replace />;
   }
   return children;
 }
@@ -63,6 +67,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={loading ? <AuthSplash /> : isAuthed ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/activate" element={<ActivateAccount />} />
       <Route
         element={
           <RequireAuth>
