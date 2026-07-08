@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowLeft, Plus, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { X, ArrowLeft, Plus, ShieldCheck, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StoreLogo } from './StoreLogo';
 import {
@@ -23,7 +23,17 @@ type Filter = StorePlatformCategory | 'all';
 type Stage = 'list' | 'creds' | 'review';
 
 /** Two-stage store connector: discovery → credentials → review. */
-export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean; onClose: () => void; onConnect: (draft: ConnectDraft) => void }) {
+export function StoreConnectModal({
+  open,
+  onClose,
+  onConnect,
+  onValidate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConnect: (draft: ConnectDraft) => void;
+  onValidate?: (draft: ConnectDraft) => Promise<{ ok: boolean; shopName?: string; myshopifyDomain?: string }>;
+}) {
   const [stage, setStage] = useState<Stage>('list');
   const [filter, setFilter] = useState<Filter>('all');
   const [platform, setPlatform] = useState<StorePlatform | null>(null);
@@ -31,6 +41,8 @@ export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean;
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [shown, setShown] = useState<Record<string, boolean>>({});
+  const [validating, setValidating] = useState(false);
+  const [validation, setValidation] = useState<{ ok: boolean; message: string } | null>(null);
 
   function reset() {
     setStage('list');
@@ -40,6 +52,8 @@ export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean;
     setValues({});
     setErrors({});
     setShown({});
+    setValidating(false);
+    setValidation(null);
   }
   function close() {
     onClose();
@@ -52,6 +66,7 @@ export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean;
     setStoreName(p.name);
     setValues({});
     setErrors({});
+    setValidation(null);
     setStage('creds');
   }
 
@@ -64,6 +79,34 @@ export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean;
     }
     setErrors(next);
     return Object.keys(next).length === 0;
+  }
+
+  /** Creds-stage form submit. For Shopify (with a live validator wired in)
+   *  this checks the credentials against the real store before advancing to
+   *  review, so a bad token/domain is caught immediately instead of after
+   *  the operator reviews a submission that was never going to sync. Every
+   *  other platform keeps the original synchronous validate-then-advance
+   *  behavior unchanged. */
+  async function submitCreds(e: FormEvent) {
+    e.preventDefault();
+    if (!validate() || !platform) return;
+    if (platform.id === 'shopify' && onValidate) {
+      setValidating(true);
+      setValidation(null);
+      try {
+        const result = await onValidate({ platform, storeName, values });
+        if (!result.ok) {
+          setValidation({ ok: false, message: "Couldn't connect — check your shop domain and Admin API access token." });
+          return;
+        }
+        setValidation({ ok: true, message: `Connected to ${result.myshopifyDomain ?? 'your store'} — pending PrepShip approval after submit.` });
+        setStage('review');
+      } finally {
+        setValidating(false);
+      }
+      return;
+    }
+    setStage('review');
   }
 
   const counts = useMemo(() => {
@@ -119,12 +162,11 @@ export function StoreConnectModal({ open, onClose, onConnect }: { open: boolean;
                   errors={errors}
                   shown={shown}
                   setShown={setShown}
+                  validating={validating}
+                  validation={validation}
                   onBack={() => setStage('list')}
                   onCancel={close}
-                  onReview={(e) => {
-                    e.preventDefault();
-                    if (validate()) setStage('review');
-                  }}
+                  onReview={submitCreds}
                 />
               ) : stage === 'review' && platform ? (
                 <ReviewStage
@@ -229,6 +271,8 @@ function CredsStage({
   errors,
   shown,
   setShown,
+  validating,
+  validation,
   onBack,
   onCancel,
   onReview,
@@ -241,6 +285,8 @@ function CredsStage({
   errors: Record<string, string>;
   shown: Record<string, boolean>;
   setShown: (v: Record<string, boolean>) => void;
+  validating: boolean;
+  validation: { ok: boolean; message: string } | null;
   onBack: () => void;
   onCancel: () => void;
   onReview: (e: FormEvent) => void;
@@ -273,6 +319,21 @@ function CredsStage({
           <input value={storeName} onChange={(e) => setStoreName(e.target.value)} className={inputCls(Boolean(errors.__storeName))} placeholder={platform.name} />
         </Field>
 
+        {platform.id === 'shopify' && (
+          <div className="rounded-glass-sm bg-brand-50/70 p-3 text-xs leading-relaxed text-ink-3">
+            <p className="font-semibold text-ink">How to get your Admin API access token</p>
+            <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+              <li>In Shopify admin: <span className="font-medium text-ink-2">Settings → Apps and sales channels → Develop apps</span></li>
+              <li>Create an app (name it e.g. "PrepShip"), open <span className="font-medium text-ink-2">Configure Admin API scopes</span></li>
+              <li>Enable <code className="rounded bg-white/70 px-1">read_orders</code> only, then <span className="font-medium text-ink-2">Install app</span></li>
+              <li>Copy the <span className="font-medium text-ink-2">Admin API access token</span> (shown once) and paste it below</li>
+            </ol>
+            <p className="mt-1.5 flex items-center gap-1 text-ink-3">
+              <ShieldCheck size={13} className="shrink-0 text-brand-600" /> PrepShip only asks for read-only order access.
+            </p>
+          </div>
+        )}
+
         {platform.credentialFields.map((f) => {
           const isPw = f.type === 'password';
           const reveal = shown[f.key];
@@ -301,14 +362,26 @@ function CredsStage({
             </Field>
           );
         })}
+
+        {validation && (
+          <p
+            className={cn(
+              'flex items-start gap-1.5 rounded-glass-sm px-3 py-2 text-xs font-medium',
+              validation.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600',
+            )}
+          >
+            {validation.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <XCircle size={14} className="mt-0.5 shrink-0" />}
+            {validation.message}
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-3 border-t border-white/60 p-4">
         <Button type="button" variant="ghost" className="flex-1" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" className="flex-1">
-          Review connection
+        <Button type="submit" className="flex-1" disabled={validating}>
+          {validating ? 'Validating…' : 'Review connection'}
         </Button>
       </div>
     </form>

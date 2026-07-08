@@ -434,6 +434,8 @@ export interface PortalIntegration {
   clientName: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  lastSyncError: string | null;
+  lastSyncedAt: string | null;
 }
 
 /** Store-connection request submitted from Connections (admin-only). The
@@ -445,6 +447,12 @@ export interface NewIntegrationInput {
   accountIdentifier?: string;
   clientId?: number;
   credentials: Record<string, string>;
+}
+
+export interface IntegrationValidationResult {
+  ok: boolean;
+  shopName?: string;
+  myshopifyDomain?: string;
 }
 
 export interface DashboardSummary {
@@ -1144,6 +1152,12 @@ export const portalApi = {
    *  (source='portal', inactive) until an operator promotes it. */
   createIntegration: (token: string, body: NewIntegrationInput) =>
     apiPost<{ data: PortalIntegration }>(token, '/api/client-portal/integrations', body),
+  /** Live pre-submit credential check (Shopify). Rate-limited server-side. */
+  validateIntegration: (token: string, body: { provider: string; credentials: Record<string, string> }) =>
+    apiPost<{ data: IntegrationValidationResult }>(token, '/api/client-portal/integrations/validate', body),
+  /** Replace the token on an auth-broken store connection (reconnect). */
+  reconnectIntegration: (token: string, id: number, credentials: Record<string, string>) =>
+    apiPatch<{ data: { ok: boolean } }>(token, `/api/client-portal/integrations/${id}/credentials`, { credentials }),
   inbound: (token: string, clientId?: number) =>
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   createInbound: (token: string, body: NewInboundInput) =>
