@@ -35,6 +35,8 @@ const audit = read('src/lib/client-portal/audit.ts');
 const route = routeExists ? read('src/routes/client-portal/audit-log.ts') : '';
 const routeFlat = flat(route);
 const router = read('src/routes/client-portal.ts');
+const main = read('src/main.ts');
+const corsHelper = read('src/lib/http/cors.ts');
 const scope = read('src/lib/client-portal/scope.ts');
 const api = read('portal-client/src/lib/api.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
@@ -100,6 +102,11 @@ assert(
     scope.includes("'x-portal-audit-source'") &&
     audit.includes("scope.auditSource === 'background'"),
   'background preload/API reads are tagged at scope resolution and skipped by audit persistence',
+);
+assert(
+  main.includes("'X-Portal-Audit-Source'") &&
+    corsHelper.includes('X-Portal-Audit-Source'),
+  'CORS preflight allows the portal background audit header',
 );
 assert(routeExists, 'audit-log route file exists');
 assert(
