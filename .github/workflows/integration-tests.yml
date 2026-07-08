@@ -4,6 +4,8 @@ name: integration-tests
 # real read-model functions, assert actual numbers. This is the layer the
 # static guards can't provide — it gates money/scope/redaction correctness.
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
