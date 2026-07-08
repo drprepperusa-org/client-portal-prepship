@@ -70,12 +70,17 @@ export async function upsertNormalizedStoreOrders(
     .insert(orders)
     .values(rows)
     .onConflictDoUpdate({
-      target: orders.externalOrderId,
+      // Dedup on the canonical PS-031 source-identity tuple, which is the
+      // unique index this database actually enforces
+      // (orders_source_unique_idx, partial WHERE all-not-null). external_order_id
+      // is compatibility-only here and carries no unique index in production, so
+      // targeting it raised "no unique or exclusion constraint matching the ON
+      // CONFLICT specification" and blocked EVERY store-connector import.
+      target: [orders.sourceProvider, orders.sourceAccountId, orders.sourceOrderId],
+      targetWhere: sql`${orders.sourceProvider} is not null and ${orders.sourceAccountId} is not null and ${orders.sourceOrderId} is not null`,
       set: {
+        externalOrderId: sql`excluded.external_order_id`,
         orderNumber: sql`excluded.order_number`,
-        sourceProvider: sql`excluded.source_provider`,
-        sourceAccountId: sql`excluded.source_account_id`,
-        sourceOrderId: sql`excluded.source_order_id`,
         sourceOrderNumber: sql`excluded.source_order_number`,
         rawSourcePayload: sql`excluded.raw_source_payload`,
         // Per user override unlock shipped data on 2026-05-25: preserve
