@@ -9,10 +9,21 @@ import { useAuth } from '@/auth';
 import { supabase } from '@/lib/supabase';
 import { portalApi } from '@/lib/api';
 
+function activationLinkError(): string | null {
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const code = params.get('error_code');
+  const description = params.get('error_description');
+  if (code === 'otp_expired') return 'This invite link is invalid or has expired. Ask an admin to send a fresh invite.';
+  return description || null;
+}
+
 export default function ActivateAccount() {
   const nav = useNavigate();
   const toast = useToast();
   const { loading, isAuthed, accessToken, activationPending, email } = useAuth();
+  const linkError = activationLinkError();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
@@ -129,9 +140,11 @@ export default function ActivateAccount() {
                 <Mail size={22} />
               </span>
               <div>
-                <h1 className="font-display text-[24px] font-bold tracking-tight text-ink">Invitation needed</h1>
+                <h1 className="font-display text-[24px] font-bold tracking-tight text-ink">
+                  {linkError ? 'Invite link expired' : 'Invitation needed'}
+                </h1>
                 <p className="mt-1.5 text-sm leading-relaxed text-ink-3">
-                  Open the latest activation email, or ask an admin to send a new invite.
+                  {linkError ?? 'Open the latest activation email, or ask an admin to send a new invite.'}
                 </p>
               </div>
               <Button variant="secondary" className="w-full" onClick={() => nav('/login', { replace: true })}>

@@ -58,8 +58,8 @@ function requestPortalOrigin(c: Context): string | null {
 
 function portalActivationRedirect(c: Context): string | null {
   const base =
-    firstConfiguredPortalOrigin() ??
     requestPortalOrigin(c) ??
+    firstConfiguredPortalOrigin() ??
     (env.NODE_ENV !== 'production' ? 'http://localhost:5173' : null);
   return base ? `${base}/activate` : null;
 }
