@@ -44,10 +44,14 @@ export function resolveClientPortalScope(c: Context): ClientPortalScope {
 
 export function assertClientPortalScope(c: Context): ClientPortalScope | Response {
   const scope = resolveClientPortalScope(c);
-  const needsExplicitScope = scope.role === 'client_user' || scope.role === 'read_only_support';
+  // Fail closed: every portal caller must either be explicitly global (admin
+  // email / admin role / scope:global permission) or carry explicit client or
+  // store scope. A Supabase login with no app_metadata stamped is neither —
+  // before 2026-07-08 such a login fell through UNRESTRICTED and could read
+  // every client's data. Deny by default; roles alone grant nothing here.
   const hasScope = scope.clientIds.length > 0 || scope.storeIds.length > 0 || scope.isGlobal;
 
-  if (needsExplicitScope && !hasScope) {
+  if (!hasScope) {
     return c.json({ error: 'client portal scope required' }, 403);
   }
 

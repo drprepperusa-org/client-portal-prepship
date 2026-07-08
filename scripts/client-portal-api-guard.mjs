@@ -125,7 +125,12 @@ for (const forbidden of [
   assert(!dto.includes(forbidden), `DTO layer must not expose ${forbidden}`);
 }
 
-assert(scope.includes('client_user') && scope.includes('read_only_support'), 'scope must treat external roles explicitly');
+// 2026-07-08 fail-closed hardening: the old pin here required the role-
+// conditional (client_user/read_only_support) scope check — the exact shape
+// that let a role-LESS login through unrestricted. The invariant is now
+// strictly stronger: EVERY caller without global grant or explicit scope is
+// denied, so the pin targets the unconditional deny.
+assert(scope.includes('if (!hasScope) {'), 'scope must deny ALL scopeless callers (fail closed), not only named external roles');
 assert(scope.includes('client portal scope required'), 'scope must deny unscoped external users');
 assert(audit.includes('password') && audit.includes('token') && audit.includes('credentials'), 'audit sanitizer must strip sensitive keys');
 // The scope/search predicates were extracted to lib/client-portal/predicates.ts;
