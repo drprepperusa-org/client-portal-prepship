@@ -14,10 +14,33 @@ import { StoreLogo } from '@/components/store/StoreLogo';
 import { ConnectionCard } from '@/components/store/ConnectionCard';
 import { STORE_PLATFORMS } from '@/data/storePlatforms';
 import { staggerContainer, staggerItem } from '@/lib/motion';
+import { cn } from '@/lib/cn';
 
 /** A store submitted from the portal awaiting operator promotion
  *  (source='portal'); everything else renders as a live connection. */
 const isPending = (r: PortalIntegration) => r.type === 'store' && r.source === 'portal';
+
+/** Client-facing sync status for a store connection. Derived only from
+ *  backend-owned fields already on the PortalIntegration DTO
+ *  (lastSyncError / source / active) — no independent status truth. */
+type StoreConnStatus = 'pending' | 'active' | 'reconnect' | 'inactive';
+
+function storeStatus(i: PortalIntegration): StoreConnStatus {
+  if (i.lastSyncError === 'auth') return 'reconnect';
+  if (i.source === 'portal') return 'pending';
+  return i.active ? 'active' : 'inactive';
+}
+
+// Solid light-tint chip colors, matching this file's own "Pending" badge
+// above and ConnectionCard's Connected/Inactive chip — this app has no dark
+// theme (see index.css `color-scheme: light`; zero `dark:` classes anywhere
+// in portal-client/src), so chips stay light-mode-only like every other one.
+const STATUS_BADGE: Record<StoreConnStatus, { label: string; className: string }> = {
+  pending: { label: 'Pending approval', className: 'bg-amber-50 text-amber-600' },
+  active: { label: 'Active — syncing', className: 'bg-emerald-50 text-emerald-600' },
+  reconnect: { label: 'Reconnect needed', className: 'bg-rose-50 text-rose-600' },
+  inactive: { label: 'Inactive', className: 'bg-slate-100 text-ink-3' },
+};
 
 export default function Connections() {
   const query = useIntegrations();
@@ -44,9 +67,23 @@ export default function Connections() {
         credentials: draft.values,
       });
       await qc.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success('Connection requested', `${draft.storeName} (${draft.platform.name}) is pending operator activation.`);
+      toast.success('Connection requested', `${draft.storeName} is connected and pending PrepShip approval.`);
     } catch (err) {
       toast.error('Could not submit', err instanceof Error ? err.message : 'Please try again.');
+    }
+  }
+
+  /** Replace the token on an auth-broken (lastSyncError === 'auth') Shopify
+   *  connection. The backend re-verifies the new token against the same
+   *  shop domain before clearing the error. */
+  async function handleReconnect(id: number, token: string) {
+    if (!accessToken) return;
+    try {
+      await portalApi.reconnectIntegration(accessToken, id, { accessToken: token });
+      await qc.invalidateQueries({ queryKey: ['integrations'] });
+      toast.success('Reconnected', 'Order sync will resume within a few minutes.');
+    } catch (err) {
+      toast.error('Could not reconnect', err instanceof Error ? err.message : 'Check the token and try again.');
     }
   }
 
@@ -54,11 +91,9 @@ export default function Connections() {
     <div className="space-y-4">
       <GlassPanel className="flex flex-wrap items-center justify-between gap-3 p-4">
         <SectionTitle title="Connections" subtitle="Sales channels linked to your PrepShip account" />
-        {isAdmin && (
-          <Button leadingIcon={<Plus size={16} />} onClick={() => setModalOpen(true)}>
-            Add store
-          </Button>
-        )}
+        <Button leadingIcon={<Plus size={16} />} onClick={() => setModalOpen(true)}>
+          Add store
+        </Button>
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
@@ -104,21 +139,90 @@ export default function Connections() {
               );
             })}
 
-            {/* Live connections — floating + click-to-flip detail. */}
-            {live.map((c, i) => (
-              <ConnectionCard
-                key={c.id ?? `${c.type}-${i}`}
-                integration={c}
-                index={i + pending.length}
-                onReconfigure={() => toast.info('Reconfigure', `Open the connector to update ${c.label ?? c.provider}.`)}
-                onDisconnect={() => toast.warning('Disconnect gated', 'Disconnecting a live store requires operator approval.')}
-              />
-            ))}
+            {/* Live connections — floating + click-to-flip detail. The status
+                badge + reconnect form render alongside ConnectionCard, not
+                inside it: the card is a self-contained absolute-positioned
+                flip tile with no content slot to extend without editing that
+                component (out of this task's file scope). */}
+            {live.map((c, i) => {
+              const status = storeStatus(c);
+              const badge = STATUS_BADGE[status];
+              return (
+                <div key={c.id ?? `${c.type}-${i}`} className="flex flex-col gap-2">
+                  <ConnectionCard
+                    integration={c}
+                    index={i + pending.length}
+                    onReconfigure={() => toast.info('Reconfigure', `Open the connector to update ${c.label ?? c.provider}.`)}
+                    onDisconnect={() => toast.warning('Disconnect gated', 'Disconnecting a live store requires operator approval.')}
+                  />
+                  {c.type === 'store' && (
+                    <div className="px-1">
+                      <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', badge.className)}>
+                        {badge.label}
+                      </span>
+                      {status === 'reconnect' && <ReconnectForm onSubmit={(token) => handleReconnect(c.id!, token)} />}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </motion.div>
         </QueryState>
       </GlassPanel>
 
-      {isAdmin && <StoreConnectModal open={modalOpen} onClose={() => setModalOpen(false)} onConnect={handleConnect} />}
+      <StoreConnectModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onConnect={handleConnect}
+        onValidate={async (draft) => {
+          if (!accessToken) return { ok: false };
+          try {
+            const res = await portalApi.validateIntegration(accessToken, {
+              provider: draft.platform.id,
+              credentials: draft.values,
+            });
+            return res.data;
+          } catch {
+            return { ok: false };
+          }
+        }}
+      />
     </div>
+  );
+}
+
+/** Inline reconnect strip for a `reconnect`-status store card: a single
+ *  password field for the new Admin API access token. Rendered only when
+ *  `storeStatus(integration) === 'reconnect'` (lastSyncError === 'auth'). */
+function ReconnectForm({ onSubmit }: { onSubmit: (token: string) => Promise<void> }) {
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="mt-2 flex items-center gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!token.trim() || busy) return;
+        setBusy(true);
+        try {
+          await onSubmit(token.trim());
+          setToken('');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <input
+        type="password"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        placeholder="New Admin API access token"
+        aria-label="New Admin API access token"
+        className="w-full rounded-glass-sm border border-white/80 bg-white/70 px-2.5 py-1.5 text-xs text-ink ring-1 ring-slate-200/70 backdrop-blur-sm placeholder:text-slate-400 focus:border-brand-400 focus:bg-white/90 focus:outline-none"
+      />
+      <Button type="submit" size="sm" disabled={busy || !token.trim()}>
+        {busy ? 'Updating…' : 'Update token'}
+      </Button>
+    </form>
   );
 }
