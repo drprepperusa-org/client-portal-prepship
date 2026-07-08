@@ -64,6 +64,20 @@ function portalActivationRedirect(c: Context): string | null {
   return base ? `${base}/activate` : null;
 }
 
+function authErrorStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+function authErrorMessage(error: unknown): string {
+  return (error as { message?: unknown } | null)?.message?.toString() ?? '';
+}
+
+function isEmailRateLimitError(error: unknown): boolean {
+  const message = authErrorMessage(error).toLowerCase();
+  return authErrorStatus(error) === 429 || message.includes('email rate limit');
+}
+
 async function authUserExistsByEmail(email: string): Promise<boolean> {
   const normalized = email.toLowerCase();
   const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -161,16 +175,35 @@ app.post('/access-list/invite', async (c) => {
     redirectTo,
     data: userMetadata,
   });
-  if (inviteErr || !inviteData.user) {
+  let invitedUser = inviteData.user;
+  let emailSent = true;
+  let activationLink: string | null = null;
+
+  if (inviteErr || !invitedUser) {
     console.warn('[client-portal/access-list] invite failed:', inviteErr?.message);
-    const message = inviteErr?.message?.toLowerCase().includes('already')
+    if (isEmailRateLimitError(inviteErr)) {
+      const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: { redirectTo, data: userMetadata },
+      });
+      invitedUser = linkData?.user ?? null;
+      activationLink = linkData?.properties?.action_link ?? null;
+      emailSent = false;
+      if (linkErr || !invitedUser || !activationLink) {
+        console.warn('[client-portal/access-list] invite link fallback failed:', linkErr?.message);
+        return c.json({ error: 'Supabase email rate limit was hit, and a manual activation link could not be generated.' }, 500);
+      }
+    } else {
+      const message = inviteErr?.message?.toLowerCase().includes('already')
       ? 'A login already exists for this email. Edit the existing access record instead.'
       : 'Failed to send invitation email';
-    return c.json({ error: message }, inviteErr?.message?.toLowerCase().includes('already') ? 409 : 500);
+      return c.json({ error: message }, inviteErr?.message?.toLowerCase().includes('already') ? 409 : 500);
+    }
   }
 
-  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(inviteData.user.id, {
-    app_metadata: { ...accessAppMeta(inviteData.user), ...portalAppMetadata },
+  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(invitedUser.id, {
+    app_metadata: { ...accessAppMeta(invitedUser), ...portalAppMetadata },
     user_metadata: userMetadata,
   });
   if (updateErr) {
@@ -179,16 +212,20 @@ app.post('/access-list/invite', async (c) => {
   }
 
   await recordPortalAudit('portal.access_list.invite', scope, {
-    targetId: inviteData.user.id,
+    targetId: invitedUser.id,
     email,
     role,
     clientIds: role === 'client_user' ? clientIds : undefined,
+    emailSent,
+    manualActivationLink: activationLink ? true : undefined,
   });
 
   return c.json({
     ok: true,
+    emailSent,
+    activationLink,
     user: {
-      id: inviteData.user.id,
+      id: invitedUser.id,
       email,
       role,
       clientIds: role === 'client_user' ? clientIds : [],

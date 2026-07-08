@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Info, Mail, Send, ShieldCheck, Store, UserPlus } from 'lucide-react';
+import { Copy, Info, Mail, Send, ShieldCheck, Store, UserPlus } from 'lucide-react';
 import { EmailInput, TextInput } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -27,27 +27,40 @@ export function AccessInviteModal({
   const [role, setRole] = useState<'client_user' | 'admin'>('client_user');
   const [clientIds, setClientIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [manualActivationLink, setManualActivationLink] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
 
     setSaving(true);
+    setManualActivationLink(null);
     try {
-      await portalApi.inviteAccessUser(token, {
+      const result = await portalApi.inviteAccessUser(token, {
         email: email.trim(),
         displayName: name.trim(),
         role,
         clientIds: role === 'client_user' ? clientIds.map(Number).filter((id) => Number.isInteger(id)) : [],
       });
-      toast.success('Invitation sent', email.trim());
       await onInvited();
-      onClose();
+      if (result.emailSent === false && result.activationLink) {
+        setManualActivationLink(result.activationLink);
+        toast.warning('Invite link created', 'Supabase email is rate-limited. Copy the activation link below.');
+      } else {
+        toast.success('Invitation sent', email.trim());
+        onClose();
+      }
     } catch (err) {
       toast.error('Invite failed', err instanceof Error ? err.message : 'Please try again.');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function copyManualActivationLink() {
+    if (!manualActivationLink) return;
+    await navigator.clipboard.writeText(manualActivationLink);
+    toast.success('Activation link copied');
   }
 
   return (
@@ -109,6 +122,29 @@ export function AccessInviteModal({
           <p className="flex items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
             <Info size={14} /> No stores selected yet. This creates the login now; assign store access when it is ready.
           </p>
+        )}
+
+        {manualActivationLink && (
+          <div className="space-y-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <p className="font-semibold">Email rate limit hit. Send this activation link manually.</p>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={manualActivationLink}
+                className="min-w-0 flex-1 rounded-md border border-amber-200 bg-white px-2 py-1.5 text-[11px] text-ink outline-none"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={copyManualActivationLink}
+                leadingIcon={<Copy size={14} />}
+              >
+                Copy
+              </Button>
+            </div>
+          </div>
         )}
 
         <div className="flex justify-end gap-2 pt-1">

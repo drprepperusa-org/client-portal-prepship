@@ -554,6 +554,8 @@ export interface AccessUserInviteInput {
 
 export interface AccessUserInviteResult {
   ok: true;
+  emailSent?: boolean;
+  activationLink?: string | null;
   user: {
     id: string;
     email: string;
