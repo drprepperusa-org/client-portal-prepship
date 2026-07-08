@@ -98,4 +98,101 @@ const oldNode: ShopifyOrderNode = { ...NODE, createdAt: '2026-07-07T23:59:59Z', 
 assert.equal(normalizeShopifyOrder(oldNode, { accountId: 42, clientId: 7, anchor: ANCHOR }), null);
 
 assert.equal(SHOPIFY_ADMIN_API_VERSION, '2026-04');
+
+// ── HTTP layer with fake fetch ──
+import {
+  verifyShopifyCredentials,
+  fetchShopifyOrdersSince,
+  type ShopifyFetch,
+} from '../src/connectors/store/shopify';
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+// verify: happy path
+{
+  const fakeFetch: ShopifyFetch = async (url) => {
+    assert.ok(String(url).includes('mybrand.myshopify.com/admin/api/2026-04/graphql.json'));
+    return jsonResponse(200, { data: { shop: { name: 'My Brand', myshopifyDomain: 'mybrand.myshopify.com' } } });
+  };
+  const r = await verifyShopifyCredentials({ shopDomain: 'mybrand.myshopify.com', accessToken: 't', fetchImpl: fakeFetch });
+  assert.deepEqual(r, { ok: true, shopName: 'My Brand', myshopifyDomain: 'mybrand.myshopify.com' });
+}
+
+// verify: bad token -> auth
+{
+  const fakeFetch: ShopifyFetch = async () => jsonResponse(401, { errors: 'Invalid API key or access token' });
+  const r = await verifyShopifyCredentials({ shopDomain: 'mybrand.myshopify.com', accessToken: 'bad', fetchImpl: fakeFetch });
+  assert.deepEqual(r, { ok: false, reason: 'auth' });
+}
+
+// verify: invalid domain never calls fetch
+{
+  const fakeFetch: ShopifyFetch = async () => {
+    throw new Error('must not be called');
+  };
+  const r = await verifyShopifyCredentials({ shopDomain: 'store.example.com', accessToken: 't', fetchImpl: fakeFetch });
+  assert.deepEqual(r, { ok: false, reason: 'invalid_domain' });
+}
+
+// orders: two pages, then throttle-retry on page two
+{
+  const page = (nodes: unknown[], hasNextPage: boolean, endCursor: string | null) => ({
+    data: { orders: { pageInfo: { hasNextPage, endCursor }, nodes } },
+  });
+  const orderNode = (id: string, updatedAt: string) => ({
+    id: `gid://shopify/Order/${id}`,
+    legacyResourceId: id,
+    name: `#${id}`,
+    createdAt: '2026-07-08T10:00:00Z',
+    updatedAt,
+    cancelledAt: null,
+    displayFulfillmentStatus: 'UNFULFILLED',
+    email: null,
+    shippingAddress: null,
+    currentTotalPriceSet: { shopMoney: { amount: '1.00' } },
+    totalShippingPriceSet: { shopMoney: { amount: '0.00' } },
+    lineItems: { nodes: [] },
+  });
+  let call = 0;
+  const fakeFetch: ShopifyFetch = async (_url, init) => {
+    call += 1;
+    const body = JSON.parse(String(init?.body ?? '{}')) as { variables?: { after?: string | null } };
+    if (call === 1) {
+      assert.equal(body.variables?.after ?? null, null, 'first page has no cursor');
+      return jsonResponse(200, page([orderNode('1', '2026-07-08T10:01:00Z')], true, 'cursor-1'));
+    }
+    if (call === 2) {
+      assert.equal(body.variables?.after, 'cursor-1', 'second page passes the cursor');
+      return jsonResponse(200, { errors: [{ message: 'Throttled', extensions: { code: 'THROTTLED' } }] });
+    }
+    return jsonResponse(200, page([orderNode('2', '2026-07-08T10:02:00Z')], false, null));
+  };
+  const r = await fetchShopifyOrdersSince({
+    shopDomain: 'mybrand.myshopify.com',
+    accessToken: 't',
+    updatedAtMin: new Date('2026-07-08T00:00:00Z'),
+    fetchImpl: fakeFetch,
+  });
+  assert.ok(r.ok, 'throttled page retries and succeeds');
+  if (r.ok) {
+    assert.equal(r.orders.length, 2);
+    assert.equal(r.orders[1]!.legacyResourceId, '2');
+  }
+  assert.equal(call, 3, 'exactly one retry for the throttled page');
+}
+
+// orders: auth failure surfaces as reason 'auth'
+{
+  const fakeFetch: ShopifyFetch = async () => jsonResponse(403, {});
+  const r = await fetchShopifyOrdersSince({
+    shopDomain: 'mybrand.myshopify.com',
+    accessToken: 'revoked',
+    updatedAtMin: new Date(),
+    fetchImpl: fakeFetch,
+  });
+  assert.deepEqual(r, { ok: false, reason: 'auth' });
+}
+
 console.log('PASS shopify order normalization');

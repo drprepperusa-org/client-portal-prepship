@@ -136,3 +136,168 @@ export function normalizeShopifyOrder(
     externallyShipped,
   };
 }
+
+export type ShopifyFetch = typeof fetch;
+
+/** Schema-validated against Admin API 2026-04. Scope: read_orders. */
+export const SHOP_VERIFY_QUERY = `query PrepShipShopVerify {
+  shop { name myshopifyDomain }
+}`;
+
+/** Schema-validated against Admin API 2026-04. Scope: read_orders. */
+export const ORDERS_SINCE_QUERY = `query PrepShipOrdersSince($first: Int!, $after: String, $search: String) {
+  orders(first: $first, after: $after, query: $search, sortKey: UPDATED_AT) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      legacyResourceId
+      name
+      createdAt
+      updatedAt
+      cancelledAt
+      displayFulfillmentStatus
+      email
+      shippingAddress { name city provinceCode zip }
+      currentTotalPriceSet { shopMoney { amount } }
+      totalShippingPriceSet { shopMoney { amount } }
+      lineItems(first: 100) {
+        nodes {
+          sku
+          title
+          quantity
+          originalUnitPriceSet { shopMoney { amount } }
+          image { url }
+        }
+      }
+    }
+  }
+}`;
+
+type GraphqlResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; reason: 'auth' | 'network' | 'throttled' | 'graphql' };
+
+const REQUEST_TIMEOUT_MS = 8_000;
+const THROTTLE_RETRY_DELAY_MS = 1_500;
+
+async function shopifyGraphql(args: {
+  shopDomain: string;
+  accessToken: string;
+  query: string;
+  variables?: Record<string, unknown>;
+  fetchImpl?: ShopifyFetch;
+}): Promise<GraphqlResult> {
+  const fetchImpl = args.fetchImpl ?? fetch;
+  try {
+    const res = await fetchImpl(
+      `https://${args.shopDomain}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': args.accessToken,
+        },
+        body: JSON.stringify({ query: args.query, variables: args.variables ?? {} }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
+    // 401/403 = bad/revoked token; 404 = shop not found. All mean "reconnect".
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      return { ok: false, reason: 'auth' };
+    }
+    if (!res.ok) return { ok: false, reason: 'network' };
+    const json = (await res.json()) as {
+      data?: Record<string, unknown>;
+      errors?: Array<{ extensions?: { code?: string } }>;
+    };
+    if (json.errors?.some((e) => e?.extensions?.code === 'THROTTLED')) {
+      return { ok: false, reason: 'throttled' };
+    }
+    if (json.errors?.length) return { ok: false, reason: 'graphql' };
+    if (!json.data) return { ok: false, reason: 'graphql' };
+    return { ok: true, data: json.data };
+  } catch {
+    return { ok: false, reason: 'network' };
+  }
+}
+
+/**
+ * Live credential check. Called from the portal validate endpoint AND at
+ * submit time (the canonical myshopifyDomain is always derived server-side).
+ * Never log or persist anything from here except shopName/myshopifyDomain.
+ */
+export async function verifyShopifyCredentials(args: {
+  shopDomain: string;
+  accessToken: string;
+  fetchImpl?: ShopifyFetch;
+}): Promise<
+  | { ok: true; shopName: string; myshopifyDomain: string }
+  | { ok: false; reason: 'auth' | 'network' | 'invalid_domain' }
+> {
+  const domain = normalizeShopDomain(args.shopDomain);
+  if (!domain) return { ok: false, reason: 'invalid_domain' };
+  const result = await shopifyGraphql({
+    shopDomain: domain,
+    accessToken: args.accessToken,
+    query: SHOP_VERIFY_QUERY,
+    fetchImpl: args.fetchImpl,
+  });
+  if (!result.ok) {
+    return { ok: false, reason: result.reason === 'auth' ? 'auth' : 'network' };
+  }
+  const shop = result.data.shop as { name?: string; myshopifyDomain?: string } | undefined;
+  if (!shop?.myshopifyDomain) return { ok: false, reason: 'network' };
+  return { ok: true, shopName: shop.name ?? shop.myshopifyDomain, myshopifyDomain: shop.myshopifyDomain };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Pull every order updated at/after updatedAtMin, oldest-updated first.
+ * One throttle retry per page (token-bucket restore is ~50 pts/s; a single
+ * short wait covers the poll cadence). Any other failure aborts the batch —
+ * the caller's cursor only advances on full success, so nothing is skipped.
+ */
+export async function fetchShopifyOrdersSince(args: {
+  shopDomain: string;
+  accessToken: string;
+  updatedAtMin: Date;
+  pageSize?: number;
+  fetchImpl?: ShopifyFetch;
+}): Promise<{ ok: true; orders: ShopifyOrderNode[] } | { ok: false; reason: 'auth' | 'network' | 'throttled' | 'graphql' }> {
+  const search = `updated_at:>='${args.updatedAtMin.toISOString()}'`;
+  const first = args.pageSize ?? 50;
+  const orders: ShopifyOrderNode[] = [];
+  let after: string | null = null;
+
+  for (let page = 0; page < 40; page += 1) {
+    let result = await shopifyGraphql({
+      shopDomain: args.shopDomain,
+      accessToken: args.accessToken,
+      query: ORDERS_SINCE_QUERY,
+      variables: { first, after, search },
+      fetchImpl: args.fetchImpl,
+    });
+    if (!result.ok && result.reason === 'throttled') {
+      await sleep(THROTTLE_RETRY_DELAY_MS);
+      result = await shopifyGraphql({
+        shopDomain: args.shopDomain,
+        accessToken: args.accessToken,
+        query: ORDERS_SINCE_QUERY,
+        variables: { first, after, search },
+        fetchImpl: args.fetchImpl,
+      });
+    }
+    if (!result.ok) return { ok: false, reason: result.reason };
+
+    const connection = result.data.orders as {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: ShopifyOrderNode[];
+    };
+    orders.push(...connection.nodes);
+    if (!connection.pageInfo.hasNextPage) return { ok: true, orders };
+    after = connection.pageInfo.endCursor;
+  }
+  // 40 pages x 50 = 2000 orders in one tick — treat as done; the next tick continues.
+  return { ok: true, orders };
+}
