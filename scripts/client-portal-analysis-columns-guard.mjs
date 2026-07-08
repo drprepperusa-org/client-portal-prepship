@@ -50,6 +50,14 @@ for (const [header, label] of [
 for (const key of ["key: 'std'", "key: 'exp'", "key: 'fees'", "key: 'profit'"]) {
   assert(!analysis.includes(key), `CP-035: Analysis customer table has no column with ${key}`);
 }
+
+// ── 2026-07-08: DJ removed the "Total Shipping" column from the customer view ──
+// (removal, not CSS). The backend /analysis payload still carries the financially
+// gated billedShippingTotal field; the table simply no longer renders it.
+assert(
+  !analysis.includes("header: 'Total Shipping'") && !/key:\s*'shipping'/.test(analysis),
+  'Analysis customer table no longer renders a "Total Shipping" column',
+);
 assert(
   !/num\(r\.total_revenue\)\s*-\s*num\(r\.billedShippingTotal\)\s*-\s*num\(r\.total_selling_fee\)/.test(analysis),
   'CP-035: Analysis no longer computes Profit in React (revenue − shipping − selling_fee derivation removed)',
@@ -66,7 +74,6 @@ const required = [
   "header: 'Units Trend'",
   "header: 'Avg Sell Price'",
   "header: 'Total Revenue'",
-  "header: 'Total Shipping'",
 ];
 for (const header of required) {
   assert(analysis.includes(header), `Analysis table still has ${header}`);
