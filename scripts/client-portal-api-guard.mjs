@@ -71,8 +71,11 @@ for (const f of subRouteFiles) {
 }
 
 // M7 — portal store-connection submissions: the POST route must exist, be
-// admin-gated, create pending accounts (source='portal' + inactive), and never
-// echo credential values back in the response.
+// open to client users with FORCED own-client attribution (resolveSubmittedClientId
+// — a spoofed body clientId can never attach a store to another client; see
+// scripts/portal-store-connect-guard.mjs for the dedicated trust-boundary pins),
+// create pending accounts (source='portal' + inactive), and never echo
+// credential values back in the response.
 assert(route.includes("app.post('/integrations'"), "client portal route missing app.post('/integrations'");
 {
   // /integrations POST lives in integrations.ts; bound the handler with its own
@@ -84,7 +87,11 @@ assert(route.includes("app.post('/integrations'"), "client portal route missing 
   const m = start >= 0 ? integrationsSrc.slice(start).match(/[\s\S]*?\n\}\);/) : null;
   const postIntegrations = m ? m[0] : '';
   assert(postIntegrations.length > 0, 'POST /integrations handler not found in integrations.ts');
-  assert(postIntegrations.includes("'admin required'"), 'POST /integrations must be admin-gated');
+  assert(
+    postIntegrations.includes('resolveSubmittedClientId(') &&
+      postIntegrations.includes('account.clientId = attribution.clientId'),
+    'POST /integrations must force client attribution via resolveSubmittedClientId, not trust the raw body clientId',
+  );
   assert(
     postIntegrations.includes("'portal',") && postIntegrations.includes('false'),
     "POST /integrations must insert source='portal' with active=false (pending until operator promotion)",

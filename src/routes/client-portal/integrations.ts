@@ -11,8 +11,18 @@ import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { toPortalIntegrationDto } from '../../lib/client-portal/dto';
 import { listPortalIntegrations } from '../../lib/client-portal/read-models/integrations';
 import { scopeOrResponse } from '../../lib/client-portal/query-params';
+import {
+  checkValidationRateLimit,
+  resolveSubmittedClientId,
+} from '../../lib/client-portal/integration-submission';
+import { verifyShopifyCredentials } from '../../connectors/store/shopify';
 
 const app = new Hono();
+
+// One generic connect-failure message: never reveal shop-exists vs
+// token-wrong (no token-probing oracle). Details go to server logs only.
+const SHOPIFY_CONNECT_ERROR =
+  "Couldn't connect — check your shop domain and Admin API access token.";
 
 app.get('/integrations', async (c) => {
   const scope = scopeOrResponse(c);
@@ -22,18 +32,57 @@ app.get('/integrations', async (c) => {
   return c.json({ data });
 });
 
-// Submit a store connection from the portal (M7). Admin-only. The account is
-// created with source='portal' AND active=false, so no sync/worker path can use
-// the submitted credentials until an operator vets and promotes it
-// ('portal' → 'admin') in the internal app. Credentials are stored via the same
-// store_accounts rails as the internal API (RLS-protected) and are NEVER echoed
-// back in the response or audit trail — field names only.
+// Live credential check for pre-submit UX feedback ONLY — nothing from the
+// browser is trusted at submit time (submit re-verifies server-side).
+// Rate-limited per user; response carries shop name/domain and NOTHING else.
+app.post('/integrations/validate', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!checkValidationRateLimit(scope.userId)) {
+    return c.json({ error: 'too many validation attempts — wait a minute and retry' }, 429);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  const provider = String(body?.provider ?? '').toLowerCase();
+  if (provider !== 'shopify') {
+    return c.json({ error: 'live validation is only available for shopify' }, 400);
+  }
+  const credentials =
+    body?.credentials && typeof body.credentials === 'object' && !Array.isArray(body.credentials)
+      ? (body.credentials as Record<string, unknown>)
+      : {};
+  const shopDomain = String(credentials.shopDomain ?? '');
+  const accessToken = String(credentials.accessToken ?? '');
+  if (!shopDomain.trim() || !accessToken.trim()) {
+    return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+  }
+
+  const result = await verifyShopifyCredentials({ shopDomain, accessToken });
+  await recordPortalAudit('portal.integrations.validate', scope, {
+    provider,
+    ok: result.ok,
+    accountIdentifier: result.ok ? maskAccountIdentifier(result.myshopifyDomain) : null,
+  });
+  if (!result.ok) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+  return c.json({ data: { ok: true, shopName: result.shopName, myshopifyDomain: result.myshopifyDomain } });
+});
+
+// Submit a store connection from the portal (M7, unlocked for client users
+// 2026-07-08). The account is created with source='portal' AND active=false,
+// so no sync/worker path can use the submitted credentials until an operator
+// vets and promotes it ('portal' -> 'admin') in the internal app. Credentials
+// are stored via the same store_accounts rails as the internal API
+// (RLS-protected) and are NEVER echoed back in the response or audit trail —
+// field names only. Non-admin callers are FORCED into their own client scope.
 app.post('/integrations', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  if (!(isAdminEmail(scope.email) || scope.role === 'admin')) {
-    return c.json({ error: 'admin required' }, 403);
-  }
+  const isAdmin = isAdminEmail(scope.email) || scope.role === 'admin';
 
   let rawBody: Record<string, unknown>;
   try {
@@ -51,6 +100,24 @@ app.post('/integrations', async (c) => {
   if (!account.credentialKeys.length) return c.json({ error: 'credentials required' }, 400);
   if (JSON.stringify(account.credentials).length > 20_000) {
     return c.json({ error: 'credentials too large' }, 400);
+  }
+
+  const attribution = resolveSubmittedClientId({
+    isAdmin,
+    clientIds: scope.clientIds,
+    bodyClientId: account.clientId,
+  });
+  if (!attribution.ok) return c.json({ error: attribution.error }, attribution.status);
+  account.clientId = attribution.clientId;
+
+  // Shopify submits re-verify server-side; the canonical myshopify domain
+  // ALWAYS comes from Shopify's answer, never from the browser.
+  if (account.provider === 'shopify') {
+    const shopDomain = String((account.credentials as Record<string, unknown>).shopDomain ?? '');
+    const accessToken = String((account.credentials as Record<string, unknown>).accessToken ?? '');
+    const verified = await verifyShopifyCredentials({ shopDomain, accessToken });
+    if (!verified.ok) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+    account.accountIdentifier = verified.myshopifyDomain;
   }
 
   try {
@@ -104,6 +171,83 @@ app.post('/integrations', async (c) => {
     console.warn('[client-portal] store connection request failed:', err);
     return c.json({ error: 'store connections are unavailable right now' }, 503);
   }
+});
+
+// Reconnect: replace the credentials on the caller's OWN shopify store after
+// its token was revoked (last_sync_error='auth'). The new credentials must
+// pass live verification for the SAME canonical shop domain. source/active are
+// untouched — a promoted store stays promoted; sync resumes next tick.
+app.patch('/integrations/:id/credentials', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+  if (!checkValidationRateLimit(scope.userId)) {
+    return c.json({ error: 'too many validation attempts — wait a minute and retry' }, 429);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  const credentials =
+    body?.credentials && typeof body.credentials === 'object' && !Array.isArray(body.credentials)
+      ? (body.credentials as Record<string, unknown>)
+      : {};
+  const accessToken = String(credentials.accessToken ?? '');
+  if (!accessToken.trim()) return c.json({ error: 'credentials required' }, 400);
+
+  const isAdmin = isAdminEmail(scope.email) || scope.role === 'admin';
+  const rows = await db.execute<{
+    id: number;
+    clientId: number | null;
+    provider: string | null;
+    accountIdentifier: string | null;
+    lastSyncError: string | null;
+  }>(sql`
+    select id, client_id as "clientId", provider,
+           account_identifier as "accountIdentifier",
+           last_sync_error as "lastSyncError"
+    from store_accounts
+    where id = ${id}
+  `);
+  const row = rows[0];
+  if (!row || row.provider !== 'shopify') return c.json({ error: 'store not found' }, 404);
+  if (!isAdmin && (row.clientId == null || !scope.clientIds.includes(row.clientId))) {
+    return c.json({ error: 'store not found' }, 404);
+  }
+  if (row.lastSyncError !== 'auth') {
+    return c.json({ error: 'this store does not need reconnection' }, 409);
+  }
+
+  const verified = await verifyShopifyCredentials({
+    shopDomain: String(row.accountIdentifier ?? ''),
+    accessToken,
+  });
+  if (!verified.ok || verified.myshopifyDomain !== row.accountIdentifier) {
+    return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+  }
+
+  await db.execute(sql`
+    update store_accounts
+    set credentials = jsonb_build_object(
+          'shopDomain', ${verified.myshopifyDomain}::text,
+          'accessToken', ${accessToken}::text
+        ),
+        last_sync_error = null,
+        sync_failure_count = 0,
+        updated_at = now()
+    where id = ${id}
+  `);
+  await recordPortalAudit('portal.integrations.reconnect', scope, {
+    provider: 'shopify',
+    clientId: row.clientId,
+    accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
+    credentialFields: ['accessToken', 'shopDomain'],
+  });
+  return c.json({ data: { ok: true } });
 });
 
 export default app;

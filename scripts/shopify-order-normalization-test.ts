@@ -195,4 +195,44 @@ function jsonResponse(status: number, body: unknown): Response {
   assert.deepEqual(r, { ok: false, reason: 'auth' });
 }
 
+// ── portal submission helpers ──
+import {
+  resolveSubmittedClientId,
+  checkValidationRateLimit,
+} from '../src/lib/client-portal/integration-submission';
+
+// Admins keep today's behavior: body clientId passes through (nullable).
+assert.deepEqual(
+  resolveSubmittedClientId({ isAdmin: true, clientIds: [], bodyClientId: 12 }),
+  { ok: true, clientId: 12 },
+);
+assert.deepEqual(
+  resolveSubmittedClientId({ isAdmin: true, clientIds: [], bodyClientId: null }),
+  { ok: true, clientId: null },
+);
+// Clients are FORCED to their own scope.
+assert.deepEqual(
+  resolveSubmittedClientId({ isAdmin: false, clientIds: [7], bodyClientId: null }),
+  { ok: true, clientId: 7 },
+);
+assert.deepEqual(
+  resolveSubmittedClientId({ isAdmin: false, clientIds: [7, 9], bodyClientId: 9 }),
+  { ok: true, clientId: 9 },
+);
+const crossClient = resolveSubmittedClientId({ isAdmin: false, clientIds: [7], bodyClientId: 12 });
+assert.ok(!crossClient.ok && crossClient.status === 403, 'cross-client injection is rejected');
+const noScope = resolveSubmittedClientId({ isAdmin: false, clientIds: [], bodyClientId: null });
+assert.ok(!noScope.ok && noScope.status === 403, 'no client scope -> 403');
+const ambiguous = resolveSubmittedClientId({ isAdmin: false, clientIds: [7, 9], bodyClientId: null });
+assert.ok(!ambiguous.ok && ambiguous.status === 400, 'multi-client scope requires explicit clientId');
+
+// Rate limiter: 5 allowed per rolling minute, 6th refused, new window resets.
+const T0 = 1_750_000_000_000;
+for (let i = 0; i < 5; i += 1) {
+  assert.equal(checkValidationRateLimit('user-a', T0 + i * 1000), true, `attempt ${i + 1} allowed`);
+}
+assert.equal(checkValidationRateLimit('user-a', T0 + 5_000), false, '6th attempt inside window refused');
+assert.equal(checkValidationRateLimit('user-b', T0 + 5_000), true, 'other users unaffected');
+assert.equal(checkValidationRateLimit('user-a', T0 + 61_000), true, 'window reset re-allows');
+
 console.log('PASS shopify order normalization');
