@@ -26,6 +26,7 @@
     "guard:frontend-failure-states": "npm run test:client-portal-failure-states",    "guard:client-portal-architecture": "node scripts/client-portal-architecture-guard.mjs",
     "guard:client-portal-api": "node scripts/client-portal-api-guard.mjs",    "guard:shipping-certification": "node scripts/shipping-certification-guard.mjs",
     "guard:shopify-sync-source": "node scripts/shopify-sync-source-guard.mjs",
+    "guard:portal-store-connect": "node scripts/portal-store-connect-guard.mjs",
     "guard:site-actions": "node scripts/site-action-functionality-guard.mjs",
     "guard:source-line-length": "node scripts/actionable-source-line-length-guard.mjs",
     "watchdog:production": "node scripts/production-watchdog.mjs",
