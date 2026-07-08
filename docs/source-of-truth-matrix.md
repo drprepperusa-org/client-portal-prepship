@@ -66,6 +66,12 @@ Derived/read-model/cache truth:
 
 Mutation owner:
 - Order sync services and marketplace import routes.
+- Shopify direct order sync (`src/services/shopify-order-sync.ts`) polls client
+  Shopify stores (GraphQL Admin API 2026-04, forward-only from the promotion
+  anchor `store_accounts.sync_anchor_at`) and persists through the shared
+  store-order-import upsert. Buyer-paid Shopify shipping lands in
+  `orders.shipping_amount` as record/display data only; the Customer Shipping
+  Rate remains owned by frozen billing → projection (CP-040).
 - User-facing order mutation routes only for editable `awaiting_shipment`
   orders.
 
