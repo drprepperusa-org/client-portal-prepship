@@ -144,6 +144,9 @@ app.post('/integrations', async (c) => {
   // credential mode is accepted: legacy admin-app token, or Dev Dashboard
   // client credentials (Shopify retired admin-created custom apps Spring '26).
   if (account.provider === 'shopify') {
+    if (!checkValidationRateLimit(scope.userId)) {
+      return c.json({ error: 'too many validation attempts — wait a minute and retry' }, 429);
+    }
     const shopifyInput = readShopifyCredentialInput(account.credentials);
     if (!shopifyInput) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
     const verified = await verifyShopifyCredentials(shopifyInput);

@@ -236,7 +236,11 @@ assert.equal(checkValidationRateLimit('user-b', T0 + 5_000), true, 'other users 
 assert.equal(checkValidationRateLimit('user-a', T0 + 61_000), true, 'window reset re-allows');
 
 // ── client credentials grant (Dev Dashboard apps, Spring '26+) ──
-import { exchangeShopifyClientCredentials, resolveShopifyAccessToken } from '../src/connectors/store/shopify';
+import {
+  exchangeShopifyClientCredentials,
+  invalidateShopifyTokenCache,
+  resolveShopifyAccessToken,
+} from '../src/connectors/store/shopify';
 
 // exchange: happy path posts form-encoded grant to /admin/oauth/access_token
 {
@@ -302,6 +306,32 @@ import { exchangeShopifyClientCredentials, resolveShopifyAccessToken } from '../
     assert.equal(second.accessToken, 'shpat_cached_1', 'second resolve reuses cached token');
   }
   assert.equal(exchanges, 1, 'exactly one exchange for two resolves');
+}
+
+// invalidateShopifyTokenCache: drops the shop+client entry so the next
+// resolve with the SAME secret re-exchanges instead of reusing a token
+// Shopify just rejected mid-window (the sync-time 401 retry path).
+{
+  let exchanges = 0;
+  const fakeFetch: ShopifyFetch = async () => {
+    exchanges += 1;
+    return jsonResponse(200, { access_token: `shpat_inv_${exchanges}`, scope: 'read_orders', expires_in: 86399 });
+  };
+  const creds = { clientId: 'id-inv', clientSecret: 'shpss_inv' };
+  const warmed = await resolveShopifyAccessToken(creds, 'ccgrant-inv.myshopify.com', fakeFetch);
+  assert.ok(warmed.ok);
+  assert.equal(exchanges, 1);
+  const stillCached = await resolveShopifyAccessToken(creds, 'ccgrant-inv.myshopify.com', fakeFetch);
+  assert.ok(stillCached.ok);
+  assert.equal(exchanges, 1, 'still warm before invalidate');
+
+  invalidateShopifyTokenCache('ccgrant-inv.myshopify.com', 'id-inv');
+  const afterInvalidate = await resolveShopifyAccessToken(creds, 'ccgrant-inv.myshopify.com', fakeFetch);
+  assert.ok(afterInvalidate.ok);
+  assert.equal(exchanges, 2, 'cache miss after invalidate forces a fresh exchange with the same secret');
+
+  // A miss on an unrelated shop/client is a silent no-op — never throws.
+  invalidateShopifyTokenCache('never-cached.myshopify.com', 'id-none');
 }
 
 // resolve: a DIFFERENT secret must never be satisfied by the warm cache

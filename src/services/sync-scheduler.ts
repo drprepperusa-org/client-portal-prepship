@@ -373,6 +373,7 @@ export function startSyncScheduler(
   // above) since it isn't covered by the orderTimer/shipmentTimer
   // duplicate-start check further down.
   if (env.SHOPIFY_SYNC_ENABLED && !shopifyTimer) {
+    console.log('[scheduler] shopify orders sync enabled - every 3m (staggered 45s)');
     setTimeout(() => {
       void runShopifySync();
       shopifyTimer = setInterval(() => void runShopifySync(), SHOPIFY_SYNC_INTERVAL_MS);

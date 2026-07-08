@@ -3,13 +3,20 @@
 //
 // SECURITY SPINE: this service may only read store_accounts rows where
 // source = 'admin' AND active = true. Portal-submitted rows (source='portal',
-// active=false) are invisible here until an operator promotes them.
-// Pinned by scripts/shopify-sync-source-guard.mjs.
+// active=false) are invisible here until an operator promotes them. Every
+// row must also carry a stamped sync_anchor_at (forward-only floor) or it is
+// skipped as misconfigured. Auth failures pause a store after 3 consecutive
+// strikes (sync_failure_count) rather than retrying forever against a
+// revoked/rotated credential — a client-credentials account gets one
+// same-tick forceFresh retry (see syncOneAccount) before a failure counts
+// toward that pause, so a merely-stale cached token is never mistaken for a
+// bad one. Pinned by scripts/shopify-sync-source-guard.mjs.
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { env } from '../lib/env';
 import {
   fetchShopifyOrdersSince,
+  invalidateShopifyTokenCache,
   normalizeShopifyOrder,
   normalizeShopDomain,
   resolveShopifyAccessToken,
@@ -77,6 +84,17 @@ async function recordFailure(accountId: number, reason: string): Promise<void> {
   `);
 }
 
+// Client-credentials id when the account has no stored legacy token (mirrors
+// resolveShopifyAccessToken's own mode check). Returns null for legacy-token
+// accounts, which have no minted-token cache entry to invalidate.
+function shopifyClientCredentialsId(credentials: ShopifyConnectionCredentials): string | null {
+  const legacyToken = typeof credentials.accessToken === 'string' ? credentials.accessToken.trim() : '';
+  if (legacyToken) return null;
+  const clientId = typeof credentials.clientId === 'string' ? credentials.clientId.trim() : '';
+  const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret.trim() : '';
+  return clientId && clientSecret ? clientId : null;
+}
+
 async function syncOneAccount(
   account: ShopifyAccountRow,
   fetchImpl: ShopifyFetch | undefined,
@@ -106,7 +124,20 @@ async function syncOneAccount(
   }
 
   const updatedAtMin = toDate(account.syncCursorAt) ?? anchor;
-  const fetched = await fetchShopifyOrdersSince({ shopDomain, accessToken: resolved.accessToken, updatedAtMin, fetchImpl });
+  let fetched = await fetchShopifyOrdersSince({ shopDomain, accessToken: resolved.accessToken, updatedAtMin, fetchImpl });
+  if (!fetched.ok && fetched.reason === 'auth') {
+    const ccClientId = shopifyClientCredentialsId(credentials);
+    if (ccClientId) {
+      // The cached token was minted successfully but Shopify just rejected it
+      // (app reinstalled/revoked mid-window) — invalidate the stale entry and
+      // mint one fresh token before this counts as a real auth strike.
+      invalidateShopifyTokenCache(shopDomain, ccClientId);
+      const refreshed = await resolveShopifyAccessToken(credentials, shopDomain, fetchImpl, { forceFresh: true });
+      if (refreshed.ok) {
+        fetched = await fetchShopifyOrdersSince({ shopDomain, accessToken: refreshed.accessToken, updatedAtMin, fetchImpl });
+      }
+    }
+  }
   if (!fetched.ok) {
     await recordFailure(account.id, fetched.reason);
     return 0;

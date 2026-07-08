@@ -286,6 +286,16 @@ function fingerprintSecret(secret: string): string {
   return createHash('sha256').update(secret).digest('hex');
 }
 
+/**
+ * Drop a shop+client's cached client-credentials token. Called by the sync
+ * service when a cached token is rejected mid-window (e.g. the merchant
+ * reinstalled the app or revoked access before the 24h TTL) so the next
+ * resolve mints a fresh one instead of retrying the same stale token.
+ */
+export function invalidateShopifyTokenCache(shopDomain: string, clientId: string): void {
+  clientCredentialTokenCache.delete(`${shopDomain}|${clientId}`);
+}
+
 export async function resolveShopifyAccessToken(
   credentials: ShopifyConnectionCredentials,
   shopDomain: string,

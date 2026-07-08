@@ -35,8 +35,13 @@ async function storeAccountRows(scope: ClientPortalScope) {
     lastSyncError?: string | null;
     lastSyncedAt?: Date | string | null;
   };
-  const scopeFilter = scope.isRestricted && scope.clientIds.length
-    ? sql`and client_id in (${sql.join(scope.clientIds.map((id) => sql`${id}`), sql`, `)})`
+  // Mirrors carrierScopePredicate's fail-closed philosophy: a restricted
+  // scope with no clientIds (e.g. a storeIds-only login) must match NOTHING
+  // rather than falling through to an unfiltered "list every store" query.
+  const scopeFilter = scope.isRestricted
+    ? scope.clientIds.length
+      ? sql`and client_id in (${sql.join(scope.clientIds.map((id) => sql`${id}`), sql`, `)})`
+      : sql`and false`
     : sql``;
   try {
     let rows: StoreRow[];

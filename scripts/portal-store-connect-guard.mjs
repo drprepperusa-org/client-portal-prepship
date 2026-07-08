@@ -14,8 +14,10 @@ assert(route.includes('resolveSubmittedClientId'), 'portal submit must force cli
 assert(route.includes('checkValidationRateLimit'), 'validate/reconnect must be rate-limited');
 assert(route.includes('verified.myshopifyDomain'), 'shopify identifier must come from live verification');
 assert(!route.includes('accessToken:'), 'route must never build a response containing a token');
+assert(!route.includes('clientSecret:'), 'route must never build a response containing a client secret');
 assert(route.includes('submittedFields'), 'audit rows record credential field NAMES only (submittedFields key survives the sanitizer)');
 assert(!route.includes('admin required'), 'submit endpoint must be open to client users');
+assert(route.includes('verified.myshopifyDomain !== row.accountIdentifier'), 'reconnect must pin the canonical domain');
 
 const helpers = readFileSync('src/lib/client-portal/integration-submission.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(helpers.includes('clientIds.includes(args.bodyClientId)'), 'cross-client injection check must exist');

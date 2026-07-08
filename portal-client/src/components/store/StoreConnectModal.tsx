@@ -32,7 +32,7 @@ export function StoreConnectModal({
   open: boolean;
   onClose: () => void;
   onConnect: (draft: ConnectDraft) => void;
-  onValidate?: (draft: ConnectDraft) => Promise<{ ok: boolean; shopName?: string; myshopifyDomain?: string }>;
+  onValidate?: (draft: ConnectDraft) => Promise<{ ok: boolean; shopName?: string; myshopifyDomain?: string; rateLimited?: boolean }>;
 }) {
   const [stage, setStage] = useState<Stage>('list');
   const [filter, setFilter] = useState<Filter>('all');
@@ -96,7 +96,12 @@ export function StoreConnectModal({
       try {
         const result = await onValidate({ platform, storeName, values });
         if (!result.ok) {
-          setValidation({ ok: false, message: "Couldn't connect — check your shop domain and Admin API access token." });
+          setValidation({
+            ok: false,
+            message: result.rateLimited
+              ? 'Too many attempts — wait a minute and try again.'
+              : "Couldn't connect — check your shop domain and app credentials.",
+          });
           return;
         }
         setValidation({ ok: true, message: `Connected to ${result.myshopifyDomain ?? 'your store'} — pending PrepShip approval after submit.` });

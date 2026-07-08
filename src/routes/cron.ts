@@ -95,7 +95,8 @@ app.post('/sync-all', async (c) => {
         })()
       : null;
   const shipmentsResult = await syncShipments(opts);
-  return c.json({ orders: ordersResult, shipments: shipmentsResult, rateBackfillJob });
+  const shopify = await syncShopifyOrders({});
+  return c.json({ orders: ordersResult, shipments: shipmentsResult, shopify, rateBackfillJob });
 });
 
 // 2026-05-13: inventory enrichment cron endpoints — external scheduler

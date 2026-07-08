@@ -438,9 +438,12 @@ export interface PortalIntegration {
   lastSyncedAt: string | null;
 }
 
-/** Store-connection request submitted from Connections (admin-only). The
- *  credential values are write-only: the API stores them pending operator
- *  review and never returns them. */
+/** Store-connection request submitted from Connections. Open to any portal
+ *  user, not just admins — client users are forced into their own scope
+ *  server-side (see resolveSubmittedClientId in
+ *  src/lib/client-portal/integration-submission.ts). The credential values
+ *  are write-only: the API stores them pending operator review and never
+ *  returns them. */
 export interface NewIntegrationInput {
   provider: string;
   label: string;
@@ -1148,8 +1151,9 @@ export const portalApi = {
   },
 
   integrations: (token: string) => apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
-  /** Submit a store connection request (admin-only). Created pending
-   *  (source='portal', inactive) until an operator promotes it. */
+  /** Submit a store connection request (open to client users, not just
+   *  admins). Created pending (source='portal', inactive) until an operator
+   *  promotes it. */
   createIntegration: (token: string, body: NewIntegrationInput) =>
     apiPost<{ data: PortalIntegration }>(token, '/api/client-portal/integrations', body),
   /** Live pre-submit credential check (Shopify). Rate-limited server-side. */

@@ -14,6 +14,7 @@ on:
           - all
           - shipments
           - orders
+          - shopify
       since_days:
         description: 'Manual backfill window in days. Leave 0 for normal watermark sync.'
         required: false
@@ -41,6 +42,7 @@ jobs:
           case "$MODE" in
             orders) endpoint="/cron/sync-orders" ;;
             shipments) endpoint="/cron/sync-shipments" ;;
+            shopify) endpoint="/cron/sync-shopify-orders" ;;
             all|"") endpoint="/cron/sync-all" ;;
             *)
               echo "::error::Invalid mode '$MODE'"

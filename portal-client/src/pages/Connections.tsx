@@ -182,8 +182,12 @@ export default function Connections() {
               credentials: draft.values,
             });
             return res.data;
-          } catch {
-            return { ok: false };
+          } catch (err) {
+            // fail() (portal-client/src/lib/api.ts) throws an Error whose
+            // message is the backend's `error` string verbatim, so a 429 from
+            // checkValidationRateLimit surfaces here with this exact text.
+            const rateLimited = err instanceof Error && err.message.includes('too many validation attempts');
+            return { ok: false, rateLimited };
           }
         }}
       />
