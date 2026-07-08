@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Mail, Send, ShieldCheck, Store, UserPlus } from 'lucide-react';
+import { Info, Mail, Send, ShieldCheck, Store, UserPlus } from 'lucide-react';
 import { EmailInput, TextInput } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -31,10 +31,6 @@ export function AccessInviteModal({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
-    if (role === 'client_user' && clientIds.length === 0) {
-      toast.error('Stores required', 'Assign at least one client store.');
-      return;
-    }
 
     setSaving(true);
     try {
@@ -105,7 +101,13 @@ export function AccessInviteModal({
 
         {role === 'client_user' && clientOptions.length === 0 && (
           <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            <Store size={14} /> No active client stores are available.
+            <Store size={14} /> No active client stores are available. The user can still activate their login, then you can assign stores later.
+          </p>
+        )}
+
+        {role === 'client_user' && clientOptions.length > 0 && clientIds.length === 0 && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+            <Info size={14} /> No stores selected yet. This creates the login now; assign store access when it is ready.
           </p>
         )}
 

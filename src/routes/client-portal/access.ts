@@ -12,7 +12,7 @@ import { isAdminEmail } from '../../lib/admin-emails';
 import { env } from '../../lib/env';
 import { isAllowedCorsOrigin } from '../../lib/http/cors';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
-import { isClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
+import { isClientPortalScope, resolveClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import {
   accessAppMeta,
@@ -135,10 +135,7 @@ app.post('/access-list/invite', async (c) => {
   const role = parsed.data.role;
   const clientIds = normalizeMetadataIds(parsed.data.clientIds);
 
-  if (role === 'client_user') {
-    if (clientIds.length === 0) {
-      return c.json({ error: 'Assign at least one client store for a client user.' }, 400);
-    }
+  if (role === 'client_user' && clientIds.length > 0) {
     const validClientIds = await activeClientIdsFor(clientIds);
     if (validClientIds.length !== clientIds.length) {
       return c.json({ error: 'One or more selected client stores are not active or do not exist.' }, 400);
@@ -201,8 +198,7 @@ app.post('/access-list/invite', async (c) => {
 
 // POST = invited user completed password setup; clear the invite-pending guard.
 app.post('/access-list/activate', async (c) => {
-  const scope = scopeOrResponse(c);
-  if (!isClientPortalScope(scope)) return scope;
+  const scope = resolveClientPortalScope(c);
 
   const { data: target, error: getErr } = await supabaseAdmin.auth.admin.getUserById(scope.userId);
   if (getErr || !target?.user) return c.json({ error: 'User not found' }, 404);
