@@ -162,6 +162,7 @@
     "test:connector-architecture": "node scripts/connector-architecture-guard.mjs",
     "test:store-connector-source": "tsx scripts/store-connector-source-guard.ts",
     "test:shipstation-carrier-account-identity": "tsx scripts/shipstation-carrier-account-identity-guard.ts",
+    "test:shopify-order-normalization": "tsx scripts/shopify-order-normalization-test.ts",
     "test:health-deep-readiness": "node scripts/health-deep-readiness-guard.mjs",
     "status:sync": "tsx scripts/status-sync.ts",
     "test:status:sync": "tsx scripts/status-sync.ts --check",
