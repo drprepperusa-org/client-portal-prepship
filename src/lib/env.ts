@@ -57,6 +57,9 @@ const schema = z.object({
   // connector for 'shipment.confirm'). When off, no live Shopify/customer
   // notification can ever fire.
   RETURNS_SHOPIFY_DELIVERY: booleanFlag(false),
+  // Shopify direct client store connect — master switch for the order-sync
+  // poller. Off by default so deploy != activate.
+  SHOPIFY_SYNC_ENABLED: booleanFlag(false),
   // CP-030 — durable inspection media (Supabase Storage). The 3PL receiving
   // flow relays captured photos/video to this PRIVATE bucket via the service
   // client; the DB stores only the object path, and the client reads media
