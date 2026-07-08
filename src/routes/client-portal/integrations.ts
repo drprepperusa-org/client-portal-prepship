@@ -164,7 +164,7 @@ app.post('/integrations', async (c) => {
       provider: account.provider,
       clientId: account.clientId,
       accountIdentifier: maskAccountIdentifier(account.accountIdentifier),
-      credentialFields: account.credentialKeys,
+      submittedFields: account.credentialKeys,
     });
     return c.json({ data: toPortalIntegrationDto({ ...row, type: 'store' }) }, 201);
   } catch (err) {
@@ -245,7 +245,7 @@ app.patch('/integrations/:id/credentials', async (c) => {
     provider: 'shopify',
     clientId: row.clientId,
     accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
-    credentialFields: ['accessToken', 'shopDomain'],
+    submittedFields: ['accessToken', 'shopDomain'],
   });
   return c.json({ data: { ok: true } });
 });
