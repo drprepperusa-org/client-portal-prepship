@@ -22,33 +22,62 @@ function carrierScopePredicate(scope: ClientPortalScope): SQL | undefined {
 }
 
 async function storeAccountRows(scope: ClientPortalScope) {
+  type StoreRow = {
+    id: number;
+    clientId: number | null;
+    provider: string | null;
+    label: string | null;
+    accountIdentifier: string | null;
+    source: string | null;
+    active: boolean | null;
+    createdAt: Date | string | null;
+    updatedAt: Date | string | null;
+    lastSyncError?: string | null;
+    lastSyncedAt?: Date | string | null;
+  };
+  const scopeFilter = scope.isRestricted && scope.clientIds.length
+    ? sql`and client_id in (${sql.join(scope.clientIds.map((id) => sql`${id}`), sql`, `)})`
+    : sql``;
   try {
-    const rows = await db.execute<{
-      id: number;
-      clientId: number | null;
-      provider: string | null;
-      label: string | null;
-      accountIdentifier: string | null;
-      source: string | null;
-      active: boolean | null;
-      createdAt: Date | string | null;
-      updatedAt: Date | string | null;
-    }>(sql`
-      select id,
-             client_id as "clientId",
-             provider,
-             label,
-             account_identifier as "accountIdentifier",
-             source,
-             active,
-             created_at as "createdAt",
-             updated_at as "updatedAt"
-      from store_accounts
-      where (coalesce(active, true) = true or source = 'portal')
-        ${scope.isRestricted && scope.clientIds.length ? sql`and client_id in (${sql.join(scope.clientIds.map((id) => sql`${id}`), sql`, `)})` : sql``}
-      order by created_at desc
-      limit 200
-    `);
+    let rows: StoreRow[];
+    try {
+      rows = await db.execute<StoreRow>(sql`
+        select id,
+               client_id as "clientId",
+               provider,
+               label,
+               account_identifier as "accountIdentifier",
+               source,
+               active,
+               created_at as "createdAt",
+               updated_at as "updatedAt",
+               last_sync_error as "lastSyncError",
+               last_synced_at as "lastSyncedAt"
+        from store_accounts
+        where (coalesce(active, true) = true or source = 'portal')
+          ${scopeFilter}
+        order by created_at desc
+        limit 200
+      `);
+    } catch {
+      // Deployment predates migration 0037 — fall back to the legacy shape.
+      rows = await db.execute<StoreRow>(sql`
+        select id,
+               client_id as "clientId",
+               provider,
+               label,
+               account_identifier as "accountIdentifier",
+               source,
+               active,
+               created_at as "createdAt",
+               updated_at as "updatedAt"
+        from store_accounts
+        where (coalesce(active, true) = true or source = 'portal')
+          ${scopeFilter}
+        order by created_at desc
+        limit 200
+      `);
+    }
     return rows.map((row) => toPortalIntegrationDto({ ...row, type: 'store' }));
   } catch (err) {
     console.warn('[client-portal] store account list unavailable:', err);

@@ -461,6 +461,8 @@ export function toPortalIntegrationDto(row: {
   active?: boolean | null;
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
+  lastSyncError?: string | null;
+  lastSyncedAt?: Date | string | null;
 }) {
   return {
     id: row.id,
@@ -477,5 +479,7 @@ export function toPortalIntegrationDto(row: {
     clientName: row.clientName ?? row.storeName ?? null,
     storeName: row.storeName ?? row.clientName ?? null,
     storeIds: row.storeIds ?? [],
+    lastSyncError: row.lastSyncError ?? null,
+    lastSyncedAt: iso(row.lastSyncedAt ?? null),
   };
 }
