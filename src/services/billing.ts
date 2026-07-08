@@ -6,8 +6,10 @@ import { orderOverrides, orders } from '../db/schema/orders';
 import { packages } from '../db/schema/packages';
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
-import { SS_BASELINE_CARRIER_CODES } from './rates';
+import { computeCustomerShippingRate, resolveCustomerShippingRate } from './customer-shipping-rate';
 import { refreshBillingSummaryMetrics } from './reporting-metrics';
+
+export { computeCustomerShippingRate, resolveCustomerShippingRate } from './customer-shipping-rate';
 
 export type GenerateInput = {
   clientId?: number;
@@ -205,32 +207,6 @@ function totalUnitsFromItems(items: unknown[] | null | undefined): number {
     if (Number.isFinite(q) && q > 0) n += q;
   }
   return n;
-}
-
-/**
- * PS-366: customer-facing C. Shipping Rate resolver. If the client's
- * below-trigger override is configured and the SELECTED/PURCHASED rate is
- * below the trigger, the billable shipping becomes the override amount.
- * NOT a floor — rates at/above the trigger keep the normal markup-derived
- * amount (e.g. HUGRAB trigger $6.00 / amount $7.73: $5.99 bills $7.73, but
- * $6.82 stays $6.82). The selected/purchased cost itself is never mutated;
- * ship margin = C. Shipping Rate − selected cost.
- */
-export function resolveCustomerShippingRate(input: {
-  /** Selected/purchased label cost — the pre-markup source of truth. */
-  selectedCost: number;
-  /** Shipping charge after billing-mode + markup rules. */
-  markedUpCost: number;
-  /** Trigger threshold; 0/negative disables. */
-  triggerBelow: number;
-  /** Override amount when triggered; 0/negative disables. */
-  overrideAmount: number;
-}): { cShippingRate: number; overrideApplied: boolean } {
-  const { selectedCost, markedUpCost, triggerBelow, overrideAmount } = input;
-  if (triggerBelow > 0 && overrideAmount > 0 && selectedCost > 0 && selectedCost < triggerBelow) {
-    return { cShippingRate: overrideAmount, overrideApplied: true };
-  }
-  return { cShippingRate: markedUpCost, overrideApplied: false };
 }
 
 /**
@@ -727,49 +703,38 @@ export async function generateLineItems(input: GenerateInput) {
     // created before the synced cost was available.
     const labelCost = (toNum(s.cost) || toNum(s.labelCost)) + toNum(s.otherCost);
     if (labelCost > 0) {
-      let billedCost = labelCost;
-      const billingMode = cfg.billingMode ?? 'label_cost';
-      if (
-        (billingMode === 'reference_rate' || billingMode === 'ss_ref_rate') &&
-        !SS_BASELINE_CARRIER_CODES.has(s.carrierCode ?? '')
-      ) {
-        const referenceCandidates = [toNum(s.refUspsRate), toNum(s.refUpsRate)].filter(
-          (value) => value > 0
-        );
-        if (referenceCandidates.length > 0) {
-          billedCost = Math.max(labelCost, Math.min(...referenceCandidates));
-        }
-      }
-      const pct = toNum(cfg.shippingMarkupPct);
-      const flat = toNum(cfg.shippingMarkupFlat);
-      const shipCost = billedCost * (1 + pct / 100) + flat;
-      // PS-366: below-trigger override — the trigger tests the actual
-      // selected/purchased cost (labelCost), never the marked-up amount.
-      const triggerBelow = toNum(cfg.shippingRateOverrideTriggerBelow);
-      const { cShippingRate } = resolveCustomerShippingRate({
-        selectedCost: labelCost,
-        markedUpCost: shipCost,
-        triggerBelow,
+      const { cShippingRate } = computeCustomerShippingRate({
+        houseCost: labelCost,
+        refUspsRate: toNum(s.refUspsRate),
+        refUpsRate: toNum(s.refUpsRate),
+        billingMode: cfg.billingMode,
+        carrierCode: s.carrierCode,
+        markupPct: toNum(cfg.shippingMarkupPct),
+        markupFlat: toNum(cfg.shippingMarkupFlat),
+        overrideTriggerBelow: toNum(cfg.shippingRateOverrideTriggerBelow),
         overrideAmount: toNum(cfg.shippingRateOverrideAmount),
+        active: cfg.active,
       });
-      rows.push({
-        clientId,
-        orderId: s.orderId,
-        orderNumber: s.orderNumber,
-        shipmentId: s.id,
-        shipDate: s.shipDate,
-        lineType: 'shipping',
-        // CP-036: policy-free description — no internal markup / override /
-        // below-trigger wording may appear in a billing description (pinned by
-        // scripts/billing-description-policy-free-guard.mjs). shipmentId keeps it
-        // unique per label so multiple shipments on one order can't collide on
-        // the (order_id, line_type, description) unique key — mirrors the return
-        // lines below.
-        description: `Order ${s.orderNumber ?? s.orderId} · shipping · shipment #${s.id}`,
-        qty: '1',
-        unitCost: cShippingRate.toFixed(2),
-        totalCost: cShippingRate.toFixed(2),
-      });
+      if (cShippingRate !== null) {
+        rows.push({
+          clientId,
+          orderId: s.orderId,
+          orderNumber: s.orderNumber,
+          shipmentId: s.id,
+          shipDate: s.shipDate,
+          lineType: 'shipping',
+          // CP-036: policy-free description — no internal markup / override /
+          // below-trigger wording may appear in a billing description (pinned by
+          // scripts/billing-description-policy-free-guard.mjs). shipmentId keeps it
+          // unique per label so multiple shipments on one order can't collide on
+          // the (order_id, line_type, description) unique key — mirrors the return
+          // lines below.
+          description: `Order ${s.orderNumber ?? s.orderId} · shipping · shipment #${s.id}`,
+          qty: '1',
+          unitCost: cShippingRate.toFixed(2),
+          totalCost: cShippingRate.toFixed(2),
+        });
+      }
     }
 
     // ─── Package cost (gap B2) ──────────────────────────────────────────────

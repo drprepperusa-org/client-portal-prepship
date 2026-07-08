@@ -63,6 +63,7 @@
     "test:client-portal-billing-item-identity": "tsx scripts/client-portal-billing-item-identity-guard.ts",
     "test:client-portal-billing-shipment-modal": "tsx scripts/client-portal-billing-shipment-modal-guard.ts",
     "test:billing-shipping-override": "tsx scripts/billing-shipping-override-guard.ts",
+    "test:cp-041-customer-shipping-rate-parity": "tsx scripts/cp-041-customer-shipping-rate-parity-guard.ts",
     "test:billing-description-policy-free": "node scripts/billing-description-policy-free-guard.mjs",
     "test:client-portal-shipping-resource": "node scripts/client-portal-shipping-resource-guard.mjs",
     "test:client-portal-bundle-redaction": "node scripts/client-portal-bundle-redaction-guard.mjs",

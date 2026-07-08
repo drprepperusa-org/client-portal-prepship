@@ -1,6 +1,6 @@
-// Billing summary + invoice-detail read models — extracted verbatim from
-// services/billing.ts (C4 decomposition). generateLineItems and the PS-366
-// shipping override resolver stay in billing.ts.
+// Billing summary + invoice-detail read models - extracted from
+// services/billing.ts (C4 decomposition). Billing writes stay in billing.ts;
+// outbound customer shipping-rate math lives in customer-shipping-rate.ts.
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { billingLineItems } from '../db/schema/billing';

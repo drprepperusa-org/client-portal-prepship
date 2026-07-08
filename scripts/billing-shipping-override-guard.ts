@@ -18,7 +18,7 @@ function check(condition: boolean, message: string) {
   }
 }
 
-const { resolveCustomerShippingRate } = await import('../src/services/billing');
+const { resolveCustomerShippingRate } = await import('../src/services/customer-shipping-rate');
 
 const HUGRAB = { triggerBelow: 6.0, overrideAmount: 7.73 };
 const at = (selected: number, markedUp = selected, cfg = HUGRAB) =>
@@ -63,8 +63,8 @@ function read(rel: string) {
 }
 const billing = read('src/services/billing.ts');
 check(
-  billing.includes('resolveCustomerShippingRate({') && billing.includes('selectedCost: labelCost'),
-  'generateLineItems shipping line resolves C. Shipping Rate from the selected/purchased cost',
+  billing.includes('computeCustomerShippingRate({') && billing.includes('houseCost: labelCost'),
+  'generateLineItems shipping line resolves C. Shipping Rate from the shared selected/purchased-cost owner',
 );
 check(
   billing.includes('unitCost: cShippingRate.toFixed(2)') && billing.includes('totalCost: cShippingRate.toFixed(2)'),

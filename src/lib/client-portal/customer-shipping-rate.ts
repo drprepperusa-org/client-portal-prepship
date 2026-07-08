@@ -11,11 +11,15 @@ function positiveNumericText(value: SQL | unknown): SQL {
 }
 
 /**
- * Backend-owned live projection of C. Shipping Rate for not-yet-billed
- * shipments. Inputs match src/services/billing.ts generateLineItems:
- * house cost = shipments.cost (fallback label_cost) + other_cost; reference
- * mode may raise the base to the best configured ref rate; then client markup
- * and the below-trigger customer-rate override are applied.
+ * SQL mirror of computeCustomerShippingRate in
+ * src/services/customer-shipping-rate.ts for not-yet-billed shipments.
+ *
+ * Source/clock/formula/owner: the TS owner is the authoritative outbound
+ * Customer Shipping Rate formula used by billing writes. This SQL exists only
+ * because Client Portal read-models need the same formula inside set-based
+ * queries: house cost = shipments.cost (fallback label_cost) + other_cost;
+ * reference mode may raise the base to the best configured ref rate; then
+ * client markup and the below-trigger customer-rate override are applied.
  */
 export function projectedCustomerShippingRateSql(): SQL<string | null> {
   const houseCost = sql`(
