@@ -106,6 +106,7 @@
     "test:guards:list": "node scripts/run-guards.mjs --list",
     "test:client-portal-integration": "tsx scripts/integration/client-portal.integration.ts",
     "test:client-portal-integration:setup": "tsx scripts/integration/setup.ts",
+    "test:shopify-connect-integration": "tsx scripts/integration/shopify-connect.integration.ts",
     "test:client-portal-effective-stock": "tsx scripts/client-portal-effective-stock-guard.ts",
     "test:client-portal-inventory-status": "tsx scripts/client-portal-inventory-status-guard.ts",
     "test:client-portal-weight-redaction": "tsx scripts/client-portal-weight-redaction-guard.ts",

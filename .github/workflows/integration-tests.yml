@@ -42,3 +42,5 @@ jobs:
         run: npm run test:client-portal-integration:setup
       - name: Run client-portal integration suite
         run: npm run test:client-portal-integration
+      - name: Run shopify connect integration suite
+        run: npm run test:shopify-connect-integration
