@@ -14,7 +14,14 @@ export type TrackingSignal = OfficialTrackingSnapshot & {
 };
 
 const USPS_TOKEN_SKEW_MS = 60_000;
+const CARRIER_REQUEST_TIMEOUT_MS = 10_000;
 let uspsTokenCache: { token: string; expiresAt: number } | null = null;
+
+export function officialCarrierTrackingReadiness(): { uspsConfigured: boolean } {
+  return {
+    uspsConfigured: Boolean(env.USPS_TRACKING_CLIENT_ID && env.USPS_TRACKING_CLIENT_SECRET),
+  };
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
@@ -119,19 +126,19 @@ export function chooseTrackingSignal(args: {
   previousStatus: string | null;
 }): TrackingSignal | null {
   if (args.previousStatus === 'delivered') return null;
-  if (args.official?.trackingStatus === 'delivered') {
+  if (args.official) {
     return { ...args.official, source: 'carrier' };
   }
   if (args.shipStationStatus) {
     return {
-      carrier: args.official?.carrier ?? 'usps',
+      carrier: 'usps',
       source: 'shipstation',
       trackingStatus: args.shipStationStatus,
       trackingStatusDetail: null,
       deliveredAt: null,
     };
   }
-  return args.official ? { ...args.official, source: 'carrier' } : null;
+  return null;
 }
 
 async function uspsAccessToken(): Promise<string | null> {
@@ -142,16 +149,18 @@ async function uspsAccessToken(): Promise<string | null> {
   if (uspsTokenCache && uspsTokenCache.expiresAt - USPS_TOKEN_SKEW_MS > now) return uspsTokenCache.token;
 
   const base = env.USPS_TRACKING_BASE_URL.replace(/\/+$/, '');
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: clientId,
-    client_secret: clientSecret,
-    scope: 'tracking',
-  });
   const res = await fetch(`${base}/oauth2/v3/token`, {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body,
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+    signal: AbortSignal.timeout(CARRIER_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`USPS OAuth failed (${res.status})`);
@@ -175,6 +184,7 @@ async function lookupUspsTracking(trackingNumber: string): Promise<OfficialTrack
       accept: 'application/json',
       authorization: `Bearer ${token}`,
     },
+    signal: AbortSignal.timeout(CARRIER_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`USPS tracking failed (${res.status})`);
   return normalizeOfficialTrackingSnapshot('usps', await res.json());

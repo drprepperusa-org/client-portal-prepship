@@ -941,15 +941,16 @@ Guard: `client-portal-order-detail-guard.ts`.
 | --- | --- | --- | --- | --- | --- |
 | Tracking # | `trackingNumber` | `trackingNumber` | `shipments.tracking_number` | label time | presentation-only |
 | Ship date | `shipDate` | `shipDate` | `shipments.ship_date`/`label_ship_date`/`create_date` | ship date | presentation-only |
-| Delivery status | `trackingStatus` | `trackingStatus` | `shipments.tracking_status` (live) | tracking event | presentation-only |
-| Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at` | delivery event | presentation-only |
+| Delivery status | `trackingStatus` | `trackingStatus` | `shipments.tracking_status`, reconciled from official carrier tracking first and ShipStation label status as fallback | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042) |
+| Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
 | Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → live projection from `shipments.cost`/`label_cost` + `other_cost`, `billing_config` markup/override, and `order_overrides` ref rates via `customer-shipping-rate.ts` | billing / label time | derived-from-canonical (backend-owned, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
 
 Owner: `toPortalShipmentDto` over `shipments`. Route:
 `src/routes/client-portal/shipments.ts` + read-model
-`read-models/shipments.ts`. Guards: `client-portal-shipments-status-guard.ts`,
+`read-models/shipments.ts`. Tracking writer: `shipment-tracking.ts`; the Client
+Portal only renders its persisted result. Guards: `client-portal-shipments-status-guard.ts`,
 `client-portal-shipments-item-identity-guard.ts`.
 
 ### Inventory

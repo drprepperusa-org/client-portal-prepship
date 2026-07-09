@@ -3,14 +3,18 @@ import { db } from '../db/client';
 import { shipments } from '../db/schema/shipments';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
 import { ssListLabelTracking } from '../lib/shipstation/tracking';
-import { chooseTrackingSignal, lookupOfficialCarrierTracking } from './carrier-tracking';
+import {
+  chooseTrackingSignal,
+  lookupOfficialCarrierTracking,
+  officialCarrierTrackingReadiness,
+} from './carrier-tracking';
 
 /**
- * On-demand live tracking refresh. Read-only against ShipStation — bulk-reads
- * label tracking_status from /v2/labels (the per-shipment /v2/tracking
- * endpoint is plan-gated on this account) and persists the snapshot on
- * shipments (tracking_status / tracking_status_detail / tracking_checked_at /
- * delivered_at). Never creates labels, buys postage, or notifies anyone.
+ * On-demand live tracking refresh. It reads official carrier tracking first,
+ * then bulk-reads ShipStation label tracking_status from /v2/labels as the
+ * fallback (the per-shipment /v2/tracking endpoint is plan-gated on this
+ * account). It persists the snapshot on shipments and never creates labels,
+ * buys postage, or notifies anyone.
  *
  * Delivered is terminal: once a shipment is marked delivered it is never
  * polled again. Non-terminal shipments are re-checked at most once per
@@ -19,6 +23,22 @@ import { chooseTrackingSignal, lookupOfficialCarrierTracking } from './carrier-t
 
 const REFRESH_STALE_MS = 30 * 60 * 1000;
 const MAX_PER_REFRESH = 500;
+
+export type TrackingRefreshOptions = {
+  forceRefresh?: boolean;
+  logDiagnostics?: boolean;
+};
+
+export function normalizeTrackingNumber(value: string): string {
+  return value.replace(/[\s-]/g, '').toUpperCase();
+}
+
+function maskTrackingNumber(value: string): string {
+  const normalized = normalizeTrackingNumber(value);
+  return normalized.length <= 4
+    ? '*'.repeat(normalized.length)
+    : `${'*'.repeat(normalized.length - 4)}${normalized.slice(-4)}`;
+}
 
 /** ShipStation label tracking_status → our normalized vocabulary. */
 export function normalizeTrackingStatus(status: string | null): string | null {
@@ -42,17 +62,17 @@ const TRACKING_MAP_TTL_MS = 5 * 60 * 1000;
 const TRACKING_WINDOW_DAYS = 60;
 const trackingMapCache = new Map<string, { at: number; map: Promise<Map<string, string>> }>();
 
-function labelTrackingMap(apiKey: string | undefined): Promise<Map<string, string>> {
+function labelTrackingMap(apiKey: string | undefined, forceRefresh = false): Promise<Map<string, string>> {
   const cacheKey = apiKey ?? 'default';
   const now = Date.now();
   const cached = trackingMapCache.get(cacheKey);
-  if (cached && now - cached.at < TRACKING_MAP_TTL_MS) return cached.map;
+  if (!forceRefresh && cached && now - cached.at < TRACKING_MAP_TTL_MS) return cached.map;
   const map = ssListLabelTracking({ apiKey, pages: 5, windowDays: TRACKING_WINDOW_DAYS })
     .then((entries) => {
       const byTracking = new Map<string, string>();
       for (const entry of entries) {
         const status = normalizeTrackingStatus(entry.trackingStatus);
-        if (status) byTracking.set(entry.trackingNumber, status);
+        if (status) byTracking.set(normalizeTrackingNumber(entry.trackingNumber), status);
       }
       return byTracking;
     })
@@ -104,11 +124,17 @@ async function advanceReturnsFromTracking(shipmentIds: number[]): Promise<void> 
   }
 }
 
-export async function refreshShipmentTracking(shipmentIds: number[]): Promise<TrackingRefreshResult> {
+export async function refreshShipmentTracking(
+  shipmentIds: number[],
+  options: TrackingRefreshOptions = {},
+): Promise<TrackingRefreshResult> {
   const ids = [...new Set(shipmentIds)].filter((id) => Number.isFinite(id) && id > 0).slice(0, MAX_PER_REFRESH);
   if (!ids.length) return { checked: 0, updated: [] };
 
   const staleBefore = new Date(Date.now() - REFRESH_STALE_MS);
+  const freshnessPredicate = options.forceRefresh
+    ? sql`true`
+    : or(isNull(shipments.trackingCheckedAt), lt(shipments.trackingCheckedAt, staleBefore));
   const candidates = await db
     .select({
       id: shipments.id,
@@ -126,7 +152,7 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
         inArray(shipments.id, ids),
         eq(shipments.voided, false),
         sql`coalesce(${shipments.trackingStatus}, '') <> 'delivered'`,
-        or(isNull(shipments.trackingCheckedAt), lt(shipments.trackingCheckedAt, staleBefore)),
+        freshnessPredicate,
       ),
     );
 
@@ -137,6 +163,7 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
   if (!trackable.length) return { checked: 0, updated: [] };
 
   const credsCache = new Map<number | null, Promise<{ apiKeyV2: string | null }>>();
+  const requestTrackingMaps = new Map<string, Promise<Map<string, string>>>();
   const credsFor = (clientId: number | null) => {
     let p = credsCache.get(clientId);
     if (!p) {
@@ -145,23 +172,23 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
     }
     return p;
   };
+  const trackingMapFor = (apiKey: string | null) => {
+    const key = apiKey ?? 'default';
+    let map = requestTrackingMaps.get(key);
+    if (!map) {
+      map = labelTrackingMap(apiKey ?? undefined, options.forceRefresh);
+      requestTrackingMaps.set(key, map);
+    }
+    return map;
+  };
 
   const updated: TrackingRefreshResult['updated'] = [];
   const now = new Date();
   for (const row of trackable) {
     const trackingNumber = (row.trackingNumber ?? row.labelTracking)!;
+    const trackingKey = normalizeTrackingNumber(trackingNumber);
     let shipStationStatus: string | null = null;
     let officialStatus = null;
-    try {
-      const creds = await credsFor(row.clientId);
-      const map = await labelTrackingMap(creds.apiKeyV2 ?? undefined);
-      shipStationStatus = map.get(trackingNumber) ?? null;
-    } catch (err) {
-      console.warn('[shipment-tracking] label map fetch failed', {
-        shipmentId: row.id,
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
     try {
       officialStatus = await lookupOfficialCarrierTracking({
         carrierCode: row.labelCarrier ?? row.carrierCode,
@@ -173,12 +200,37 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
         message: err instanceof Error ? err.message : String(err),
       });
     }
+    if (!officialStatus) {
+      try {
+        const creds = await credsFor(row.clientId);
+        const map = await trackingMapFor(creds.apiKeyV2);
+        shipStationStatus = map.get(trackingKey) ?? null;
+      } catch (err) {
+        console.warn('[shipment-tracking] label map fetch failed', {
+          shipmentId: row.id,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     const signal = chooseTrackingSignal({
       official: officialStatus,
       shipStationStatus,
       previousStatus: row.trackingStatus,
     });
     const status = signal?.trackingStatus ?? null;
+    if (options.logDiagnostics) {
+      console.info('[shipment-tracking] reconciliation', {
+        shipmentId: row.id,
+        clientId: row.clientId,
+        tracking: maskTrackingNumber(trackingNumber),
+        previousStatus: row.trackingStatus,
+        shipStationStatus,
+        officialStatus: officialStatus?.trackingStatus ?? null,
+        chosenSource: signal?.source ?? null,
+        chosenStatus: status,
+        changed: Boolean(status && status !== row.trackingStatus),
+      });
+    }
     if (!status || status === row.trackingStatus) {
       // No signal, or unchanged — record the check so we back off.
       await db.update(shipments).set({ trackingCheckedAt: now }).where(eq(shipments.id, row.id));
@@ -212,7 +264,7 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
 // batch of 500 costs a handful of ShipStation list calls (TTL-cached).
 
 const SWEEP_INTERVAL_MS = 3 * 60 * 1000;
-const SWEEP_RECHECK_MS = 6 * 60 * 60 * 1000;
+const SWEEP_RECHECK_MS = 60 * 60 * 1000;
 const SWEEP_WINDOW_DAYS = 60;
 const SWEEP_BATCH = 500;
 
@@ -260,7 +312,10 @@ async function runSweepOnce(): Promise<void> {
 
 export function startShipmentTrackingSweep(): void {
   if (sweepTimer) return;
-  console.log('[worker] starting shipment tracking sweep (every 3m, batch 500)');
+  const readiness = officialCarrierTrackingReadiness();
+  console.log('[worker] starting shipment tracking sweep (every 3m, recheck 1h, batch 500)', {
+    uspsOfficialTracking: readiness.uspsConfigured ? 'enabled' : 'not_configured_shipstation_fallback',
+  });
   sweepTimer = setInterval(() => void runSweepOnce(), SWEEP_INTERVAL_MS);
   void runSweepOnce();
 }

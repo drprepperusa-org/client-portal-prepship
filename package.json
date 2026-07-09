@@ -32,6 +32,7 @@
     "guard:source-line-length": "node scripts/actionable-source-line-length-guard.mjs",
     "watchdog:production": "node scripts/production-watchdog.mjs",
     "diagnose:production-timing": "tsx scripts/capture-production-timing.ts",
+    "diagnose:shipment-tracking": "tsx scripts/diagnose-shipment-tracking.ts",
     "test:web-bundle-budget": "npm run build:web && node scripts/web-bundle-budget-guard.mjs",
     "test:tailwind-safelist": "node scripts/tailwind-safelist-guard.mjs",    "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
