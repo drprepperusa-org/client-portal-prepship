@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { shipments } from '../db/schema/shipments';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
 import { ssListLabelTracking } from '../lib/shipstation/tracking';
+import { chooseTrackingSignal, lookupOfficialCarrierTracking } from './carrier-tracking';
 
 /**
  * On-demand live tracking refresh. Read-only against ShipStation — bulk-reads
@@ -114,6 +115,8 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
       clientId: shipments.clientId,
       trackingNumber: shipments.trackingNumber,
       labelTracking: shipments.labelTracking,
+      carrierCode: shipments.carrierCode,
+      labelCarrier: shipments.labelCarrier,
       source: shipments.source,
       trackingStatus: shipments.trackingStatus,
     })
@@ -147,28 +150,46 @@ export async function refreshShipmentTracking(shipmentIds: number[]): Promise<Tr
   const now = new Date();
   for (const row of trackable) {
     const trackingNumber = (row.trackingNumber ?? row.labelTracking)!;
-    let status: string | null = null;
+    let shipStationStatus: string | null = null;
+    let officialStatus = null;
     try {
       const creds = await credsFor(row.clientId);
       const map = await labelTrackingMap(creds.apiKeyV2 ?? undefined);
-      status = map.get(trackingNumber) ?? null;
+      shipStationStatus = map.get(trackingNumber) ?? null;
     } catch (err) {
       console.warn('[shipment-tracking] label map fetch failed', {
         shipmentId: row.id,
         message: err instanceof Error ? err.message : String(err),
       });
-      continue;
     }
+    try {
+      officialStatus = await lookupOfficialCarrierTracking({
+        carrierCode: row.labelCarrier ?? row.carrierCode,
+        trackingNumber,
+      });
+    } catch (err) {
+      console.warn('[shipment-tracking] official carrier tracking fetch failed', {
+        shipmentId: row.id,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const signal = chooseTrackingSignal({
+      official: officialStatus,
+      shipStationStatus,
+      previousStatus: row.trackingStatus,
+    });
+    const status = signal?.trackingStatus ?? null;
     if (!status || status === row.trackingStatus) {
       // No signal, or unchanged — record the check so we back off.
       await db.update(shipments).set({ trackingCheckedAt: now }).where(eq(shipments.id, row.id));
       continue;
     }
-    const deliveredAt = status === 'delivered' ? now : null;
+    const deliveredAt = status === 'delivered' ? signal?.deliveredAt ?? now : null;
     await db
       .update(shipments)
       .set({
         trackingStatus: status,
+        trackingStatusDetail: signal?.trackingStatusDetail ?? null,
         trackingCheckedAt: now,
         ...(deliveredAt ? { deliveredAt } : {}),
         updatedAt: now,

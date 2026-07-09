@@ -78,6 +78,11 @@ const schema = z.object({
   SHIPSTATION_API_KEY: z.string().optional(),
   SHIPSTATION_API_SECRET: z.string().optional(),
   SHIPSTATION_API_KEY_V2: z.string().optional(),
+  // CP-042 — optional official USPS tracking API credentials. When unset, the
+  // backend keeps using ShipStation label tracking as the fallback source.
+  USPS_TRACKING_CLIENT_ID: z.string().optional(),
+  USPS_TRACKING_CLIENT_SECRET: z.string().optional(),
+  USPS_TRACKING_BASE_URL: z.string().url().default('https://apis.usps.com'),
   SHIP_FROM_NAME: z.string().optional(),
   SHIP_FROM_COMPANY: z.string().optional(),
   SHIP_FROM_STREET1: z.string().optional(),

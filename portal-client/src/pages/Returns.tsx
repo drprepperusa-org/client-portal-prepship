@@ -34,6 +34,7 @@ function clientAccent(name: string | null): Accent {
 const STATUS_META: Record<string, { label: string; accent: Accent }> = {
   requested: { label: 'Requested', accent: 'amber' },
   label_created: { label: 'Label created', accent: 'sky' },
+  label_failed: { label: 'Label needs attention', accent: 'rose' },
   in_transit: { label: 'In transit', accent: 'indigo' },
   received: { label: 'Received', accent: 'teal' },
   inspected: { label: 'Inspected', accent: 'violet' },
@@ -47,6 +48,7 @@ function statusMeta(status: string) {
 const STATUS_OPTIONS = [
   'requested',
   'label_created',
+  'label_failed',
   'in_transit',
   'received',
   'inspected',
@@ -299,6 +301,7 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
   const q = useReturnDetail(id);
   const d = q.data?.data;
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const labelFailed = d?.status === 'label_failed';
 
   // The return label PDF is served by the existing /labels/... route the return
   // shipment's labelUrl points at. Resolve it to an absolute URL for download.
@@ -398,15 +401,17 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
           )}
 
           {!pdfHref && (
-            <div className="space-y-3 rounded-glass-sm bg-amber-50/80 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+            <div className={`space-y-3 rounded-glass-sm p-3 text-sm ring-1 ${labelFailed ? 'bg-rose-50/80 text-rose-800 ring-rose-200' : 'bg-amber-50/80 text-amber-800 ring-amber-200'}`}>
               <div>
-                <p className="font-semibold">Return label PDF is not ready yet.</p>
-                <p className="mt-1 text-xs text-amber-700">
-                  PrepShip has the return request, but no label PDF has been created.
+                <p className="font-semibold">{labelFailed ? 'Label needs attention.' : 'Return label PDF is not ready yet.'}</p>
+                <p className={`mt-1 text-xs ${labelFailed ? 'text-rose-700' : 'text-amber-700'}`}>
+                  {labelFailed
+                    ? 'PrepShip could not create the label yet. Retry after the address, package, or return-label account is corrected.'
+                    : 'PrepShip has the return request, but no label PDF has been created.'}
                 </p>
               </div>
               <Button leadingIcon={<PackageCheck size={16} />} onClick={createLabel} disabled={creatingLabel || !accessToken}>
-                {creatingLabel ? 'Creating label...' : 'Create return label'}
+                {creatingLabel ? 'Creating label...' : labelFailed ? 'Retry return label' : 'Create return label'}
               </Button>
             </div>
           )}

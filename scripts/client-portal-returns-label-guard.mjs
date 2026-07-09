@@ -31,6 +31,8 @@ function assert(cond, msg) {
 
 const service = read('src/services/returns.ts');
 const envFile = read('src/lib/env.ts');
+const returnsRoute = read('src/routes/client-portal/returns.ts');
+const returnsPage = read('portal-client/src/pages/Returns.tsx');
 const pkg = JSON.parse(read('package.json'));
 
 assert(service.length > 0, 'src/services/returns.ts exists');
@@ -103,6 +105,39 @@ assert(
 assert(
   /getRates\s*\(/.test(service),
   'the fallback path rate-shops via getRates',
+);
+assert(
+  /getRates\s*\(\s*rateInput\s*,\s*\{\s*forceRefresh:\s*true\s*\}\s*\)/.test(service),
+  'live return-label purchase bypasses stale empty-rate cache with getRates(rateInput, { forceRefresh: true })',
+);
+assert(
+  /resolveReturnRatePolicy/.test(service) && /returnLabelRatePolicy/.test(service),
+  'the return-label service resolves an explicit backend return-rate policy/account source',
+);
+assert(
+  /markReturnLabelFailed/.test(service) && /label_failed/.test(service),
+  'no-rate/all-blocked live failures mark the return workflow as label_failed',
+);
+assert(
+  /deliveryError/.test(service) && /returnLabelFailureMessage/.test(service),
+  'label failure persists a client-safe deliveryError summary',
+);
+for (const field of ['returnId', 'orderId', 'clientId', 'storeId', 'weightOz', 'hasDims', 'fromZip', 'toZip', 'rawRateCount', 'eligibleRateCount', 'blockedRateCount']) {
+  assert(new RegExp(field).test(service), `safe return-label diagnostics include ${field}`);
+}
+assert(
+  /carrierDiagnostics/.test(service) && /sanitizeCarrierDiagnostics/.test(service),
+  'carrier diagnostics are sanitized before logging or audit/error details',
+);
+assert(
+  /label_failed/.test(returnsRoute) && /RETURN_STATUS_FILTERS/.test(returnsRoute),
+  'returns API whitelist includes the recoverable label_failed workflow state',
+);
+assert(
+  /label_failed/.test(returnsPage) &&
+    /Label needs attention/.test(returnsPage) &&
+    /PrepShip could not create the label yet/.test(returnsPage),
+  'Returns UI renders the recoverable label_failed state with client-safe copy',
 );
 
 // ── 4. Canonical persistence ──

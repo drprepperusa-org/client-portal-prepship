@@ -41,7 +41,7 @@ export const returns = pgTable(
     // Nullable until the return label is created (the label lives on shipments).
     returnShipmentId: integer().references(() => shipments.id, { onDelete: 'set null' }),
     returnToLocationId: integer().references(() => locations.id),
-    // requested | label_created | in_transit | received | inspected | closed | cancelled
+    // requested | label_created | label_failed | in_transit | received | inspected | closed | cancelled
     status: text().default('requested').notNull(),
     // 'client' or 'three_pl' — who started the return.
     initiatedBy: text().notNull(),

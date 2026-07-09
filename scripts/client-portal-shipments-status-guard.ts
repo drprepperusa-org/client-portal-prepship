@@ -23,18 +23,44 @@ function read(rel: string) {
 
 // 1) Backend normalization: provider label statuses -> portal vocabulary.
 const { normalizeTrackingStatus } = await import('../src/services/shipment-tracking');
+const { normalizeOfficialTrackingSnapshot, chooseTrackingSignal } = await import('../src/services/carrier-tracking');
 check(normalizeTrackingStatus('delivered') === 'delivered', 'normalize: delivered -> delivered');
 check(normalizeTrackingStatus('DELIVERED') === 'delivered', 'normalize: case-insensitive');
 check(normalizeTrackingStatus('in_transit') === 'in_transit', 'normalize: in_transit -> in_transit');
 check(normalizeTrackingStatus('error') === 'exception', 'normalize: error -> exception');
 check(normalizeTrackingStatus('unknown') === null, 'normalize: unknown carries no signal (keeps derived label)');
 check(normalizeTrackingStatus(null) === null, 'normalize: null-safe');
+const uspsDelivered = normalizeOfficialTrackingSnapshot('usps', {
+  statusCategory: 'Delivered',
+  status: 'Delivered, Front Door/Porch',
+  trackingEvents: [{ eventType: 'Delivered', eventTimestamp: '2026-07-03T12:20:00-07:00' }],
+});
+check(uspsDelivered?.trackingStatus === 'delivered', 'CP-042: official USPS delivered normalizes to delivered');
+check(
+  uspsDelivered?.trackingStatusDetail === 'Delivered, Front Door/Porch',
+  'CP-042: official USPS wording is retained as a safe tracking detail',
+);
+check(
+  uspsDelivered?.deliveredAt?.toISOString() === '2026-07-03T19:20:00.000Z',
+  'CP-042: official USPS delivered event time is preserved',
+);
+const chosenSignal = chooseTrackingSignal({
+  official: uspsDelivered,
+  shipStationStatus: 'in_transit',
+  previousStatus: 'in_transit',
+});
+check(
+  chosenSignal?.source === 'carrier' && chosenSignal.trackingStatus === 'delivered',
+  'CP-042: official carrier delivered wins over stale ShipStation in_transit',
+);
 
 // 2) The service treats delivered as terminal and backs off between checks.
 const trackingService = read('src/services/shipment-tracking.ts');
 check(
-  trackingService.includes("<> 'delivered'") && trackingService.includes('trackingCheckedAt'),
-  'refresh/sweep skip delivered rows (terminal) and record checked-at for backoff',
+  trackingService.includes("<> 'delivered'") &&
+    trackingService.includes('trackingCheckedAt') &&
+    trackingService.includes('lookupOfficialCarrierTracking'),
+  'refresh/sweep skip delivered rows, record checked-at, and consult official carrier tracking before falling back',
 );
 
 // 3) Worker owns the periodic refresh (no browser-driven carrier calls).

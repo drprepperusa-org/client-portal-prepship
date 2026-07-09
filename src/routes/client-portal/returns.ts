@@ -34,7 +34,7 @@ import {
   type Return,
   type ReturnItem,
 } from '../../db/schema/returns';
-import { createReturnLabel, resolveReturnCustomerPrice } from '../../services/returns';
+import { createReturnLabel, resolveReturnCustomerPrice, ReturnLabelRateUnavailableError } from '../../services/returns';
 import { deliverReturn } from '../../services/return-delivery';
 import { trackingUrlForCarrier } from '../../lib/tracking-url';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
@@ -57,6 +57,7 @@ const app = new Hono();
 const RETURN_STATUS_FILTERS = new Set([
   'requested',
   'label_created',
+  'label_failed',
   'in_transit',
   'received',
   'inspected',
@@ -594,7 +595,8 @@ app.post('/returns/:id{[0-9]+}/label', async (c) => {
     // The CP-027 service throws with a details.returnShipmentId when an active
     // return already exists — surface a clean 409.
     const isDuplicate = /active return already exists/i.test(message);
-    return c.json({ error: message }, isDuplicate ? 409 : 500);
+    const isRateUnavailable = err instanceof ReturnLabelRateUnavailableError;
+    return c.json({ error: message }, isDuplicate ? 409 : isRateUnavailable ? 422 : 500);
   }
 });
 

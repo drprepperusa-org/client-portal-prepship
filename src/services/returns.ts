@@ -7,7 +7,7 @@ import { clients } from '../db/schema/clients';
 import { returns } from '../db/schema/returns';
 import { locations } from '../db/schema/locations';
 import { getDefaultLocation } from './locations';
-import { getRates, isBlockedRate, type RateInput } from './rates';
+import { getRates, isBlockedRate, type CarrierRateDiagnostic, type RateInput } from './rates';
 import { carrierConnectors } from '../connectors/registry';
 import {
   extractShipstationLabelUrl,
@@ -70,6 +70,45 @@ export type ClientSafeReturnResult = {
 
 type OutboundShipment = typeof shipments.$inferSelect;
 type OrderRow = typeof orders.$inferSelect;
+type ReturnRatePolicy = {
+  clientId: number | null;
+  storeId: number | null;
+  returnLabelRatePolicy: 'client_explicit_return_context' | 'prepship_default_return_context';
+};
+
+type SafeCarrierDiagnostic = {
+  carrierCode?: string;
+  status: string;
+  rateCount: number;
+  error?: string;
+};
+
+type ReturnLabelFailureDiagnostics = {
+  returnId: number | null;
+  orderId: number;
+  clientId: number | null;
+  storeId: number | null;
+  weightOz: number;
+  hasDims: boolean;
+  fromZip: string;
+  toZip: string;
+  rawRateCount: number;
+  eligibleRateCount: number;
+  blockedRateCount: number;
+  failureKind: 'no_rates' | 'all_rates_blocked';
+  carrierDiagnostics: SafeCarrierDiagnostic[];
+  returnLabelRatePolicy: ReturnRatePolicy['returnLabelRatePolicy'];
+};
+
+export class ReturnLabelRateUnavailableError extends Error {
+  constructor(
+    message: string,
+    readonly diagnostics: ReturnLabelFailureDiagnostics,
+  ) {
+    super(message);
+    this.name = 'ReturnLabelRateUnavailableError';
+  }
+}
 
 function orderShipToFromRaw(order: {
   raw: Record<string, unknown>;
@@ -265,6 +304,73 @@ function toClientSafeResult(args: {
   };
 }
 
+function resolveReturnRatePolicy(args: { clientId: number | null; storeId: number | null }): ReturnRatePolicy {
+  return {
+    clientId: args.clientId,
+    storeId: args.storeId,
+    returnLabelRatePolicy: args.clientId == null ? 'prepship_default_return_context' : 'client_explicit_return_context',
+  };
+}
+
+function sanitizeCarrierDiagnostics(diagnostics: CarrierRateDiagnostic[]): SafeCarrierDiagnostic[] {
+  return diagnostics.map((d) => ({
+    carrierCode: d.carrierCode,
+    status: d.status,
+    rateCount: Number.isFinite(d.rateCount) ? d.rateCount : 0,
+    error: d.error,
+  }));
+}
+
+function returnLabelFailureMessage(kind: ReturnLabelFailureDiagnostics['failureKind']): string {
+  return kind === 'all_rates_blocked'
+    ? 'No eligible return rate available for this shipment'
+    : 'No return rates were returned for this shipment';
+}
+
+async function markReturnLabelFailed(returnId: number | null, message: string): Promise<void> {
+  if (returnId == null) return;
+  try {
+    await db
+      .update(returns)
+      .set({ status: 'label_failed', deliveryError: message, updatedAt: new Date() })
+      .where(eq(returns.id, returnId));
+  } catch (err) {
+    console.warn('[returns] failed to mark return label_failed:', err);
+  }
+}
+
+function buildReturnLabelDiagnostics(args: {
+  returnId: number | null;
+  orderId: number;
+  clientId: number | null;
+  storeId: number | null;
+  weightOz: number;
+  outbound: OutboundShipment;
+  shipFrom: ShipstationAddressInput;
+  shipTo: ShipstationAddressInput;
+  rawRateCount: number;
+  eligibleRateCount: number;
+  carrierDiagnostics: CarrierRateDiagnostic[];
+  returnLabelRatePolicy: ReturnRatePolicy['returnLabelRatePolicy'];
+}): ReturnLabelFailureDiagnostics {
+  return {
+    returnId: args.returnId,
+    orderId: args.orderId,
+    clientId: args.clientId,
+    storeId: args.storeId,
+    weightOz: args.weightOz,
+    hasDims: Boolean(args.outbound.dimsL && args.outbound.dimsW && args.outbound.dimsH),
+    fromZip: args.shipFrom.postalCode ?? '',
+    toZip: args.shipTo.postalCode ?? '',
+    rawRateCount: args.rawRateCount,
+    eligibleRateCount: args.eligibleRateCount,
+    blockedRateCount: Math.max(0, args.rawRateCount - args.eligibleRateCount),
+    failureKind: args.rawRateCount > 0 ? 'all_rates_blocked' : 'no_rates',
+    carrierDiagnostics: sanitizeCarrierDiagnostics(args.carrierDiagnostics),
+    returnLabelRatePolicy: args.returnLabelRatePolicy,
+  };
+}
+
 /**
  * Persist the canonical return shipment row (shipments is the SOT for return
  * label/tracking/cost). Mirrors persistCreatedLabel's field set. Best-effort
@@ -347,7 +453,7 @@ async function markReturnLabelCreated(returnId: number, returnShipmentId: number
   try {
     await db
       .update(returns)
-      .set({ status: 'label_created', returnShipmentId, updatedAt: new Date() })
+      .set({ status: 'label_created', returnShipmentId, deliveryError: null, updatedAt: new Date() })
       .where(eq(returns.id, returnId));
   } catch (err) {
     console.warn('[returns] failed to update returns workflow row:', err);
@@ -464,6 +570,7 @@ export async function createReturnLabel(
   // this single path — never the owner of the workflow, price choice, customer
   // delivery, or billing truth.
   const weightOz = outbound.weightOz ?? order.weightOz ?? 1;
+  const returnRatePolicy = resolveReturnRatePolicy({ clientId, storeId: order.storeId ?? null });
   const rateInput: RateInput = {
     weightOz,
     // ship_from = customer; to* = return location.
@@ -476,8 +583,8 @@ export async function createReturnLabel(
     dimsL: outbound.dimsL ?? undefined,
     dimsW: outbound.dimsW ?? undefined,
     dimsH: outbound.dimsH ?? undefined,
-    clientId,
-    storeId: order.storeId ?? null,
+    clientId: returnRatePolicy.clientId,
+    storeId: returnRatePolicy.storeId,
     shipFrom: {
       name: shipFrom.name ?? undefined,
       company_name: shipFrom.company ?? undefined,
@@ -498,15 +605,35 @@ export async function createReturnLabel(
   let chosen: Rate | null = null;
   let rateCost = 0;
   if (liveEligible) {
-    const { rates, bestRate } = await getRates(rateInput);
+    const { rates, bestRate, carrierDiagnostics } = await getRates(rateInput, { forceRefresh: true });
     // Cheapest ELIGIBLE rate: filter blocked rates first, then take best.
     // getRates sorts cheapest-first and returns bestRate; we re-filter with
     // isBlockedRate defensively and re-pick so a blocked cheapest never wins.
-    const eligible = rates.filter((r) => !isBlockedRate(r, order.storeId ?? null));
+    const eligible = rates.filter((r) => !isBlockedRate(r, returnRatePolicy.storeId));
     chosen =
-      (bestRate && !isBlockedRate(bestRate, order.storeId ?? null) ? bestRate : null) ??
+      (bestRate && !isBlockedRate(bestRate, returnRatePolicy.storeId) ? bestRate : null) ??
       eligible[0] ??
       null;
+    if (!chosen) {
+      const diagnostics = buildReturnLabelDiagnostics({
+        returnId: returnRow?.id ?? null,
+        orderId: order.id,
+        clientId,
+        storeId: order.storeId ?? null,
+        weightOz,
+        outbound,
+        shipFrom,
+        shipTo,
+        rawRateCount: rates.length,
+        eligibleRateCount: eligible.length,
+        carrierDiagnostics,
+        returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
+      });
+      const message = returnLabelFailureMessage(diagnostics.failureKind);
+      await markReturnLabelFailed(returnRow?.id ?? null, message);
+      console.warn('[returns] return label rate unavailable', diagnostics);
+      throw new ReturnLabelRateUnavailableError(message, diagnostics);
+    }
     rateCost = chosen
       ? Number(chosen.shipping_amount?.amount ?? 0) +
         Number(chosen.confirmation_amount?.amount ?? 0) +
