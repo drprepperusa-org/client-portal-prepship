@@ -40,6 +40,11 @@ assert(
   route.includes('portal.invoice_summary.denied') && route.includes('billingVisible: false'),
   'invoice-summary still redacts (billingVisible:false) without financial access',
 );
+assert(
+  route.includes('return c.json({ data: [], totals: null, billingVisible: false });') &&
+    !route.includes('billingVisible: false }, 403'),
+  'billing redaction returns an empty read-model payload instead of a load-error status',
+);
 
 // ── Frontend Billing renders backend totals — no row reduction for money ──
 assert(
@@ -49,6 +54,12 @@ assert(
 assert(
   !invoicesFlat.includes('summary.reduce(addBillingTotals') && !invoices.includes('function addBillingTotals'),
   'Billing no longer reduces the per-period rows into a grand total (addBillingTotals removed)',
+);
+assert(
+  invoices.includes('title="No billing available"') &&
+    invoices.includes('Billing is not available for this account yet.') &&
+    !invoices.includes('Financials restricted'),
+  'Billing renders redacted/empty access as "No billing available" instead of a permission error',
 );
 
 // ── API type carries the backend totals ──

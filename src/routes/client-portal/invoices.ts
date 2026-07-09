@@ -32,7 +32,7 @@ app.get('/invoice-details', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) {
     await recordPortalAudit('portal.invoice_details.denied', scope);
-    return c.json({ data: [], billingVisible: false }, 403);
+    return c.json({ data: [], billingVisible: false });
   }
   const range = requireBillingDayRange(c, c.req.query('dateFrom'), c.req.query('dateTo'));
   if (range instanceof Response) return range;
@@ -72,7 +72,7 @@ app.get('/invoice-summary', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) {
     await recordPortalAudit('portal.invoice_summary.denied', scope);
-    return c.json({ data: [], billingVisible: false }, 403);
+    return c.json({ data: [], totals: null, billingVisible: false });
   }
   const range = requireBillingDayRange(c, c.req.query('dateFrom'), c.req.query('dateTo'));
   if (range instanceof Response) return range;

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Lock, ChevronLeft, FileText, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { ChevronLeft, FileText, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { EmptyState, Chip } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
@@ -37,6 +37,12 @@ const moneyRight = 'text-right';
 const actionBtn =
   'focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 ' +
   'transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50';
+
+function errorStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
 /** One row per client per semi-monthly billing period (1st–15th / 16th–EOM). */
 type PeriodSummary = ClientSummary & { periodStart: string; periodEnd: string };
 
@@ -130,7 +136,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const clients = useClients().data?.data ?? [];
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity, clientFilter);
-  const billingVisible = summaryQuery.data?.billingVisible !== false;
+  const billingDenied = summaryQuery.isError && errorStatus(summaryQuery.error) === 403;
+  const billingVisible = summaryQuery.data?.billingVisible !== false && !billingDenied;
   const summary: PeriodSummary[] = useMemo(
     () =>
       (summaryQuery.data?.data ?? []).map((r) => ({
@@ -416,7 +423,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   if (!billingVisible) {
     return (
       <GlassPanel className="p-4 sm:p-5">
-        <EmptyState icon={<Lock size={24} />} title="Financials restricted" message="Your account doesn't have permission to view invoices." />
+        <EmptyState
+          icon={<FileText size={24} />}
+          title="No billing available"
+          message="Billing is not available for this account yet."
+        />
       </GlassPanel>
     );
   }
@@ -475,8 +486,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             error={summaryQuery.error}
             isEmpty={summary.length === 0}
             onRetry={() => summaryQuery.refetch()}
-            emptyTitle="No billing in this range"
-            emptyMessage="Pick a different date range to see billable activity."
+            emptyTitle="No billing available"
+            emptyMessage="There are no billing periods available for this date range."
           >
             <DataTable
               tableId="invoices-summary"
