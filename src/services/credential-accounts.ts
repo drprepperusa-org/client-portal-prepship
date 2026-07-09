@@ -37,7 +37,7 @@ export type CredentialAccountPatchInput = {
   labelGoesNull: boolean;
 };
 
-const SYNTHETIC_STORE_OFFSETS: Record<string, number> = {
+export const SYNTHETIC_STORE_OFFSETS: Record<string, number> = {
   walmart: 9_000_000,
   amazon: 9_100_000,
   shopify: 9_200_000,

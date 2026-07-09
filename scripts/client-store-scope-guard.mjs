@@ -25,6 +25,7 @@ const authSource = read('src/middleware/auth.ts');
 const scopeSource = fs.existsSync(path.join(root, 'src/lib/client-store-scope.ts'))
   ? read('src/lib/client-store-scope.ts')
   : '';
+const portalPredicatesSource = read('src/lib/client-portal/predicates.ts');
 const clientsSource = read('src/routes/clients.ts');
 const initSource = read('src/routes/init.ts');
 
@@ -62,6 +63,20 @@ assert(
     initSource.includes('clients: visibleClients') &&
     initSource.includes('for (const cli of visibleClients'),
   'init-data and stores payloads use scoped clients',
+);
+
+assert(
+  portalPredicatesSource.includes('connectedStoreAccountOrderScopePredicate') &&
+    portalPredicatesSource.includes('from store_accounts scoped_store_account') &&
+    portalPredicatesSource.includes("source_account_id = 'store-account:' || scoped_store_account.id::text") &&
+    portalPredicatesSource.includes('source_account_id = scoped_store_account.id::text') &&
+    portalPredicatesSource.includes('syntheticStoreIdMatchSql'),
+  'client portal order scope includes connected store-account orders, legacy account IDs, and synthetic store IDs',
+);
+assert(
+  portalPredicatesSource.includes('connectedStoreAccountOrderScopePredicate(scope.clientIds)') &&
+    portalPredicatesSource.includes('rawConnectedStoreAccountOrderScopePredicate(scope.clientIds)'),
+  'client portal order and raw order scopes delegate to the connected store-account scope predicate',
 );
 
 if (process.exitCode) {

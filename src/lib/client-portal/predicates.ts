@@ -4,6 +4,7 @@ import { inventory } from '../../db/schema/inventory';
 import { orderItems } from '../../db/schema/order-items';
 import { orders } from '../../db/schema/orders';
 import { shipments } from '../../db/schema/shipments';
+import { SYNTHETIC_STORE_OFFSETS } from '../../services/credential-accounts';
 import type { ClientPortalScope } from './scope';
 
 /**
@@ -14,6 +15,62 @@ import type { ClientPortalScope } from './scope';
 
 export function intArrayLiteral(values: number[]) {
   return sql`array[${sql.join(values.map((id) => sql`${id}`), sql`, `)}]::int[]`;
+}
+
+function syntheticStoreIdMatchSql(orderStoreId: SQL): SQL {
+  const providerMatches = Object.entries(SYNTHETIC_STORE_OFFSETS).map(([provider, offset]) => sql`(
+    scoped_store_account.provider = ${provider}
+    and ${orderStoreId} = ${offset} + scoped_store_account.id
+  )`);
+  const knownProviders = Object.keys(SYNTHETIC_STORE_OFFSETS);
+  const knownProviderArray = sql`array[${sql.join(knownProviders.map((provider) => sql`${provider}`), sql`, `)}]::text[]`;
+  return sql`(
+    ${sql.join(providerMatches, sql` or `)}
+    or (
+      scoped_store_account.provider <> all(${knownProviderArray})
+      and ${orderStoreId} = 9900000 + scoped_store_account.id
+    )
+  )`;
+}
+
+export function connectedStoreAccountOrderScopePredicate(clientIds: number[]): SQL | undefined {
+  if (!clientIds.length) return undefined;
+  const syntheticStoreMatch = syntheticStoreIdMatchSql(sql`${orders.storeId}`);
+  return sql`exists (
+    select 1
+    from store_accounts scoped_store_account
+    where scoped_store_account.client_id = any(${intArrayLiteral(clientIds)})
+      and (
+        (
+          ${orders.sourceProvider} = scoped_store_account.provider
+          and (
+            ${orders.sourceAccountId} = 'store-account:' || scoped_store_account.id::text
+            or ${orders.sourceAccountId} = scoped_store_account.id::text
+          )
+        )
+        or ${syntheticStoreMatch}
+      )
+  )`;
+}
+
+export function rawConnectedStoreAccountOrderScopePredicate(clientIds: number[]): SQL | undefined {
+  if (!clientIds.length) return undefined;
+  const syntheticStoreMatch = syntheticStoreIdMatchSql(sql`o.store_id`);
+  return sql`exists (
+    select 1
+    from store_accounts scoped_store_account
+    where scoped_store_account.client_id = any(${intArrayLiteral(clientIds)})
+      and (
+        (
+          o.source_provider = scoped_store_account.provider
+          and (
+            o.source_account_id = 'store-account:' || scoped_store_account.id::text
+            or o.source_account_id = scoped_store_account.id::text
+          )
+        )
+        or ${syntheticStoreMatch}
+      )
+  )`;
 }
 
 export function clientScopePredicate(scope: ClientPortalScope): SQL | undefined {
@@ -158,7 +215,11 @@ export function orderScopePredicate(
   // Unrestricted (global) callers see everything, narrowed only by `explicit`.
   if (!scope.isRestricted) return explicit;
   const predicates: SQL[] = [];
-  if (scope.clientIds.length) predicates.push(inArray(orders.clientId, scope.clientIds));
+  if (scope.clientIds.length) {
+    predicates.push(inArray(orders.clientId, scope.clientIds));
+    const connectedStorePredicate = connectedStoreAccountOrderScopePredicate(scope.clientIds);
+    if (connectedStorePredicate) predicates.push(connectedStorePredicate);
+  }
   if (scope.storeIds.length) predicates.push(inArray(orders.storeId, scope.storeIds));
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
@@ -176,7 +237,11 @@ export function rawOrderScopeForAlias(
 ): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   const predicates: SQL[] = [];
-  if (scope.clientIds.length) predicates.push(sql`o.client_id = any(${intArrayLiteral(scope.clientIds)})`);
+  if (scope.clientIds.length) {
+    predicates.push(sql`o.client_id = any(${intArrayLiteral(scope.clientIds)})`);
+    const connectedStorePredicate = rawConnectedStoreAccountOrderScopePredicate(scope.clientIds);
+    if (connectedStorePredicate) predicates.push(connectedStorePredicate);
+  }
   if (scope.storeIds.length) predicates.push(sql`o.store_id = any(${intArrayLiteral(scope.storeIds)})`);
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0]! : sql`(${sql.join(predicates, sql` or `)})`;
