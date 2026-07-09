@@ -23,6 +23,16 @@ const helpers = readFileSync('src/lib/client-portal/integration-submission.ts', 
 assert(helpers.includes('clientIds.includes(args.bodyClientId)'), 'cross-client injection check must exist');
 assert(helpers.includes('VALIDATION_MAX_ATTEMPTS = 5'), 'validation limiter is 5 attempts/window');
 
+const modal = readFileSync('portal-client/src/components/store/StoreConnectModal.tsx', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  modal.includes("stage === 'list' ? 'h-[88vh] max-h-[640px] max-w-4xl' : 'max-w-lg'"),
+  'store picker modal list stage must keep a stable viewport-capped height',
+);
+assert(
+  modal.includes('className="min-h-0 flex-1 overflow-y-auto p-5"'),
+  'store picker cards pane must scroll inside the stable modal frame',
+);
+
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 assert(
   pkg.scripts?.['guard:portal-store-connect'] === 'node scripts/portal-store-connect-guard.mjs',

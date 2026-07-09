@@ -137,7 +137,7 @@ export function StoreConnectModal({
               className={cn(
                 'glass-strong relative flex max-h-[88vh] w-full flex-col overflow-hidden rounded-glass-lg',
                 'shadow-glass-lg',
-                stage === 'list' ? 'max-w-4xl' : 'max-w-lg',
+                stage === 'list' ? 'h-[88vh] max-h-[640px] max-w-4xl' : 'max-w-lg',
               )}
               role="dialog"
               aria-modal="true"
