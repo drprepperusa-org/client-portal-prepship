@@ -26,8 +26,12 @@ const isPending = (r: PortalIntegration) => r.type === 'store' && r.source === '
  *  (lastSyncError / source / active) — no independent status truth. */
 type StoreConnStatus = 'pending' | 'active' | 'reconnect' | 'inactive';
 
+function needsStoreReconnect(error: string | null | undefined): boolean {
+  return error === 'auth' || error === 'graphql' || error === 'missing_scopes' || Boolean(error?.includes('scope'));
+}
+
 function storeStatus(i: PortalIntegration): StoreConnStatus {
-  if (i.lastSyncError === 'auth') return 'reconnect';
+  if (needsStoreReconnect(i.lastSyncError)) return 'reconnect';
   if (i.source === 'portal') return 'pending';
   return i.active ? 'active' : 'inactive';
 }
@@ -77,9 +81,9 @@ export default function Connections() {
     }
   }
 
-  /** Replace the token on an auth-broken (lastSyncError === 'auth') Shopify
-   *  connection. The backend re-verifies the new token against the same
-   *  shop domain before clearing the error. */
+  /** Replace Shopify credentials/scopes for the same canonical shop. The
+   *  backend re-verifies against the stored shop domain before clearing sync
+   *  errors. */
   async function handleReconnect(id: number, credentials: Record<string, string>) {
     if (!accessToken) return;
     try {
@@ -233,10 +237,10 @@ export default function Connections() {
             return res.data;
           } catch (err) {
             // fail() (portal-client/src/lib/api.ts) throws an Error whose
-            // message is the backend's `error` string verbatim, so a 429 from
-            // checkValidationRateLimit surfaces here with this exact text.
+            // message is the backend's `error` string verbatim, so 429 and
+            // missing-scope messages can surface directly in the modal.
             const rateLimited = err instanceof Error && err.message.includes('too many validation attempts');
-            return { ok: false, rateLimited };
+            return { ok: false, rateLimited, message: err instanceof Error ? err.message : undefined };
           }
         }}
       />
@@ -288,7 +292,7 @@ export default function Connections() {
  *  apps reconnect with Client ID + Client secret; a legacy admin-created app
  *  reconnects by leaving Client ID blank and pasting its long-lived access
  *  token in the secret field. Rendered only when
- *  `storeStatus(integration) === 'reconnect'` (lastSyncError === 'auth'). */
+ *  `storeStatus(integration) === 'reconnect'`. */
 function ReconnectForm({ onSubmit }: { onSubmit: (credentials: Record<string, string>) => Promise<void> }) {
   const [clientId, setClientId] = useState('');
   const [secret, setSecret] = useState('');

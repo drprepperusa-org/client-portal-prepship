@@ -24,6 +24,15 @@ const app = new Hono();
 const SHOPIFY_CONNECT_ERROR =
   "Couldn't connect — check your shop domain and app credentials.";
 
+type ShopifyVerificationFailure = Extract<Awaited<ReturnType<typeof verifyShopifyCredentials>>, { ok: false }>;
+
+function shopifyConnectError(result: ShopifyVerificationFailure): string {
+  if (result.reason === 'missing_scopes') {
+    return `Missing Shopify scope(s): ${result.missingScopes.join(', ')}. Update the Shopify app scopes, reinstall the app on the store, then reconnect.`;
+  }
+  return SHOPIFY_CONNECT_ERROR;
+}
+
 type ShopifyCredentialInput = {
   shopDomain: string;
   accessToken?: string;
@@ -97,7 +106,7 @@ app.post('/integrations/validate', async (c) => {
     ok: result.ok,
     accountIdentifier: result.ok ? maskAccountIdentifier(result.myshopifyDomain) : null,
   });
-  if (!result.ok) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+  if (!result.ok) return c.json({ error: shopifyConnectError(result) }, 422);
   return c.json({ data: { ok: true, shopName: result.shopName, myshopifyDomain: result.myshopifyDomain } });
 });
 
@@ -150,7 +159,7 @@ app.post('/integrations', async (c) => {
     const shopifyInput = readShopifyCredentialInput(account.credentials);
     if (!shopifyInput) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
     const verified = await verifyShopifyCredentials(shopifyInput);
-    if (!verified.ok) return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
+    if (!verified.ok) return c.json({ error: shopifyConnectError(verified) }, 422);
     account.accountIdentifier = verified.myshopifyDomain;
   }
 
@@ -267,8 +276,8 @@ app.post('/integrations/:id/approve', async (c) => {
   return c.json({ data: toPortalIntegrationDto({ ...row, type: 'store' }) });
 });
 
-// Reconnect: replace the credentials on the caller's OWN shopify store after
-// its token was revoked (last_sync_error='auth'). The new credentials must
+// Reconnect: replace credentials on the caller's OWN shopify store when its
+// token, secret, or installed app scopes need repair. The new credentials must
 // pass live verification for the SAME canonical shop domain. source/active are
 // untouched — a promoted store stays promoted; sync resumes next tick.
 app.patch('/integrations/:id/credentials', async (c) => {
@@ -301,11 +310,9 @@ app.patch('/integrations/:id/credentials', async (c) => {
     clientId: number | null;
     provider: string | null;
     accountIdentifier: string | null;
-    lastSyncError: string | null;
   }>(sql`
     select id, client_id as "clientId", provider,
-           account_identifier as "accountIdentifier",
-           last_sync_error as "lastSyncError"
+           account_identifier as "accountIdentifier"
     from store_accounts
     where id = ${id}
   `);
@@ -314,15 +321,14 @@ app.patch('/integrations/:id/credentials', async (c) => {
   if (!isAdmin && (row.clientId == null || !scope.clientIds.includes(row.clientId))) {
     return c.json({ error: 'store not found' }, 404);
   }
-  if (row.lastSyncError !== 'auth') {
-    return c.json({ error: 'this store does not need reconnection' }, 409);
-  }
-
   const verified = await verifyShopifyCredentials({
     ...submitted,
     shopDomain: String(row.accountIdentifier ?? ''),
   });
-  if (!verified.ok || verified.myshopifyDomain !== row.accountIdentifier) {
+  if (!verified.ok) {
+    return c.json({ error: shopifyConnectError(verified) }, 422);
+  }
+  if (verified.myshopifyDomain !== row.accountIdentifier) {
     return c.json({ error: SHOPIFY_CONNECT_ERROR }, 422);
   }
 

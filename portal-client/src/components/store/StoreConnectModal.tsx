@@ -32,7 +32,7 @@ export function StoreConnectModal({
   open: boolean;
   onClose: () => void;
   onConnect: (draft: ConnectDraft) => void;
-  onValidate?: (draft: ConnectDraft) => Promise<{ ok: boolean; shopName?: string; myshopifyDomain?: string; rateLimited?: boolean }>;
+  onValidate?: (draft: ConnectDraft) => Promise<{ ok: boolean; shopName?: string; myshopifyDomain?: string; rateLimited?: boolean; message?: string }>;
 }) {
   const [stage, setStage] = useState<Stage>('list');
   const [filter, setFilter] = useState<Filter>('all');
@@ -100,7 +100,7 @@ export function StoreConnectModal({
             ok: false,
             message: result.rateLimited
               ? 'Too many attempts — wait a minute and try again.'
-              : "Couldn't connect — check your shop domain and app credentials.",
+              : result.message ?? "Couldn't connect — check your shop domain and app credentials.",
           });
           return;
         }
@@ -329,12 +329,15 @@ function CredsStage({
             <p className="font-semibold text-ink">How to get your app credentials</p>
             <ol className="mt-1 list-decimal space-y-0.5 pl-4">
               <li>Go to <span className="font-medium text-ink-2">dev.shopify.com</span> and sign in with your store's account</li>
-              <li>Create an app (name it e.g. "PrepShip"), give it the <code className="rounded bg-white/70 px-1">read_orders</code> scope, and <span className="font-medium text-ink-2">install it on your store</span></li>
+              <li>Create an app (name it e.g. "PrepShip") and add the Admin API scopes below before installing it on your store</li>
               <li>Open the app's <span className="font-medium text-ink-2">Settings</span> page and copy the <span className="font-medium text-ink-2">Client ID</span> and <span className="font-medium text-ink-2">Client secret</span></li>
               <li>Paste them below with your <span className="font-medium text-ink-2">.myshopify.com</span> domain</li>
             </ol>
+            <p className="mt-2 break-words rounded bg-white/70 p-2 font-mono text-[11px] leading-relaxed text-ink-2">
+              read_customers, read_draft_orders, read_fulfillments, write_fulfillments, read_locations, read_merchant_managed_fulfillment_orders, write_merchant_managed_fulfillment_orders, read_orders, write_orders, read_products
+            </p>
             <p className="mt-1.5 flex items-center gap-1 text-ink-3">
-              <ShieldCheck size={13} className="shrink-0 text-brand-600" /> PrepShip only asks for read-only order access.
+              <ShieldCheck size={13} className="shrink-0 text-brand-600" /> PrepShip uses these scopes to read orders, products, customers, and locations, then send fulfillment and tracking updates.
             </p>
           </div>
         )}

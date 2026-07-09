@@ -28,6 +28,19 @@ import type { NormalizedStoreOrder } from '../../services/store-order-import';
 
 export const SHOPIFY_ADMIN_API_VERSION = '2026-04';
 
+export const REQUIRED_SHOPIFY_ACCESS_SCOPES = [
+  'read_customers',
+  'read_draft_orders',
+  'read_fulfillments',
+  'write_fulfillments',
+  'read_locations',
+  'read_merchant_managed_fulfillment_orders',
+  'write_merchant_managed_fulfillment_orders',
+  'read_orders',
+  'write_orders',
+  'read_products',
+] as const;
+
 /**
  * Canonicalize a client-entered shop domain to `<shop>.myshopify.com`.
  * Custom storefront domains are rejected — the connect UI instructs clients to
@@ -140,9 +153,10 @@ export function normalizeShopifyOrder(
 
 export type ShopifyFetch = typeof fetch;
 
-/** Schema-validated against Admin API 2026-04. Scope: read_orders. */
+/** Schema-validated against Admin API 2026-04. Checks identity + granted app scopes. */
 export const SHOP_VERIFY_QUERY = `query PrepShipShopVerify {
   shop { name myshopifyDomain }
+  currentAppInstallation { accessScopes { handle } }
 }`;
 
 /** Schema-validated against Admin API 2026-04. Scope: read_orders. */
@@ -220,6 +234,16 @@ async function shopifyGraphql(args: {
   } catch {
     return { ok: false, reason: 'network' };
   }
+}
+
+function grantedShopifyAccessScopes(data: Record<string, unknown>): Set<string> {
+  const installation = data.currentAppInstallation as { accessScopes?: unknown } | undefined;
+  const scopes = Array.isArray(installation?.accessScopes) ? installation.accessScopes : [];
+  return new Set(
+    scopes
+      .map((scope) => (scope && typeof scope === 'object' ? (scope as { handle?: unknown }).handle : null))
+      .filter((handle): handle is string => typeof handle === 'string' && handle.trim().length > 0),
+  );
 }
 
 /**
@@ -353,6 +377,7 @@ export async function verifyShopifyCredentials(args: {
 }): Promise<
   | { ok: true; shopName: string; myshopifyDomain: string }
   | { ok: false; reason: 'auth' | 'network' | 'invalid_domain' }
+  | { ok: false; reason: 'missing_scopes'; missingScopes: string[] }
 > {
   const domain = normalizeShopDomain(args.shopDomain);
   if (!domain) return { ok: false, reason: 'invalid_domain' };
@@ -381,6 +406,13 @@ export async function verifyShopifyCredentials(args: {
   }
   const shop = result.data.shop as { name?: string; myshopifyDomain?: string } | undefined;
   if (!shop?.myshopifyDomain) return { ok: false, reason: 'network' };
+
+  const grantedScopes = grantedShopifyAccessScopes(result.data);
+  const missingScopes = REQUIRED_SHOPIFY_ACCESS_SCOPES.filter((scope) => !grantedScopes.has(scope));
+  if (missingScopes.length > 0) {
+    return { ok: false, reason: 'missing_scopes', missingScopes };
+  }
+
   return { ok: true, shopName: shop.name ?? shop.myshopifyDomain, myshopifyDomain: shop.myshopifyDomain };
 }
 

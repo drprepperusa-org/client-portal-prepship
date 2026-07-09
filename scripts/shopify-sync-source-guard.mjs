@@ -32,6 +32,10 @@ assert(
 const connectorSrc = readFileSync('src/connectors/store/shopify.ts', 'utf8');
 assert(connectorSrc.includes("SHOPIFY_ADMIN_API_VERSION = '2026-04'"), 'Shopify API version must stay pinned');
 assert(connectorSrc.includes('X-Shopify-Access-Token'), 'connector must use token header auth');
+assert(connectorSrc.includes('currentAppInstallation { accessScopes { handle } }'), 'Shopify verification must read granted app scopes');
+assert(connectorSrc.includes('REQUIRED_SHOPIFY_ACCESS_SCOPES'), 'Shopify verification must have an explicit required scope list');
+assert(connectorSrc.includes("'read_customers'"), 'Shopify verification must require read_customers for PrepShip order import');
+assert(connectorSrc.includes("'read_draft_orders'"), 'Shopify verification must require read_draft_orders for shipping checks');
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 assert(

@@ -101,6 +101,7 @@ assert.equal(SHOPIFY_ADMIN_API_VERSION, '2026-04');
 
 // ── HTTP layer with fake fetch ──
 import {
+  REQUIRED_SHOPIFY_ACCESS_SCOPES,
   verifyShopifyCredentials,
   fetchShopifyOrdersSince,
   type ShopifyFetch,
@@ -110,14 +111,53 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
+function shopifyVerifyPayload(shopName: string, myshopifyDomain: string): Record<string, unknown> {
+  return {
+    data: {
+      shop: { name: shopName, myshopifyDomain },
+      currentAppInstallation: {
+        accessScopes: REQUIRED_SHOPIFY_ACCESS_SCOPES.map((handle) => ({ handle })),
+      },
+    },
+  };
+}
+
 // verify: happy path
 {
   const fakeFetch: ShopifyFetch = async (url) => {
     assert.ok(String(url).includes('mybrand.myshopify.com/admin/api/2026-04/graphql.json'));
-    return jsonResponse(200, { data: { shop: { name: 'My Brand', myshopifyDomain: 'mybrand.myshopify.com' } } });
+    return jsonResponse(200, shopifyVerifyPayload('My Brand', 'mybrand.myshopify.com'));
   };
   const r = await verifyShopifyCredentials({ shopDomain: 'mybrand.myshopify.com', accessToken: 't', fetchImpl: fakeFetch });
   assert.deepEqual(r, { ok: true, shopName: 'My Brand', myshopifyDomain: 'mybrand.myshopify.com' });
+}
+
+// verify: basic order scopes are not enough for PrepShip's operational Shopify path
+{
+  const fakeFetch: ShopifyFetch = async () =>
+    jsonResponse(200, {
+      data: {
+        shop: { name: 'Limited Brand', myshopifyDomain: 'limited.myshopify.com' },
+        currentAppInstallation: {
+          accessScopes: [{ handle: 'read_orders' }, { handle: 'read_products' }],
+        },
+      },
+    });
+  const r = await verifyShopifyCredentials({ shopDomain: 'limited.myshopify.com', accessToken: 't', fetchImpl: fakeFetch });
+  assert.deepEqual(r, {
+    ok: false,
+    reason: 'missing_scopes',
+    missingScopes: [
+      'read_customers',
+      'read_draft_orders',
+      'read_fulfillments',
+      'write_fulfillments',
+      'read_locations',
+      'read_merchant_managed_fulfillment_orders',
+      'write_merchant_managed_fulfillment_orders',
+      'write_orders',
+    ],
+  });
 }
 
 // verify: bad token -> auth
@@ -373,7 +413,7 @@ import {
       return jsonResponse(200, { access_token: 'shpat_fresh', scope: 'read_orders', expires_in: 86399 });
     }
     queryCalls += 1;
-    return jsonResponse(200, { data: { shop: { name: 'Fresh Shop', myshopifyDomain: 'ccgrant-i.myshopify.com' } } });
+    return jsonResponse(200, shopifyVerifyPayload('Fresh Shop', 'ccgrant-i.myshopify.com'));
   };
   const warm = await resolveShopifyAccessToken(
     { clientId: 'id-fresh', clientSecret: 'shpss_fresh' },
@@ -414,7 +454,7 @@ import {
     assert.ok(String(url).includes('/admin/api/2026-04/graphql.json'), 'second call is the shop query');
     const token = new Headers(init?.headers).get('X-Shopify-Access-Token');
     assert.equal(token, 'shpat_verify', 'shop query uses the minted token');
-    return jsonResponse(200, { data: { shop: { name: 'CC Shop', myshopifyDomain: 'ccgrant-f.myshopify.com' } } });
+    return jsonResponse(200, shopifyVerifyPayload('CC Shop', 'ccgrant-f.myshopify.com'));
   };
   const r = await verifyShopifyCredentials({
     shopDomain: 'ccgrant-f.myshopify.com',

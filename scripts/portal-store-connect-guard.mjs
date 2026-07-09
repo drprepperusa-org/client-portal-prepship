@@ -13,6 +13,8 @@ assert(route.includes("'portal',\n        false"), 'portal submit must insert ac
 assert(route.includes('resolveSubmittedClientId'), 'portal submit must force clientId from scope');
 assert(route.includes('checkValidationRateLimit'), 'validate/reconnect must be rate-limited');
 assert(route.includes('verified.myshopifyDomain'), 'shopify identifier must come from live verification');
+assert(route.includes('shopifyConnectError'), 'shopify scope failures must return an actionable reconnect message');
+assert(!route.includes("row.lastSyncError !== 'auth'"), 'shopify reconnect must not be blocked when scope repair is needed');
 assert(!route.includes('accessToken:'), 'route must never build a response containing a token');
 assert(!route.includes('clientSecret:'), 'route must never build a response containing a client secret');
 assert(route.includes('submittedFields'), 'audit rows record credential field NAMES only (submittedFields key survives the sanitizer)');
@@ -33,6 +35,10 @@ assert(helpers.includes('VALIDATION_MAX_ATTEMPTS = 5'), 'validation limiter is 5
 
 const modal = readFileSync('portal-client/src/components/store/StoreConnectModal.tsx', 'utf8').replace(/\r\n/g, '\n');
 assert(
+  modal.includes('read_customers') && modal.includes('read_draft_orders') && modal.includes('write_orders'),
+  'Shopify connect modal must list the operational Admin API scopes PrepShip requires',
+);
+assert(
   modal.includes("stage === 'list' ? 'h-[88vh] max-h-[640px] max-w-4xl' : 'max-w-lg'"),
   'store picker modal list stage must keep a stable viewport-capped height',
 );
@@ -42,6 +48,12 @@ assert(
 );
 
 const connections = readFileSync('portal-client/src/pages/Connections.tsx', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  connections.includes('needsStoreReconnect') &&
+    connections.includes("error === 'graphql'") &&
+    connections.includes("error === 'missing_scopes'"),
+  'Connections page must expose reconnect for Shopify scope/GraphQL sync failures',
+);
 assert(
   connections.includes('portalApi.disconnectIntegration') &&
     connections.includes("toast.success('Deactivated'") &&
