@@ -29,6 +29,13 @@ assert(route.includes("app.post('/integrations/:id/approve'"), 'client portal mu
 assert(route.includes("if (!isAdmin) return c.json({ error: 'admin access required' }, 403)"), 'store approval must be portal-admin gated');
 assert(route.includes("set source = 'admin'") && route.includes('active = true'), 'store approval must promote source=admin and activate the store');
 assert(route.includes('sync_anchor_at = coalesce(sync_anchor_at, now())'), 'store approval must stamp the sync anchor exactly once');
+assert(
+  route.includes('syntheticStoreClientName') &&
+    route.includes('const syntheticStoreId = syntheticStoreIdForCredentialAccount(row.provider, row.id);') &&
+    route.includes('insert into clients (name, store_ids, active, is_test)') &&
+    route.includes('where not exists'),
+  'store approval must auto-create the synthetic client/store mapping',
+);
 assert(route.includes('portal.integrations.approve'), 'store approval must write an audit event');
 
 const helpers = readFileSync('src/lib/client-portal/integration-submission.ts', 'utf8').replace(/\r\n/g, '\n');

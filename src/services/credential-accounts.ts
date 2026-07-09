@@ -75,6 +75,15 @@ export function syntheticStoreIdForCredentialAccount(provider: string, accountId
   return offset + accountId;
 }
 
+export function syntheticStoreClientName(account: { provider: string; label: string | null }): string {
+  const baseName = STORE_PROVIDER_LABELS[account.provider] ?? account.provider.toUpperCase();
+  const labelMatchesProvider =
+    account.label != null && new RegExp(account.provider, 'i').test(account.label);
+  return account.label && !labelMatchesProvider
+    ? `${baseName} - ${account.label}`
+    : account.label || baseName;
+}
+
 export async function listCredentialAccounts(
   sql: SqlLike,
   table: CredentialAccountTable,
@@ -240,19 +249,33 @@ export async function patchCredentialAccount(
 
   if (patch.hasSource && patch.hasLabel) {
     if (promotesStore) {
-      const rows = (await sql`
-        UPDATE ${sql(table)}
-        SET source = ${patch.source},
-            label = ${patch.labelGoesNull ? null : patch.label},
-            active = true,
-            sync_anchor_at = COALESCE(sync_anchor_at, NOW()),
-            updated_at = NOW()
-        WHERE id = ${id}
-        RETURNING id, client_id AS "clientId", provider, label,
-                  account_identifier AS "accountIdentifier",
-                  source, active, created_at AS "createdAt"
-      `) as CredentialAccountRow[];
-      return rows[0] ?? null;
+      let updated: CredentialAccountRow | null = null;
+      await sql.begin(async (trx) => {
+        const rows = (await trx`
+          UPDATE ${trx(table)}
+          SET source = ${patch.source},
+              label = ${patch.labelGoesNull ? null : patch.label},
+              active = true,
+              sync_anchor_at = COALESCE(sync_anchor_at, NOW()),
+              updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING id, client_id AS "clientId", provider, label,
+                    account_identifier AS "accountIdentifier",
+                    source, active, created_at AS "createdAt"
+        `) as CredentialAccountRow[];
+        updated = rows[0] ?? null;
+        if (promotesStore && updated) {
+          const provider = String(updated.provider ?? '');
+          if (provider && Number.isFinite(Number(updated.id))) {
+            await ensureSyntheticStoreClient(trx, {
+              provider,
+              accountId: Number(updated.id),
+              label: updated.label == null ? null : String(updated.label),
+            });
+          }
+        }
+      });
+      return updated;
     }
     const rows = (await sql`
       UPDATE ${sql(table)}
@@ -269,18 +292,32 @@ export async function patchCredentialAccount(
 
   if (patch.hasSource) {
     if (promotesStore) {
-      const rows = (await sql`
-        UPDATE ${sql(table)}
-        SET source = ${patch.source},
-            active = true,
-            sync_anchor_at = COALESCE(sync_anchor_at, NOW()),
-            updated_at = NOW()
-        WHERE id = ${id}
-        RETURNING id, client_id AS "clientId", provider, label,
-                  account_identifier AS "accountIdentifier",
-                  source, active, created_at AS "createdAt"
-      `) as CredentialAccountRow[];
-      return rows[0] ?? null;
+      let updated: CredentialAccountRow | null = null;
+      await sql.begin(async (trx) => {
+        const rows = (await trx`
+          UPDATE ${trx(table)}
+          SET source = ${patch.source},
+              active = true,
+              sync_anchor_at = COALESCE(sync_anchor_at, NOW()),
+              updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING id, client_id AS "clientId", provider, label,
+                    account_identifier AS "accountIdentifier",
+                    source, active, created_at AS "createdAt"
+        `) as CredentialAccountRow[];
+        updated = rows[0] ?? null;
+        if (promotesStore && updated) {
+          const provider = String(updated.provider ?? '');
+          if (provider && Number.isFinite(Number(updated.id))) {
+            await ensureSyntheticStoreClient(trx, {
+              provider,
+              accountId: Number(updated.id),
+              label: updated.label == null ? null : String(updated.label),
+            });
+          }
+        }
+      });
+      return updated;
     }
     const rows = (await sql`
       UPDATE ${sql(table)}
@@ -371,11 +408,7 @@ export async function ensureSyntheticStoreClient(
     return null;
   }
 
-  const baseName = STORE_PROVIDER_LABELS[account.provider] ?? account.provider.toUpperCase();
-  const labelMatchesProvider =
-    account.label != null && new RegExp(account.provider, 'i').test(account.label);
-  const clientName =
-    account.label && !labelMatchesProvider ? `${baseName} - ${account.label}` : account.label || baseName;
+  const clientName = syntheticStoreClientName(account);
 
   await sql`
     INSERT INTO clients (name, store_ids, active, is_test)

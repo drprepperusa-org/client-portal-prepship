@@ -97,6 +97,13 @@ assert(
 );
 
 assert(
+  service.includes('if (promotesStore && updated)') &&
+    service.includes('ensureSyntheticStoreClient(trx, {') &&
+    service.includes('accountId: Number(updated.id)'),
+  'store account promotion auto-creates the synthetic client/store mapping',
+);
+
+assert(
   schemaFallback.includes('ensureCredentialAccountRuntimeSchema') &&
     schemaFallback.includes('migrateLegacyStoreCredentialRows'),
   'credential account schema readiness and legacy store migration are centralized',

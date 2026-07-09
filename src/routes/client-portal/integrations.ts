@@ -16,7 +16,10 @@ import {
   resolveSubmittedClientId,
 } from '../../lib/client-portal/integration-submission';
 import { verifyShopifyCredentials } from '../../connectors/store/shopify';
-import { syntheticStoreIdForCredentialAccount } from '../../services/credential-accounts';
+import {
+  syntheticStoreClientName,
+  syntheticStoreIdForCredentialAccount,
+} from '../../services/credential-accounts';
 
 const app = new Hono();
 
@@ -229,35 +232,51 @@ app.post('/integrations/:id/approve', async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
 
-  const rows = await db.execute<{
-    id: number;
-    clientId: number | null;
-    provider: string | null;
-    label: string | null;
-    accountIdentifier: string | null;
-    source: string | null;
-    active: boolean | null;
-    createdAt: Date | string | null;
-    updatedAt: Date | string | null;
-  }>(sql`
-    update store_accounts
-    set source = 'admin',
-        active = true,
-        sync_anchor_at = coalesce(sync_anchor_at, now()),
-        updated_at = now()
-    where id = ${id}
-      and source = 'portal'
-    returning id,
-              client_id as "clientId",
-              provider,
-              label,
-              account_identifier as "accountIdentifier",
-              source,
-              active,
-              created_at as "createdAt",
-              updated_at as "updatedAt"
-  `);
-  const row = rows[0];
+  const row = await db.transaction(async (tx) => {
+    const rows = await tx.execute<{
+      id: number;
+      clientId: number | null;
+      provider: string | null;
+      label: string | null;
+      accountIdentifier: string | null;
+      source: string | null;
+      active: boolean | null;
+      createdAt: Date | string | null;
+      updatedAt: Date | string | null;
+    }>(sql`
+      update store_accounts
+      set source = 'admin',
+          active = true,
+          sync_anchor_at = coalesce(sync_anchor_at, now()),
+          updated_at = now()
+      where id = ${id}
+        and source = 'portal'
+      returning id,
+                client_id as "clientId",
+                provider,
+                label,
+                account_identifier as "accountIdentifier",
+                source,
+                active,
+                created_at as "createdAt",
+                updated_at as "updatedAt"
+    `);
+    const row = rows[0];
+    if (row?.provider) {
+      const syntheticStoreId = syntheticStoreIdForCredentialAccount(row.provider, row.id);
+      const clientName = syntheticStoreClientName({ provider: row.provider, label: row.label });
+      await tx.execute(sql`
+        insert into clients (name, store_ids, active, is_test)
+        select ${clientName}, ARRAY[${syntheticStoreId}]::integer[], true, false
+        where not exists (
+          select 1
+          from clients
+          where store_ids @> ARRAY[${syntheticStoreId}]::integer[]
+        )
+      `);
+    }
+    return row ?? null;
+  });
   if (!row) {
     const existing = await db.execute<{ id: number; source: string | null }>(sql`
       select id, source
