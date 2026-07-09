@@ -31,7 +31,7 @@ export default function Rates() {
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             <Link to="/invoices"><Button leadingIcon={<ReceiptText size={16} />}>View invoices</Button></Link>
-            <Link to="/finance"><Button variant="secondary">Open Finance</Button></Link>
+            <Link to="/billing"><Button variant="secondary">Open Billing</Button></Link>
           </div>
           <p className="mt-4 flex items-center gap-1.5 text-xs text-ink-3">
             <Info size={13} /> Contact your PrepShip account manager for a copy of your rate sheet.

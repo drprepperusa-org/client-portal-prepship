@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, Reorder } from 'framer-motion';
-import { ShoppingCart, Truck, Boxes, Wallet, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square, Info } from 'lucide-react';
+import { ShoppingCart, Truck, Boxes, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square, Info } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState, Tooltip } from '@/components/ui/Display';
@@ -95,9 +95,9 @@ export default function Dashboard() {
     switch (id) {
       case 'kpis':
         return (
-          <motion.div variants={staggerContainer} initial="initial" animate="enter" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <motion.div variants={staggerContainer} initial="initial" animate="enter" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-glass" />)
+              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-glass" />)
             ) : (
               <>
                 {/* Honest labels (CP-021): each KPI names the entity + table it
@@ -109,7 +109,6 @@ export default function Dashboard() {
                 <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" onPeek={edit ? undefined : openPeek('open')} />
                 <StatCard label={`Shipped orders (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" onPeek={edit ? undefined : openPeek('shipped')} />
                 <StatCard label={`Ordered units (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} onPeek={edit ? undefined : openPeek('units')} />
-                <StatCard label={`Revenue (${days}d)`} value={money(dash.data?.revenue ?? 0)} icon={Wallet} accent="emerald" onPeek={edit ? undefined : openPeek('revenue')} />
               </>
             )}
           </motion.div>
@@ -321,10 +320,8 @@ export default function Dashboard() {
           days,
           openOrders,
           units: Number(dash.data?.units ?? 0),
-          revenue: Number(dash.data?.revenue ?? 0),
           counts: countRows,
           daily: dash.data?.daily ?? [],
-          dailyRevenue: dash.data?.dailyRevenue ?? [],
           bySku: dash.data?.bySku ?? [],
         }}
       />

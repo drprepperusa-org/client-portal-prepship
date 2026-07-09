@@ -14,12 +14,19 @@ function assert(condition, message) {
 }
 
 const nav = read('portal-client/src/nav.ts');
+const app = read('portal-client/src/App.tsx');
+const prefetch = read('portal-client/src/lib/routePrefetch.ts');
+const rates = read('portal-client/src/pages/Rates.tsx');
 const connections = read('portal-client/src/pages/Connections.tsx');
 const packageJson = JSON.parse(read('package.json'));
 
 assert(!/to:\s*['"]\/finance['"]/.test(nav), 'client portal NAV does not expose the Finance route');
 assert(!/label:\s*['"]Finance['"]/.test(nav), 'client portal NAV does not show a Finance label');
 assert(!/\bWallet\b/.test(nav), 'client portal NAV does not keep the unused Finance wallet icon import');
+assert(!/path=\s*['"]\/finance['"]/.test(app), 'client portal routes do not expose /finance');
+assert(!/pages\/Finance/.test(app), 'client portal App does not load the Finance page');
+assert(!/['"]\/finance['"]/.test(prefetch), 'route prefetch does not warm a Finance route');
+assert(!/Open Finance/.test(rates) && !/to=\s*['"]\/finance['"]/.test(rates), 'Rate Sheet does not link to Finance');
 
 assert(
   /r\.type\s*!==\s*['"]carrier['"]/.test(connections),

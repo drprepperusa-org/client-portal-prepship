@@ -16,7 +16,6 @@ const Shipments = lazy(() => import('./pages/Shipments'));
 const Returns = lazy(() => import('./pages/Returns'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Analysis = lazy(() => import('./pages/Analysis'));
-const Finance = lazy(() => import('./pages/Finance'));
 const Billing = lazy(() => import('./pages/Billing'));
 const Rates = lazy(() => import('./pages/Rates'));
 const Connections = lazy(() => import('./pages/Connections'));
@@ -89,7 +88,6 @@ export default function App() {
         <Route path="/returns" element={<Lazy el={<Returns />} />} />
         <Route path="/inventory" element={<Lazy el={<Inventory />} />} />
         <Route path="/analysis" element={<Lazy el={<Analysis />} />} />
-        <Route path="/finance" element={<Lazy el={<Finance />} />} />
         <Route path="/billing" element={<Lazy el={<Billing />} />} />
         {/* Reports + Invoices were merged into Billing — keep old links working. */}
         <Route path="/reports" element={<Navigate to="/billing" replace />} />

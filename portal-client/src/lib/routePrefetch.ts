@@ -10,7 +10,6 @@ const IMPORTERS: Record<string, () => Promise<unknown>> = {
   '/shipments': () => import('@/pages/Shipments'),
   '/inventory': () => import('@/pages/Inventory'),
   '/analysis': () => import('@/pages/Analysis'),
-  '/finance': () => import('@/pages/Finance'),
   '/billing': () => import('@/pages/Billing'),
   '/rates': () => import('@/pages/Rates'),
   '/connections': () => import('@/pages/Connections'),
