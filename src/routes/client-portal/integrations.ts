@@ -289,4 +289,54 @@ app.patch('/integrations/:id/credentials', async (c) => {
   return c.json({ data: { ok: true } });
 });
 
+// Disconnect a live store connection from the client portal. This is a soft
+// disconnect: active=false removes it from sync/read models while preserving
+// credential history and operator auditability.
+app.delete('/integrations/:id', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+
+  const isAdmin = isAdminEmail(scope.email) || scope.role === 'admin';
+  const rows = await db.execute<{
+    id: number;
+    clientId: number | null;
+    provider: string | null;
+    label: string | null;
+    accountIdentifier: string | null;
+    active: boolean | null;
+  }>(sql`
+    select id,
+           client_id as "clientId",
+           provider,
+           label,
+           account_identifier as "accountIdentifier",
+           active
+    from store_accounts
+    where id = ${id}
+  `);
+  const row = rows[0];
+  if (!row) return c.json({ error: 'store not found' }, 404);
+  if (!isAdmin && (row.clientId == null || !scope.clientIds.includes(row.clientId))) {
+    return c.json({ error: 'store not found' }, 404);
+  }
+
+  if (row.active !== false) {
+    await db.execute(sql`
+      update store_accounts
+      set active = false,
+          updated_at = now()
+      where id = ${id}
+    `);
+  }
+
+  await recordPortalAudit('portal.integrations.disconnect', scope, {
+    provider: row.provider,
+    clientId: row.clientId,
+    accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
+  });
+  return c.json({ data: { id: row.id, disconnected: true } });
+});
+
 export default app;

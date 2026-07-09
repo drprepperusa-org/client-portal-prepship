@@ -1,6 +1,6 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, RefreshCw, Settings2, Unplug, Plug } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, Settings2, Unplug, Plug } from 'lucide-react';
 import { BrandMark } from './StoreLogo';
 import type { PortalIntegration } from '@/lib/api';
 import { staggerItem } from '@/lib/motion';
@@ -13,19 +13,23 @@ const backface = { backfaceVisibility: 'hidden' as const, WebkitBackfaceVisibili
 
 function ConnectionActionButton({
   tone,
+  disabled,
   onClick,
   children,
 }: {
   tone: 'neutral' | 'danger';
+  disabled?: boolean;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         'focus-ring flex flex-1 cursor-pointer items-center justify-center gap-1.5',
         'rounded-glass-sm py-2 text-xs font-semibold ring-1 transition-colors',
+        'disabled:cursor-not-allowed disabled:opacity-60',
         tone === 'danger'
           ? 'bg-rose-50 text-rose-600 ring-rose-200 hover:bg-rose-100'
           : 'bg-white/70 text-ink-2 ring-slate-200/70 hover:bg-white',
@@ -46,11 +50,13 @@ function ConnectionActionButton({
 export function ConnectionCard({
   integration,
   index = 0,
+  disconnecting = false,
   onReconfigure,
   onDisconnect,
 }: {
   integration: PortalIntegration;
   index?: number;
+  disconnecting?: boolean;
   onReconfigure?: (c: PortalIntegration) => void;
   onDisconnect?: (c: PortalIntegration) => void;
 }) {
@@ -112,12 +118,15 @@ export function ConnectionCard({
               </ConnectionActionButton>
               <ConnectionActionButton
                 tone="danger"
+                disabled={disconnecting}
                 onClick={(e) => {
                   stop(e);
+                  if (disconnecting) return;
                   onDisconnect?.(c);
                 }}
               >
-                <Unplug size={14} /> Disconnect
+                {disconnecting ? <Loader2 size={14} className="animate-spin" /> : <Unplug size={14} />}
+                {disconnecting ? 'Disconnecting' : 'Disconnect'}
               </ConnectionActionButton>
             </div>
           </div>

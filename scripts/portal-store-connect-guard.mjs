@@ -18,6 +18,9 @@ assert(!route.includes('clientSecret:'), 'route must never build a response cont
 assert(route.includes('submittedFields'), 'audit rows record credential field NAMES only (submittedFields key survives the sanitizer)');
 assert(!route.includes('admin required'), 'submit endpoint must be open to client users');
 assert(route.includes('verified.myshopifyDomain !== row.accountIdentifier'), 'reconnect must pin the canonical domain');
+assert(route.includes("app.delete('/integrations/:id'"), 'client portal must expose a scoped store disconnect endpoint');
+assert(route.includes('set active = false'), 'store disconnect must be a soft disconnect via active=false');
+assert(route.includes('portal.integrations.disconnect'), 'store disconnect must write an audit event');
 
 const helpers = readFileSync('src/lib/client-portal/integration-submission.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(helpers.includes('clientIds.includes(args.bodyClientId)'), 'cross-client injection check must exist');
@@ -31,6 +34,21 @@ assert(
 assert(
   modal.includes('className="min-h-0 flex-1 overflow-y-auto p-5"'),
   'store picker cards pane must scroll inside the stable modal frame',
+);
+
+const connections = readFileSync('portal-client/src/pages/Connections.tsx', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  connections.includes('portalApi.disconnectIntegration') &&
+    connections.includes("toast.success('Disconnected'") &&
+    !connections.includes('Disconnect gated'),
+  'Connections disconnect button must call the API and show success, not the old gated warning',
+);
+
+const api = readFileSync('portal-client/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  api.includes('disconnectIntegration: (token: string, id: number)') &&
+    api.includes('apiDelete<{ data: { id: number; disconnected: boolean } }>(token, `/api/client-portal/integrations/${id}`)'),
+  'portal API client must expose DELETE /client-portal/integrations/:id',
 );
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));

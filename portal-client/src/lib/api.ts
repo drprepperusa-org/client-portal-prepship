@@ -1185,6 +1185,9 @@ export const portalApi = {
   /** Replace the token on an auth-broken store connection (reconnect). */
   reconnectIntegration: (token: string, id: number, credentials: Record<string, string>) =>
     apiPatch<{ data: { ok: boolean } }>(token, `/api/client-portal/integrations/${id}/credentials`, { credentials }),
+  /** Soft-disconnect a store connection (active=false; sync/read models stop using it). */
+  disconnectIntegration: (token: string, id: number) =>
+    apiDelete<{ data: { id: number; disconnected: boolean } }>(token, `/api/client-portal/integrations/${id}`),
   inbound: (token: string, clientId?: number) =>
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   createInbound: (token: string, body: NewInboundInput) =>

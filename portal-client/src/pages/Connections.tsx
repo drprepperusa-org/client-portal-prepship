@@ -50,6 +50,7 @@ export default function Connections() {
   const isAdmin = useMe().data?.isAdmin ?? false;
   const rows: PortalIntegration[] = query.data?.data ?? [];
   const [modalOpen, setModalOpen] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<number | null>(null);
 
   // Server-persisted pending connections: POST /integrations stores the request
   // (source='portal', inactive — no sync path uses it) and it stays visible
@@ -84,6 +85,20 @@ export default function Connections() {
       toast.success('Reconnected', 'Order sync will resume within a few minutes.');
     } catch (err) {
       toast.error('Could not reconnect', err instanceof Error ? err.message : 'Check the credentials and try again.');
+    }
+  }
+
+  async function handleDisconnect(integration: PortalIntegration) {
+    if (!accessToken || integration.id == null || disconnectingId != null) return;
+    setDisconnectingId(integration.id);
+    try {
+      await portalApi.disconnectIntegration(accessToken, integration.id);
+      await qc.invalidateQueries({ queryKey: ['integrations'] });
+      toast.success('Disconnected', `${integration.label ?? integration.provider ?? 'Store'} has been disconnected.`);
+    } catch (err) {
+      toast.error('Disconnect failed', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setDisconnectingId(null);
     }
   }
 
@@ -152,8 +167,9 @@ export default function Connections() {
                   <ConnectionCard
                     integration={c}
                     index={i + pending.length}
+                    disconnecting={disconnectingId === c.id}
                     onReconfigure={() => toast.info('Reconfigure', `Open the connector to update ${c.label ?? c.provider}.`)}
-                    onDisconnect={() => toast.warning('Disconnect gated', 'Disconnecting a live store requires operator approval.')}
+                    onDisconnect={handleDisconnect}
                   />
                   {c.type === 'store' && (
                     <div className="px-1">
