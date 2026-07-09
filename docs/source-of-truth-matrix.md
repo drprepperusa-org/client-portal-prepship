@@ -912,6 +912,7 @@ reusing the canonical `getSkuBreakdownFromOrderItems`); the capped
 | Tracking | `trackingNumber` | `trackingNumber` | `order_overrides.trackingNumber` / `shipments` | label time | presentation-only |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode`/`shippingService` = **null** | hard-nulled in `toPortalOrderDto` | n/a | backend-owned-truth (redaction) |
 | Ship-to | `shipToName/City/State` | same | `orders` columns + raw `shipTo` jsonb (client's own recipient) | order time | presentation-only |
+| Weight (admin only) | `weightOz` | `weightOz` | `orders.weight_oz`, gated by `scope.isGlobal` in the order read-model | order import / packing update time | presentation-only (operator-only) |
 | Shipping charge | `customerShippingRate` | `customerShippingRate` | billed `Σ billing_line_items` (shipping) → fallback `orders.shippingAmount` | billing / order time | derived-from-canonical (backend-owned) |
 
 Owner: `src/lib/client-portal/dto.ts` (`toPortalOrderDto`) over `orders` /

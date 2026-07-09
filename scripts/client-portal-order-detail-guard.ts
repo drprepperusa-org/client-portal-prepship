@@ -208,11 +208,13 @@ check(
   'CP-022: Orders no longer passes the raw list row into OrderDetailPanel (it fetches /orders/:id first)',
 );
 check(
-  !ordersPage.includes("header: 'Weight'") &&
-    !ordersPage.includes("key: 'weight'") &&
+  ordersPage.includes("header: 'Weight'") &&
+    ordersPage.includes("key: 'weight'") &&
+    ordersPage.includes('defaultHidden: true') &&
+    ordersPage.includes('allowColumnCustomization={canCustomizeOrders}') &&
     !panel.includes('label="Weight"') &&
     !loader.includes('hideWeight'),
-  'Orders and order detail do not render Weight anywhere in the Client Portal UI',
+  'Orders may expose a default-hidden admin Weight column, while order detail still renders no Weight field',
 );
 
 if (failed) process.exit(1);

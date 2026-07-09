@@ -209,6 +209,9 @@ export interface PortalOrder {
   // buyer-paid store shipping (orders.shippingAmount), and never the internal
   // selected / label / best rate or provider account. Financially gated.
   customerShippingRate?: number | string | null;
+  // Operator-only order weight from canonical orders.weight_oz. Present only
+  // for admin/global portal users; client users never receive it.
+  weightOz?: number | string | null;
   // True when the order shipped but its shipping line isn't billed yet → render
   // "Pending" instead of "—". Backend-owned (see src/lib/client-portal/dto.ts).
   customerShippingRatePending?: boolean;

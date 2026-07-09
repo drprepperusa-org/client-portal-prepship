@@ -16,6 +16,8 @@ export interface ColumnLayoutDef {
   minWidth?: number;
   /** Initial width (px) before any user resize. */
   defaultWidth?: number;
+  /** Start hidden unless the user's saved layout has already seen the column. */
+  defaultHidden?: boolean;
   resizable?: boolean;
   draggable?: boolean;
 }
@@ -57,6 +59,7 @@ function save(tableId: string | undefined, data: Persisted) {
 }
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((item) => b.includes(item));
 
 /**
  * Keep the user's order while tolerating columns being added or removed:
@@ -67,6 +70,10 @@ function reconcileOrder(saved: string[], keys: string[]): string[] {
   const kept = saved.filter((k) => valid.has(k));
   const missing = keys.filter((k) => !kept.includes(k));
   return [...kept, ...missing];
+}
+
+function defaultHiddenKeys(columns: ColumnLayoutDef[]): string[] {
+  return columns.filter((c) => c.defaultHidden).map((c) => c.key);
 }
 
 export interface ColumnLayout {
@@ -88,6 +95,8 @@ export interface ColumnLayout {
 export function useColumnLayout(tableId: string | undefined, columns: ColumnLayoutDef[]): ColumnLayout {
   const keys = useMemo(() => columns.map((c) => c.key), [columns]);
   const keysSig = keys.join('|');
+  const defaultHidden = useMemo(() => defaultHiddenKeys(columns), [columns]);
+  const defaultHiddenSig = defaultHidden.join('|');
 
   const defByKey = useMemo(() => {
     const m: Record<string, ColumnLayoutDef> = {};
@@ -114,16 +123,32 @@ export function useColumnLayout(tableId: string | undefined, columns: ColumnLayo
   const [widths, setWidths] = useState<Record<string, number>>(() => load(tableId).widths ?? {});
 
   // ---- hidden columns ----
-  const [hidden, setHidden] = useState<string[]>(() => (load(tableId).hidden ?? []).filter((k) => keys.includes(k)));
+  const prevKeys = useRef<string[]>(keys);
+  const [hidden, setHidden] = useState<string[]>(() => {
+    const persisted = load(tableId);
+    const savedHidden = (persisted.hidden ?? []).filter((k) => keys.includes(k));
+    const savedOrder = persisted.order ?? [];
+    const hiddenSet = new Set(savedHidden);
+    for (const key of defaultHidden) {
+      if (!savedOrder.includes(key)) hiddenSet.add(key);
+    }
+    return [...hiddenSet];
+  });
 
   // Drop hidden keys that no longer exist when columns change.
   useEffect(() => {
     setHidden((prev) => {
-      const next = prev.filter((k) => keys.includes(k));
-      return next.length === prev.length ? prev : next;
+      const prevKeySet = new Set(prevKeys.current);
+      const nextSet = new Set(prev.filter((k) => keys.includes(k)));
+      for (const key of defaultHidden) {
+        if (!prevKeySet.has(key)) nextSet.add(key);
+      }
+      const next = [...nextSet];
+      return next.length === prev.length && next.every((k, i) => k === prev[i]) ? prev : next;
     });
+    prevKeys.current = keys;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keysSig]);
+  }, [keysSig, defaultHiddenSig]);
 
   const toggleHidden = useCallback((key: string) => {
     setHidden((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -188,10 +213,10 @@ export function useColumnLayout(tableId: string | undefined, columns: ColumnLayo
   const resetLayout = useCallback(() => {
     setWidths({});
     setOrder(keys);
-    setHidden([]);
-    save(tableId, {});
+    setHidden(defaultHidden);
+    save(tableId, { hidden: defaultHidden });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keysSig, tableId]);
+  }, [keysSig, defaultHiddenSig, tableId]);
 
   // Persist on change.
   useEffect(() => {
@@ -203,8 +228,8 @@ export function useColumnLayout(tableId: string | undefined, columns: ColumnLayo
   const totalWidth = useMemo(() => visibleOrder.reduce((sum, k) => sum + widthOf(k), 0), [visibleOrder, widthOf]);
 
   const isCustomized = useMemo(
-    () => Object.keys(widths).length > 0 || hidden.length > 0 || order.join('|') !== keysSig,
-    [widths, hidden, order, keysSig],
+    () => Object.keys(widths).length > 0 || !sameSet(hidden, defaultHidden) || order.join('|') !== keysSig,
+    [widths, hidden, defaultHidden, order, keysSig],
   );
 
   return {

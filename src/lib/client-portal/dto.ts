@@ -198,7 +198,7 @@ export function toPortalOrderDto(
     hasActiveShipment?: boolean;
     hasVoidedShipment?: boolean;
   },
-  options: { includeFinancials?: boolean } = {}
+  options: { includeFinancials?: boolean; includeWeight?: boolean } = {}
 ) {
   // CP-018: the client portal shows ONLY the customer shipping rate (billed
   // customer shipping, falling back to buyer-paid store shipping). The internal
@@ -278,6 +278,7 @@ export function toPortalOrderDto(
       ) || null,
     shippingService: null,
     items,
+    ...(options.includeWeight ? { weightOz: row.weightOz ?? null } : {}),
     ...(options.includeFinancials
       ? (() => {
           // CP-018 / CP-040: the ONE customer-facing shipping value is the backend

@@ -21,6 +21,8 @@ export interface Column<T> {
   resizable?: boolean;
   /** Allow drag-reordering this column (default true). */
   draggable?: boolean;
+  /** Start hidden when column customization is enabled; user can show it. */
+  defaultHidden?: boolean;
   /**
    * Makes the column sortable. Returns a comparable value for `row`. Numbers
    * sort numerically; strings use locale/numeric-aware compare; null/undefined

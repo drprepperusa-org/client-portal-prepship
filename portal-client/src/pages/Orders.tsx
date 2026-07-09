@@ -13,7 +13,7 @@ import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { Button } from '@/components/ui/Button';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
-import { useOrders } from '@/lib/hooks';
+import { useMe, useOrders } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { itemCount, money } from '@/lib/status';
 import type { PortalOrder } from '@/lib/api';
@@ -99,6 +99,16 @@ function OrderTotalCell({ value }: { value: number | string | null | undefined }
   );
 }
 
+function fmtWeight(value: number | string | null | undefined): string {
+  const oz = Math.round(Number(value));
+  if (!Number.isFinite(oz) || oz <= 0) return '-';
+  const lb = Math.floor(oz / 16);
+  const rem = oz % 16;
+  if (lb > 0 && rem > 0) return `${lb} lb ${rem} oz`;
+  if (lb > 0) return `${lb} lb`;
+  return `${rem} oz`;
+}
+
 export default function Orders() {
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
@@ -126,6 +136,8 @@ export default function Orders() {
   useEffect(() => setPage(1), [debouncedQ, tab]);
 
   const query = useOrders({ status: tab, search: debouncedQ, page });
+  const me = useMe().data;
+  const canCustomizeOrders = Boolean(me?.isAdmin || me?.isGlobal);
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
 
@@ -171,6 +183,15 @@ export default function Orders() {
       render: (o) => <QtyBadge value={itemCount(o.items)} />,
       sortAccessor: (o) => itemCount(o.items),
     },
+    ...(canCustomizeOrders ? [{
+      key: 'weight',
+      header: 'Weight',
+      defaultWidth: 110,
+      defaultHidden: true,
+      className: 'text-right',
+      render: (o) => <span className="font-semibold text-ink-2 tnum">{fmtWeight(o.weightOz)}</span>,
+      sortAccessor: (o) => Number(o.weightOz) || 0,
+    } satisfies Column<PortalOrder>] : []),
     {
       key: 'total',
       header: 'Order Total',
@@ -256,7 +277,15 @@ export default function Orders() {
           emptyTitle="No orders"
           emptyMessage={tab === 'all' ? 'No orders match this search.' : 'No orders match this tab and search.'}
         >
-          <DataTable tableId="orders" columns={columns} rows={rows} rowKey={(o) => String(o.id)} onRowClick={setSelected} stickyHeader />
+          <DataTable
+            tableId="orders"
+            columns={columns}
+            rows={rows}
+            rowKey={(o) => String(o.id)}
+            onRowClick={setSelected}
+            allowColumnCustomization={canCustomizeOrders}
+            stickyHeader
+          />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>

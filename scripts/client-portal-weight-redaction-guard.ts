@@ -1,6 +1,6 @@
-// Client Portal: Weight is not a customer-visible field in any portal UI.
-// Backend DTOs may still carry weight for operational workflows, but the
-// client-portal frontend must not expose, render, or format it.
+// Client Portal: Weight is operator-visible only. Admin/global users may add
+// it to the Orders table through column customization, but client users must
+// never receive or render order/package weight in customer-facing surfaces.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -25,6 +25,9 @@ const orderDetailPanel = read('portal-client/src/components/OrderDetailPanel.tsx
 const orderDetailLoader = read('portal-client/src/components/OrderDetailLoader.tsx');
 const api = read('portal-client/src/lib/api.ts');
 const dto = read('src/lib/client-portal/dto.ts');
+const ordersReadModel = read('src/lib/client-portal/read-models/orders.ts');
+const dataTable = read('portal-client/src/components/ui/DataTable.tsx');
+const columnLayout = read('portal-client/src/lib/useColumnLayout.ts');
 
 check(
   pkg.scripts?.['test:client-portal-weight-redaction'] ===
@@ -33,11 +36,28 @@ check(
 );
 
 check(
-  !orders.includes("header: 'Weight'") &&
-    !orders.includes("key: 'weight'") &&
-    !orders.includes('fmtWeight') &&
-    !orders.includes('weightOz'),
-  'Orders page does not render or format Weight',
+  /defaultHidden\?:\s*boolean/.test(dataTable) &&
+    /defaultHidden\?:\s*boolean/.test(columnLayout) &&
+    /defaultHidden/.test(columnLayout),
+  'DataTable supports default-hidden columns so admin-only Weight can live in the chooser',
+);
+
+check(
+  /useMe\(\)/.test(orders) &&
+    /canCustomizeOrders/.test(orders) &&
+    /me\?\.isAdmin\s*\|\|\s*me\?\.isGlobal/.test(orders) &&
+    /allowColumnCustomization=\{canCustomizeOrders\}/.test(orders),
+  'Orders table customization is explicitly gated to admin/global users',
+);
+
+check(
+  orders.includes("header: 'Weight'") &&
+    orders.includes("key: 'weight'") &&
+    orders.includes('defaultHidden: true') &&
+    orders.includes('fmtWeight') &&
+    orders.includes('weightOz') &&
+    /\.\.\.\(canCustomizeOrders\s*\?\s*\[/.test(orders),
+  'Orders page defines Weight as a default-hidden admin-only customizable column',
 );
 
 check(
@@ -70,13 +90,21 @@ check(
 );
 
 check(
-  !api.includes('weightOz'),
-  'frontend API types do not expose weightOz to Client Portal UI code',
+  /weightOz\?:\s*number\s*\|\s*string\s*\|\s*null/.test(api),
+  'frontend API type exposes weightOz as optional admin-only order data',
 );
 
 check(
-  !dto.includes('weightOz') && !dto.includes('rateWeightOz'),
-  'client-portal DTO payloads do not expose weight fields',
+  /includeWeight\?:\s*boolean/.test(dto) &&
+    /options\.includeWeight/.test(dto) &&
+    /weightOz:\s*row\.weightOz\s*\?\?\s*null/.test(dto) &&
+    !dto.includes('rateWeightOz'),
+  'client-portal order DTO exposes canonical orders.weightOz only when includeWeight is true',
+);
+
+check(
+  /includeWeight:\s*scope\.isGlobal/.test(ordersReadModel),
+  'orders read-model only includes weight for global/admin portal scope',
 );
 
 if (failed) process.exit(1);

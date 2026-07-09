@@ -97,7 +97,7 @@ export async function listPortalOrders(
           hasActiveShipment: row.hasActiveShipment,
           hasVoidedShipment: row.hasVoidedShipment,
         },
-        { includeFinancials: scope.canViewFinancials },
+        { includeFinancials: scope.canViewFinancials, includeWeight: scope.isGlobal },
       ),
     ),
     pagination: {
@@ -156,7 +156,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       hasActiveShipment: row.hasActiveShipment,
       hasVoidedShipment: row.hasVoidedShipment,
     },
-    { includeFinancials: scope.canViewFinancials },
+    { includeFinancials: scope.canViewFinancials, includeWeight: scope.isGlobal },
   );
 }
 

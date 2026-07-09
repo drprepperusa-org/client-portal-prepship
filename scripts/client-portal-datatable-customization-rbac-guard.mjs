@@ -53,6 +53,16 @@ const pageFiles = fs
   .filter((f) => f.endsWith('.tsx'));
 for (const f of pageFiles) {
   const src = read(`${pagesDir}/${f}`);
+  if (f === 'Orders.tsx') {
+    assert(
+      /useMe\(\)/.test(src) &&
+        /canCustomizeOrders/.test(src) &&
+        /me\?\.isAdmin\s*\|\|\s*me\?\.isGlobal/.test(src) &&
+        /allowColumnCustomization=\{canCustomizeOrders\}/.test(src),
+      'Orders.tsx enables DataTable customization only for admin/global users',
+    );
+    continue;
+  }
   assert(
     !/allowColumnCustomization/.test(src),
     `${f} does not enable DataTable column customization for client users (admin-only, off by default)`,
