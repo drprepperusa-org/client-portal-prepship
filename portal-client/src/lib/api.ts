@@ -258,6 +258,7 @@ export interface PortalReturnRow {
   id: number;
   orderId: number | null;
   orderNumber: string | null;
+  returnReference: string | null;
   clientId: number | null;
   clientName: string | null;
   status: string;
@@ -335,11 +336,10 @@ export interface ReturnDeliveryResult {
 }
 
 /** Payload for creating a return. The frontend selects items + partial
- *  quantities + a return-to location; it does NOT compute rates/carrier/price. */
+ *  quantities; it does NOT compute rates/carrier/price. */
 export interface NewReturnInput {
   orderId: number;
   reason?: string;
-  returnToLocationId?: number;
   items: Array<{ sku: string; name?: string; quantity: number; orderItemId?: number }>;
 }
 
@@ -1143,13 +1143,6 @@ export const portalApi = {
     apiGet<{ data: PortalReturnDetail }>(token, `/api/client-portal/returns/${id}`),
   createReturn: (token: string, body: NewReturnInput) =>
     apiPost<{ data: { id: number; status: string } }>(token, '/api/client-portal/returns', body),
-  // CP-029: selectable return-to locations for the create-return modal. Metadata
-  // only (id/name/city/state/isDefault) — never carrier/rate/cost.
-  returnLocations: (token: string) =>
-    apiGet<{ data: Array<{ id: number; name: string; city: string | null; state: string | null; isDefault: boolean }> }>(
-      token,
-      '/api/client-portal/returns/locations',
-    ),
   createReturnLabel: (token: string, id: number) =>
     apiPost<{ data: ReturnLabelResult }>(token, `/api/client-portal/returns/${id}/label`),
   deliverReturn: (token: string, id: number) =>

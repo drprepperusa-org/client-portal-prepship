@@ -136,6 +136,7 @@ function returnSearchPredicate(search: string): SQL | undefined {
   if (!search) return undefined;
   const pattern = `%${search}%`;
   return or(
+    ilike(returns.returnReference, pattern),
     ilike(orders.orderNumber, pattern),
     ilike(orders.externalOrderId, pattern),
     ilike(returns.reason, pattern),
@@ -143,6 +144,21 @@ function returnSearchPredicate(search: string): SQL | undefined {
     ilike(shipments.labelTracking, pattern),
     sql`${returns.id}::text ilike ${pattern}`,
   );
+}
+
+function baseReturnReference(orderNumber: string | null, orderId: number): string {
+  const base = (orderNumber?.trim() || String(orderId)).replace(/\s+/g, '-');
+  return `${base}-RETURN`;
+}
+
+async function buildReturnReference(orderId: number, orderNumber: string | null): Promise<string> {
+  const base = baseReturnReference(orderNumber, orderId);
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(returns)
+    .where(eq(returns.orderId, orderId));
+  const next = Number(row?.count ?? 0) + 1;
+  return next <= 1 ? base : `${base}-${next}`;
 }
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -176,6 +192,7 @@ async function toClientSafeReturnRow(
     id: row.ret.id,
     orderId: row.ret.orderId,
     orderNumber: row.orderNumber,
+    returnReference: row.ret.returnReference,
     clientId: row.ret.clientId,
     clientName: row.clientName,
     status: row.ret.status,
@@ -262,14 +279,10 @@ app.get('/returns', async (c) => {
   });
 });
 
-// ── GET /returns/locations — selectable return-to locations for the create form ──
-// CP-029: the create-return modal renders this to let the user CHOOSE a
-// return-to location (with the configured default surfaced first). The payload
-// is non-sensitive operator-managed metadata only — id / name / city / state /
-// isDefault — never carrier, rate, or cost. The backend still validates the
-// chosen id and applies the default when the caller omits it (POST /returns).
-// Any in-scope portal caller may read it (a numeric :id can't match 'locations',
-// so this never shadows the detail route below).
+// ── GET /returns/locations — legacy/back-compat location metadata ──
+// CP-045 labels always ship to the fixed DRP return address. This read-only
+// endpoint is retained for older clients, but POST /returns no longer accepts a
+// client-selected return-to location.
 app.get('/returns/locations', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -404,8 +417,8 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
 
 // ── POST /returns — create a return + return_items ───────────────────────────
 // Validates the caller's scope OWNS the order, records who initiated it (client
-// vs three_pl derived from the caller role), a selectable return-to location
-// (default when omitted), and partial quantities ≤ ordered. The one-active-per-
+// vs three_pl derived from the caller role), persists the return reference, and
+// validates partial quantities ≤ ordered. The one-active-per-
 // order rule is enforced by the DB partial unique index (and the CP-027 service)
 // — we surface a clean 409 instead of a raw constraint error.
 app.post('/returns', async (c) => {
@@ -415,7 +428,6 @@ app.post('/returns', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     orderId?: number;
     reason?: string;
-    returnToLocationId?: number;
     items?: Array<{ sku?: string; name?: string; quantity?: number; orderItemId?: number }>;
   };
 
@@ -427,7 +439,13 @@ app.post('/returns', async (c) => {
   // every other read uses, so a client can never create a return for an order
   // they cannot see.
   const [order] = await db
-    .select({ id: orders.id, clientId: orders.clientId, storeId: orders.storeId, orderStatus: orders.orderStatus })
+    .select({
+      id: orders.id,
+      clientId: orders.clientId,
+      storeId: orders.storeId,
+      orderStatus: orders.orderStatus,
+      orderNumber: orders.orderNumber,
+    })
     .from(orders)
     .where(and(eq(orders.id, orderId), orderScopePredicate(scope) ?? sql`true`))
     .limit(1);
@@ -449,24 +467,7 @@ app.post('/returns', async (c) => {
   // acts as the client. Matches the CP-026 'client' | 'three_pl' contract.
   const initiatedBy = scope.isGlobal ? 'three_pl' : 'client';
 
-  // Return-to location: selectable, defaulting to the configured default
-  // location when omitted. Validate the id exists + is active when supplied.
-  let returnToLocationId = typeof body.returnToLocationId === 'number' ? body.returnToLocationId : null;
-  if (returnToLocationId != null) {
-    const [loc] = await db
-      .select({ id: locations.id })
-      .from(locations)
-      .where(and(eq(locations.id, returnToLocationId), eq(locations.active, true)))
-      .limit(1);
-    if (!loc) return c.json({ error: 'Return-to location not found' }, 400);
-  } else {
-    const [def] = await db
-      .select({ id: locations.id })
-      .from(locations)
-      .where(and(eq(locations.isDefault, true), eq(locations.active, true)))
-      .limit(1);
-    returnToLocationId = def?.id ?? null;
-  }
+  const returnReference = await buildReturnReference(orderId, order.orderNumber);
 
   // Partial quantities: validate each requested item ≤ the ordered quantity for
   // that SKU on this order (from the canonical order_items). Rows with no
@@ -529,7 +530,7 @@ app.post('/returns', async (c) => {
       .values({
         orderId,
         clientId,
-        returnToLocationId,
+        returnReference: returnReference,
         status: 'requested',
         initiatedBy,
         initiatedByEmail: scope.email ?? null,

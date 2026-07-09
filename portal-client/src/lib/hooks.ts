@@ -221,12 +221,6 @@ export function useReturnDetail(id: number | null) {
   return useTokenQuery(['return', id ?? 0], (t) => portalApi.returnDetail(t, id as number), id != null);
 }
 
-// CP-029 — selectable return-to locations for the create-return modal. Enabled
-// only while the modal is open (locations rarely change; the cache is fine).
-export function useReturnLocations(enabled = true) {
-  return useTokenQuery(['return-locations'], (t) => portalApi.returnLocations(t), enabled);
-}
-
 // CP-030 — 3PL receiving queue (operator-only). Only enabled when requested, so
 // non-operator pages never fire it (the backend also 403s a client user). The
 // search term is debounced upstream in the page and passed in.

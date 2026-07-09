@@ -54,6 +54,7 @@ const nav = read('portal-client/src/nav.ts');
 const appRouter = read('portal-client/src/App.tsx');
 const page = read('portal-client/src/pages/Returns.tsx');
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
+const createModalCode = stripComments(createModal);
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. Route sub-module exists + mounted in the aggregator ──
@@ -231,37 +232,23 @@ assert(
   /quantity/.test(createModal) && /items/.test(createModal),
   'the create-return modal collects per-item return quantities and sends them as items',
 );
-// CP-029 acceptance: the create-return modal must let the user CHOOSE a
-// return-to location (with DR PREPPER/default as an option) and submit it as
-// returnToLocationId — the backend validates it + applies the default when
-// omitted. The location list is fetched from the backend (never invented).
+// CP-045 acceptance: the create-return modal shows the fixed DRP destination
+// and must not let a client choose or submit a return-to location.
 assert(
-  /returnToLocationId/.test(createModal),
-  'the create-return modal collects + sends returnToLocationId (return-to location selector)',
+  !/returnToLocationId|useReturnLocations|<select/.test(createModalCode),
+  'the create-return modal does not expose or submit a return-to location selector',
 );
 assert(
-  /useReturnLocations/.test(createModal),
-  'the create-return modal fetches selectable return-to locations via useReturnLocations',
+  /DR PREPPER LLC/.test(createModal) && /413 W Walnut St/.test(createModal) && /Gardena, CA 90248/.test(createModal),
+  'the create-return modal displays the fixed DRP return destination',
 );
 assert(
-  /<select/.test(createModal) && /Default \(/.test(createModal),
-  'the create-return modal renders a return-to location <select> with a Default option',
+  !/returnToLocationId\?:/.test(api),
+  'NewReturnInput does not accept returnToLocationId from the client',
 );
 assert(
-  /returnToLocationId/.test(api) || /returnLocations:/.test(api),
-  'portalApi exposes returnLocations + NewReturnInput carries returnToLocationId',
-);
-assert(
-  /returnLocations:/.test(api) && /returns\/locations/.test(api),
-  'portalApi.returnLocations reads /api/client-portal/returns/locations',
-);
-assert(
-  /app\.get\('\/returns\/locations'/.test(route),
-  'the returns route exposes GET /returns/locations for the selector',
-);
-assert(
-  /useReturnLocations/.test(hooks),
-  'the frontend exposes a useReturnLocations react-query hook',
+  /returnReference:\s*string \| null/.test(api) && /Return ref/.test(page),
+  'returns UI exposes the persisted returnReference for display/search',
 );
 
 // ── CP-032: the create-return modal creates the LABEL immediately (PDF-only) ──

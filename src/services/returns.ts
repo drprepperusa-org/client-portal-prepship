@@ -5,8 +5,6 @@ import { shipments } from '../db/schema/shipments';
 import { orders } from '../db/schema/orders';
 import { clients } from '../db/schema/clients';
 import { returns } from '../db/schema/returns';
-import { locations } from '../db/schema/locations';
-import { getDefaultLocation } from './locations';
 import { getRates, isBlockedRate, type CarrierRateDiagnostic, type RateInput } from './rates';
 import { carrierConnectors } from '../connectors/registry';
 import {
@@ -25,7 +23,6 @@ import {
 } from './mock-label-generator';
 import { saveMockLabel } from './mock-label-store';
 import { addMockLabelSignature } from '../lib/mock-label-access';
-import type { Location } from '../db/schema/locations';
 import type { Rate } from '../lib/shipstation';
 
 // ── CP-027 — backend return-label service ─────────────────────────────────────
@@ -70,6 +67,13 @@ export type ClientSafeReturnResult = {
 
 type OutboundShipment = typeof shipments.$inferSelect;
 type OrderRow = typeof orders.$inferSelect;
+type ReturnReadyOutboundShipment = OutboundShipment & {
+  weightOz: number;
+  dimsL: number;
+  dimsW: number;
+  dimsH: number;
+  selectedPackageId: string;
+};
 type ReturnRatePolicy = {
   clientId: number | null;
   storeId: number | null;
@@ -98,6 +102,16 @@ type ReturnLabelFailureDiagnostics = {
   failureKind: 'no_rates' | 'all_rates_blocked';
   carrierDiagnostics: SafeCarrierDiagnostic[];
   returnLabelRatePolicy: ReturnRatePolicy['returnLabelRatePolicy'];
+};
+
+const DRP_RETURN_TO_ADDRESS: ShipstationAddressInput = {
+  name: 'DR PREPPER LLC',
+  company: 'DR PREPPER LLC',
+  street1: '413 W Walnut St',
+  city: 'Gardena',
+  state: 'CA',
+  postalCode: '90248',
+  country: 'US',
 };
 
 export class ReturnLabelRateUnavailableError extends Error {
@@ -132,20 +146,6 @@ function orderShipToFromRaw(order: {
   };
 }
 
-function locationToAddress(loc: Location): ShipstationAddressInput {
-  return {
-    name: loc.name,
-    company: loc.company ?? undefined,
-    street1: loc.street1 ?? '',
-    street2: loc.street2 ?? undefined,
-    city: loc.city ?? '',
-    state: loc.state ?? '',
-    postalCode: loc.postalCode ?? '',
-    country: loc.country ?? 'US',
-    phone: loc.phone ?? undefined,
-  };
-}
-
 function assertAddressComplete(
   addr: ShipstationAddressInput,
   label: string,
@@ -157,6 +157,20 @@ function assertAddressComplete(
   if (!addr.postalCode) missing.push('postalCode');
   if (missing.length) {
     throw new Error(`Return ${label} address is missing required fields: ${missing.join(', ')}`);
+  }
+}
+
+function assertOutboundReturnPackage(
+  outbound: OutboundShipment,
+): asserts outbound is ReturnReadyOutboundShipment {
+  const missing: string[] = [];
+  if (!(Number(outbound.weightOz) > 0)) missing.push('weight');
+  if (!(Number(outbound.dimsL) > 0)) missing.push('length');
+  if (!(Number(outbound.dimsW) > 0)) missing.push('width');
+  if (!(Number(outbound.dimsH) > 0)) missing.push('height');
+  if (!outbound.selectedPackageId) missing.push('package');
+  if (missing.length) {
+    throw new Error(`Missing outbound shipment return-label facts: ${missing.join(', ')}`);
   }
 }
 
@@ -377,7 +391,7 @@ function buildReturnLabelDiagnostics(args: {
  * mirrors into return_labels afterward.
  */
 async function persistReturnShipment(args: {
-  outbound: OutboundShipment;
+  outbound: ReturnReadyOutboundShipment;
   orderId: number | null;
   clientId: number | null;
   orderNumber: string | null;
@@ -410,6 +424,7 @@ async function persistReturnShipment(args: {
       dimsL: args.outbound.dimsL,
       dimsW: args.outbound.dimsW,
       dimsH: args.outbound.dimsH,
+      selectedPackageId: args.outbound.selectedPackageId,
       cost: costStr,
       labelUrl: args.labelUrl,
       labelCreatedAt: args.createdAt,
@@ -535,28 +550,13 @@ export async function createReturnLabel(
 
   // ── Build the address reversal for the rate quote / label ──
   //   ship_from = buyer/customer (the person returning the package)
-  //   ship_to   = return-to location (the warehouse receiving the return)
+  //   ship_to   = fixed DRP return warehouse
+  assertOutboundReturnPackage(outbound);
+
   const shipFrom = orderShipToFromRaw(order);
   assertAddressComplete(shipFrom, 'ship-from (customer)');
-
-  let returnLocation: Location | null = null;
-  if (returnRow?.returnToLocationId != null) {
-    const [loc] = await db
-      .select()
-      .from(locations)
-      .where(eq(locations.id, returnRow.returnToLocationId))
-      .limit(1);
-    returnLocation = loc ?? null;
-  }
-  // Fall back to the default return-to location when the workflow row has none.
-  if (!returnLocation) {
-    returnLocation = await getDefaultLocation();
-  }
-  if (!returnLocation) {
-    throw new Error('No default return-to location configured. Set a default Location first.');
-  }
-  const shipTo = locationToAddress(returnLocation);
-  assertAddressComplete(shipTo, 'ship-to (return location)');
+  const shipTo = DRP_RETURN_TO_ADDRESS;
+  assertAddressComplete(shipTo, 'ship-to (DRP return address)');
 
   const createdAt = new Date();
   const liveEligible = env.RETURNS_LIVE_LABELS && !isTest;
@@ -569,20 +569,20 @@ export async function createReturnLabel(
   // (and any carrier API) is only ever a provider implementation detail behind
   // this single path — never the owner of the workflow, price choice, customer
   // delivery, or billing truth.
-  const weightOz = outbound.weightOz ?? order.weightOz ?? 1;
+  const weightOz = outbound.weightOz;
   const returnRatePolicy = resolveReturnRatePolicy({ clientId, storeId: order.storeId ?? null });
   const rateInput: RateInput = {
     weightOz,
-    // ship_from = customer; to* = return location.
+    // ship_from = customer; to* = fixed DRP return warehouse.
     toZip: shipTo.postalCode ?? '',
     toCountry: shipTo.country ?? 'US',
     toState: shipTo.state ?? undefined,
     toCity: shipTo.city ?? undefined,
     toAddress: shipTo.street1 ?? undefined,
     toName: shipTo.name ?? undefined,
-    dimsL: outbound.dimsL ?? undefined,
-    dimsW: outbound.dimsW ?? undefined,
-    dimsH: outbound.dimsH ?? undefined,
+    dimsL: outbound.dimsL,
+    dimsW: outbound.dimsW,
+    dimsH: outbound.dimsH,
     clientId: returnRatePolicy.clientId,
     storeId: returnRatePolicy.storeId,
     shipFrom: {
@@ -661,7 +661,7 @@ export async function createReturnLabel(
       trackingNumber: fakeTracking,
       serviceLabel: serviceCodeToLabel(chosen?.service_code ?? 'return'),
       weightOz,
-      // Reversed: the label ships FROM the customer TO the return location.
+      // Reversed: the label ships FROM the customer TO the DRP return warehouse.
       shipFrom: {
         name: shipFrom.name ?? 'Ship From',
         street1: shipFrom.street1 ?? '',
@@ -731,7 +731,7 @@ export async function createReturnLabel(
     apiKeyV2: creds.apiKeyV2 ?? undefined,
     carrierId: chosen.carrier_id,
     serviceCode: chosen.service_code,
-    packageCode: chosen.package_type || 'package',
+    packageCode: outbound.selectedPackageId,
     weightOz,
     length: outbound.dimsL,
     width: outbound.dimsW,

@@ -116,6 +116,17 @@ export default function Returns() {
   const columns: Column<PortalReturnRow>[] = useMemo(
     () => [
       {
+        key: 'returnReference',
+        header: 'Return ref',
+        defaultWidth: 150,
+        render: (r) => (
+          <span className="font-mono text-xs font-semibold text-ink">
+            {r.returnReference ?? `Return #${r.id}`}
+          </span>
+        ),
+        sortAccessor: (r) => r.returnReference ?? String(r.id),
+      },
+      {
         key: 'order',
         header: 'Order',
         defaultWidth: 150,
@@ -218,7 +229,7 @@ export default function Returns() {
   return (
     <div className="space-y-4">
       <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <SearchInput value={q} onChange={setQ} placeholder="Search order #, tracking, reason…" ariaLabel="Search returns" />
+        <SearchInput value={q} onChange={setQ} placeholder="Search return ref, order #, tracking, reason..." ariaLabel="Search returns" />
 
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
           {/* Operator-only receiving desk entry. Client users never see it; the
@@ -329,7 +340,7 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
   }
 
   return (
-    <Drawer open={id != null} onClose={onClose} title={d ? `Return #${d.id}` : 'Return'}>
+    <Drawer open={id != null} onClose={onClose} title={d ? (d.returnReference ?? `Return #${d.id}`) : 'Return'}>
       {q.isLoading ? (
         <p className="text-sm text-ink-3">Loading…</p>
       ) : q.isError || !d ? (
@@ -342,6 +353,7 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Return ref" value={d.returnReference ?? `Return #${d.id}`} />
             <Field label="Order" value={d.orderNumber ?? (d.orderId ? `#${d.orderId}` : '—')} />
             <Field label="Started by" value={d.initiatedBy === 'three_pl' ? 'Warehouse' : 'Client'} />
             <Field label="Delivery" value={d.deliveryMethod ? DELIVERY_LABEL[d.deliveryMethod] ?? d.deliveryMethod : '—'} />

@@ -40,6 +40,12 @@ export const returns = pgTable(
     clientId: integer().references(() => clients.id),
     // Nullable until the return label is created (the label lives on shipments).
     returnShipmentId: integer().references(() => shipments.id, { onDelete: 'set null' }),
+    // Client-visible return reference, derived once from the order number:
+    // 2050-RETURN, then 2050-RETURN-2, etc. Search/display only; label SOT stays
+    // on shipments.
+    returnReference: text('return_reference'),
+    // Legacy workflow metadata. CP-045 labels always ship to the fixed DRP
+    // return address; new requests leave this unset.
     returnToLocationId: integer().references(() => locations.id),
     // requested | label_created | label_failed | in_transit | received | inspected | closed | cancelled
     status: text().default('requested').notNull(),
@@ -70,6 +76,7 @@ export const returns = pgTable(
     index('returns_order_idx').on(t.orderId),
     index('returns_client_idx').on(t.clientId),
     index('returns_shipment_idx').on(t.returnShipmentId),
+    index('returns_reference_idx').on(t.returnReference),
     index('returns_status_idx').on(t.status),
     // One ACTIVE, non-override return per order. Admin-override rows are excluded
     // from the constraint, so an explicit override can create an additional one.
