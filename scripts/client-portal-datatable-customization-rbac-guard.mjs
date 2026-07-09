@@ -1,12 +1,10 @@
-// CP-035 - DataTable column customization is an ADMIN privilege, OFF for clients.
+// Structural table customization is an ADMIN privilege; widths are adjustable
+// by every desktop/tablet user.
 //
-// Client users must not toggle/reorder/resize columns ("Columns x/x" is an
-// admin privilege). This guard pins that the shared DataTable gates ALL column
-// customization (the Columns chooser, Reset, drag-to-reorder, resize, and the
-// persisted localStorage layout) behind an explicit admin/global-only
-// `allowColumnCustomization` prop that DEFAULTS OFF. Every Client Portal table
-// may opt in for PrepShip admins/global users, while every customer table stays
-// fixed and stale localStorage layout can never resurrect hidden/removed columns.
+// Client users may resize columns for the current session, but cannot toggle or
+// reorder them. The Columns chooser, Reset, drag-to-reorder, and persisted
+// structural layout remain behind the admin/global `allowColumnCustomization`
+// gate, so stale localStorage cannot resurrect hidden/removed customer columns.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -36,13 +34,17 @@ assert(
   'customization requires tableId AND an explicit allowColumnCustomization opt-in (not tableId alone)',
 );
 
-// 3. Controls, drag, resize, and persisted layout are ALL gated on `customizable`.
+// 3. Controls, drag, and persisted layout are gated; width resize is universal.
 assert(/\{customizable && \(/.test(dt), 'the Columns chooser + Reset controls render only when customizable');
 assert(/const canDrag\s*=\s*customizable\s*&&/.test(dt), 'header drag-to-reorder is gated on customizable');
-assert(/const canResize\s*=\s*customizable\s*&&/.test(dt), 'column resize is gated on customizable');
+assert(/const canResize\s*=\s*c\.resizable\s*!==\s*false/.test(dt), 'column resize is available to every desktop/tablet user');
 assert(
   /useColumnLayout\(customizable \? tableId : undefined/.test(dt),
-  'when NOT customizable, tableId is not passed to useColumnLayout - stale localStorage layout is ignored',
+  'client resizing is session-only; stale persisted structural layouts are ignored',
+);
+assert(
+  /tabIndex=\{0\}/.test(dt) && /ArrowLeft/.test(dt) && /ArrowRight/.test(dt),
+  'resize handles support keyboard width adjustments',
 );
 assert(!/\{tableId && \(/.test(dt), 'customization controls are no longer gated on tableId alone');
 

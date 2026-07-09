@@ -68,12 +68,10 @@ interface DataTableProps<T> {
    */
   tableId?: string;
   /**
-   * CP-035: gate column customization (the Columns x/x chooser, Reset,
-   * drag-to-reorder, and resize) behind an EXPLICIT opt-in. Defaults to false so
-   * Client Portal customer tables are fixed — no toggling, and stale localStorage
-   * layouts are ignored (a removed/hidden column can never resurrect). Admin/
-   * internal surfaces may pass true, gated by role at the call site — never
-   * inferred from tableId alone.
+   * Gate structural column customization (the Columns chooser, Reset, and
+   * drag-to-reorder) behind an explicit opt-in. Width resizing is available to
+   * every desktop/tablet user; without this opt-in it remains session-only and
+   * ignores persisted structural layouts.
    */
   allowColumnCustomization?: boolean;
   /**
@@ -105,11 +103,11 @@ export function DataTable<T>({
   stickyHeader = false,
   maxBodyHeight = 'calc(100vh - 15rem)',
 }: DataTableProps<T>) {
-  // CP-035: customization (controls + drag/reorder/resize + persisted layout) is
+  // Structural customization (controls + drag/reorder + persisted layout) is
   // enabled ONLY when a tableId is present AND the caller explicitly opts in.
   // When off, tableId is NOT passed to the layout hook, so persisted localStorage
-  // order/width/hidden is ignored entirely — the table renders exactly the
-  // columns it was given, in order, at their default widths.
+  // order/width/hidden is ignored entirely. The table starts with the columns it
+  // was given and client width adjustments remain in memory for this session.
   const customizable = Boolean(tableId) && allowColumnCustomization;
   const layout = useColumnLayout(customizable ? tableId : undefined, columns);
   const byKey = Object.fromEntries(columns.map((c) => [c.key, c])) as Record<string, Column<T>>;
@@ -312,7 +310,7 @@ export function DataTable<T>({
               <tr className="border-b border-slate-200/70 text-left">
                 {ordered.map((c) => {
                   const canDrag = customizable && c.draggable !== false;
-                  const canResize = customizable && c.resizable !== false;
+                  const canResize = c.resizable !== false;
                   const isDragging = dragKey === c.key;
                   const isDropTarget = overKey === c.key && dragKey !== c.key;
                   return (
@@ -373,12 +371,23 @@ export function DataTable<T>({
                           role="separator"
                           aria-orientation="vertical"
                           aria-label={`Resize ${c.header} column`}
+                          aria-valuenow={layout.widthOf(c.key)}
+                          aria-valuemin={c.minWidth ?? 88}
+                          aria-valuemax={640}
+                          tabIndex={0}
                           onPointerDown={(e) => startResize(c.key, e)}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const delta = e.key === 'ArrowRight' ? 16 : -16;
+                            layout.setWidth(c.key, layout.widthOf(c.key) + delta);
+                          }}
                           onClick={(e) => e.stopPropagation()}
                           draggable={false}
-                          className="absolute right-0 top-0 z-10 flex h-full w-2 cursor-col-resize touch-none items-center justify-center"
+                          className="focus-ring absolute right-0 top-0 z-10 flex h-full w-3 cursor-col-resize touch-none items-center justify-center"
                         >
-                          <span className="h-1/2 w-px bg-slate-200 transition-colors group-hover:bg-slate-300" />
+                          <span className="h-1/2 w-px bg-slate-300/80 transition-colors group-hover:bg-brand-400" />
                           <span className="absolute inset-y-0 right-0 w-0.5 bg-transparent transition-colors hover:bg-brand-400" />
                         </span>
                       )}
