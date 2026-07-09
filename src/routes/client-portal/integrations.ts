@@ -16,6 +16,7 @@ import {
   resolveSubmittedClientId,
 } from '../../lib/client-portal/integration-submission';
 import { verifyShopifyCredentials } from '../../connectors/store/shopify';
+import { syntheticStoreIdForCredentialAccount } from '../../services/credential-accounts';
 
 const app = new Hono();
 
@@ -355,9 +356,9 @@ app.patch('/integrations/:id/credentials', async (c) => {
   return c.json({ data: { ok: true } });
 });
 
-// Disconnect a live store connection from the client portal. This is a soft
-// disconnect: active=false removes it from sync/read models while preserving
-// credential history and operator auditability.
+// Disconnect a live store connection from the client portal by deleting the
+// shared store_accounts row. PrepShip Admin reads the same row, so deletion is
+// intentionally bidirectional between the two apps.
 app.delete('/integrations/:id', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -371,14 +372,12 @@ app.delete('/integrations/:id', async (c) => {
     provider: string | null;
     label: string | null;
     accountIdentifier: string | null;
-    active: boolean | null;
   }>(sql`
     select id,
            client_id as "clientId",
            provider,
            label,
-           account_identifier as "accountIdentifier",
-           active
+           account_identifier as "accountIdentifier"
     from store_accounts
     where id = ${id}
   `);
@@ -388,13 +387,32 @@ app.delete('/integrations/:id', async (c) => {
     return c.json({ error: 'store not found' }, 404);
   }
 
-  if (row.active !== false) {
-    await db.execute(sql`
-      update store_accounts
-      set active = false,
-          updated_at = now()
-      where id = ${id}
-    `);
+  const deleted = await db.execute<{ id: number }>(sql`
+    delete from store_accounts
+    where id = ${id}
+    returning id
+  `);
+  const deletedId = deleted[0]?.id ?? null;
+  if (deletedId == null) {
+    return c.json({ error: 'store not found' }, 404);
+  }
+
+  let cascadedClientId: number | null = null;
+  if (row.provider) {
+    const syntheticStoreId = syntheticStoreIdForCredentialAccount(row.provider, row.id);
+    try {
+      const cascaded = await db.execute<{ id: number }>(sql`
+        delete from clients
+        where store_ids = ARRAY[${syntheticStoreId}]::integer[]
+        returning id
+      `);
+      cascadedClientId = cascaded[0]?.id ?? null;
+    } catch (cascadeErr) {
+      console.warn(
+        '[client-portal] store disconnect could not cascade-delete synthetic client row:',
+        cascadeErr instanceof Error ? cascadeErr.message : cascadeErr,
+      );
+    }
   }
 
   await recordPortalAudit('portal.integrations.disconnect', scope, {
@@ -402,7 +420,7 @@ app.delete('/integrations/:id', async (c) => {
     clientId: row.clientId,
     accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
   });
-  return c.json({ data: { id: row.id, disconnected: true } });
+  return c.json({ data: { id: deletedId, deleted: true, cascadedClientId } });
 });
 
 export default app;

@@ -21,7 +21,9 @@ assert(route.includes('submittedFields'), 'audit rows record credential field NA
 assert(!route.includes('admin required'), 'submit endpoint must be open to client users');
 assert(route.includes('verified.myshopifyDomain !== row.accountIdentifier'), 'reconnect must pin the canonical domain');
 assert(route.includes("app.delete('/integrations/:id'"), 'client portal must expose a scoped store disconnect endpoint');
-assert(route.includes('set active = false'), 'store disconnect must be a soft disconnect via active=false');
+assert(route.includes('delete from store_accounts'), 'store disconnect must delete the shared store_accounts row so PrepShip and portal stay in sync');
+assert(!route.includes('set active = false'), 'store disconnect must not only soft-disable the shared connection');
+assert(route.includes('delete from clients') && route.includes('syntheticStoreIdForCredentialAccount'), 'store disconnect must best-effort remove the synthetic store client row');
 assert(route.includes('portal.integrations.disconnect'), 'store disconnect must write an audit event');
 assert(route.includes("app.post('/integrations/:id/approve'"), 'client portal must expose an admin store approval endpoint');
 assert(route.includes("if (!isAdmin) return c.json({ error: 'admin access required' }, 403)"), 'store approval must be portal-admin gated');
@@ -56,11 +58,11 @@ assert(
 );
 assert(
   connections.includes('portalApi.disconnectIntegration') &&
-    connections.includes("toast.success('Deactivated'") &&
+    connections.includes("toast.success('Deleted'") &&
     connections.includes('setDisconnectTarget') &&
-    connections.includes('title="Deactivate connection"') &&
+    connections.includes('title="Delete connection"') &&
     !connections.includes('Disconnect gated'),
-  'Connections disconnect button must open a confirmation modal before calling the API',
+  'Connections delete button must open a confirmation modal before calling the API',
 );
 assert(
   connections.includes('handleApprove') &&
@@ -75,7 +77,7 @@ assert(
 const api = readFileSync('portal-client/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(
   api.includes('disconnectIntegration: (token: string, id: number)') &&
-    api.includes('apiDelete<{ data: { id: number; disconnected: boolean } }>(token, `/api/client-portal/integrations/${id}`)'),
+    api.includes('apiDelete<{ data: { id: number; deleted: boolean; cascadedClientId: number | null } }>(token, `/api/client-portal/integrations/${id}`)'),
   'portal API client must expose DELETE /client-portal/integrations/:id',
 );
 assert(

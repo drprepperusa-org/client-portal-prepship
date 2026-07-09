@@ -1188,9 +1188,9 @@ export const portalApi = {
   /** Admin-only: approve a client-submitted pending store connection. */
   approveIntegration: (token: string, id: number) =>
     apiPost<{ data: PortalIntegration }>(token, `/api/client-portal/integrations/${id}/approve`),
-  /** Soft-disconnect a store connection (active=false; sync/read models stop using it). */
+  /** Delete a store connection from the shared store_accounts source. */
   disconnectIntegration: (token: string, id: number) =>
-    apiDelete<{ data: { id: number; disconnected: boolean } }>(token, `/api/client-portal/integrations/${id}`),
+    apiDelete<{ data: { id: number; deleted: boolean; cascadedClientId: number | null } }>(token, `/api/client-portal/integrations/${id}`),
   inbound: (token: string, clientId?: number) =>
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   createInbound: (token: string, body: NewInboundInput) =>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Plus, Clock, Store, Unplug } from 'lucide-react';
+import { CheckCircle2, Plus, Clock, Store, Trash2 } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -116,10 +116,10 @@ export default function Connections() {
     try {
       await portalApi.disconnectIntegration(accessToken, integration.id);
       await qc.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success('Deactivated', `${integration.label ?? integration.provider ?? 'Store'} has been deactivated.`);
+      toast.success('Deleted', `${integration.label ?? integration.provider ?? 'Store'} has been deleted.`);
       setDisconnectTarget(null);
     } catch (err) {
-      toast.error('Disconnect failed', err instanceof Error ? err.message : 'Please try again.');
+      toast.error('Delete failed', err instanceof Error ? err.message : 'Please try again.');
     } finally {
       setDisconnectingId(null);
     }
@@ -248,21 +248,21 @@ export default function Connections() {
       <Modal
         open={Boolean(disconnectTarget)}
         onClose={() => disconnectingId == null && setDisconnectTarget(null)}
-        title="Deactivate connection"
+        title="Delete connection"
         maxWidth={460}
       >
         {disconnectTarget && (
           <div className="space-y-5">
             <div className="flex items-start gap-3">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-50 text-rose-600">
-                <Unplug size={20} />
+                <Trash2 size={20} />
               </span>
               <div className="min-w-0 space-y-1">
                 <p className="truncate text-sm font-semibold text-ink">
                   {disconnectTarget.label ?? disconnectTarget.provider ?? 'Store connection'}
                 </p>
                 <p className="text-sm text-ink-3">
-                  This deactivates the store connection and stops future sync for this sales channel. Existing orders,
+                  This deletes the store connection and stops future sync for this sales channel. Existing orders,
                   billing records, and audit history stay in PrepShip.
                 </p>
               </div>
@@ -275,10 +275,10 @@ export default function Connections() {
                 variant="danger"
                 size="sm"
                 loading={disconnectingId === disconnectTarget.id}
-                leadingIcon={<Unplug size={14} />}
+                leadingIcon={<Trash2 size={14} />}
                 onClick={handleDisconnect}
               >
-                Deactivate
+                Delete
               </Button>
             </div>
           </div>
