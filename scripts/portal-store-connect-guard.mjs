@@ -39,9 +39,11 @@ assert(
 const connections = readFileSync('portal-client/src/pages/Connections.tsx', 'utf8').replace(/\r\n/g, '\n');
 assert(
   connections.includes('portalApi.disconnectIntegration') &&
-    connections.includes("toast.success('Disconnected'") &&
+    connections.includes("toast.success('Deactivated'") &&
+    connections.includes('setDisconnectTarget') &&
+    connections.includes('title="Deactivate connection"') &&
     !connections.includes('Disconnect gated'),
-  'Connections disconnect button must call the API and show success, not the old gated warning',
+  'Connections disconnect button must open a confirmation modal before calling the API',
 );
 
 const api = readFileSync('portal-client/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');

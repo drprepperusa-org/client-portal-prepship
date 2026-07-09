@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Clock, Store } from 'lucide-react';
+import { Plus, Clock, Store, Unplug } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { QueryState } from '@/components/ui/QueryState';
 import { useToast } from '@/components/ui/Toast';
 import { useIntegrations, useMe } from '@/lib/hooks';
@@ -51,6 +52,7 @@ export default function Connections() {
   const rows: PortalIntegration[] = query.data?.data ?? [];
   const [modalOpen, setModalOpen] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<number | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<PortalIntegration | null>(null);
 
   // Server-persisted pending connections: POST /integrations stores the request
   // (source='portal', inactive — no sync path uses it) and it stays visible
@@ -88,13 +90,15 @@ export default function Connections() {
     }
   }
 
-  async function handleDisconnect(integration: PortalIntegration) {
-    if (!accessToken || integration.id == null || disconnectingId != null) return;
+  async function handleDisconnect() {
+    const integration = disconnectTarget;
+    if (!accessToken || !integration || integration.id == null || disconnectingId != null) return;
     setDisconnectingId(integration.id);
     try {
       await portalApi.disconnectIntegration(accessToken, integration.id);
       await qc.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success('Disconnected', `${integration.label ?? integration.provider ?? 'Store'} has been disconnected.`);
+      toast.success('Deactivated', `${integration.label ?? integration.provider ?? 'Store'} has been deactivated.`);
+      setDisconnectTarget(null);
     } catch (err) {
       toast.error('Disconnect failed', err instanceof Error ? err.message : 'Please try again.');
     } finally {
@@ -169,7 +173,7 @@ export default function Connections() {
                     index={i + pending.length}
                     disconnecting={disconnectingId === c.id}
                     onReconfigure={() => toast.info('Reconfigure', `Open the connector to update ${c.label ?? c.provider}.`)}
-                    onDisconnect={handleDisconnect}
+                    onDisconnect={setDisconnectTarget}
                   />
                   {c.type === 'store' && (
                     <div className="px-1">
@@ -207,6 +211,46 @@ export default function Connections() {
           }
         }}
       />
+
+      <Modal
+        open={Boolean(disconnectTarget)}
+        onClose={() => disconnectingId == null && setDisconnectTarget(null)}
+        title="Deactivate connection"
+        maxWidth={460}
+      >
+        {disconnectTarget && (
+          <div className="space-y-5">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-50 text-rose-600">
+                <Unplug size={20} />
+              </span>
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm font-semibold text-ink">
+                  {disconnectTarget.label ?? disconnectTarget.provider ?? 'Store connection'}
+                </p>
+                <p className="text-sm text-ink-3">
+                  This deactivates the store connection and stops future sync for this sales channel. Existing orders,
+                  billing records, and audit history stay in PrepShip.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" disabled={disconnectingId != null} onClick={() => setDisconnectTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={disconnectingId === disconnectTarget.id}
+                leadingIcon={<Unplug size={14} />}
+                onClick={handleDisconnect}
+              >
+                Deactivate
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
