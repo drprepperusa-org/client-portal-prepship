@@ -12,6 +12,7 @@ import type {
   PortalOrder,
   PortalSetting,
   PortalShipment,
+  StoreAccount,
 } from '../types/portal';
 import { portalScopeFromToken } from './portalScope';
 
@@ -616,11 +617,20 @@ export const portalApi = {
   carrierAccounts(token: string) {
     return apiGet<{ data: CarrierAccount[] }>(token, '/carrier-accounts');
   },
+  storeAccounts(token: string, options: { source?: string; pending?: boolean } = {}) {
+    return apiGet<{ data: StoreAccount[]; pending?: boolean }>(token, '/store-accounts', {
+      source: options.source,
+      pending: options.pending ? '1' : undefined,
+    });
+  },
   addCarrierAccount(token: string, body: Record<string, unknown>) {
     return apiSend<{ data: CarrierAccount | null }>(token, 'POST', '/carrier-accounts', body);
   },
   updateCarrierAccount(token: string, id: number, body: Record<string, unknown>) {
     return apiSend<{ data: CarrierAccount | null }>(token, 'PATCH', '/carrier-accounts', body, { id });
+  },
+  updateStoreAccount(token: string, id: number, body: Record<string, unknown>) {
+    return apiSend<{ data: StoreAccount | null }>(token, 'PATCH', '/store-accounts', body, { id });
   },
   deleteCarrierAccount(token: string, id: number) {
     return apiSend<{ data?: unknown; deleted?: boolean }>(token, 'DELETE', '/carrier-accounts', undefined, { id });

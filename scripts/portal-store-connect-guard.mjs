@@ -53,6 +53,42 @@ assert(
   'portal API client must expose DELETE /client-portal/integrations/:id',
 );
 
+const adminApi = readFileSync('web/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  adminApi.includes("storeAccounts(token: string, options: { source?: string; pending?: boolean } = {})") &&
+    adminApi.includes("apiGet<{ data: StoreAccount[]; pending?: boolean }>(token, '/store-accounts'") &&
+    adminApi.includes("updateStoreAccount(token: string, id: number, body: Record<string, unknown>)") &&
+    adminApi.includes("apiSend<{ data: StoreAccount | null }>(token, 'PATCH', '/store-accounts'"),
+  'admin API client must list pending store accounts and PATCH approvals',
+);
+
+const adminQueries = readFileSync('web/src/lib/portalQueries.ts', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  adminQueries.includes('usePendingStoreAccountsQuery') &&
+    adminQueries.includes("portalApi.storeAccounts(token!, { source: 'portal', pending: true })") &&
+    adminQueries.includes('useApproveStoreAccountMutation') &&
+    adminQueries.includes("portalApi.updateStoreAccount(token, id, { source: 'admin' })"),
+  'admin query layer must fetch source=portal pending stores and approve by promoting source=admin',
+);
+
+const adminSettings = readFileSync('web/src/pages/Settings.tsx', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  adminSettings.includes('PendingStoreApprovals') &&
+    adminSettings.includes('Admin notification:') &&
+    adminSettings.includes('portal-settings-tab-badge') &&
+    adminSettings.includes('approvePendingStore') &&
+    adminSettings.includes('Shopify sync will start on the next tick'),
+  'admin Settings page must surface pending store approvals with a visible count and Approve action',
+);
+
+const main = readFileSync('src/main.ts', 'utf8').replace(/\r\n/g, '\n');
+assert(
+  main.includes("import storeAccountsRoute from './routes/store-accounts'") &&
+    main.includes("'/store-accounts'") &&
+    main.includes("app.route('/store-accounts', storeAccountsRoute)"),
+  'Hono API must mount /store-accounts for production admin approval calls',
+);
+
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 assert(
   pkg.scripts?.['guard:portal-store-connect'] === 'node scripts/portal-store-connect-guard.mjs',

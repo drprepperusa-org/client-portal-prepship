@@ -9,9 +9,11 @@ import {
   FlaskConical,
   MapPin,
   Percent,
+  PlugZap,
   Play,
   Settings2,
   ShieldCheck,
+  Store,
 } from 'lucide-react';
 import { NavLink, useParams } from 'react-router-dom';
 import { EmptyState, ErrorNotice, ErrorPanel, PageHeader, Panel, RefreshButton, TableSkeleton } from '../components/PortalPrimitives';
@@ -19,14 +21,16 @@ import type { BackfillMode, BackfillResponse, BackfillTarget } from '../lib/api'
 import { useAuth } from '../lib/auth';
 import {
   useBackfillMutation,
+  useApproveStoreAccountMutation,
   useCarrierAccountsQuery,
   useClientsQuery,
   useMeQuery,
+  usePendingStoreAccountsQuery,
   useSetSettingMutation,
   useSettingsQuery,
   useSyncStatusQuery,
 } from '../lib/portalQueries';
-import type { CarrierAccount, PortalSetting } from '../types/portal';
+import type { CarrierAccount, PortalSetting, StoreAccount } from '../types/portal';
 
 function clientRows(value: unknown) {
   if (Array.isArray(value)) return value;
@@ -42,7 +46,7 @@ type SectionTone = 'blue' | 'pink' | 'amber' | 'rose' | 'purple';
 const settingsSections: Array<{ value: SettingsSection; label: string; title: string; description: string; icon: typeof Settings2; tone: SectionTone }> = [
   { value: 'markups', label: 'Markups', title: 'Rate Browser - Account Markups', description: '$ or % markup added per carrier account. Applied to displayed rates in the Rate Browser; useful for billing clients above cost.', icon: Percent, tone: 'blue' },
   { value: 'locations', label: 'Locations', title: 'Ship-From Locations', description: 'Warehouses, 3PL centers, or drop-ship addresses. The default location is used for new labels.', icon: MapPin, tone: 'pink' },
-  { value: 'pending', label: 'Pending', title: 'Pending Client Integrations', description: "Carrier credentials submitted by clients via the client portal that haven't been reviewed yet.", icon: Clock3, tone: 'amber' },
+  { value: 'pending', label: 'Pending', title: 'Pending Client Integrations', description: "Store connections submitted by clients via the client portal that haven't been approved yet.", icon: Clock3, tone: 'amber' },
   { value: 'sandbox', label: 'Sandbox', title: 'Sandbox - Test Orders', description: 'Clients flagged as test are isolated: orders never sync, create postage, bill, or touch inventory.', icon: FlaskConical, tone: 'rose' },
   { value: 'cache', label: 'Cache', title: 'Cache Management', description: 'Clear rate cache and review saved settings after carrier credential changes or markup-rule updates.', icon: Database, tone: 'purple' },
   { value: 'system', label: 'System', title: 'System Status', description: 'Live API timing, sync state, account scope, and runtime flags for troubleshooting.', icon: Activity, tone: 'purple' },
@@ -135,6 +139,23 @@ function titleCase(value: string) {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function storeAccountTitle(account: StoreAccount) {
+  return account.label?.trim() || account.storeName?.trim() || titleCase(account.provider ?? 'Store connection');
+}
+
+function storeAccountProvider(account: StoreAccount) {
+  return titleCase(account.provider ?? 'store');
+}
+
+function storeAccountIdentifier(account: StoreAccount) {
+  return account.accountIdentifier ?? account.account_identifier ?? 'Not available';
+}
+
+function storeAccountClient(account: StoreAccount) {
+  if (account.clientName) return account.clientName;
+  return account.clientId ? `Client #${account.clientId}` : 'Client not assigned';
 }
 
 function formatSetting(key: string | null | undefined, value: string | null | undefined) {
@@ -253,6 +274,127 @@ function BackfillResultList({ result }: { result: BackfillResponse | null }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function PendingStoreApprovals({
+  rows,
+  loading,
+  error,
+  fetching,
+  canApprove,
+  permissionLoading,
+  approvingId,
+  onRetry,
+  onApprove,
+}: {
+  rows: StoreAccount[];
+  loading: boolean;
+  error: unknown;
+  fetching: boolean;
+  canApprove: boolean;
+  permissionLoading: boolean;
+  approvingId: number | null;
+  onRetry: () => void;
+  onApprove: (account: StoreAccount) => void;
+}) {
+  return (
+    <Panel
+      title="Pending store approvals"
+      right={
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-bg px-2.5 py-1 text-xs font-black text-warn ring-1 ring-warn-border">
+          <Clock3 size={13} />
+          {rows.length} pending
+        </span>
+      }
+    >
+      <div className="space-y-4 p-5">
+        {rows.length > 0 ? (
+          <div className="rounded-xl bg-warn-bg p-4 text-sm font-semibold text-warn ring-1 ring-warn-border">
+            Admin notification: {rows.length} client store connection{rows.length === 1 ? '' : 's'} waiting for approval.
+          </div>
+        ) : null}
+
+        {permissionLoading ? (
+          <div className="rounded-xl bg-brand-bg p-4 text-sm font-semibold text-brand ring-1 ring-brand/20">
+            Checking admin permissions...
+          </div>
+        ) : !canApprove ? (
+          <div className="rounded-xl bg-warn-bg p-4 text-sm font-semibold text-warn ring-1 ring-warn-border">
+            Approval is visible for audit, but your current role needs credentials:write or admin/operator access to approve connections.
+          </div>
+        ) : null}
+
+        {loading ? <TableSkeleton rows={3} columns={4} /> : null}
+
+        {!loading && error ? (
+          <ErrorPanel
+            message={error instanceof Error ? error.message : String(error)}
+            loading={fetching}
+            onRetry={onRetry}
+          />
+        ) : null}
+
+        {!loading && !error && rows.length === 0 ? (
+          <EmptyState title="No pending connections" body="Client-submitted store connections will appear here for operator approval." />
+        ) : null}
+
+        {!loading && !error && rows.length > 0 ? (
+          <div className="grid gap-3">
+            {rows.map((account) => {
+              const id = account.id;
+              const isApproving = id != null && approvingId === id;
+              return (
+                <div key={id ?? `${account.provider}-${storeAccountIdentifier(account)}`} className="rounded-xl bg-surface p-4 ring-1 ring-line">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-bg text-brand ring-1 ring-brand/15">
+                        <Store size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-sm font-black text-ink">{storeAccountTitle(account)}</strong>
+                          <span className="portal-badge portal-badge-pending px-2 py-0.5">Pending</span>
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-ink-2">
+                          {storeAccountProvider(account)} for {storeAccountClient(account)}
+                        </div>
+                        <div className="mt-1 break-all text-xs font-semibold text-ink-3">
+                          {storeAccountIdentifier(account)}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onApprove(account)}
+                      disabled={!canApprove || id == null || approvingId !== null}
+                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-black text-white shadow-sm shadow-brand/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-dark active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 motion-reduce:transform-none"
+                    >
+                      {isApproving ? <PlugZap size={15} /> : <CheckCircle2 size={15} />}
+                      {isApproving ? 'Approving...' : 'Approve'}
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg bg-surface-2 p-3 ring-1 ring-line">
+                      <div className="text-[11px] font-black uppercase text-ink-3">Submitted</div>
+                      <div className="mt-1 text-sm font-bold text-ink">{displayDateTime(account.createdAt)}</div>
+                    </div>
+                    <div className="rounded-lg bg-surface-2 p-3 ring-1 ring-line">
+                      <div className="text-[11px] font-black uppercase text-ink-3">Source</div>
+                      <div className="mt-1 text-sm font-bold text-ink">{account.source ?? 'portal'}</div>
+                    </div>
+                    <div className="rounded-lg bg-surface-2 p-3 ring-1 ring-line">
+                      <div className="text-[11px] font-black uppercase text-ink-3">Activation</div>
+                      <div className="mt-1 text-sm font-bold text-ink">Approve to start Shopify sync</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   );
 }
 
@@ -483,9 +625,11 @@ export default function Settings() {
   const clients = useClientsQuery(auth.accessToken);
   const settings = useSettingsQuery(auth.accessToken);
   const carrierAccounts = useCarrierAccountsQuery(auth.accessToken);
+  const pendingStoreAccounts = usePendingStoreAccountsQuery(auth.accessToken);
   const me = useMeQuery(auth.accessToken);
   const syncStatus = useSyncStatusQuery(auth.accessToken);
   const backfill = useBackfillMutation(auth.accessToken);
+  const approveStoreAccount = useApproveStoreAccountMutation(auth.accessToken);
   const setSetting = useSetSettingMutation(auth.accessToken);
 
   async function saveMarkup(key: string, value: string) {
@@ -494,6 +638,7 @@ export default function Settings() {
   const [backfillMode, setBackfillMode] = useState<BackfillMode>('incremental');
   const [runningTarget, setRunningTarget] = useState<BackfillTarget | null>(null);
   const [lastBackfillResult, setLastBackfillResult] = useState<BackfillResponse | null>(null);
+  const [approvingStoreId, setApprovingStoreId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -504,6 +649,7 @@ export default function Settings() {
   const markupRows = rows.filter((row) => row.key?.startsWith('markup.'));
   const cacheRows = rows.filter((row) => row.key?.includes('last_modified') || row.key?.endsWith('columnPrefs'));
   const sandboxRows = rows.filter((row) => row.key?.toLowerCase().includes('sandbox') || row.key?.toLowerCase().includes('test'));
+  const pendingStoreRows = pendingStoreAccounts.data?.data ?? [];
   const canBackfillFromToken = canWriteSettings(auth, undefined);
   const permissionLoading = !canBackfillFromToken && me.isLoading && !me.data;
   const canBackfill = canBackfillFromToken || me.data?.isAdmin === true;
@@ -547,12 +693,38 @@ export default function Settings() {
     }
   }
 
+  async function approvePendingStore(account: StoreAccount) {
+    if (!auth.accessToken || account.id == null) return;
+    setError(null);
+    setMessage(null);
+    setApprovingStoreId(account.id);
+    try {
+      await approveStoreAccount.mutateAsync(account.id);
+      setMessage(`${storeAccountTitle(account)} approved. Shopify sync will start on the next tick.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApprovingStoreId(null);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title={activeSection.label}
         subtitle={activeSection.description}
-        action={<RefreshButton loading={clients.isFetching || settings.isFetching || me.isFetching || carrierAccounts.isFetching} onClick={() => { void clients.refetch(); void settings.refetch(); void me.refetch(); void carrierAccounts.refetch(); }} />}
+        action={
+          <RefreshButton
+            loading={clients.isFetching || settings.isFetching || me.isFetching || carrierAccounts.isFetching || pendingStoreAccounts.isFetching}
+            onClick={() => {
+              void clients.refetch();
+              void settings.refetch();
+              void me.refetch();
+              void carrierAccounts.refetch();
+              void pendingStoreAccounts.refetch();
+            }}
+          />
+        }
       />
 
       <nav className="portal-settings-tabs" aria-label="Settings sections">
@@ -564,6 +736,9 @@ export default function Settings() {
           >
             <section.icon size={14} aria-hidden />
             <span>{section.label}</span>
+            {section.value === 'pending' && pendingStoreRows.length > 0 ? (
+              <strong className="portal-settings-tab-badge">{pendingStoreRows.length}</strong>
+            ) : null}
           </NavLink>
         ))}
       </nav>
@@ -576,6 +751,7 @@ export default function Settings() {
         section={activeSection}
         action={
           routeSection === 'system' ? <RefreshButton loading={syncStatus.isFetching} onClick={() => void syncStatus.refetch()} /> :
+          routeSection === 'pending' ? <RefreshButton loading={pendingStoreAccounts.isFetching} onClick={() => void pendingStoreAccounts.refetch()} /> :
           undefined
         }
       />
@@ -686,16 +862,29 @@ export default function Settings() {
       ) : null}
 
       {routeSection === 'pending' ? (
-        <Panel
-          title="Backfill sync"
-          right={
-            <span className="inline-flex items-center gap-1.5 text-xs font-black text-brand">
-              <DatabaseZap size={14} />
-              Manual sync controls
-            </span>
-          }
-        >
-          <div className="space-y-6 p-5">
+        <div className="space-y-6">
+          <PendingStoreApprovals
+            rows={pendingStoreRows}
+            loading={pendingStoreAccounts.isLoading && !pendingStoreAccounts.data}
+            error={pendingStoreAccounts.error}
+            fetching={pendingStoreAccounts.isFetching}
+            canApprove={canBackfill}
+            permissionLoading={permissionLoading}
+            approvingId={approvingStoreId}
+            onRetry={() => void pendingStoreAccounts.refetch()}
+            onApprove={(account) => void approvePendingStore(account)}
+          />
+
+          <Panel
+            title="Backfill sync"
+            right={
+              <span className="inline-flex items-center gap-1.5 text-xs font-black text-brand">
+                <DatabaseZap size={14} />
+                Manual sync controls
+              </span>
+            }
+          >
+            <div className="space-y-6 p-5">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {statusCards.map((card) => (
                 <div key={card.label} className="rounded-xl bg-surface-2 p-4 ring-1 ring-line">
@@ -775,8 +964,9 @@ export default function Settings() {
             </button>
 
             <BackfillResultList result={lastBackfillResult} />
-          </div>
-        </Panel>
+            </div>
+          </Panel>
+        </div>
       ) : null}
     </>
   );

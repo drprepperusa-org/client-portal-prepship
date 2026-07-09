@@ -10,7 +10,7 @@ import {
   demoOrders,
   demoShipments,
 } from './demo-data';
-import type { BillingInvoiceDetailRow, CarrierAccount, OrderStatus } from '../types/portal';
+import type { BillingInvoiceDetailRow, CarrierAccount, OrderStatus, StoreAccount } from '../types/portal';
 
 const enabled = (token: string | null) => Boolean(token);
 
@@ -37,6 +37,8 @@ export const portalQueryKeys = {
     ['portal', portalSessionKey(token), 'analysis-sku-orders', inventoryId ?? 'none', range?.from ?? 'default', range?.to ?? 'default'] as const,
   dailyShipments: (token?: string | null) => ['portal', portalSessionKey(token), 'daily-shipments'] as const,
   carrierAccounts: (token?: string | null) => ['portal', portalSessionKey(token), 'carrier-accounts'] as const,
+  storeAccounts: (token?: string | null, source = 'all', pending = false) =>
+    ['portal', portalSessionKey(token), 'store-accounts', source, pending ? 'pending' : 'all'] as const,
 };
 
 function demoAllowed(token: string) {
@@ -388,6 +390,43 @@ export function useCarrierAccountsQuery(token: string | null) {
         ? Promise.resolve({ data: [{ id: 1, provider: 'walmart', label: 'Walmart Marketplace', accountIdentifier: 'Walmart Seller (b05d64...)', active: true, createdAt: '2026-05-06T00:00:00.000Z' }] })
         : portalApi.clientPortal.integrations(token!),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function usePendingStoreAccountsQuery(token: string | null) {
+  return useQuery({
+    queryKey: portalQueryKeys.storeAccounts(token, 'portal', true),
+    enabled: enabled(token),
+    queryFn: () =>
+      demoAllowed(token!)
+        ? Promise.resolve({ data: [] as StoreAccount[], pending: true })
+        : portalApi.storeAccounts(token!, { source: 'portal', pending: true }),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useApproveStoreAccountMutation(token: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      if (!token) throw new Error('Missing portal session');
+      if (demoAllowed(token)) return { data: { id, source: 'admin', active: true } as StoreAccount };
+      return portalApi.updateStoreAccount(token, id, { source: 'admin' });
+    },
+    onSuccess: (_result, id) => {
+      if (token) {
+        client.setQueryData<{ data: StoreAccount[]; pending?: boolean }>(
+          portalQueryKeys.storeAccounts(token, 'portal', true),
+          (previous) => ({
+            pending: previous?.pending ?? true,
+            data: (previous?.data ?? []).filter((account) => account.id !== id),
+          }),
+        );
+      }
+      void client.invalidateQueries({ queryKey: portalQueryKeys.storeAccounts(token, 'portal', true) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.carrierAccounts(token) });
+      void client.invalidateQueries({ queryKey: portalQueryKeys.dashboard(token) });
+    },
   });
 }
 

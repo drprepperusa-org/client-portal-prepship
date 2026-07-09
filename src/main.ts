@@ -30,6 +30,7 @@ import productsRoute from './routes/products';
 import initRoute from './routes/init';
 import adminRoute from './routes/admin';
 import carrierAccountsRoute from './routes/carrier-accounts';
+import storeAccountsRoute from './routes/store-accounts';
 import carriersRoute from './routes/carriers';
 import usersRoute from './routes/users';
 import clientPortalRoute from './routes/client-portal';
@@ -142,6 +143,7 @@ const protectedPrefixes = clientPortalOnly
       '/init',
       '/admin',
       '/carrier-accounts',
+      '/store-accounts',
       '/carriers',
       '/users',
       '/api/client-portal',
@@ -184,6 +186,7 @@ if (!clientPortalOnly) {
   app.route('/init', initRoute);
   app.route('/admin', adminRoute);
   app.route('/carrier-accounts', carrierAccountsRoute);
+  app.route('/store-accounts', storeAccountsRoute);
   app.route('/carriers', carriersRoute);
   app.route('/users', usersRoute);
   app.route('/worker', workerRoute);

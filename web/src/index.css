@@ -8833,6 +8833,18 @@ textarea:hover:not(:disabled) {
   box-shadow: var(--shadow-card);
 }
 .portal-settings-tab.active svg { color: rgb(var(--brand-rgb)); }
+.portal-settings-tab-badge {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(var(--warn-rgb));
+  color: white;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+}
 
 /* Reusable pop-in for dropdowns / popovers / menus. */
 @keyframes portal-pop-in {

@@ -244,6 +244,8 @@ export type CarrierAccount = {
   updatedAt?: string | null;
 };
 
+export type StoreAccount = CarrierAccount;
+
 export type StorePlatformCategory =
   | 'Direct-to-consumer'
   | 'Marketplaces'
