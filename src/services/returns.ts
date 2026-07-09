@@ -13,7 +13,6 @@ import {
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
 import { resolveReturnPostageRate } from './billing';
-import { loadClientCredentials } from '../lib/shipstation/credentials';
 import {
   generateFakeShipmentId,
   generateFakeTrackingNumber,
@@ -75,16 +74,17 @@ type ReturnReadyOutboundShipment = OutboundShipment & {
   selectedPackageId: string;
 };
 type ReturnRatePolicy = {
-  clientId: number | null;
-  storeId: number | null;
-  returnLabelRatePolicy: 'client_explicit_return_context' | 'prepship_default_return_context';
+  rateClientId: null;
+  rateStoreId: null;
+  sourceClientId: null;
+  apiKeyV2: null;
+  returnLabelRatePolicy: 'prepship_default_return_context';
 };
 
 type SafeCarrierDiagnostic = {
   carrierCode?: string;
   status: string;
   rateCount: number;
-  error?: string;
 };
 
 type ReturnLabelFailureDiagnostics = {
@@ -99,7 +99,7 @@ type ReturnLabelFailureDiagnostics = {
   rawRateCount: number;
   eligibleRateCount: number;
   blockedRateCount: number;
-  failureKind: 'no_rates' | 'all_rates_blocked';
+  failureKind: 'no_rates' | 'all_rates_blocked' | 'rate_lookup_failed';
   carrierDiagnostics: SafeCarrierDiagnostic[];
   returnLabelRatePolicy: ReturnRatePolicy['returnLabelRatePolicy'];
 };
@@ -121,6 +121,13 @@ export class ReturnLabelRateUnavailableError extends Error {
   ) {
     super(message);
     this.name = 'ReturnLabelRateUnavailableError';
+  }
+}
+
+export class ReturnLabelStateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReturnLabelStateError';
   }
 }
 
@@ -318,11 +325,19 @@ function toClientSafeResult(args: {
   };
 }
 
-function resolveReturnRatePolicy(args: { clientId: number | null; storeId: number | null }): ReturnRatePolicy {
+/**
+ * CP-043 return-label account policy. There is no dedicated return-account
+ * field in the current schema, so returns intentionally use the DR PREPPER
+ * environment/default ShipStation account. They must not inherit a client's
+ * generic outbound or rate-source account without explicit return config.
+ */
+function resolveReturnRatePolicy(): ReturnRatePolicy {
   return {
-    clientId: args.clientId,
-    storeId: args.storeId,
-    returnLabelRatePolicy: args.clientId == null ? 'prepship_default_return_context' : 'client_explicit_return_context',
+    rateClientId: null,
+    rateStoreId: null,
+    sourceClientId: null,
+    apiKeyV2: null,
+    returnLabelRatePolicy: 'prepship_default_return_context',
   };
 }
 
@@ -331,11 +346,13 @@ function sanitizeCarrierDiagnostics(diagnostics: CarrierRateDiagnostic[]): SafeC
     carrierCode: d.carrierCode,
     status: d.status,
     rateCount: Number.isFinite(d.rateCount) ? d.rateCount : 0,
-    error: d.error,
   }));
 }
 
 function returnLabelFailureMessage(kind: ReturnLabelFailureDiagnostics['failureKind']): string {
+  if (kind === 'rate_lookup_failed') {
+    return 'Return rates are temporarily unavailable for this shipment';
+  }
   return kind === 'all_rates_blocked'
     ? 'No eligible return rate available for this shipment'
     : 'No return rates were returned for this shipment';
@@ -347,7 +364,12 @@ async function markReturnLabelFailed(returnId: number | null, message: string): 
     await db
       .update(returns)
       .set({ status: 'label_failed', deliveryError: message, updatedAt: new Date() })
-      .where(eq(returns.id, returnId));
+      .where(
+        and(
+          eq(returns.id, returnId),
+          sql`${returns.status} in ('requested', 'label_failed')`,
+        ),
+      );
   } catch (err) {
     console.warn('[returns] failed to mark return label_failed:', err);
   }
@@ -364,6 +386,8 @@ function buildReturnLabelDiagnostics(args: {
   shipTo: ShipstationAddressInput;
   rawRateCount: number;
   eligibleRateCount: number;
+  blockedRateCount: number;
+  failureKind?: ReturnLabelFailureDiagnostics['failureKind'];
   carrierDiagnostics: CarrierRateDiagnostic[];
   returnLabelRatePolicy: ReturnRatePolicy['returnLabelRatePolicy'];
 }): ReturnLabelFailureDiagnostics {
@@ -378,8 +402,12 @@ function buildReturnLabelDiagnostics(args: {
     toZip: args.shipTo.postalCode ?? '',
     rawRateCount: args.rawRateCount,
     eligibleRateCount: args.eligibleRateCount,
-    blockedRateCount: Math.max(0, args.rawRateCount - args.eligibleRateCount),
-    failureKind: args.rawRateCount > 0 ? 'all_rates_blocked' : 'no_rates',
+    blockedRateCount: args.blockedRateCount,
+    failureKind:
+      args.failureKind ??
+      (args.rawRateCount > 0 && args.eligibleRateCount === 0 && args.blockedRateCount > 0
+        ? 'all_rates_blocked'
+        : 'no_rates'),
     carrierDiagnostics: sanitizeCarrierDiagnostics(args.carrierDiagnostics),
     returnLabelRatePolicy: args.returnLabelRatePolicy,
   };
@@ -469,7 +497,12 @@ async function markReturnLabelCreated(returnId: number, returnShipmentId: number
     await db
       .update(returns)
       .set({ status: 'label_created', returnShipmentId, deliveryError: null, updatedAt: new Date() })
-      .where(eq(returns.id, returnId));
+      .where(
+        and(
+          eq(returns.id, returnId),
+          sql`${returns.status} in ('requested', 'label_failed')`,
+        ),
+      );
   } catch (err) {
     console.warn('[returns] failed to update returns workflow row:', err);
   }
@@ -490,6 +523,11 @@ export async function createReturnLabel(
     const [row] = await db.select().from(returns).where(eq(returns.id, input.returnId)).limit(1);
     returnRow = row ?? null;
     if (!returnRow) throw new Error('Return workflow record not found');
+    if (!['requested', 'label_failed'].includes(returnRow.status)) {
+      throw new ReturnLabelStateError(
+        'Return label creation is only available for requested or failed-label returns',
+      );
+    }
   }
 
   // ── Resolve the original outbound shipment + order ──
@@ -570,7 +608,7 @@ export async function createReturnLabel(
   // this single path — never the owner of the workflow, price choice, customer
   // delivery, or billing truth.
   const weightOz = outbound.weightOz;
-  const returnRatePolicy = resolveReturnRatePolicy({ clientId, storeId: order.storeId ?? null });
+  const returnRatePolicy = resolveReturnRatePolicy();
   const rateInput: RateInput = {
     weightOz,
     // ship_from = customer; to* = fixed DRP return warehouse.
@@ -583,8 +621,10 @@ export async function createReturnLabel(
     dimsL: outbound.dimsL,
     dimsW: outbound.dimsW,
     dimsH: outbound.dimsH,
-    clientId: returnRatePolicy.clientId,
-    storeId: returnRatePolicy.storeId,
+    clientId: returnRatePolicy.rateClientId,
+    storeId: returnRatePolicy.rateStoreId,
+    sourceClientId: returnRatePolicy.sourceClientId,
+    apiKeyV2: returnRatePolicy.apiKeyV2,
     shipFrom: {
       name: shipFrom.name ?? undefined,
       company_name: shipFrom.company ?? undefined,
@@ -605,13 +645,47 @@ export async function createReturnLabel(
   let chosen: Rate | null = null;
   let rateCost = 0;
   if (liveEligible) {
-    const { rates, bestRate, carrierDiagnostics } = await getRates(rateInput, { forceRefresh: true });
+    let rateResult: Awaited<ReturnType<typeof getRates>>;
+    try {
+      rateResult = await getRates(rateInput, { forceRefresh: true, applyMarkups: false });
+    } catch (err) {
+      const diagnostics = buildReturnLabelDiagnostics({
+        returnId: returnRow?.id ?? null,
+        orderId: order.id,
+        clientId,
+        storeId: order.storeId ?? null,
+        weightOz,
+        outbound,
+        shipFrom,
+        shipTo,
+        rawRateCount: 0,
+        eligibleRateCount: 0,
+        blockedRateCount: 0,
+        failureKind: 'rate_lookup_failed',
+        carrierDiagnostics: [],
+        returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
+      });
+      const message = returnLabelFailureMessage(diagnostics.failureKind);
+      await markReturnLabelFailed(returnRow?.id ?? null, message);
+      console.warn('[returns] return label rate lookup failed', {
+        ...diagnostics,
+        errorName: err instanceof Error ? err.name : 'UnknownError',
+      });
+      throw new ReturnLabelRateUnavailableError(message, diagnostics);
+    }
+    const {
+      rates,
+      bestRate,
+      carrierDiagnostics,
+      rawRateCount = rates.length,
+      blockedRateCount = 0,
+    } = rateResult;
     // Cheapest ELIGIBLE rate: filter blocked rates first, then take best.
     // getRates sorts cheapest-first and returns bestRate; we re-filter with
     // isBlockedRate defensively and re-pick so a blocked cheapest never wins.
-    const eligible = rates.filter((r) => !isBlockedRate(r, returnRatePolicy.storeId));
+    const eligible = rates.filter((r) => !isBlockedRate(r, returnRatePolicy.rateStoreId));
     chosen =
-      (bestRate && !isBlockedRate(bestRate, returnRatePolicy.storeId) ? bestRate : null) ??
+      (bestRate && !isBlockedRate(bestRate, returnRatePolicy.rateStoreId) ? bestRate : null) ??
       eligible[0] ??
       null;
     if (!chosen) {
@@ -624,8 +698,9 @@ export async function createReturnLabel(
         outbound,
         shipFrom,
         shipTo,
-        rawRateCount: rates.length,
+        rawRateCount,
         eligibleRateCount: eligible.length,
+        blockedRateCount,
         carrierDiagnostics,
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
@@ -726,9 +801,10 @@ export async function createReturnLabel(
   if (!chosen) {
     throw new Error('No eligible return rate available for this shipment');
   }
-  const creds = await loadClientCredentials(clientId);
   const created = await carrierConnectors.shipstation.createLabel({
-    apiKeyV2: creds.apiKeyV2 ?? undefined,
+    // null/undefined delegates to the DR PREPPER environment account, matching
+    // the exact account context used for the fresh rate attempt above.
+    apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
     carrierId: chosen.carrier_id,
     serviceCode: chosen.service_code,
     packageCode: outbound.selectedPackageId,
@@ -756,7 +832,7 @@ export async function createReturnLabel(
     carrierCode: created.carrierCode,
     serviceCode: created.serviceCode,
     providerAccountId: created.providerAccountId,
-    selectedRate: created,
+    selectedRate: chosen,
     labelFormat: created.labelFormat ?? 'pdf',
     labelShipmentId: created.shipmentId || null,
     source: 'prepship_return_v2',

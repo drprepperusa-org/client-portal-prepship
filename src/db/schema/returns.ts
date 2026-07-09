@@ -63,7 +63,7 @@ export const returns = pgTable(
     // these columns only record the DELIVERY decision + outcome for the workflow.
     //   deliveryMethod : 'shopify_native' | 'manual_pdf' (null until resolved)
     //   deliveryStatus : 'pending' | 'delivered' | 'failed' (null until resolved)
-    //   deliveryError  : redaction-safe failure summary (no PII / raw payloads)
+    //   deliveryError  : redaction-safe label/delivery failure summary (no PII / raw payloads)
     deliveryMethod: text(),
     deliveryStatus: text(),
     deliveryError: text(),

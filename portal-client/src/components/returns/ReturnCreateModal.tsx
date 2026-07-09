@@ -90,17 +90,23 @@ export function ReturnCreateModal({
       // surface the outcome. A label failure still leaves the return created and
       // retryable from its detail.
       let labelReady = false;
+      let labelFailed = false;
       try {
         const label = await portalApi.createReturnLabel(accessToken, returnId);
         labelReady = label.data.pdfAvailable;
-      } catch (labelErr) {
-        console.error('[returns] label creation failed:', labelErr);
+      } catch {
+        labelFailed = true;
       }
 
       await qc.invalidateQueries({ queryKey: ['returns'] });
       await qc.invalidateQueries({ queryKey: ['return', returnId] });
       if (labelReady) {
         toast.success('Return label ready', 'The PrepShip return label PDF is ready to download from the return detail.');
+      } else if (labelFailed) {
+        toast.warning(
+          'Return created - label needs attention',
+          'Open the return to review the label status and retry after the shipment details or return-label account are corrected.',
+        );
       } else {
         toast.warning(
           'Return created — label pending',

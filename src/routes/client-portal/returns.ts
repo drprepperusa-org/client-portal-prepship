@@ -34,7 +34,12 @@ import {
   type Return,
   type ReturnItem,
 } from '../../db/schema/returns';
-import { createReturnLabel, resolveReturnCustomerPrice, ReturnLabelRateUnavailableError } from '../../services/returns';
+import {
+  createReturnLabel,
+  resolveReturnCustomerPrice,
+  ReturnLabelRateUnavailableError,
+  ReturnLabelStateError,
+} from '../../services/returns';
 import { deliverReturn } from '../../services/return-delivery';
 import { trackingUrlForCarrier } from '../../lib/tracking-url';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
@@ -597,7 +602,21 @@ app.post('/returns/:id{[0-9]+}/label', async (c) => {
     // return already exists — surface a clean 409.
     const isDuplicate = /active return already exists/i.test(message);
     const isRateUnavailable = err instanceof ReturnLabelRateUnavailableError;
-    return c.json({ error: message }, isDuplicate ? 409 : isRateUnavailable ? 422 : 500);
+    const isInvalidState = err instanceof ReturnLabelStateError;
+    if (isRateUnavailable) {
+      const { rawRateCount, returnLabelRatePolicy, ...safeDiagnostics } = err.diagnostics;
+      await recordPortalAudit('portal.returns.label.rate_unavailable', scope, {
+        ...safeDiagnostics,
+        quotedRateCount: rawRateCount,
+        ratePolicy: returnLabelRatePolicy,
+      });
+    }
+    const status = isDuplicate || isInvalidState ? 409 : isRateUnavailable ? 422 : 500;
+    const clientMessage =
+      isDuplicate || isInvalidState || isRateUnavailable
+        ? message
+        : 'Could not create return label. Please try again or contact PrepShip support.';
+    return c.json({ error: clientMessage }, status);
   }
 });
 

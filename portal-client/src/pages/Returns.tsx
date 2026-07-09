@@ -197,8 +197,14 @@ export default function Returns() {
               <Download size={13} /> Download
             </button>
           ) : (
-            <span className="inline-flex h-8 items-center rounded-glass-sm bg-slate-50 px-2.5 text-xs font-medium text-ink-3 ring-1 ring-slate-200">
-              Label pending
+            <span
+              className={`inline-flex h-8 items-center rounded-glass-sm px-2.5 text-xs font-medium ring-1 ${
+                r.status === 'label_failed'
+                  ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                  : 'bg-slate-50 text-ink-3 ring-slate-200'
+              }`}
+            >
+              {r.status === 'label_failed' ? 'Needs retry' : 'Label pending'}
             </span>
           ),
         sortAccessor: (r) => (r.pdfAvailable ? 1 : 0),
@@ -314,6 +320,7 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
   const d = q.data?.data;
   const [creatingLabel, setCreatingLabel] = useState(false);
   const labelFailed = d?.status === 'label_failed';
+  const canCreateLabel = d?.status === 'requested' || labelFailed;
 
   // The return label PDF is served by the existing /labels/... route the return
   // shipment's labelUrl points at. Resolve it to an absolute URL for download.
@@ -333,6 +340,9 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
         toast.warning('Label still pending', 'PrepShip created the return, but no PDF is available yet.');
       }
     } catch (err) {
+      await qc.invalidateQueries({ queryKey: ['returns'] });
+      await qc.invalidateQueries({ queryKey: ['return', id] });
+      await q.refetch();
       toast.error('Could not create return label', err instanceof Error ? err.message : 'Please try again.');
     } finally {
       setCreatingLabel(false);
@@ -419,13 +429,15 @@ function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () =>
                 <p className="font-semibold">{labelFailed ? 'Label needs attention.' : 'Return label PDF is not ready yet.'}</p>
                 <p className={`mt-1 text-xs ${labelFailed ? 'text-rose-700' : 'text-amber-700'}`}>
                   {labelFailed
-                    ? 'PrepShip could not create the label yet. Retry after the address, package, or return-label account is corrected.'
+                    ? d.deliveryError ?? 'PrepShip could not create the label yet. Retry after the address, package, or return-label account is corrected.'
                     : 'PrepShip has the return request, but no label PDF has been created.'}
                 </p>
               </div>
-              <Button leadingIcon={<PackageCheck size={16} />} onClick={createLabel} disabled={creatingLabel || !accessToken}>
-                {creatingLabel ? 'Creating label...' : labelFailed ? 'Retry return label' : 'Create return label'}
-              </Button>
+              {canCreateLabel && (
+                <Button leadingIcon={<PackageCheck size={16} />} onClick={createLabel} disabled={creatingLabel || !accessToken}>
+                  {creatingLabel ? 'Creating label...' : labelFailed ? 'Retry return label' : 'Create return label'}
+                </Button>
+              )}
             </div>
           )}
 

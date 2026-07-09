@@ -107,12 +107,15 @@ assert(
   'the fallback path rate-shops via getRates',
 );
 assert(
-  /getRates\s*\(\s*rateInput\s*,\s*\{\s*forceRefresh:\s*true\s*\}\s*\)/.test(service),
-  'live return-label purchase bypasses stale empty-rate cache with getRates(rateInput, { forceRefresh: true })',
+  /getRates\s*\(\s*rateInput\s*,\s*\{\s*forceRefresh:\s*true,\s*applyMarkups:\s*false\s*\}\s*\)/.test(service),
+  'live return-label purchase forces a fresh unmarked provider-rate attempt',
 );
 assert(
-  /resolveReturnRatePolicy/.test(service) && /returnLabelRatePolicy/.test(service),
-  'the return-label service resolves an explicit backend return-rate policy/account source',
+  /resolveReturnRatePolicy/.test(service) &&
+    /prepship_default_return_context/.test(service) &&
+    !/client_explicit_return_context/.test(service) &&
+    !/loadClientCredentials/.test(service),
+  'the return-label service uses the explicit PrepShip default account instead of generic client credentials',
 );
 assert(
   /markReturnLabelFailed/.test(service) && /label_failed/.test(service),

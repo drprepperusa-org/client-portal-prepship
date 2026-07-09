@@ -1038,6 +1038,8 @@ client-safe (no carrier/service). Guards:
 | Reason | `reason` | `reason` | `returns.reason` | return workflow | presentation-only |
 | Return tracking | `trackingNumber` | `returnTracking` = `coalesce(shipments.labelTracking, shipments.trackingNumber)` | **`shipments`** (label SOT stays there) | label time | backend-owned-truth (CP-026/027) |
 | Return label PDF | `pdfUrl` | `returnLabelUrl` | `shipments.labelUrl` (never a new URL) | label time | presentation-only |
+| Label needs attention | `status` / `deliveryError` | same | `returns.status = 'label_failed'` + redaction-safe `returns.deliveryError` | latest label attempt | backend-owned-truth (CP-043) |
+| Return postage | `returnCustomerShippingRate` | same | `resolveReturnCustomerPrice` over canonical return-shipment house cost + return-specific `billing_config` policy | label cost + billing policy read | derived-from-canonical (backend-owned, CP-031/043) |
 | Delivery method/status | `deliveryMethod`/`deliveryStatus` | same | `returns` delivery columns (CP-028 resolver) | delivery event | backend-owned-truth (CP-028) |
 | Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
 | Inspection condition | `condition` | `condition` | `return_inspections` (6-value enum) | receiving/inspection | backend-owned-truth (CP-030) |
@@ -1049,11 +1051,17 @@ Owner: `src/db/schema/returns.ts` (`returns` / `return_items` /
 (label) + `src/services/return-delivery.ts`. **The new tables never re-declare
 label money / tracking / rate — that truth stays on `shipments`.** The route
 never rate-shops or picks a carrier; the frontend renders backend fields only.
+CP-043 keeps return purchase policy in `src/services/returns.ts`: until a
+dedicated return-account field exists, fresh return quotes and purchases use
+the explicit DR PREPPER default ShipStation context, bypass display markups,
+and persist only a redaction-safe failure summary to the return workflow.
 Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
 `client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
 postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
 `client-portal-returns-ui-guard.mjs` (CP-029, carrier/service-free UI+API),
-`client-portal-returns-receiving-guard.mjs` (CP-030, operator-gated inspection).
+`client-portal-returns-receiving-guard.mjs` (CP-030, operator-gated inspection),
+`client-portal-returns-cp043-guard.mjs` (fresh raw rate attempt, explicit account
+policy, safe diagnostics, and recoverable failure state).
 
 ### Inbound
 

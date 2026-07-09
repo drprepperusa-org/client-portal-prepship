@@ -106,7 +106,7 @@ assert(
 
 // 4. Best-rate selection remains backend-only and cheapest eligible.
 assert(
-  /getRates\s*\(\s*rateInput\s*,\s*\{\s*forceRefresh:\s*true\s*\}\s*\)/.test(service) &&
+  /getRates\s*\(\s*rateInput\s*,\s*\{\s*forceRefresh:\s*true,\s*applyMarkups:\s*false\s*\}\s*\)/.test(service) &&
     /isBlockedRate/.test(service) &&
     /bestRate/.test(service),
   'backend return-label service rate-shops and selects cheapest eligible bestRate',

@@ -797,6 +797,10 @@ function toRate(er: EstimateRate): Rate {
 export type FetchLiveRatesResult = {
   rates: Rate[];
   carrierDiagnostics: CarrierRateDiagnostic[];
+  /** Unique provider rates before blocked-service policy is applied. */
+  rawRateCount: number;
+  /** Unique provider rates removed by blocked-service policy. */
+  blockedRateCount: number;
 };
 
 export async function fetchLiveRatesWithDiagnostics(input: RateInput): Promise<FetchLiveRatesResult> {
@@ -813,7 +817,9 @@ export async function fetchLiveRatesWithDiagnostics(input: RateInput): Promise<F
     ? allCarriers.filter((c) => input.carrierIds!.includes(c.carrier_id))
     : allCarriers;
 
-  if (!carriers.length) return { rates: [], carrierDiagnostics: [] };
+  if (!carriers.length) {
+    return { rates: [], carrierDiagnostics: [], rawRateCount: 0, blockedRateCount: 0 };
+  }
 
   const batches = await mapWithConcurrency(
     carriers,
@@ -821,15 +827,14 @@ export async function fetchLiveRatesWithDiagnostics(input: RateInput): Promise<F
     (c) => fetchEstimateForCarrier(c, input, shipFrom),
   );
   const lifted: Rate[] = batches.flatMap((batch) => batch.rates).map(toRate);
+  const rawRates = dedupeRates(lifted, 'live');
 
   // v2-parity: filter blocked service codes + package types + names.
   // Sort cheapest first (v2 sorts by shipmentCost + otherCost; v4 sort
   // uses shipping_amount only since markups apply at read-time later).
-  const filtered = dedupeRates(
-    lifted.filter((r) => !isBlockedRate(r, input.storeId ?? null)),
-    'live'
-  );
+  const filtered = rawRates.filter((r) => !isBlockedRate(r, input.storeId ?? null));
   filtered.sort((a, b) => rateTotal(a) - rateTotal(b));
+  const blockedRateCount = Math.max(0, rawRates.length - filtered.length);
   const filteredCounts = new Map<string, number>();
   for (const rate of filtered) {
     filteredCounts.set(rate.carrier_id, (filteredCounts.get(rate.carrier_id) ?? 0) + 1);
@@ -844,13 +849,25 @@ export async function fetchLiveRatesWithDiagnostics(input: RateInput): Promise<F
     } satisfies CarrierRateDiagnostic;
   });
 
-  if (filtered.length) return { rates: filtered, carrierDiagnostics };
+  if (filtered.length) {
+    return {
+      rates: filtered,
+      carrierDiagnostics,
+      rawRateCount: rawRates.length,
+      blockedRateCount,
+    };
+  }
 
   // v2's /rates/estimate returns empty array when no rates exist for the
   // route — treat that as a normal "no service" condition, not an error.
   // (v4's previous /v2/rates endpoint surfaced this via rate_response.errors;
   // the estimate endpoint just omits them.)
-  return { rates: [], carrierDiagnostics };
+  return {
+    rates: [],
+    carrierDiagnostics,
+    rawRateCount: rawRates.length,
+    blockedRateCount,
+  };
 }
 
 export async function fetchLiveRates(input: RateInput): Promise<Rate[]> {
@@ -865,11 +882,17 @@ export type GetRatesResult = {
   fetchedAt: string;
   cacheAgeMs?: number;
   carrierDiagnostics: CarrierRateDiagnostic[];
+  /** Present on fresh live reads; purchase flows use this for diagnostics. */
+  rawRateCount?: number;
+  /** Present on fresh live reads; distinguishes all-blocked from no-service. */
+  blockedRateCount?: number;
 };
 
 type GetRatesOptions = {
   forceRefresh?: boolean;
   cachedOnly?: boolean;
+  /** Purchase flows can opt out of browser/display markups. Defaults to true. */
+  applyMarkups?: boolean;
 };
 
 function cachedDiagnosticsFromRates(rates: Rate[]): CarrierRateDiagnostic[] {
@@ -1064,7 +1087,7 @@ export async function getRates(
 
   // Markups apply at read time so config changes reflect instantly without
   // having to bust the rate cache.
-  const markups = await loadCarrierMarkups();
+  const markups = opts.applyMarkups === false ? new Map<string, Markup>() : await loadCarrierMarkups();
 
   if (!opts.forceRefresh) {
     const cached = await selectRateCacheByKey(key);
@@ -1088,7 +1111,7 @@ export async function getRates(
               console.warn('[rates] duplicate rate cache repair failed:', err instanceof Error ? err.message : err)
             );
         }
-        const cachedRates = applyMarkups(cachedRaw, markups);
+        const cachedRates = opts.applyMarkups === false ? cachedRaw : applyMarkups(cachedRaw, markups);
         return {
           rates: cachedRates,
           bestRate: pickBestRate(cachedRates),
@@ -1124,7 +1147,7 @@ export async function getRates(
   // accounts that already returned no service for this shipment.
   await writeRateCache(key, resolvedInput, rawRates, liveResult.carrierDiagnostics, now);
 
-  const rates = applyMarkups(rawRates, markups);
+  const rates = opts.applyMarkups === false ? rawRates : applyMarkups(rawRates, markups);
   return {
     rates,
     bestRate: pickBestRate(rates),
@@ -1132,5 +1155,7 @@ export async function getRates(
     cacheKey: key,
     fetchedAt: now.toISOString(),
     carrierDiagnostics: liveResult.carrierDiagnostics,
+    rawRateCount: liveResult.rawRateCount,
+    blockedRateCount: liveResult.blockedRateCount,
   };
 }
