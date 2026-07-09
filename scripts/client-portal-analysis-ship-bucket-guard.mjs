@@ -7,8 +7,8 @@
 // So this guard now pins:
 //   1. The customer Analysis page no longer renders the Std/Exp columns (CP-035).
 //   2. The BACKEND bucket contract is still intact — the analysis read-model
-//      still emits the predicate-matched std/exp count + total fields (retained
-//      for admin/operator use), and the frontend row TYPE still declares them.
+//      still emits the predicate-matched std/exp count + total fields for
+//      admin/operator use, while the customer row type excludes them.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -35,12 +35,11 @@ assert(
 );
 
 // ── 2. Backend bucket contract still intact (retained for admin/operator use) ──
-// Frontend row TYPE still declares the fields (harmless; not rendered as a
-// customer column, but kept so admin/internal consumers + the SOT stay stable).
 const api = read('portal-client/src/lib/api.ts');
+const clientRowType = /export interface AnalysisSkuRow \{([\s\S]*?)\n\}/.exec(api)?.[1] ?? '';
 assert(
-  api.includes('std_ship_count') && api.includes('exp_ship_count'),
-  'AnalysisSkuRow still declares std_ship_count / exp_ship_count',
+  !clientRowType.includes('std_ship_count') && !clientRowType.includes('exp_ship_count'),
+  'CP-047: customer AnalysisSkuRow excludes std_ship_count / exp_ship_count',
 );
 
 // Backend read-model still emits the predicate-matched count + $ total.

@@ -14,6 +14,43 @@ import { parseDate, parsePageSize, parsePositiveInt, asTimestamp, requestedClien
 
 const app = new Hono();
 
+type ClientAnalysisSourceRow = Awaited<
+  ReturnType<typeof getSkuBreakdownFromOrderItems>
+>['rows'][number];
+
+export type ClientAnalysisSkuRow = {
+  sku: string;
+  name: string | null;
+  image_url: string | null;
+  inv_sku_id: number | null;
+  client_id: number | null;
+  client_name: string | null;
+  orders: number;
+  pending: number;
+  total_qty: number;
+  total_revenue: string;
+  daily_qty: number[];
+};
+
+export function toClientAnalysisRow(
+  row: ClientAnalysisSourceRow,
+  canViewFinancials: boolean,
+): ClientAnalysisSkuRow {
+  return {
+    sku: row.sku,
+    name: row.name,
+    image_url: row.image_url,
+    inv_sku_id: row.inv_sku_id,
+    client_id: row.client_id,
+    client_name: row.client_name,
+    orders: row.orders,
+    pending: row.pending,
+    total_qty: row.total_qty,
+    total_revenue: canViewFinancials ? row.total_revenue : '0',
+    daily_qty: row.daily_qty,
+  };
+}
+
 app.get('/analysis', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -37,19 +74,10 @@ app.get('/analysis', async (c) => {
     shippingBasis: 'customer_billed',
   });
   await recordPortalAudit('portal.analysis.view', scope);
-  // CP-010: redact per-SKU revenue for non-financial users so the table stays
-  // consistent with the (already redacted) canonical Revenue KPI below.
-  // CP-038: expose the canonical per-SKU billed shipping under the client-facing
-  // intent name `billedShippingTotal` (customer_billed basis, see above). The
-  // internal owner keeps `total_shipping`; only this boundary DTO is renamed, so
-  // no cost/allocation-named key reaches the customer bundle or network payload.
-  const toClientRow = ({ total_shipping, ...r }: (typeof result.rows)[number]) => ({
-    ...r,
-    billedShippingTotal: total_shipping,
-  });
-  const rows = scope.canViewFinancials
-    ? result.rows.map(toClientRow)
-    : result.rows.map((r) => toClientRow({ ...r, total_revenue: '0' }));
+  // CP-047: this explicit whitelist is the customer Analysis API contract.
+  // Shared operator/debug rows may keep internal shipping and fee metrics, but
+  // those fields never cross the Client Portal boundary.
+  const rows = result.rows.map((row) => toClientAnalysisRow(row, scope.canViewFinancials));
   return c.json({
     data: rows,
     dateBuckets: result.dateBuckets,

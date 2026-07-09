@@ -41,6 +41,14 @@ const FORBIDDEN = [
   'avgCostPerOrder',
   'costSummary',
   'total_shipping',
+  // CP-047: internal Analysis SKU diagnostics/cost fields are backend-only.
+  'ext_shipped',
+  'std_ship_count',
+  'std_total',
+  'exp_ship_count',
+  'exp_total',
+  'ship_count_with_cost',
+  'total_selling_fee',
 ];
 
 // CP-038b DONE: the Markups admin UI (MarkupsEditor + markups API client + Markup*

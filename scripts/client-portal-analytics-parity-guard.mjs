@@ -74,8 +74,7 @@ assert(
   'the owner zeroes revenue when canViewFinancials is false (redaction in the owner)',
 );
 assert(
-  /result\.rows\.map\(\(r\) => \(\{ \.\.\.r, total_revenue: '0' \}\)\)/.test(routeFlat) ||
-    routeFlat.includes("total_revenue: '0'"),
+  routeFlat.includes("total_revenue: canViewFinancials ? row.total_revenue : '0'"),
   '/analysis redacts per-SKU revenue for non-financial users (consistent with the KPI)',
 );
 

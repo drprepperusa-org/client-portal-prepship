@@ -660,33 +660,20 @@ export interface BillingInvoiceDetailRow {
 
 export interface AnalysisSkuRow {
   sku: string;
-  name?: string | null;
-  image_url?: string | null;
-  inv_sku_id?: number | null;
-  client_id?: number | null;
-  client_name?: string | null;
-  orders?: number | null;
+  name: string | null;
+  image_url: string | null;
+  inv_sku_id: number | null;
+  client_id: number | null;
+  client_name: string | null;
+  orders: number;
   /** Count of visible awaiting-shipment orders containing this SKU. Source:
    *  backend Analysis read-model using the same Orders awaiting SOT predicate
    *  as the Orders tab/sidebar badge; never shipping billing or label cost. */
-  pending?: number | null;
-  ext_shipped?: number | null;
-  std_orders?: number | null;
-  // CP-020: cost-gated shipment count — the count whose predicate MATCHES std_total
-  // (not is_external, label_cost > 0, ship_class='std'). Pair this with std_total.
-  std_ship_count?: number | null;
-  std_total?: string | null;
-  exp_orders?: number | null;
-  exp_ship_count?: number | null;
-  exp_total?: string | null;
-  total_qty?: number | null;
-  // CP-038: client-facing billed shipping (customer_billed basis), renamed from the
-  // internal owner's `total_shipping` at the /analysis boundary.
-  billedShippingTotal?: string | null;
-  total_revenue?: string | null;
-  total_selling_fee?: string | null;
+  pending: number;
+  total_qty: number;
+  total_revenue: string;
   /** Per-day units, aligned to dateBuckets — feeds the Units Trend sparkline. */
-  daily_qty?: number[];
+  daily_qty: number[];
 }
 
 export interface AnalysisOrderCombinationItem {

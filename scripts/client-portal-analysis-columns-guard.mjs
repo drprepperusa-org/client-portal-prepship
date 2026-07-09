@@ -52,8 +52,8 @@ for (const key of ["key: 'std'", "key: 'exp'", "key: 'fees'", "key: 'profit'"]) 
 }
 
 // ── 2026-07-08: DJ removed the "Total Shipping" column from the customer view ──
-// (removal, not CSS). The backend /analysis payload still carries the financially
-// gated billedShippingTotal field; the table simply no longer renders it.
+// CP-047 also removes internal shipping allocation fields from the customer API
+// contract, so hiding the column is not the security boundary.
 assert(
   !analysis.includes("header: 'Total Shipping'") && !/key:\s*'shipping'/.test(analysis),
   'Analysis customer table no longer renders a "Total Shipping" column',

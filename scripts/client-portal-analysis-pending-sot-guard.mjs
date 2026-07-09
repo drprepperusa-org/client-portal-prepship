@@ -75,9 +75,9 @@ assert(
   'pending select expression does not reference label_cost, ship buckets, external shipping, or billing shipping lines',
 );
 assert(
-  /pending\?: number \| null;/.test(api) &&
+  /pending: number;/.test(api) &&
     /awaiting-shipment orders containing this SKU/.test(api),
-  'AnalysisSkuRow.pending is documented as awaiting-shipment orders containing the SKU',
+  'AnalysisSkuRow.pending is required and documented as awaiting-shipment orders containing the SKU',
 );
 assert(
   integration.includes('Group 6 - CP-046 Analysis pending awaiting-order SOT') &&

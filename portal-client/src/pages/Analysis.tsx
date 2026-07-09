@@ -109,9 +109,8 @@ export default function Analysis() {
     // backend may still compute std/exp/selling-fee fields for admin/operator
     // use; they are simply never surfaced as customer-facing columns here. (No
     // frontend Profit derivation either — that computed column is gone.)
-    // 2026-07-08: DJ also removed the "Total Shipping" column. The backend
-    // /analysis payload still carries billedShippingTotal (financially gated);
-    // the customer table just no longer renders it.
+    // CP-047: the customer Analysis API also drops those internal fields, so
+    // hiding a column is not the security boundary.
   ];
 
   return (

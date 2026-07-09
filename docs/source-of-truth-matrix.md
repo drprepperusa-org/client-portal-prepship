@@ -976,8 +976,8 @@ ships not order units), `client-portal-inventory-status-guard.ts` (CP-013).
 | --- | --- | --- | --- | --- | --- |
 | Ordered units | `totalUnits` | `totalUnits` | `getClientPortalSalesTotals` — Σ `order_items.quantity` (set-based) | order date | backend-owned-truth (CP-010) |
 | Revenue | `totalRevenue` | `totalRevenue` | `getClientPortalSalesTotals` — Σ `unit_price × qty` (financially gated) | order date | backend-owned-truth (CP-010) |
-| Top-SKU rows | `rows[]` (`total_qty`, `total_revenue`, `billedShippingTotal`) | owner `total_qty`/`total_revenue`/`total_shipping` | `getSkuBreakdownFromOrderItems` (set-based over `order_items`); `/analysis` renames `total_shipping`→`billedShippingTotal` at the client boundary (CP-038) | order date | backend-owned-truth |
-| Std/Exp ship counts | `std_total`/`exp_total` | same | cost-gated `shipments` COUNT paired with the SAME filter as `std_qty_total` | ship date | backend-owned-truth (CP-020) |
+| Top-SKU rows | `rows[]` (`sku`, item identity, scoped IDs, `orders`, `pending`, `total_qty`, `total_revenue`, `daily_qty`) | explicit `ClientAnalysisSkuRow` whitelist | `getSkuBreakdownFromOrderItems` (set-based over `order_items`), narrowed at the Client Portal API boundary | order date | backend-owned-truth (CP-047) |
+| Std/Exp ship counts | not exposed | not exposed | retained only in the shared backend analysis owner for operator/admin consumers | ship date | backend-owned-truth (CP-020/CP-047) |
 
 Owner: `src/routes/analysis.ts` (`getClientPortalSalesTotals`,
 `getClientPortalDailyRevenue`, `getSkuBreakdownFromOrderItems`). The Dashboard
@@ -985,7 +985,8 @@ shadows this exact query set — parity is structural, not a re-implementation.
 Guards: `client-portal-analytics-parity-guard.mjs` (CP-010),
 `client-portal-sales-sot-drift-guard.mjs`,
 `client-portal-analysis-ship-bucket-guard.mjs` (CP-020),
-`client-portal-analysis-columns-guard.mjs`.
+`client-portal-analysis-columns-guard.mjs`,
+`client-portal-analysis-dto-redaction-guard.mjs` (CP-047).
 
 ### Finance
 
