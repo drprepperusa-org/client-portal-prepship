@@ -1185,6 +1185,9 @@ export const portalApi = {
   /** Replace the token on an auth-broken store connection (reconnect). */
   reconnectIntegration: (token: string, id: number, credentials: Record<string, string>) =>
     apiPatch<{ data: { ok: boolean } }>(token, `/api/client-portal/integrations/${id}/credentials`, { credentials }),
+  /** Admin-only: approve a client-submitted pending store connection. */
+  approveIntegration: (token: string, id: number) =>
+    apiPost<{ data: PortalIntegration }>(token, `/api/client-portal/integrations/${id}/approve`),
   /** Soft-disconnect a store connection (active=false; sync/read models stop using it). */
   disconnectIntegration: (token: string, id: number) =>
     apiDelete<{ data: { id: number; disconnected: boolean } }>(token, `/api/client-portal/integrations/${id}`),

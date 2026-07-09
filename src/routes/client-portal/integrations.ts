@@ -207,6 +207,66 @@ app.post('/integrations', async (c) => {
   }
 });
 
+// Portal-admin approval for client-submitted store connections. This is the
+// same promotion the internal account APIs perform: source='portal' becomes
+// source='admin', active=true, and the sync anchor is stamped once.
+app.post('/integrations/:id/approve', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const isAdmin = isAdminEmail(scope.email) || scope.role === 'admin';
+  if (!isAdmin) return c.json({ error: 'admin access required' }, 403);
+
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+
+  const rows = await db.execute<{
+    id: number;
+    clientId: number | null;
+    provider: string | null;
+    label: string | null;
+    accountIdentifier: string | null;
+    source: string | null;
+    active: boolean | null;
+    createdAt: Date | string | null;
+    updatedAt: Date | string | null;
+  }>(sql`
+    update store_accounts
+    set source = 'admin',
+        active = true,
+        sync_anchor_at = coalesce(sync_anchor_at, now()),
+        updated_at = now()
+    where id = ${id}
+      and source = 'portal'
+    returning id,
+              client_id as "clientId",
+              provider,
+              label,
+              account_identifier as "accountIdentifier",
+              source,
+              active,
+              created_at as "createdAt",
+              updated_at as "updatedAt"
+  `);
+  const row = rows[0];
+  if (!row) {
+    const existing = await db.execute<{ id: number; source: string | null }>(sql`
+      select id, source
+      from store_accounts
+      where id = ${id}
+      limit 1
+    `);
+    if (!existing[0]) return c.json({ error: 'store not found' }, 404);
+    return c.json({ error: 'store connection is not pending approval' }, 409);
+  }
+
+  await recordPortalAudit('portal.integrations.approve', scope, {
+    provider: row.provider,
+    clientId: row.clientId,
+    accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
+  });
+  return c.json({ data: toPortalIntegrationDto({ ...row, type: 'store' }) });
+});
+
 // Reconnect: replace the credentials on the caller's OWN shopify store after
 // its token was revoked (last_sync_error='auth'). The new credentials must
 // pass live verification for the SAME canonical shop domain. source/active are

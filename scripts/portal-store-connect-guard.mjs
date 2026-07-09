@@ -21,6 +21,11 @@ assert(route.includes('verified.myshopifyDomain !== row.accountIdentifier'), 're
 assert(route.includes("app.delete('/integrations/:id'"), 'client portal must expose a scoped store disconnect endpoint');
 assert(route.includes('set active = false'), 'store disconnect must be a soft disconnect via active=false');
 assert(route.includes('portal.integrations.disconnect'), 'store disconnect must write an audit event');
+assert(route.includes("app.post('/integrations/:id/approve'"), 'client portal must expose an admin store approval endpoint');
+assert(route.includes("if (!isAdmin) return c.json({ error: 'admin access required' }, 403)"), 'store approval must be portal-admin gated');
+assert(route.includes("set source = 'admin'") && route.includes('active = true'), 'store approval must promote source=admin and activate the store');
+assert(route.includes('sync_anchor_at = coalesce(sync_anchor_at, now())'), 'store approval must stamp the sync anchor exactly once');
+assert(route.includes('portal.integrations.approve'), 'store approval must write an audit event');
 
 const helpers = readFileSync('src/lib/client-portal/integration-submission.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(helpers.includes('clientIds.includes(args.bodyClientId)'), 'cross-client injection check must exist');
@@ -45,12 +50,26 @@ assert(
     !connections.includes('Disconnect gated'),
   'Connections disconnect button must open a confirmation modal before calling the API',
 );
+assert(
+  connections.includes('handleApprove') &&
+    connections.includes('portalApi.approveIntegration') &&
+    connections.includes('Connection approved') &&
+    connections.includes('{isAdmin ? (') &&
+    connections.includes('onClick={() => void handleApprove(p)}') &&
+    connections.includes('loading={approvingId === p.id}'),
+  'Connections pending store card must show an admin-only Approve button that calls the portal approval API',
+);
 
 const api = readFileSync('portal-client/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(
   api.includes('disconnectIntegration: (token: string, id: number)') &&
     api.includes('apiDelete<{ data: { id: number; disconnected: boolean } }>(token, `/api/client-portal/integrations/${id}`)'),
   'portal API client must expose DELETE /client-portal/integrations/:id',
+);
+assert(
+  api.includes('approveIntegration: (token: string, id: number)') &&
+    api.includes('apiPost<{ data: PortalIntegration }>(token, `/api/client-portal/integrations/${id}/approve`)'),
+  'portal API client must expose POST /client-portal/integrations/:id/approve',
 );
 
 const adminApi = readFileSync('web/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');

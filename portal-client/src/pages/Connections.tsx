@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Clock, Store, Unplug } from 'lucide-react';
+import { CheckCircle2, Plus, Clock, Store, Unplug } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -51,6 +51,7 @@ export default function Connections() {
   const isAdmin = useMe().data?.isAdmin ?? false;
   const rows: PortalIntegration[] = query.data?.data ?? [];
   const [modalOpen, setModalOpen] = useState(false);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<number | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<PortalIntegration | null>(null);
 
@@ -87,6 +88,20 @@ export default function Connections() {
       toast.success('Reconnected', 'Order sync will resume within a few minutes.');
     } catch (err) {
       toast.error('Could not reconnect', err instanceof Error ? err.message : 'Check the credentials and try again.');
+    }
+  }
+
+  async function handleApprove(integration: PortalIntegration) {
+    if (!accessToken || integration.id == null || approvingId != null) return;
+    setApprovingId(integration.id);
+    try {
+      await portalApi.approveIntegration(accessToken, integration.id);
+      await qc.invalidateQueries({ queryKey: ['integrations'] });
+      toast.success('Connection approved', `${integration.label ?? integration.provider ?? 'Store'} is active and ready to sync.`);
+    } catch (err) {
+      toast.error('Approval failed', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setApprovingId(null);
     }
   }
 
@@ -132,9 +147,9 @@ export default function Connections() {
               return (
                 <motion.div key={p.id ?? `pending-${i}`} variants={staggerItem} style={{ perspective: 1400 }}>
                   <motion.div
-                    animate={{ y: [0, -6, 0] }}
-                    transition={{ duration: 4 + (i % 5) * 0.5, repeat: Infinity, ease: 'easeInOut' }}
-                    className="flex h-60 flex-col"
+                    animate={isAdmin ? undefined : { y: [0, -6, 0] }}
+                    transition={isAdmin ? undefined : { duration: 4 + (i % 5) * 0.5, repeat: Infinity, ease: 'easeInOut' }}
+                    className="flex h-64 flex-col"
                   >
                     <GlassPanel className="flex h-full flex-col p-5 ring-1 ring-amber-200/70">
                       <div className="flex items-start justify-between">
@@ -151,7 +166,21 @@ export default function Connections() {
                       </div>
                       <h3 className="mt-4 font-display text-base font-semibold text-ink">{p.label ?? p.provider}</h3>
                       <p className="text-sm text-ink-3">{platform?.name ?? p.provider}</p>
-                      <p className="mt-auto flex items-center gap-1.5 text-xs text-ink-3"><Clock size={13} /> Awaiting operator activation</p>
+                      {isAdmin && p.clientName ? <p className="text-xs text-ink-3">Client: {p.clientName}</p> : null}
+                      <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+                        <p className="flex items-center gap-1.5 text-xs text-ink-3"><Clock size={13} /> Awaiting operator activation</p>
+                        {isAdmin ? (
+                          <Button
+                            size="sm"
+                            loading={approvingId === p.id}
+                            disabled={approvingId != null || p.id == null}
+                            leadingIcon={<CheckCircle2 size={14} />}
+                            onClick={() => void handleApprove(p)}
+                          >
+                            Approve
+                          </Button>
+                        ) : null}
+                      </div>
                     </GlassPanel>
                   </motion.div>
                 </motion.div>
