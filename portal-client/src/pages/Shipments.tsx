@@ -12,7 +12,7 @@ import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useShipments, useClients } from '@/lib/hooks';
+import { useCanCustomizeTables, useShipments, useClients } from '@/lib/hooks';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { Undo2 } from 'lucide-react';
@@ -65,6 +65,7 @@ export default function Shipments() {
   useEffect(() => setPage(1), [debouncedQ, effectiveClientId, statusFilter]);
 
   const query = useShipments({ search: debouncedQ, page, clientId: effectiveClientId, status: statusFilter || undefined });
+  const canCustomizeTables = useCanCustomizeTables();
   const allRows = query.data?.data ?? [];
   const rows = allRows;
   const pg = query.data?.pagination;
@@ -231,7 +232,7 @@ export default function Shipments() {
               : 'Outbound shipments will appear here once orders ship.'
           }
         >
-          <DataTable tableId="shipments" columns={columns} rows={rows} rowKey={(s) => String(s.id)} rowClassName={(s) => (s.voided ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined)} onRowClick={setSelected} stickyHeader />
+          <DataTable tableId="shipments" columns={columns} rows={rows} rowKey={(s) => String(s.id)} rowClassName={(s) => (s.voided ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined)} onRowClick={setSelected} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>

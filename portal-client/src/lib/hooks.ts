@@ -32,6 +32,10 @@ function useTokenQuery<T>(key: unknown[], fn: (token: string) => Promise<T>, ena
 const LIVE_ORDERS_MS = 10 * 60 * 1000;
 
 export const useMe = () => useTokenQuery(['me'], portalApi.me);
+export function useCanCustomizeTables(): boolean {
+  const me = useMe().data;
+  return Boolean(me?.isAdmin || me?.isGlobal);
+}
 export function useAuditLog(search = '', limit = 100) {
   return useTokenQuery(['audit-log', search, limit], (t) => portalApi.auditLog(t, { search, limit }), true, {
     refetchInterval: 30_000,

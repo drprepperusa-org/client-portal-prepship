@@ -12,7 +12,7 @@ import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useReturns, useReturnDetail, useClients, useMe } from '@/lib/hooks';
+import { useReturns, useReturnDetail, useClients, useMe, useCanCustomizeTables } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shortDate } from '@/lib/status';
@@ -70,6 +70,7 @@ export default function Returns() {
   const { clientId: globalClientId } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
   const me = useMe().data;
+  const canCustomizeTables = useCanCustomizeTables();
   // Operator = 3PL/admin. The receiving desk is theirs; a client user never sees
   // the entry point. The BACKEND is the true guard (it 403s a client on writes) —
   // this is the client-side signal that matches the operator concept as closely
@@ -274,7 +275,7 @@ export default function Returns() {
           emptyTitle={statusFilter || debouncedQ ? 'No matching returns' : 'No returns yet'}
           emptyMessage="Start a return from an order or shipment, and it will appear here."
         >
-          <DataTable tableId="returns" columns={columns} rows={rows} rowKey={(r) => String(r.id)} onRowClick={(r) => setSelectedId(r.id)} />
+          <DataTable tableId="returns" columns={columns} rows={rows} rowKey={(r) => String(r.id)} onRowClick={(r) => setSelectedId(r.id)} allowColumnCustomization={canCustomizeTables} />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>

@@ -8,7 +8,7 @@ import { Chip, Tooltip } from '@/components/ui/Display';
 import { Checkbox, Select } from '@/components/ui/Selection';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
-import { useInventory, useInventoryHistory } from '@/lib/hooks';
+import { useCanCustomizeTables, useInventory, useInventoryHistory } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import type { PortalInventory, InventoryMovement } from '@/lib/api';
 import type { Accent } from '@/lib/accents';
@@ -98,6 +98,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
   const [q, setQ] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [page, setPage] = useState(1);
+  const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
   useEffect(() => setPage(1), [debouncedQ, lowOnly]);
 
@@ -200,7 +201,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           emptyTitle="No SKUs found"
           emptyMessage="No inventory matches this view."
         >
-          <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} />
+          <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>
@@ -213,6 +214,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
   const [q, setQ] = useState(initialSku);
   const [type, setType] = useState<string | string[]>('all');
   const [page, setPage] = useState(1);
+  const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
   useEffect(() => setPage(1), [debouncedQ, type]);
   // Sync when an Actions→History click changes the requested SKU.
@@ -269,7 +271,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
           emptyTitle="No movements"
           emptyMessage="No inventory movements for the selected filters and date range."
         >
-          <DataTable tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} />
+          <DataTable tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>

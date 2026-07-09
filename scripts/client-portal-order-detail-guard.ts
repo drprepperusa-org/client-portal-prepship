@@ -211,7 +211,7 @@ check(
   ordersPage.includes("header: 'Weight'") &&
     ordersPage.includes("key: 'weight'") &&
     ordersPage.includes('defaultHidden: true') &&
-    ordersPage.includes('allowColumnCustomization={canCustomizeOrders}') &&
+    ordersPage.includes('allowColumnCustomization={canCustomizeTables}') &&
     !panel.includes('label="Weight"') &&
     !loader.includes('hideWeight'),
   'Orders may expose a default-hidden admin Weight column, while order detail still renders no Weight field',

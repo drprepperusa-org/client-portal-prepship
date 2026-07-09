@@ -43,11 +43,10 @@ check(
 );
 
 check(
-  /useMe\(\)/.test(orders) &&
-    /canCustomizeOrders/.test(orders) &&
-    /me\?\.isAdmin\s*\|\|\s*me\?\.isGlobal/.test(orders) &&
-    /allowColumnCustomization=\{canCustomizeOrders\}/.test(orders),
-  'Orders table customization is explicitly gated to admin/global users',
+  /useCanCustomizeTables/.test(orders) &&
+    /const canCustomizeTables = useCanCustomizeTables\(\);/.test(orders) &&
+    /allowColumnCustomization=\{canCustomizeTables\}/.test(orders),
+  'Orders table customization is explicitly gated through the shared admin/global table gate',
 );
 
 check(
@@ -56,7 +55,7 @@ check(
     orders.includes('defaultHidden: true') &&
     orders.includes('fmtWeight') &&
     orders.includes('weightOz') &&
-    /\.\.\.\(canCustomizeOrders\s*\?\s*\[/.test(orders),
+    /\.\.\.\(canCustomizeTables\s*\?\s*\[/.test(orders),
   'Orders page defines Weight as a default-hidden admin-only customizable column',
 );
 

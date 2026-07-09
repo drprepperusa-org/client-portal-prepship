@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, Reorder } from 'framer-motion';
-import { ShoppingCart, Truck, Boxes, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square, Info } from 'lucide-react';
+import { ShoppingCart, Truck, Boxes, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState, Tooltip } from '@/components/ui/Display';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
 import { ChartDayModal, type DayPeekSource } from '@/components/dashboard/ChartDayModal';
 import { staggerContainer } from '@/lib/motion';
-import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount } from '@/lib/hooks';
+import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount, useCanCustomizeTables } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useAuth } from '@/auth';
 import { money } from '@/lib/status';
 import { cn } from '@/lib/cn';
+import type { DashboardSummary } from '@/lib/api';
 import {
   loadLayout,
   saveLayout,
@@ -24,16 +26,16 @@ import {
   type WidgetWidth,
 } from '@/lib/dashboardLayout';
 
+type DashboardTopSku = DashboardSummary['bySku'][number];
+
 /** Width class for a widget: half collapses to full below `lg` so it never gets
  *  cramped on small screens. gap-4 = 1rem, so half = (100% - gap) / 2. */
 const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.5rem)]' : 'w-full');
 
-// Top SKUs column explainers — compact formulas (not prose), mirroring the
-// backend-owned math in the canonical Analysis SKU query (see
-// src/lib/client-portal/read-models/dashboard.ts → dashboardTopSkus). These are
-// the SAME numbers the Analysis page shows for the same scope/date window.
-const UNITS_TOOLTIP = 'Σ order_items quantity (order_items SOT, matches Analysis)';
-const AVG_SHIPPING_TOOLTIP = 'Σ(allocated shipment label cost) ÷ shipped units (same SOT as Analysis)';
+// Compact formulas, mirroring the backend-owned math in
+// src/lib/client-portal/read-models/dashboard.ts -> dashboardTopSkus.
+const UNITS_TOOLTIP = 'Sum order_items quantity (order_items SOT, matches Analysis)';
+const AVG_SHIPPING_TOOLTIP = 'Sum allocated shipment label cost / shipped units (same SOT as Analysis)';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
@@ -43,6 +45,7 @@ export default function Dashboard() {
   const counts = useDailyCounts();
   const ships = useDailyShipments();
   const aw = useAwaitingCount();
+  const canCustomizeTables = useCanCustomizeTables();
 
   // Live-peek modal: which KPI is open + the rect of the card it grew from.
   const [peek, setPeek] = useState<{ key: PeekKey; rect: DOMRect } | null>(null);
@@ -52,7 +55,7 @@ export default function Dashboard() {
   const [dayPeek, setDayPeek] = useState<{ day: string; source: DayPeekSource; origin?: { x: number; y: number } } | null>(null);
   const openDay = (source: DayPeekSource) => (day: string, origin?: { x: number; y: number }) => setDayPeek({ day, source, origin });
 
-  // ── Customizable layout (per-user, persisted) ──
+  // Customizable dashboard widget layout (per-user, persisted).
   const [editing, setEditing] = useState(false);
   const [layout, setLayout] = useState<DashLayout>(() => loadLayout(userId));
   const prevUser = useRef(userId);
@@ -77,17 +80,61 @@ export default function Dashboard() {
   const loading = dash.isLoading || counts.isLoading || ships.isLoading || aw.isLoading;
 
   const countRows = counts.data?.data ?? [];
-  // Open orders = current orders still awaiting shipment (a live state count,
-  // NOT a 30-day window). Sourced from the same endpoint as the sidebar badge
-  // so the two always agree.
+  // Open orders = current orders still awaiting shipment (live state count),
+  // sourced from the same endpoint as the sidebar badge.
   const openOrders = aw.data?.count ?? 0;
   const shipped = countRows.reduce((n, r) => n + Number(r.shipped ?? 0), 0);
 
-  // Full YYYY-MM-DD is kept (axis formats to MM-DD) so a bar click resolves the
-  // day's full detail.
+  // Full YYYY-MM-DD is kept so bar clicks resolve the day's full detail.
   const ordersUnitsSeries = (dash.data?.daily ?? []).map((d) => ({ day: d.day, orders: d.orders, units: d.units }));
   const volumeSeries = (ships.data?.data ?? []).map((r) => ({ day: r.day, vol: r.shipments }));
-  const topSku = dash.data?.bySku?.[0]?.sku ?? '—';
+  const topSkuRows = (dash.data?.bySku ?? []).slice(0, 8);
+  const topSku = topSkuRows[0]?.sku ?? '-';
+
+  const topSkuColumns: Column<DashboardTopSku>[] = useMemo(
+    () => [
+      {
+        key: 'sku',
+        header: 'SKU',
+        defaultWidth: 160,
+        render: (s) => <span className="font-medium text-ink-2">{s.sku}</span>,
+      },
+      {
+        key: 'units',
+        header: 'Unit Count Last 30 Days',
+        defaultWidth: 210,
+        className: 'text-right',
+        render: (s) => (
+          <Tooltip side="top" multiline label={UNITS_TOOLTIP}>
+            <span tabIndex={0} className="focus-ring cursor-help rounded tnum text-ink-3">
+              {s.units30.toLocaleString()}
+            </span>
+          </Tooltip>
+        ),
+      },
+      {
+        key: 'avgShipping',
+        header: 'Avg Shipping Price',
+        defaultWidth: 170,
+        className: 'text-right',
+        render: (s) =>
+          s.avgShippingPrice == null ? (
+            <Tooltip side="top" multiline label="No order carrying this SKU had a shipping charge.">
+              <span tabIndex={0} className="focus-ring cursor-help rounded">
+                -
+              </span>
+            </Tooltip>
+          ) : (
+            <Tooltip side="top" multiline label={AVG_SHIPPING_TOOLTIP}>
+              <span tabIndex={0} className="focus-ring cursor-help rounded tnum">
+                {money(s.avgShippingPrice)}
+              </span>
+            </Tooltip>
+          ),
+      },
+    ],
+    [],
+  );
 
   /** Render a single dashboard widget. In edit mode, interactive handlers are
    *  withheld so dragging/toggling never fires a drill-down modal. */
@@ -101,11 +148,8 @@ export default function Dashboard() {
             ) : (
               <>
                 {/* Honest labels (CP-021): each KPI names the entity + table it
-                    comes from, so two numbers on the page can't silently mean
-                    different things. "Shipped Orders" = orders.order_status='shipped'
-                    (order clock); "Ordered Units" = Σ order_items.quantity (order
-                    clock — NOT shipped units); "Shipments Created" (below) =
-                    shipments rows by ship_date (shipment clock). */}
+                    comes from, so two numbers on the page cannot silently mean
+                    different things. */}
                 <StatCard label="Open orders" value={openOrders.toLocaleString()} icon={ShoppingCart} accent="indigo" hint="Awaiting shipment" onPeek={edit ? undefined : openPeek('open')} />
                 <StatCard label={`Shipped orders (${days}d)`} value={shipped.toLocaleString()} icon={Truck} accent="teal" onPeek={edit ? undefined : openPeek('shipped')} />
                 <StatCard label={`Ordered units (${days}d)`} value={Number(dash.data?.units ?? 0).toLocaleString()} icon={Boxes} accent="amber" hint={`Top SKU: ${topSku}`} onPeek={edit ? undefined : openPeek('units')} />
@@ -138,9 +182,7 @@ export default function Dashboard() {
       case 'volumeChart':
         return (
           <GlassPanel className="p-5">
-            {/* CP-021: this counts shipments (label rows) by ship_date — the
-                shipment clock — NOT orders. Named "Shipments Created" so it can't
-                be read as the order-based "Shipped orders" KPI above. */}
+            {/* CP-021: this counts shipments rows by ship_date, not orders. */}
             <SectionTitle title="Shipments created" subtitle="Daily shipments (shipments table, by ship date)" />
             <div className="mt-4">
               {loading ? (
@@ -163,57 +205,21 @@ export default function Dashboard() {
       case 'topSkus':
         return (
           <GlassPanel className="p-5">
-            {/* CP-021: ranked by ordered units (order_items SOT), same query as
-                the Analysis Top-SKUs — so these rows match Analysis exactly. */}
-            <SectionTitle title="Top SKUs" subtitle={`By ordered units — matches Analysis (last ${days} days)`} />
+            {/* CP-021: backend-ranked by ordered units using the same query as Analysis Top SKUs. */}
+            <SectionTitle title="Top SKUs" subtitle={`By ordered units - matches Analysis (last ${days} days)`} />
             <div className="mt-4">
               {loading ? (
                 <Skeleton className="h-40" />
-              ) : (dash.data?.bySku?.length ?? 0) === 0 ? (
+              ) : topSkuRows.length === 0 ? (
                 <EmptyState icon={<Inbox size={24} />} title="No SKU data" message="SKU activity will appear here." />
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-ink-3">
-                        <th className="py-2 pr-4">SKU</th>
-                        <th className="py-2 px-4 text-right">
-                          <Tooltip side="top" multiline label={UNITS_TOOLTIP}>
-                            <span tabIndex={0} className="focus-ring inline-flex cursor-help items-center gap-1 rounded">
-                              Unit Count Last 30 Days
-                              <Info size={12} className="shrink-0" />
-                            </span>
-                          </Tooltip>
-                        </th>
-                        <th className="py-2 pl-4 text-right">
-                          <Tooltip side="top" multiline label={AVG_SHIPPING_TOOLTIP}>
-                            <span tabIndex={0} className="focus-ring inline-flex cursor-help items-center gap-1 rounded">
-                              Avg Shipping Price
-                              <Info size={12} className="shrink-0" />
-                            </span>
-                          </Tooltip>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {dash.data!.bySku.slice(0, 8).map((s) => (
-                        <tr key={s.sku}>
-                          <td className="py-2.5 pr-4 font-medium text-ink-2">{s.sku}</td>
-                          <td className="py-2.5 px-4 text-right tnum text-ink-3">{s.units30.toLocaleString()}</td>
-                          <td className="py-2.5 pl-4 text-right tnum text-ink-3">
-                            {s.avgShippingPrice == null ? (
-                              <Tooltip side="top" multiline label="No order carrying this SKU had a shipping charge.">
-                                <span tabIndex={0} className="focus-ring cursor-help rounded">{'—'}</span>
-                              </Tooltip>
-                            ) : (
-                              <span className="tnum">{money(s.avgShippingPrice)}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  tableId="dashboard-top-skus"
+                  columns={topSkuColumns}
+                  rows={topSkuRows}
+                  rowKey={(s) => s.sku}
+                  allowColumnCustomization={canCustomizeTables}
+                />
               )}
             </div>
           </GlassPanel>
@@ -228,7 +234,7 @@ export default function Dashboard() {
       {/* Edit toolbar */}
       <div className="flex items-center justify-between gap-3">
         <p className={cn('text-sm text-ink-3 transition-opacity', editing ? 'opacity-100' : 'opacity-0')}>
-          Drag to reorder · tap the eye to hide a section
+          Drag to reorder - tap the eye to hide a section
         </p>
         <div className="flex items-center gap-2">
           {editing ? (
@@ -261,7 +267,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Widgets — a wrapping row so half-width widgets sit side-by-side. */}
+      {/* Widgets - a wrapping row so half-width widgets sit side-by-side. */}
       {editing ? (
         <Reorder.Group axis="y" values={layout.order} onReorder={setOrder} className="flex flex-wrap items-start gap-4">
           {layout.order.map((id) => {

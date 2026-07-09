@@ -13,7 +13,7 @@ import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { Button } from '@/components/ui/Button';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
-import { useMe, useOrders } from '@/lib/hooks';
+import { useCanCustomizeTables, useOrders } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { itemCount, money } from '@/lib/status';
 import type { PortalOrder } from '@/lib/api';
@@ -136,8 +136,7 @@ export default function Orders() {
   useEffect(() => setPage(1), [debouncedQ, tab]);
 
   const query = useOrders({ status: tab, search: debouncedQ, page });
-  const me = useMe().data;
-  const canCustomizeOrders = Boolean(me?.isAdmin || me?.isGlobal);
+  const canCustomizeTables = useCanCustomizeTables();
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
 
@@ -183,7 +182,7 @@ export default function Orders() {
       render: (o) => <QtyBadge value={itemCount(o.items)} />,
       sortAccessor: (o) => itemCount(o.items),
     },
-    ...(canCustomizeOrders ? [{
+    ...(canCustomizeTables ? [{
       key: 'weight',
       header: 'Weight',
       defaultWidth: 110,
@@ -283,7 +282,7 @@ export default function Orders() {
             rows={rows}
             rowKey={(o) => String(o.id)}
             onRowClick={setSelected}
-            allowColumnCustomization={canCustomizeOrders}
+            allowColumnCustomization={canCustomizeTables}
             stickyHeader
           />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}

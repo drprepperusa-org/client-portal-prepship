@@ -6,7 +6,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Chip } from '@/components/ui/Display';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
-import { useInbound, useClients, useMe } from '@/lib/hooks';
+import { useInbound, useClients, useMe, useCanCustomizeTables } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { type PortalInbound } from '@/lib/api';
 import { shortDate } from '@/lib/status';
@@ -37,6 +37,7 @@ export default function Inbound() {
   const { clientId: globalClientId } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
   const isAdmin = useMe().data?.isAdmin ?? false;
+  const canCustomizeTables = useCanCustomizeTables();
 
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<PortalInbound | null>(null);
@@ -125,7 +126,7 @@ export default function Inbound() {
           emptyTitle="No inbound shipments"
           emptyMessage={isAdmin ? 'Click “New inbound” to record an expected purchase order, or Import a CSV feed.' : 'Inbound purchase orders will appear here once your operator records them.'}
         >
-          <DataTable tableId="inbound" columns={columns} rows={rows} rowKey={(r) => String(r.id)} onRowClick={setSelected} />
+          <DataTable tableId="inbound" columns={columns} rows={rows} rowKey={(r) => String(r.id)} onRowClick={setSelected} allowColumnCustomization={canCustomizeTables} />
         </QueryState>
       </GlassPanel>
 

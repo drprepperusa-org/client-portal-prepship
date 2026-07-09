@@ -9,7 +9,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useClients, useInvoiceDetailsRange, useInvoicePeriodSummaryRange, useOrderShipments } from '@/lib/hooks';
+import { useCanCustomizeTables, useClients, useInvoiceDetailsRange, useInvoicePeriodSummaryRange, useOrderShipments } from '@/lib/hooks';
 import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
 import { fetchAllInvoiceRows as fetchAllInvoiceRowsPaged } from '@/lib/invoiceRows';
 import { exportInvoiceExcel } from '@/lib/invoiceExcel';
@@ -86,6 +86,7 @@ async function fetchAllInvoiceRows(
 export default function Invoices({ from, to }: { from: string; to: string }) {
   const toast = useToast();
   const { accessToken } = useAuth();
+  const canCustomizeTables = useCanCustomizeTables();
   // Drill-in selection: a client + its semi-monthly billing period.
   const [selected, setSelected] = useState<{ clientId: number; clientName: string; from: string; to: string } | null>(null);
   const [detailPage, setDetailPage] = useState(1);
@@ -494,6 +495,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               columns={summaryCols}
               rows={summary}
               rowKey={(s) => `${s.clientId}-${s.periodStart}`}
+              allowColumnCustomization={canCustomizeTables}
               onRowClick={(s) => {
                 setSelected({ clientId: s.clientId, clientName: s.clientName, from: s.periodStart, to: s.periodEnd });
                 setDetailPage(1);
@@ -548,6 +550,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
               columns={lineCols}
               rows={lineItems}
               rowKey={(r) => `${r.orderId}-${r.orderNumber}`}
+              allowColumnCustomization={canCustomizeTables}
               sort={detailSort}
               onSortChange={(s) => { setDetailSort(s); setDetailPage(1); }}
             />

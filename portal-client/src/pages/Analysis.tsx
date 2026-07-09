@@ -13,7 +13,7 @@ import { TopSkuTrendChart } from '@/components/charts/Charts';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { staggerContainer } from '@/lib/motion';
-import { useAnalysis, useSkuOrders } from '@/lib/hooks';
+import { useAnalysis, useCanCustomizeTables, useSkuOrders } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate, orderStatusMeta } from '@/lib/status';
 import type { AnalysisOrderCombination, AnalysisSkuRow, SkuOrdersResult } from '@/lib/api';
@@ -24,6 +24,7 @@ const TOP_N = 5;
 export default function Analysis() {
   const { days } = usePortalFilters();
   const analysis = useAnalysis();
+  const canCustomizeTables = useCanCustomizeTables();
   const loading = analysis.isLoading;
   // SKU drill-down panel + nested order-detail drill-down.
   const [selectedSku, setSelectedSku] = useState<AnalysisSkuRow | null>(null);
@@ -148,6 +149,7 @@ export default function Analysis() {
             rows={rows}
             rowKey={(r) => `${r.sku}-${r.client_id ?? ''}`}
             onRowClick={(r) => r.inv_sku_id != null && setSelectedSku(r)}
+            allowColumnCustomization={canCustomizeTables}
             empty={<EmptyState icon={<Inbox size={24} />} title="No analytics yet" message="SKU analytics will appear here once orders are synced." />}
           />
         )}
@@ -160,7 +162,7 @@ export default function Analysis() {
           {loading ? (
             <Skeleton className="h-48" />
           ) : orderCombinations.length ? (
-            <OrderCombinationsTable rows={orderCombinations} />
+            <OrderCombinationsTable rows={orderCombinations} canCustomizeTables={canCustomizeTables} />
           ) : (
             <EmptyState icon={<Inbox size={24} />} title="No combinations yet" message="Order combinations will appear here once orders are synced." />
           )}
@@ -180,16 +182,16 @@ export default function Analysis() {
   );
 }
 
-function OrderCombinationsTable({ rows }: { rows: AnalysisOrderCombination[] }) {
-  return (
-    <>
-      <div
-        className="divide-y divide-slate-100 rounded-glass-sm bg-white/55 ring-1 ring-slate-200/80 sm:hidden"
-        role="list"
-        aria-label="Order combinations"
-      >
-        {rows.map((row) => (
-          <div key={row.combinationKey} className="px-4 py-3" role="listitem">
+function OrderCombinationsTable({ rows, canCustomizeTables }: { rows: AnalysisOrderCombination[]; canCustomizeTables: boolean }) {
+  const columns: Column<AnalysisOrderCombination>[] = useMemo(
+    () => [
+      {
+        key: 'combination',
+        header: 'Combination',
+        defaultWidth: 420,
+        minWidth: 240,
+        render: (row) => (
+          <div>
             <p className="font-semibold text-ink">{row.label}</p>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {row.items.map((item) => (
@@ -202,54 +204,35 @@ function OrderCombinationsTable({ rows }: { rows: AnalysisOrderCombination[] }) 
                 </span>
               ))}
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <p className="font-bold uppercase tracking-wide text-ink-3">Orders</p>
-                <p className="mt-0.5 tnum text-base font-semibold text-ink">{num(row.orderCount).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="font-bold uppercase tracking-wide text-ink-3">Units</p>
-                <p className="mt-0.5 tnum text-base text-ink-2">{num(row.totalUnits).toLocaleString()}</p>
-              </div>
-            </div>
           </div>
-        ))}
-      </div>
+        ),
+      },
+      {
+        key: 'orders',
+        header: 'Orders',
+        defaultWidth: 110,
+        className: 'text-right',
+        render: (row) => <span className="tnum font-semibold text-ink">{num(row.orderCount).toLocaleString()}</span>,
+      },
+      {
+        key: 'units',
+        header: 'Units',
+        defaultWidth: 110,
+        className: 'text-right',
+        render: (row) => <span className="tnum text-ink-2">{num(row.totalUnits).toLocaleString()}</span>,
+      },
+    ],
+    [],
+  );
 
-      <div className="hidden overflow-x-auto rounded-glass-sm ring-1 ring-slate-200/80 sm:block">
-        <table className="w-full divide-y divide-slate-200/80 text-sm" aria-label="Order combinations">
-          <thead className="bg-slate-50/70 text-[11px] uppercase tracking-wide text-ink-3">
-            <tr>
-              <th scope="col" className="px-4 py-3 text-left font-bold">Combination</th>
-              <th scope="col" className="w-28 px-4 py-3 text-right font-bold">Orders</th>
-              <th scope="col" className="w-28 px-4 py-3 text-right font-bold">Units</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white/55">
-            {rows.map((row) => (
-              <tr key={row.combinationKey} className="transition-colors hover:bg-brand-50/45">
-                <td className="px-4 py-3">
-                  <p className="font-semibold text-ink">{row.label}</p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {row.items.map((item) => (
-                      <span
-                        key={`${row.combinationKey}-${item.sku}`}
-                        className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-ink-3 ring-1 ring-slate-200"
-                        title={item.sku}
-                      >
-                        {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.sku}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-right tnum font-semibold text-ink">{num(row.orderCount).toLocaleString()}</td>
-                <td className="px-4 py-3 text-right tnum text-ink-2">{num(row.totalUnits).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+  return (
+    <DataTable
+      tableId="analysis-order-combinations"
+      columns={columns}
+      rows={rows}
+      rowKey={(row) => row.combinationKey}
+      allowColumnCustomization={canCustomizeTables}
+    />
   );
 }
 
