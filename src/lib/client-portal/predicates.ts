@@ -131,6 +131,33 @@ export function visibleAwaitingOrdersPredicate(orderTable: typeof orders = order
   )`;
 }
 
+// Raw counterpart of visibleAwaitingOrdersPredicate, bound to the orders table
+// aliased `o`. Analysis SQL scans order_items joined to `orders o`, so this
+// keeps its customer-visible pending counts aligned with the Orders read-model.
+export function rawVisibleAwaitingOrdersPredicateForAlias(): SQL {
+  return sql`not (
+    (
+      coalesce(o.order_number, '') ilike 'SEAuto-%'
+      or coalesce(o.raw->>'orderNumber', '') ilike 'SEAuto-%'
+      or coalesce(o.raw->>'orderKey', '') ilike 'SEAuto-%'
+    )
+    and jsonb_array_length(
+      case when jsonb_typeof(o.items) = 'array' then o.items else '[]'::jsonb end
+    ) = 0
+    and coalesce((o.order_total)::numeric, 0) = 0
+    and not exists (
+      select 1
+      from order_items visible_item
+      where visible_item.order_id = o.id
+        and coalesce(visible_item.quantity, 0) > 0
+        and (
+          trim(coalesce(visible_item.sku, '')) <> ''
+          or trim(coalesce(visible_item.name, '')) <> ''
+        )
+    )
+  )`;
+}
+
 export function orderSearchPredicate(search: string): SQL | undefined {
   if (!search) return undefined;
   const pattern = `%${search}%`;

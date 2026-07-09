@@ -25,6 +25,7 @@ const schema = await import('../../src/db/schema/index');
 const analysis = await import('../../src/routes/analysis');
 const dtoMod = await import('../../src/lib/client-portal/dto');
 const invoice = await import('../../src/lib/client-portal/read-models/invoice-details');
+const ordersReadModel = await import('../../src/lib/client-portal/read-models/orders');
 const shippingRateOwner = await import('../../src/services/customer-shipping-rate');
 const shippingRateSql = await import('../../src/lib/client-portal/customer-shipping-rate');
 
@@ -160,6 +161,81 @@ async function seed() {
   ]);
 
   return { hugrab, other, invGlobal, invHugrab, order1 };
+}
+
+async function insertCp046PendingFixture(clientId: number): Promise<void> {
+  const cp046Sku = 'SKU-CP046-PENDING-SOT';
+  const awaitingOrder = (await db
+    .insert(schema.orders)
+    .values({
+      orderNumber: 'CP046-AWAITING',
+      orderStatus: 'awaiting_shipment',
+      clientId,
+      orderDate: ORDER_DATE,
+      orderTotal: '12.00',
+      shippingAmount: '0',
+      items: [{ sku: cp046Sku, name: 'CP046 Awaiting SKU', quantity: 1, unitPrice: 12 }],
+      raw: {},
+    })
+    .returning())[0]!;
+  await db.insert(schema.orderItems).values({
+    orderId: awaitingOrder.id,
+    lineIndex: 0,
+    sku: cp046Sku,
+    name: 'CP046 Awaiting SKU',
+    orderStatus: 'awaiting_shipment',
+    quantity: '1',
+    unitPrice: '12.00',
+    clientId,
+    orderDate: ORDER_DATE,
+  });
+
+  const shippedNoBillingOrder = (await db
+    .insert(schema.orders)
+    .values({
+      orderNumber: 'CP046-SHIPPED-NO-BILLING',
+      orderStatus: 'shipped',
+      clientId,
+      orderDate: ORDER_DATE,
+      orderTotal: '12.00',
+      shippingAmount: '0',
+      items: [{ sku: cp046Sku, name: 'CP046 Awaiting SKU', quantity: 1, unitPrice: 12 }],
+      raw: {},
+    })
+    .returning())[0]!;
+  await db.insert(schema.orderItems).values({
+    orderId: shippedNoBillingOrder.id,
+    lineIndex: 0,
+    sku: cp046Sku,
+    name: 'CP046 Awaiting SKU',
+    orderStatus: 'shipped',
+    quantity: '1',
+    unitPrice: '12.00',
+    clientId,
+    orderDate: ORDER_DATE,
+  });
+  await db.insert(schema.shipments).values({
+    orderId: shippedNoBillingOrder.id,
+    clientId,
+    orderNumber: shippedNoBillingOrder.orderNumber,
+    shipDate: ORDER_DATE,
+    cost: '6.66',
+    labelCost: '6.66',
+    otherCost: '0',
+    carrierCode: 'fedex',
+    voided: false,
+  });
+
+  await db.insert(schema.orders).values({
+    orderNumber: 'SEAuto-CP046-EMPTY',
+    orderStatus: 'awaiting_shipment',
+    clientId,
+    orderDate: ORDER_DATE,
+    orderTotal: '0',
+    shippingAmount: '0',
+    items: [],
+    raw: { orderNumber: 'SEAuto-CP046-EMPTY' },
+  });
 }
 
 async function insertCustomerShippingParityCase(row: CustomerShippingParityCase) {
@@ -345,6 +421,19 @@ async function main(): Promise<number> {
     7.77,
     'shipmentCustomerShippingRateSql prefers frozen billing line over live projection',
   );
+
+  console.log('\nGroup 6 - CP-046 Analysis pending awaiting-order SOT');
+  await insertCp046PendingFixture(hugrab.id);
+  const cp046Breakdown = await analysis.getSkuBreakdownFromOrderItems({
+    ...q,
+    shippingBasis: 'customer_billed',
+    limit: 2000,
+  });
+  const cp046Row = cp046Breakdown.rows.find((r) => r.sku === 'SKU-CP046-PENDING-SOT');
+  const awaitingSotCount = await ordersReadModel.awaitingActiveOrderCount(makeScope([hugrab.id]), {});
+  eq(awaitingSotCount, 1, 'Orders awaiting SOT counts the real awaiting order and excludes the SEAuto no-item placeholder');
+  eq(cp046Row?.orders, 2, 'fixture has two SKU rows: one awaiting plus one shipped with no billed shipping line');
+  eq(cp046Row?.pending, 1, 'Analysis pending counts only awaiting-shipment SKU orders, not shipped rows missing billing');
 
   return failures;
 }

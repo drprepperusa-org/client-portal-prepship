@@ -666,6 +666,9 @@ export interface AnalysisSkuRow {
   client_id?: number | null;
   client_name?: string | null;
   orders?: number | null;
+  /** Count of visible awaiting-shipment orders containing this SKU. Source:
+   *  backend Analysis read-model using the same Orders awaiting SOT predicate
+   *  as the Orders tab/sidebar badge; never shipping billing or label cost. */
   pending?: number | null;
   ext_shipped?: number | null;
   std_orders?: number | null;

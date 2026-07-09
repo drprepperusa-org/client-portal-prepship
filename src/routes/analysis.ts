@@ -5,6 +5,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { EXCLUDED_STORE_IDS_SQL } from '../config/prepship';
 import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-scope';
+import { rawVisibleAwaitingOrdersPredicateForAlias } from '../lib/client-portal/predicates';
 import { hasAppPermission } from '../middleware/auth';
 
 // v2-parity: exact list from apps/api/src/common/prepship-config.ts.
@@ -859,6 +860,12 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         coalesce(ls.service_code, o.service_code)                           as service_code,
         ls.order_id                                                         as shipment_order_id,
         ${shippingAmountExpr}                                               as label_cost,
+        case
+          when coalesce(o.order_status, '') = 'awaiting_shipment'
+            and ${rawVisibleAwaitingOrdersPredicateForAlias()}
+            then true
+          else false
+        end                                                                 as is_awaiting_order,
         oi.sku                                                              as sku,
         oi.sku                                                              as sku_key,
         coalesce(nullif(oi.name, ''), '-')                                  as name,
@@ -919,6 +926,7 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         max(service_code)                                                    as service_code,
         max(shipment_order_id)                                               as shipment_order_id,
         max(label_cost)                                                      as label_cost,
+        bool_or(is_awaiting_order)                                           as is_awaiting_order,
         sku_key,
         max(sku)                                                             as sku,
         (array_agg(name order by length(name) desc))[1]                      as name,
@@ -976,13 +984,7 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
       (array_agg(client_id order by order_date asc nulls last))[1]::int          as client_id,
       (array_agg(client_name order by order_date asc nulls last))[1]             as client_name,
       count(*)::int                                                             as orders,
-      greatest(
-        count(*)::int
-          - count(*) filter (where is_external)::int
-          - count(*) filter (where not is_external and label_cost > 0 and ship_class = 'std')::int
-          - count(*) filter (where not is_external and label_cost > 0 and ship_class = 'exp')::int,
-        0
-      )::int                                                                    as pending,
+      count(*) filter (where is_awaiting_order)::int                            as pending,
       count(*) filter (where is_external)::int                                   as ext_shipped,
       count(*) filter (where not is_external and ship_class = 'std')::int         as std_orders,
       count(*) filter (where not is_external and label_cost > 0 and ship_class = 'std')::int as std_ship_count,
