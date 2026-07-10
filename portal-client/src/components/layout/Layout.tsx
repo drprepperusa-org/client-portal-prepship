@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
@@ -10,6 +10,7 @@ import { NAV, COMPONENTS_NAV } from '@/nav';
 import { pageVariants } from '@/lib/motion';
 import { usePrefetchPortal } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
+import { useDialogFocus } from '@/components/ui/useDialogFocus';
 
 function useTitle() {
   const { pathname } = useLocation();
@@ -21,9 +22,11 @@ function useTitle() {
 export function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const title = useTitle();
   usePrefetchPortal();
+  useDialogFocus(drawer, () => setDrawer(false), mobileNavRef);
 
   // Close the mobile drawer on EVERY route change, so navigating never leaves
   // the drawer (or its backdrop) stuck over the new page. This is the reliable
@@ -33,19 +36,14 @@ export function Layout() {
     setDrawer(false);
   }, [pathname]);
 
-  // Lock background scroll while the drawer is open so the page behind it can't
-  // scroll under the overlay.
-  useEffect(() => {
-    if (!drawer) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [drawer]);
-
   return (
     <div className="relative min-h-screen">
+      <a
+        href="#portal-main"
+        className="focus-ring sr-only fixed left-4 top-4 z-[100] rounded-lg bg-white px-4 py-2 font-semibold text-brand-700 shadow-glass focus:not-sr-only"
+      >
+        Skip to main content
+      </a>
       <LiquidBackground />
       <ConnectionStatus />
 
@@ -69,7 +67,7 @@ export function Layout() {
               its `initial` (opacity:0) state → a blank content area on nav.
               Re-keying the motion.div replays initial→enter on every route. */}
           {/* pb-24 on phones clears the fixed bottom tab bar; none at lg+. */}
-          <main className="min-h-[calc(100vh-6rem)] pb-24 lg:pb-0">
+          <main id="portal-main" tabIndex={-1} className="min-h-[calc(100vh-6rem)] pb-24 lg:pb-0">
             <motion.div key={pathname} variants={pageVariants} initial="initial" animate="enter">
               <Outlet />
             </motion.div>
@@ -92,7 +90,13 @@ export function Layout() {
         )}
       />
       <div
+        ref={mobileNavRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation"
         aria-hidden={!drawer}
+        {...(!drawer ? ({ inert: '' } as Record<string, string>) : {})}
+        tabIndex={-1}
         className={cn(
           'fixed left-3 top-3 z-50 h-[calc(100vh-1.5rem)] w-64 max-w-[calc(100vw-1.5rem)] transition-transform duration-300 ease-out lg:hidden',
           drawer ? 'translate-x-0' : 'pointer-events-none -translate-x-[120%]',

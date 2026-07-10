@@ -32,7 +32,11 @@ function assert(cond, msg) {
 const service = read('src/services/returns.ts');
 const envFile = read('src/lib/env.ts');
 const returnsRoute = read('src/routes/client-portal/returns.ts');
-const returnsPage = read('portal-client/src/pages/Returns.tsx');
+const returnsPage = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const pkg = JSON.parse(read('package.json'));
 
 assert(service.length > 0, 'src/services/returns.ts exists');

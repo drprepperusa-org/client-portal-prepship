@@ -21,6 +21,7 @@ import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
 import { portalApi, type PortalShipment } from '@/lib/api';
+import { cn } from '@/lib/cn';
 
 const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
 function clientAccent(name: string | null): Accent {
@@ -232,7 +233,19 @@ export default function Shipments() {
               : 'Outbound shipments will appear here once orders ship.'
           }
         >
-          <DataTable tableId="shipments" columns={columns} rows={rows} rowKey={(s) => String(s.id)} rowClassName={(s) => (s.voided ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined)} onRowClick={setSelected} allowColumnCustomization={canCustomizeTables} stickyHeader />
+          <DataTable
+            tableId="shipments"
+            columns={columns}
+            rows={rows}
+            rowKey={(s) => String(s.id)}
+            rowClassName={(s) => (
+              s.voided ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined
+            )}
+            onRowClick={setSelected}
+            rowActionLabel={(row) => `View shipment ${row.trackingNumber ?? `#${row.id}`}`}
+            allowColumnCustomization={canCustomizeTables}
+            stickyHeader
+          />
           {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
         </QueryState>
       </GlassPanel>
@@ -270,7 +283,11 @@ export default function Shipments() {
                 href={selected.trackingUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="focus-ring flex w-full items-center justify-center gap-2 rounded-glass-sm bg-gradient-to-br from-brand-400 to-brand-600 py-2.5 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95"
+                className={cn(
+                  'focus-ring flex w-full items-center justify-center gap-2 rounded-glass-sm',
+                  'bg-gradient-to-br from-brand-400 to-brand-600 py-2.5 text-sm font-semibold',
+                  'text-white shadow-glass transition-opacity hover:opacity-95',
+                )}
               >
                 <ExternalLink size={15} /> Track package
               </a>

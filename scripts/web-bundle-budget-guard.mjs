@@ -7,8 +7,12 @@ const root = process.cwd()
 // web/dist is the retired legacy build and only exists as a stale artifact.
 const assetsDir = path.join(root, 'portal-client/dist/assets')
 const packageJsonPath = path.join(root, 'package.json')
-const RAW_LIMIT = 1_000_000
-const GZIP_LIMIT = 110_000
+const CSS_RAW_LIMIT = 75 * 1024
+const CSS_GZIP_LIMIT = 15 * 1024
+const LARGEST_JS_RAW_LIMIT = 735 * 1024
+const LARGEST_JS_GZIP_LIMIT = 215 * 1024
+const TOTAL_JS_RAW_LIMIT = Math.floor(1.9 * 1024 * 1024)
+const TOTAL_JS_GZIP_LIMIT = 535 * 1024
 const GRADIENT_RULE_LIMIT = 300
 
 function fail(message) {
@@ -57,22 +61,72 @@ const rawSize = css.byteLength
 const gzipSize = gzipSync(css).byteLength
 const cssText = css.toString('utf8')
 const gradientRuleCount = countGradientUtilityRules(cssText)
+const assetEntries = await readdir(assetsDir)
+const jsAssets = await Promise.all(
+  assetEntries
+    .filter((entry) => entry.endsWith('.js'))
+    .map(async (entry) => {
+      const contents = await readFile(path.join(assetsDir, entry))
+      return {
+        entry,
+        rawSize: contents.byteLength,
+        gzipSize: gzipSync(contents).byteLength,
+      }
+    }),
+)
+jsAssets.sort((left, right) => right.rawSize - left.rawSize)
+const largestJs = jsAssets[0]
+const totalJsRawSize = jsAssets.reduce((total, asset) => total + asset.rawSize, 0)
+const totalJsGzipSize = jsAssets.reduce((total, asset) => total + asset.gzipSize, 0)
 
 console.log(`CSS asset: ${path.relative(root, cssPath)}`)
 console.log(`Raw size: ${formatBytes(rawSize)}`)
 console.log(`Gzip size: ${formatBytes(gzipSize)}`)
 console.log(`Generated gradient from/via/to rules: ${gradientRuleCount.toLocaleString('en-US')}`)
-
-if (rawSize > RAW_LIMIT) {
-  fail(`global CSS raw size must be <= ${formatBytes(RAW_LIMIT)}`)
+if (!largestJs) {
+  fail(`at least one JavaScript asset must exist in ${assetsDir}`)
 } else {
-  pass(`global CSS raw size is within ${formatBytes(RAW_LIMIT)}`)
+  console.log(`Largest JS asset: ${largestJs.entry}`)
+  console.log(`Largest JS raw size: ${formatBytes(largestJs.rawSize)}`)
+  console.log(`Largest JS gzip size: ${formatBytes(largestJs.gzipSize)}`)
+  console.log(`Total JS raw size: ${formatBytes(totalJsRawSize)}`)
+  console.log(`Total JS gzip size: ${formatBytes(totalJsGzipSize)}`)
 }
 
-if (gzipSize > GZIP_LIMIT) {
-  fail(`global CSS gzip size must be <= ${formatBytes(GZIP_LIMIT)}`)
+if (rawSize > CSS_RAW_LIMIT) {
+  fail(`global CSS raw size must be <= ${formatBytes(CSS_RAW_LIMIT)}`)
 } else {
-  pass(`global CSS gzip size is within ${formatBytes(GZIP_LIMIT)}`)
+  pass(`global CSS raw size is within ${formatBytes(CSS_RAW_LIMIT)}`)
+}
+
+if (gzipSize > CSS_GZIP_LIMIT) {
+  fail(`global CSS gzip size must be <= ${formatBytes(CSS_GZIP_LIMIT)}`)
+} else {
+  pass(`global CSS gzip size is within ${formatBytes(CSS_GZIP_LIMIT)}`)
+}
+
+if (largestJs?.rawSize > LARGEST_JS_RAW_LIMIT) {
+  fail(`largest JS raw size must be <= ${formatBytes(LARGEST_JS_RAW_LIMIT)}`)
+} else if (largestJs) {
+  pass(`largest JS raw size is within ${formatBytes(LARGEST_JS_RAW_LIMIT)}`)
+}
+
+if (largestJs?.gzipSize > LARGEST_JS_GZIP_LIMIT) {
+  fail(`largest JS gzip size must be <= ${formatBytes(LARGEST_JS_GZIP_LIMIT)}`)
+} else if (largestJs) {
+  pass(`largest JS gzip size is within ${formatBytes(LARGEST_JS_GZIP_LIMIT)}`)
+}
+
+if (totalJsRawSize > TOTAL_JS_RAW_LIMIT) {
+  fail(`total JS raw size must be <= ${formatBytes(TOTAL_JS_RAW_LIMIT)}`)
+} else {
+  pass(`total JS raw size is within ${formatBytes(TOTAL_JS_RAW_LIMIT)}`)
+}
+
+if (totalJsGzipSize > TOTAL_JS_GZIP_LIMIT) {
+  fail(`total JS gzip size must be <= ${formatBytes(TOTAL_JS_GZIP_LIMIT)}`)
+} else {
+  pass(`total JS gzip size is within ${formatBytes(TOTAL_JS_GZIP_LIMIT)}`)
 }
 
 if (gradientRuleCount > GRADIENT_RULE_LIMIT) {

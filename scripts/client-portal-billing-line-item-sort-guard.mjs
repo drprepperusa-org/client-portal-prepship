@@ -25,7 +25,10 @@ const readModel = flat(readModelRaw);
 const route = flat(read('src/routes/client-portal/invoices.ts'));
 const api = flat(read('portal-client/src/lib/api.ts'));
 const hooks = flat(read('portal-client/src/lib/hooks.ts'));
-const invoices = flat(read('portal-client/src/pages/Invoices.tsx'));
+const invoices = flat([
+  read('portal-client/src/pages/Invoices.tsx'),
+  read('portal-client/src/components/billing/invoiceColumns.tsx'),
+].join('\n'));
 const dataTable = flat(read('portal-client/src/components/ui/DataTable.tsx'));
 const pkg = JSON.parse(read('package.json'));
 
@@ -83,7 +86,10 @@ assert(
   'Invoices passes the active sort into the paginated query',
 );
 assert(
-  invoices.includes('onSortChange={(s) => { setDetailSort(s); setDetailPage(1); }}') && invoices.includes('sort={detailSort}'),
+  invoices.includes('onSortChange={(sort) => {') &&
+    invoices.includes('setDetailSort(sort)') &&
+    invoices.includes('setDetailPage(1)') &&
+    invoices.includes('sort={detailSort}'),
   'Invoices puts the line-item table in controlled sort mode and resets to page 1 on sort change',
 );
 

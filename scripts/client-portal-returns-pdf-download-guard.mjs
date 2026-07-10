@@ -16,7 +16,11 @@ function assert(condition, message) {
   }
 }
 
-const page = read('portal-client/src/pages/Returns.tsx');
+const page = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const pkg = JSON.parse(read('package.json'));
 
 assert(
@@ -25,8 +29,8 @@ assert(
   'package exposes test:client-portal-returns-pdf-download',
 );
 assert(/header:\s*'Label PDF'/.test(page), 'Returns table has a Label PDF column');
-assert(/r\.pdfAvailable/.test(page), 'Returns table renders the backend pdfAvailable flag');
-assert(/Download/.test(page) && /setSelectedId\(r\.id\)/.test(page), 'Returns table has an obvious Download entry that opens the return detail');
+assert(/row\.pdfAvailable/.test(page), 'Returns table renders the backend pdfAvailable flag');
+assert(/Download/.test(page) && /setSelectedId\(row\.id\)/.test(page), 'Returns table has an obvious Download entry that opens the return detail');
 assert(/Label pending/.test(page), 'Returns table explains when the label PDF is pending');
 assert(/Return label PDF is not ready yet/.test(page), 'Return detail explains why no PDF button is shown yet');
 assert(/Create return label/.test(page), 'Return detail lets a pending return retry PrepShip label creation');

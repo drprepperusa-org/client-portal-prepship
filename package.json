@@ -30,6 +30,7 @@
     "guard:portal-scope-fail-closed": "node scripts/portal-scope-fail-closed-guard.mjs",
     "guard:site-actions": "node scripts/site-action-functionality-guard.mjs",
     "guard:source-line-length": "node scripts/actionable-source-line-length-guard.mjs",
+    "audit:client-portal-maintainability": "node scripts/client-portal-maintainability-audit.mjs",
     "watchdog:production": "node scripts/production-watchdog.mjs",
     "diagnose:production-timing": "tsx scripts/capture-production-timing.ts",
     "diagnose:shipment-tracking": "tsx scripts/diagnose-shipment-tracking.ts",
@@ -192,9 +193,10 @@
     "test:site-actions:browser": "playwright test web/e2e/site-actions.spec.js --reporter=line",
     "test:workflow-certification:browser": "playwright test web/e2e/site-actions.spec.js --reporter=line",
     "test:api-contracts": "node scripts/api-contracts-guard.mjs",
-    "audit:client-portal-ui": "node scripts/client-portal-ui-audit.mjs",
+    "audit:client-portal-ui": "npm run test:client-portal-ui",
+    "test:client-portal-ui": "playwright test web/e2e/client-portal-ui.spec.js --reporter=line",
     "test:portal-smoke": "playwright test web/e2e/portal-smoke.spec.js --reporter=line",
-    "test:full-site-certification": "npm run typecheck && npm run build:web && npm run test:client-portal-bundle-redaction && npm run guard:site-actions && npm run test:api-contracts && npm run test:shipstation-label-url && npm run test:print-queue-invalid-label && npm run test:portal-smoke && npm run test:client-portal-failure-states"
+    "test:full-site-certification": "node scripts/run-full-site-certification.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

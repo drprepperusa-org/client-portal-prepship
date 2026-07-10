@@ -34,7 +34,11 @@ const dto = read('src/lib/client-portal/dto.ts');
 const returnsRoute = read('src/routes/client-portal/returns.ts');
 const api = read('portal-client/src/lib/api.ts');
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
-const returnsPage = read('portal-client/src/pages/Returns.tsx');
+const returnsPage = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. Shared official-URL helper ──
@@ -77,7 +81,7 @@ assert(
   'Shipments.tsx renders the backend s.trackingUrl + selected.trackingUrl',
 );
 assert(
-  /r\.trackingUrl/.test(returnsPage) && /d\.trackingUrl/.test(returnsPage),
+  /row\.trackingUrl/.test(returnsPage) && /detail\.trackingUrl/.test(returnsPage),
   'Returns.tsx renders the backend r.trackingUrl + d.trackingUrl',
 );
 assert(

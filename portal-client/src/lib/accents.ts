@@ -63,3 +63,18 @@ export const ACCENTS: Record<Accent, AccentTokens> = {
 };
 
 export const CHART_COLORS = ['#03A9F4', '#14B8A6', '#F59E0B', '#F43F5E', '#10B981', '#0EA5E9', '#8B5CF6'];
+
+/** Non-Tailwind chart props consume this centralized semantic palette. */
+export const CHART_THEME = {
+  brand: ACCENTS.indigo.solid,
+  brandLight: '#4FC3F7',
+  teal: ACCENTS.teal.solid,
+  tealLight: '#2DD4BF',
+  danger: ACCENTS.rose.solid,
+  axis: '#64748B',
+  grid: 'rgba(100,116,139,0.14)',
+  tooltipBackground: 'rgba(255,255,255,0.9)',
+  tooltipBorder: 'rgba(255,255,255,0.7)',
+  tooltipShadow: '0 8px 32px rgba(31,41,99,0.14)',
+  white: '#FFFFFF',
+} as const;

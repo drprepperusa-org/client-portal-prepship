@@ -126,7 +126,15 @@ export default function Inbound() {
           emptyTitle="No inbound shipments"
           emptyMessage={isAdmin ? 'Click “New inbound” to record an expected purchase order, or Import a CSV feed.' : 'Inbound purchase orders will appear here once your operator records them.'}
         >
-          <DataTable tableId="inbound" columns={columns} rows={rows} rowKey={(r) => String(r.id)} onRowClick={setSelected} allowColumnCustomization={canCustomizeTables} />
+          <DataTable
+            tableId="inbound"
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => String(row.id)}
+            onRowClick={setSelected}
+            rowActionLabel={(row) => `View inbound ${row.reference ?? `#${row.id}`}`}
+            allowColumnCustomization={canCustomizeTables}
+          />
         </QueryState>
       </GlassPanel>
 

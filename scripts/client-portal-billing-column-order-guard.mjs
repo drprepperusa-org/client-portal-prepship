@@ -35,7 +35,7 @@ function orderedContains(source, labels, message) {
   assert(missing.length === 0, missing.length ? `${message}: missing ${missing.join(', ')}` : message);
 }
 
-const invoices = read('portal-client/src/pages/Invoices.tsx');
+const invoices = read('portal-client/src/components/billing/invoiceColumns.tsx');
 const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
 const invoiceRoute = read('src/routes/client-portal/invoices.ts');
@@ -72,17 +72,17 @@ const summaryLabels = [
 ];
 
 orderedContains(
-  sliceBetween(invoices, 'const summaryCols', 'const lineCols'),
+  sliceBetween(invoices, 'export function buildSummaryColumns', 'function invoiceMoneyColumn'),
   summaryLabels,
   'Billing periods website columns follow the requested order',
 );
 orderedContains(
-  sliceBetween(invoices, 'const lineCols', 'if (!billingVisible)'),
+  invoices.slice(invoices.indexOf('export function buildInvoiceLineColumns')),
   detailLabels,
   'Billing line-item website columns follow the requested order',
 );
 assert(
-  !sliceBetween(invoices, 'const lineCols', 'if (!billingVisible)').includes("header: 'Item Name'"),
+  !invoices.slice(invoices.indexOf('export function buildInvoiceLineColumns')).includes("header: 'Item Name'"),
   'Billing line-item website table does not keep the removed Item Name column',
 );
 

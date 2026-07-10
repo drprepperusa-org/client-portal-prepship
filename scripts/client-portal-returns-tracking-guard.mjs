@@ -28,7 +28,11 @@ function assert(cond, msg) {
 
 const tracking = read('src/services/shipment-tracking.ts');
 const returnsRoute = read('src/routes/client-portal/returns.ts');
-const returnsPage = read('portal-client/src/pages/Returns.tsx');
+const returnsPage = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. Backend advances the return lifecycle from tracking ──
@@ -61,11 +65,12 @@ assert(
 
 // ── 3. Frontend renders backend status; NO inference from tracking ──
 assert(
-  /statusMeta\(r\.status\)/.test(returnsPage) || /statusMeta\(d\.status\)/.test(returnsPage),
+  /returnStatusMeta\(row\.status\)/.test(returnsPage) ||
+    /returnStatusMeta\(detail\.status\)/.test(returnsPage),
   'the Returns page renders the backend lifecycle status (statusMeta(status))',
 );
 assert(
-  !/statusMeta\([^)]*trackingStatus/.test(returnsPage),
+  !/returnStatusMeta\([^)]*trackingStatus/.test(returnsPage),
   'the Returns page never maps the carrier trackingStatus into the lifecycle status',
 );
 

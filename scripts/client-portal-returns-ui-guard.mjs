@@ -52,7 +52,11 @@ const api = read('portal-client/src/lib/api.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
 const nav = read('portal-client/src/nav.ts');
 const appRouter = read('portal-client/src/App.tsx');
-const page = read('portal-client/src/pages/Returns.tsx');
+const page = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
 const createModalCode = stripComments(createModal);
 const pkg = JSON.parse(read('package.json'));

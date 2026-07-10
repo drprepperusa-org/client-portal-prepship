@@ -85,7 +85,11 @@ assert(
   orders.includes('onRetry={() => query.refetch()}'),
   'Orders offers a recoverable Retry that refetches the orders query',
 );
-const returns = read('portal-client/src/pages/Returns.tsx');
+const returns = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 assert(returns.includes('returnsFetchFailed'), 'Returns derives a retry/failure signal from the live returns query');
 assert(
   returns.includes('isLoading={query.isLoading && !returnsFetchFailed}'),

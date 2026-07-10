@@ -52,7 +52,11 @@ const route = read('src/routes/client-portal/returns.ts');
 const routeCode = stripLineComments(route);
 const api = read('portal-client/src/lib/api.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
-const page = read('portal-client/src/pages/Returns.tsx');
+const page = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
 const envFile = read('src/lib/env.ts');
 const supa = read('src/lib/supabase.ts');
@@ -192,7 +196,7 @@ assert(
 // The client return detail renders the inspection media (signed URL) so the
 // client can view what the 3PL captured.
 assert(
-  /ins\.media\.map/.test(stripLineComments(page)) && /m\.url/.test(page),
+  /inspection\.media\.map/.test(stripLineComments(page)) && /media\.url/.test(page),
   'the client return detail renders inspection media via its (signed) url',
 );
 

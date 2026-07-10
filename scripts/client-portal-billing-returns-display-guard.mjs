@@ -35,7 +35,10 @@ const count = (src, re) => (src.match(re) || []).length;
 const readModel = read('src/lib/client-portal/read-models/invoice-details.ts');
 const route = read('src/routes/client-portal/invoices.ts');
 const api = read('portal-client/src/lib/api.ts');
-const page = read('portal-client/src/pages/Invoices.tsx');
+const page = [
+  read('portal-client/src/pages/Invoices.tsx'),
+  read('portal-client/src/components/billing/invoiceColumns.tsx'),
+].join('\n');
 const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const pkg = JSON.parse(read('package.json'));
 
@@ -88,27 +91,33 @@ for (const iface of ['BillingInvoiceSummaryRow', 'BillingInvoiceTotals', 'Billin
 
 // ── 4. Invoices.tsx renders return columns, mapped from backend fields ──
 assert(
-  /header: 'Return Postage'/.test(page) && /header: 'Return Processing'/.test(page),
+  /moneyColumn\(\s*'returnPostage',\s*'Return Postage'/.test(page) &&
+    /moneyColumn\(\s*'returnProcessing',\s*'Return Processing'/.test(page) &&
+    /invoiceMoneyColumn\(\s*'returnpostage',\s*'Return Postage'/.test(page) &&
+    /invoiceMoneyColumn\(\s*'returnprocessing',\s*'Return Processing'/.test(page),
   'the Billing tables render Return Postage + Return Processing columns',
 );
 // Both a summary column (PeriodSummary) and a detail line column exist.
 assert(
-  count(page, /header: 'Return Postage'/g) >= 2 && count(page, /header: 'Return Processing'/g) >= 2,
+  count(page, /'Return Postage'/g) >= 2 && count(page, /'Return Processing'/g) >= 2,
   'the return columns appear in BOTH the period-summary table and the line-item detail table',
 );
 // The numbers are read from the backend DTO fields — no React arithmetic.
 assert(
-  /returnPostage: num\(r\.returnPostageTotal\)/.test(page) && /returnProcessing: num\(r\.returnProcessingTotal\)/.test(page),
+  /returnPostage: numberValue\(row\.returnPostageTotal\)/.test(page) &&
+    /returnProcessing: numberValue\(row\.returnProcessingTotal\)/.test(page),
   'the summary rows map return totals from the backend DTO (num(r.returnPostageTotal)), not computed in React',
 );
 assert(
-  /returnPostage: num\(t\.returnPostageTotal\)/.test(page) && /returnProcessing: num\(t\.returnProcessingTotal\)/.test(page),
+  /returnPostage: numberValue\(value\.returnPostageTotal\)/.test(page) &&
+    /returnProcessing: numberValue\(value\.returnProcessingTotal\)/.test(page),
   'the footer totals map return totals from the backend totals object (num(t.returnPostageTotal))',
 );
 // SOT: the grand total column still reads the backend rowTotal, never a React
 // re-sum of the category columns.
 assert(
-  /fee: num\(r\.rowTotal\)/.test(page) && /fee: num\(t\.rowTotal\)/.test(page),
+  /fee: numberValue\(row\.rowTotal\)/.test(page) &&
+    /fee: numberValue\(value\.rowTotal\)/.test(page),
   'the Fulfillment Fee (grand total) is still the backend rowTotal (no React re-sum of categories)',
 );
 

@@ -1,0 +1,353 @@
+import { expect, test } from '@playwright/test';
+
+const baseUrl = 'http://127.0.0.1:5177';
+const storageKey = 'sb-portal-e2e-auth-token';
+const day = '2026-07-09';
+
+const portalRoutes = [
+  ['/', 'Dashboard'],
+  ['/orders', 'Orders'],
+  ['/inbound', 'Inbound'],
+  ['/shipments', 'Shipments'],
+  ['/returns', 'Returns'],
+  ['/inventory', 'Inventory'],
+  ['/analysis', 'Analysis'],
+  ['/billing', 'Billing'],
+  ['/connections', 'Connections'],
+  ['/settings', 'Settings'],
+];
+
+function encodeJwtPart(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function e2eToken(admin) {
+  return [
+    encodeJwtPart({ alg: 'HS256', typ: 'JWT' }),
+    encodeJwtPart({
+      aud: 'authenticated',
+      exp: 4_102_444_800,
+      sub: admin ? 'e2e-admin' : 'e2e-client',
+      email: admin ? 'admin@portal-e2e.test' : 'client@portal-e2e.test',
+      role: 'authenticated',
+      app_metadata: admin
+        ? { role: 'admin', permissions: ['scope:global'] }
+        : { role: 'client_user', clientIds: [1] },
+    }),
+    'e2e-signature',
+  ].join('.');
+}
+
+function session(admin) {
+  const accessToken = e2eToken(admin);
+  const email = admin ? 'admin@portal-e2e.test' : 'client@portal-e2e.test';
+  const id = admin ? 'e2e-admin' : 'e2e-client';
+  return {
+    access_token: accessToken,
+    refresh_token: 'e2e-refresh-token',
+    expires_in: 2_147_483_647,
+    expires_at: 4_102_444_800,
+    token_type: 'bearer',
+    user: {
+      id,
+      aud: 'authenticated',
+      role: 'authenticated',
+      email,
+      email_confirmed_at: '2026-01-01T00:00:00.000Z',
+      last_sign_in_at: '2026-07-10T00:00:00.000Z',
+      app_metadata: admin
+        ? { provider: 'email', providers: ['email'], role: 'admin', permissions: ['scope:global'] }
+        : { provider: 'email', providers: ['email'], role: 'client_user', clientIds: [1] },
+      user_metadata: {},
+      identities: [],
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-07-10T00:00:00.000Z',
+    },
+  };
+}
+
+const returnRow = {
+  id: 1,
+  orderId: 101,
+  orderNumber: 'E2E-101',
+  returnReference: 'E2E-RET-1',
+  clientId: 1,
+  clientName: 'E2E Client',
+  status: 'label_created',
+  initiatedBy: 'client',
+  reason: 'Fixture return',
+  deliveryMethod: 'manual_pdf',
+  deliveryStatus: 'pending',
+  trackingNumber: '1ZE2E000000000001',
+  trackingUrl: null,
+  pdfAvailable: false,
+  returnCustomerShippingRate: 8.25,
+  createdAt: '2026-07-09T12:00:00.000Z',
+};
+
+const emptyPagination = { page: 1, pageSize: 50, total: 0, totalPages: 1 };
+const invoiceTotals = {
+  orders: 0,
+  pickpackTotal: 0,
+  additionalTotal: 0,
+  packageTotal: 0,
+  storageTotal: 0,
+  shippingTotal: 0,
+  returnPostageTotal: 0,
+  returnProcessingTotal: 0,
+  rowTotal: 0,
+};
+
+function responseFor(pathname, admin) {
+  if (pathname === '/api/client-portal/me') {
+    return {
+      id: admin ? 'e2e-admin' : 'e2e-client',
+      email: admin ? 'admin@portal-e2e.test' : 'client@portal-e2e.test',
+      role: admin ? 'admin' : 'client_user',
+      isAdmin: admin,
+      isGlobal: admin,
+      isRestricted: !admin,
+      clientIds: admin ? [] : [1],
+      storeIds: [],
+      canViewFinancials: true,
+    };
+  }
+  if (pathname === '/api/client-portal/clients') {
+    return { data: [{ id: 1, name: 'E2E Client' }] };
+  }
+  if (pathname === '/api/client-portal/sync-status') {
+    return { status: 'ok', lastSyncAt: '2026-07-10T00:00:00.000Z' };
+  }
+  if (pathname === '/api/client-portal/dashboard') {
+    return {
+      revenue: 25,
+      units: 3,
+      bySku: [{
+        sku: 'E2E-SKU',
+        name: 'E2E product',
+        units30: 3,
+        revenue: 25,
+        avgShippingPrice: 4,
+        billedShippingTotal: 12,
+        chargedUnits: 3,
+      }],
+      daily: [{ day, orders: 2, units: 3 }],
+      dailyRevenue: [{ day, revenue: 25 }],
+    };
+  }
+  if (pathname === '/api/client-portal/daily-counts') {
+    return { data: [{ day, awaiting: 1, shipped: 1, cancelled: 0, total: 2 }] };
+  }
+  if (pathname === '/api/client-portal/daily-shipments') {
+    return { data: [{ day, shipments: 1 }] };
+  }
+  if (pathname === '/api/client-portal/orders/awaiting-active-count') return { count: 1 };
+  if (pathname === '/api/client-portal/analysis') {
+    return {
+      data: [],
+      dateBuckets: [day],
+      orderCombinations: [],
+      totalUnits: 3,
+      totalRevenue: 25,
+    };
+  }
+  if (pathname === '/api/client-portal/returns/1') {
+    return {
+      data: {
+        ...returnRow,
+        trackingStatus: 'In transit',
+        deliveryError: null,
+        returnToLocationId: null,
+        pdfUrl: null,
+        requestedAt: '2026-07-09T12:00:00.000Z',
+        closedAt: null,
+        items: [{ id: 1, sku: 'E2E-SKU', name: 'E2E product', quantity: 1, orderItemId: 10 }],
+        inspections: [],
+      },
+    };
+  }
+  if (pathname === '/api/client-portal/returns') {
+    return { data: [returnRow], pagination: { ...emptyPagination, total: 1 } };
+  }
+  if (pathname === '/api/client-portal/invoice-summary') {
+    return { data: [], totals: invoiceTotals, billingVisible: true };
+  }
+  if (pathname === '/api/client-portal/invoice-details') {
+    return { data: [], pagination: emptyPagination, billingVisible: true };
+  }
+  if (pathname === '/api/client-portal/billing/status') return { lastGenerated: null };
+  if (pathname === '/api/client-portal/inbound') return { data: [] };
+  if (pathname === '/api/client-portal/integrations') return { data: [] };
+  if (pathname === '/api/client-portal/access-list') return { data: [] };
+  if (pathname === '/api/client-portal/audit-log') return { data: [] };
+  if (pathname === '/api/client-portal/inventory-history') {
+    return { data: [], pagination: emptyPagination };
+  }
+  if (
+    pathname === '/api/client-portal/orders'
+    || pathname === '/api/client-portal/shipments'
+    || pathname === '/api/client-portal/inventory'
+  ) {
+    return { data: [], pagination: emptyPagination };
+  }
+  return { data: [], pagination: emptyPagination };
+}
+
+async function setupPortal(page, { admin = true } = {}) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+  });
+
+  await page.addInitScript(
+    ({ key, value }) => localStorage.setItem(key, JSON.stringify(value)),
+    { key: storageKey, value: session(admin) },
+  );
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.startsWith('/api/client-portal/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(responseFor(url.pathname, admin)),
+      });
+      return;
+    }
+    if (url.origin === baseUrl) {
+      await route.continue();
+      return;
+    }
+    await route.abort('blockedbyclient');
+  });
+  return errors;
+}
+
+for (const viewport of [
+  { name: 'mobile', width: 375, height: 812 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1440, height: 900 },
+]) {
+  test(`active portal routes render without horizontal overflow at ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const errors = await setupPortal(page);
+
+    for (const [route, title] of portalRoutes) {
+      await page.goto(`${baseUrl}${route}`);
+      await expect(page).toHaveURL(new RegExp(`${route === '/' ? '/$' : `${route}$`}`));
+      await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole('main')).toBeVisible();
+      await expect.poll(() => page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+      ), `${route} must not create document-level horizontal overflow`).toBe(true);
+      await expect(page.locator('.vite-error-overlay')).toHaveCount(0);
+    }
+
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+}
+
+test('skip link and mobile navigation are keyboard-safe', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/`);
+
+  const skipLink = page.getByRole('link', { name: 'Skip to main content' });
+  await skipLink.focus();
+  await expect(skipLink).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('main')).toBeFocused();
+
+  const menuButton = page.getByRole('button', { name: 'Open menu' });
+  await menuButton.focus();
+  await menuButton.click();
+  const navigation = page.getByRole('dialog', { name: 'Navigation' });
+  await expect(navigation).toBeVisible();
+  await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[role="dialog"][aria-label="Navigation"]'))
+    .toHaveAttribute('aria-hidden', 'true');
+  await expect(menuButton).toBeFocused();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('modal and drawer trap focus, close with Escape, and restore focus', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+
+  await page.goto(`${baseUrl}/inbound`);
+  const openModal = page.getByRole('button', { name: 'New inbound' });
+  await openModal.focus();
+  await openModal.click();
+  const modal = page.getByRole('dialog');
+  await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute('aria-labelledby', /.+/);
+  await expect(page.getByRole('button', { name: 'Close' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect.poll(() => modal.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(modal).toBeHidden();
+  await expect(openModal).toBeFocused();
+
+  await page.goto(`${baseUrl}/returns`);
+  const returnAction = page.getByRole('button', { name: 'View return E2E-RET-1' });
+  await returnAction.focus();
+  await returnAction.click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toHaveAccessibleName('E2E-RET-1');
+  await expect(page.getByRole('button', { name: 'Close panel' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  await expect(returnAction).toBeFocused();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('tables expose keyboard sorting, row actions, and column movement', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/returns`);
+
+  const sortButton = page.getByRole('button', { name: 'Return ref', exact: true });
+  await sortButton.focus();
+  await page.keyboard.press('Enter');
+  await expect(sortButton.locator('xpath=ancestor::th')).toHaveAttribute('aria-sort', 'ascending');
+
+  await page.getByRole('button', { name: /^Columns/ }).click();
+  const moveOrderLeft = page.getByRole('button', { name: 'Move Order left' });
+  await moveOrderLeft.focus();
+  await page.keyboard.press('Enter');
+  await expect(moveOrderLeft).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'View return E2E-RET-1' })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('charts expose summaries, data tables, day selection, and reduced motion', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/`);
+
+  const chart = page.getByRole('figure', { name: 'Orders count and unit count by day' });
+  await expect(chart).toBeVisible();
+  const details = chart.locator('details');
+  const dataToggle = details.locator('summary');
+  await dataToggle.focus();
+  await expect(dataToggle).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press('Enter');
+  await expect(details).toHaveAttribute('open', '');
+  await expect(details.locator('table')).toBeVisible();
+  await expect(details.locator('caption')).toHaveText('Orders count and unit count by day');
+
+  await chart.getByLabel('View day details').selectOption(day);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('client users remain denied from admin settings', async ({ page }) => {
+  await setupPortal(page, { admin: false });
+  await page.goto(`${baseUrl}/settings`);
+  await expect(page).toHaveURL(`${baseUrl}/`);
+  await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+});

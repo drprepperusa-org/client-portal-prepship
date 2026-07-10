@@ -33,7 +33,11 @@ const returnApi = stripComments(
   ),
 );
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
-const returnsPage = read('portal-client/src/pages/Returns.tsx');
+const returnsPage = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
 const migrations = fs.existsSync(path.join(root, 'drizzle'))
   ? fs
@@ -168,7 +172,7 @@ assert(
   'return detail exposes a manual PDF download button',
 );
 assert(
-  /ins\.media\.map/.test(returnsPage) && /m\.url/.test(returnsPage),
+  /inspection\.media\.map/.test(returnsPage) && /media\.url/.test(returnsPage),
   'client/admin return detail renders inspection photos/videos from signed URLs',
 );
 assert(

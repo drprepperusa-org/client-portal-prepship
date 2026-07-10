@@ -86,6 +86,7 @@ export interface ColumnLayout {
   totalWidth: number;
   setWidth: (key: string, px: number) => void;
   reorder: (dragKey: string, targetKey: string) => void;
+  move: (key: string, offset: -1 | 1) => void;
   registerHeaderRef: (key: string) => (el: HTMLElement | null) => void;
   resetLayout: () => void;
   isCustomized: boolean;
@@ -210,6 +211,17 @@ export function useColumnLayout(tableId: string | undefined, columns: ColumnLayo
     });
   }, []);
 
+  const move = useCallback((key: string, offset: -1 | 1) => {
+    setOrder((prev) => {
+      const from = prev.indexOf(key);
+      const to = from + offset;
+      if (from < 0 || to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      [next[from], next[to]] = [next[to], next[from]];
+      return next;
+    });
+  }, []);
+
   const resetLayout = useCallback(() => {
     setWidths({});
     setOrder(keys);
@@ -241,6 +253,7 @@ export function useColumnLayout(tableId: string | undefined, columns: ColumnLayo
     totalWidth,
     setWidth,
     reorder,
+    move,
     registerHeaderRef,
     resetLayout,
     isCustomized,

@@ -61,15 +61,19 @@ check(
 const api = read('portal-client/src/lib/api.ts');
 check(api.includes('/api/client-portal/orders/${orderId}/shipments'), 'portal API exposes orderShipments');
 
-const invoicesPage = read('portal-client/src/pages/Invoices.tsx');
+const invoicesPage = [
+  read('portal-client/src/pages/Invoices.tsx'),
+  read('portal-client/src/components/billing/invoiceColumns.tsx'),
+  read('portal-client/src/components/billing/InvoiceShipmentDrawer.tsx'),
+].join('\n');
 check(
   invoicesPage.includes('aria-label={`View shipment information for order') &&
-    invoicesPage.includes('setShipmentModal({') &&
-    invoicesPage.includes('orderId: Number(r.orderId),'),
+    invoicesPage.includes('onShipmentSelect({') &&
+    invoicesPage.includes('orderId: Number(row.orderId),'),
   'Billing Order # renders as an accessible button that opens the shipment modal',
 );
 check(
-  invoicesPage.includes('useOrderShipments(shipmentModal?.orderId ?? null)') && invoicesPage.includes('<Drawer'),
+  invoicesPage.includes('useOrderShipments(selection?.orderId ?? null)') && invoicesPage.includes('<Drawer'),
   'shipment modal fetches via the scoped hook and renders in a drawer',
 );
 check(
@@ -77,7 +81,7 @@ check(
   'missing shipment data shows the clear empty state',
 );
 check(
-  invoicesPage.includes('shipmentStatusMeta(s)') && invoicesPage.includes('s.deliveredAt'),
+  invoicesPage.includes('shipmentStatusMeta(shipment)') && invoicesPage.includes('shipment.deliveredAt'),
   'modal renders backend tracking status and delivered date (no tracking-number-derived guesses)',
 );
 // The billing modal shows the BILLED shipping (from the billing row, matching
@@ -85,8 +89,8 @@ check(
 // expose margin to clients.
 check(
   invoicesPage.includes("label=\"Shipping (billed)\"") &&
-    invoicesPage.includes('shipmentModal.shippingTotal') &&
-    !invoicesPage.includes('s.shippingCost'),
+    invoicesPage.includes('selection.shippingTotal') &&
+    !invoicesPage.includes('shipment.shippingCost'),
   'modal shows billed shipping from the billing row, not the shipment label cost',
 );
 

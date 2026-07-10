@@ -46,7 +46,11 @@ function braceBlock(source, startPattern) {
 const service = read('src/services/returns.ts');
 const rates = read('src/services/rates.ts');
 const route = read('src/routes/client-portal/returns.ts');
-const page = read('portal-client/src/pages/Returns.tsx');
+const page = [
+  read('portal-client/src/pages/Returns.tsx'),
+  read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/returnPresentation.ts'),
+].join('\n');
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
 const api = read('portal-client/src/lib/api.ts');
 const sotMatrix = read('docs/source-of-truth-matrix.md');
@@ -154,13 +158,13 @@ assert(
   'Returns list and drawer render the recoverable label failure state',
 );
 assert(
-  /catch\s*\(err\)[\s\S]{0,500}?invalidateQueries[\s\S]{0,500}?q\.refetch\(\)/.test(page),
+  /catch\s*\(error\)[\s\S]{0,500}?invalidateQueries[\s\S]{0,500}?query\.refetch\(\)/.test(page),
   'the open drawer refreshes canonical state after a failed label attempt',
 );
 assert(
-  /d\.deliveryError\s*\?\?/.test(page) &&
+  /detail\.deliveryError\s*\?\?/.test(page) &&
     /canCreateLabel/.test(page) &&
-    /d\?\.status === 'requested' \|\| labelFailed/.test(page),
+    /detail\?\.status === 'requested' \|\| labelFailed/.test(page),
   'the drawer shows the safe failure reason and limits retry to valid states',
 );
 assert(

@@ -10,6 +10,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
 import { TopSkuTrendChart } from '@/components/charts/Charts';
+import { ChartDataTable } from '@/components/charts/ChartAccessibility';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { staggerContainer } from '@/lib/motion';
@@ -17,6 +18,7 @@ import { useAnalysis, useCanCustomizeTables, useSkuOrders } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate, orderStatusMeta } from '@/lib/status';
 import type { AnalysisOrderCombination, AnalysisSkuRow, SkuOrdersResult } from '@/lib/api';
+import { CHART_THEME } from '@/lib/accents';
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const TOP_N = 5;
@@ -103,7 +105,16 @@ export default function Analysis() {
       },
       sortAccessor: (r) => (num(r.total_qty) > 0 ? num(r.total_revenue) / num(r.total_qty) : 0),
     },
-    { key: 'revenue', header: 'Total Revenue', defaultWidth: 130, className: 'text-right', render: (r) => <span className="tnum font-semibold text-ink">{money(num(r.total_revenue))}</span>, sortAccessor: (r) => num(r.total_revenue) },
+    {
+      key: 'revenue',
+      header: 'Total Revenue',
+      defaultWidth: 130,
+      className: 'text-right',
+      render: (r) => (
+        <span className="tnum font-semibold text-ink">{money(num(r.total_revenue))}</span>
+      ),
+      sortAccessor: (r) => num(r.total_revenue),
+    },
     // CP-035: Std ship, Exp ship, Selling Fees, and Profit are internal
     // financial/ship metrics DJ removed from the CUSTOMER Analysis view. The
     // backend may still compute std/exp/selling-fee fields for admin/operator
@@ -133,7 +144,17 @@ export default function Analysis() {
       <GlassPanel className="p-5">
         <SectionTitle title="Daily Units Sold — Top SKUs" subtitle={`Units per day for the top ${TOP_N} SKUs (last ${days} days)`} />
         <div className="mt-4">
-          {loading ? <Skeleton className="h-[260px]" /> : topSkus.length ? <TopSkuTrendChart data={trendData} skus={topSkus} /> : <EmptyState icon={<Inbox size={24} />} title="No sales data" message="No SKU activity in this period." />}
+          {loading ? (
+            <Skeleton className="h-[260px]" />
+          ) : topSkus.length ? (
+            <TopSkuTrendChart data={trendData} skus={topSkus} />
+          ) : (
+            <EmptyState
+              icon={<Inbox size={24} />}
+              title="No sales data"
+              message="No SKU activity in this period."
+            />
+          )}
         </div>
       </GlassPanel>
 
@@ -148,6 +169,7 @@ export default function Analysis() {
             rows={rows}
             rowKey={(r) => `${r.sku}-${r.client_id ?? ''}`}
             onRowClick={(r) => r.inv_sku_id != null && setSelectedSku(r)}
+            rowActionLabel={(r) => `View SKU details for ${r.sku}`}
             allowColumnCustomization={canCustomizeTables}
             empty={<EmptyState icon={<Inbox size={24} />} title="No analytics yet" message="SKU analytics will appear here once orders are synced." />}
           />
@@ -272,13 +294,41 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Units sold — last 30 days</p>
         {chart.length ? (
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={chart} accessibilityLayer={false} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
-              <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" tickLine={false} axisLine={false} />
-              <Tooltip cursor={{ fill: 'rgba(3,169,244,0.06)' }} contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-              <Bar dataKey="units" fill="#03A9F4" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <figure aria-label="Units sold for selected SKU">
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart
+                data={chart}
+                accessibilityLayer
+                margin={{ top: 8, right: 4, left: -24, bottom: 0 }}
+              >
+                <XAxis
+                  dataKey="day"
+                  tick={{ fontSize: 10, fill: CHART_THEME.axis }}
+                  interval="preserveStartEnd"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgb(var(--brand-rgb) / 0.06)' }}
+                  contentStyle={{
+                    borderRadius: 12,
+                    border: `1px solid ${CHART_THEME.tooltipBorder}`,
+                    background: CHART_THEME.tooltipBackground,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar dataKey="units" fill={CHART_THEME.brand} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <ChartDataTable
+              title="Units sold for selected SKU"
+              rows={chart}
+              columns={[
+                { key: 'day', label: 'Day', render: (point) => point.day },
+                { key: 'units', label: 'Units', render: (point) => point.units.toLocaleString() },
+              ]}
+            />
+          </figure>
         ) : (
           <p className="py-6 text-center text-sm text-ink-3">No sales in this window.</p>
         )}

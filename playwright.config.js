@@ -13,7 +13,10 @@ export default defineConfig({
     command: 'npm --prefix portal-client run dev:e2e',
     env: {
       ...process.env,
-      VITE_ENABLE_DEMO: 'true',
+      // Deterministic, non-production Supabase identity for authenticated E2E.
+      // Tests install a future-expiry local session and intercept every portal API.
+      VITE_SUPABASE_URL: 'https://portal-e2e.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'portal-e2e-anon-key',
     },
     url: 'http://127.0.0.1:5177',
     reuseExistingServer: true,

@@ -282,6 +282,7 @@ export default function Orders() {
             rows={rows}
             rowKey={(o) => String(o.id)}
             onRowClick={setSelected}
+            rowActionLabel={(row) => `View order ${row.orderNumber ?? `#${row.id}`}`}
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
           />

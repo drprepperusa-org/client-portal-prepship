@@ -25,7 +25,10 @@ function sliceBetween(source: string, start: string, end: string): string {
   return endIndex < 0 ? source.slice(startIndex) : source.slice(startIndex, endIndex);
 }
 
-const invoices = read('portal-client/src/pages/Invoices.tsx');
+const invoices = [
+  read('portal-client/src/pages/Invoices.tsx'),
+  read('portal-client/src/components/billing/invoiceColumns.tsx'),
+].join('\n');
 const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
 const routes = read('src/routes/client-portal/invoices.ts');
 const readModel = read('src/lib/client-portal/read-models/invoice-details.ts');
@@ -52,7 +55,7 @@ check('period summary read model is SQL aggregated and uncapped for >1000 groupe
     !/\blimit\b/i.test(periodSummaryBlock));
 
 check('Billing footer consumes backend summary totals instead of reducing visible rows',
-  /const t = summaryQuery\.data\?\.totals/.test(totalsBlock) &&
+  /const value = summaryQuery\.data\?\.totals/.test(totalsBlock) &&
     !/summary\.reduce/.test(totalsBlock));
 
 check('detail endpoint returns a paginated slice plus full grouped-row count',

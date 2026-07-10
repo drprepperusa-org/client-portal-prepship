@@ -29,13 +29,13 @@ const VARIANTS: Record<Variant, string> = {
 };
 
 const SIZES: Record<Size, string> = {
-  sm: 'h-9 px-3.5 text-[13px] gap-1.5',
+  sm: 'h-11 px-3.5 text-[13px] gap-1.5 sm:h-9',
   md: 'h-11 px-5 text-sm gap-2',
   lg: 'h-12 px-6 text-[15px] gap-2.5',
 };
 
 const ICON_SIZES: Record<Size, string> = {
-  sm: 'h-9 w-9',
+  sm: 'h-11 w-11 sm:h-9 sm:w-9',
   md: 'h-11 w-11',
   lg: 'h-12 w-12',
 };
@@ -48,6 +48,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     leadingIcon,
     trailingIcon,
     disabled,
+    type = 'button',
     className,
     children,
     ...rest
@@ -64,6 +65,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       whileHover={isDisabled ? undefined : { y: -1 }}
       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       disabled={isDisabled}
+      type={type}
       className={cn(
         'focus-ring relative inline-flex select-none items-center justify-center rounded-glass-sm font-semibold tracking-tight transition-[background,box-shadow,color,filter] duration-200 motion-reduce:transform-none',
         'cursor-pointer disabled:cursor-not-allowed disabled:opacity-55 disabled:shadow-none disabled:saturate-50',

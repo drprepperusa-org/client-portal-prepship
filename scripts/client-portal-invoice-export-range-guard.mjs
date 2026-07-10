@@ -18,7 +18,10 @@ function assert(condition, message) {
   console.log(`PASS ${message}`);
 }
 
-const invoices = read('portal-client/src/pages/Invoices.tsx');
+const invoices = [
+  read('portal-client/src/pages/Invoices.tsx'),
+  read('portal-client/src/components/billing/invoiceColumns.tsx'),
+].join('\n');
 const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
 const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const packageJson = JSON.parse(read('package.json'));
@@ -33,7 +36,7 @@ assert(
   'exportAllPeriods handler exists',
 );
 assert(
-  invoices.includes('fetchAllInvoiceRows(accessToken, effectiveClientId, from, to)'),
+  invoices.includes('fetchAllInvoiceRows(accessToken, clientId, from, to)'),
   'Export all covers the whole selected page range (from → to), not a single period',
 );
 

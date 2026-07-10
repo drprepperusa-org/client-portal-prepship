@@ -27,7 +27,11 @@ function read(rel: string) {
 }
 
 const invoiceItems = read('src/lib/client-portal/invoice-items.ts');
-const activeInvoices = read('portal-client/src/pages/Invoices.tsx');
+const activeInvoices = [
+  read('portal-client/src/pages/Invoices.tsx'),
+  read('portal-client/src/components/billing/invoiceColumns.tsx'),
+  read('portal-client/src/components/billing/InvoiceShipmentDrawer.tsx'),
+].join('\n');
 const legacyInvoices = read('web/src/pages/Invoices.tsx');
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 
@@ -117,8 +121,8 @@ assert(
 // standard; rows with no structured SKUs still fall back to itemNames.
 assert(
   !activeInvoices.includes("header: 'Item Name'") &&
-    activeInvoices.includes('<SkuLines items={r.items}') &&
-    activeInvoices.includes('r.skus ?? r.itemNames'),
+    activeInvoices.includes('<SkuLines items={row.items}') &&
+    activeInvoices.includes('row.skus ?? row.itemNames'),
   'active portal invoice item cell renders a structured qty-aware SKU(s) column with itemNames fallback',
 );
 

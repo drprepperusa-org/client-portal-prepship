@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { ACCENTS } from '@/lib/accents';
 
 /**
  * Ultra-light inline SVG sparkline. Used in the Analysis "Units Trend" column —
@@ -30,7 +31,7 @@ export function Sparkline({
   const line = points.join(' ');
   const area = `0,${height} ${line} ${width},${height}`;
   const trendUp = data[data.length - 1] >= data[0];
-  const stroke = color ?? (trendUp ? '#10B981' : '#F43F5E');
+  const stroke = color ?? (trendUp ? ACCENTS.emerald.solid : ACCENTS.rose.solid);
   // Unique per instance — a value-derived id collides across rows and cross-tints
   // the area-fill gradient (the polyline stroke is set directly, so it's fine).
   const gid = `spark-${uid.replace(/:/g, '')}`;
