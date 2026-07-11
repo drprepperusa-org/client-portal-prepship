@@ -41,6 +41,7 @@ import {
   ReturnLabelStateError,
 } from '../../services/returns';
 import { deliverReturn } from '../../services/return-delivery';
+import { listOriginalOrderActivity, listReturnActivity, recordReturnActivity } from '../../services/return-activity';
 import { baseReturnReference, resolveReturnReference } from '../../services/return-reference';
 import { trackingUrlForCarrier } from '../../lib/tracking-url';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
@@ -57,7 +58,6 @@ import {
 } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
-
 // The lifecycle statuses a return row can carry (CP-026). Used to validate the
 // ?status= list filter without letting an arbitrary string reach SQL.
 const RETURN_STATUS_FILTERS = new Set([
@@ -339,6 +339,7 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
     .from(returnInspections)
     .where(eq(returnInspections.returnId, id))
     .orderBy(desc(returnInspections.id));
+  const [activity, orderActivity] = await Promise.all([listReturnActivity(id), listOriginalOrderActivity(row.ret.orderId)]);
   const inspectionIds = inspections.map((i) => i.id);
   const media = inspectionIds.length
     ? await db.select().from(returnInspectionMedia).where(inArray(returnInspectionMedia.inspectionId, inspectionIds))
@@ -403,15 +404,22 @@ app.get('/returns/:id{[0-9]+}', async (c) => {
         condition: ins.condition,
         comments: ins.comments,
         receivedAt: iso(ins.receivedAt),
+        actorLabel: ins.inspectorEmail ? 'PrepShip' : 'System',
+        createdAt: iso(ins.createdAt),
+        updatedAt: iso(ins.updatedAt),
         media: (mediaByInspection.get(ins.id) ?? []).map((m) => ({
           id: m.id,
           mediaType: m.mediaType,
           // Short-lived signed URL (private bucket) — never the raw object path.
           url: mediaUrlById.get(m.id) ?? null,
           contentType: m.contentType,
+          fileName: m.originalFileName,
+          sizeBytes: m.sizeBytes,
           capturedAt: iso(m.capturedAt),
+          uploadedAt: iso(m.createdAt),
         })),
       })),
+      activity, orderActivity,
     },
   });
 });
@@ -561,6 +569,15 @@ app.post('/returns', async (c) => {
     );
   }
 
+  await recordReturnActivity({
+    returnId: created.id,
+    eventType: 'return_requested',
+    status: 'requested',
+    actorType: initiatedBy === 'client' ? 'client' : 'operator',
+    actorEmail: scope.email,
+    eventAt: created.requestedAt,
+  });
+
   await recordPortalAudit('portal.returns.create', scope, { returnId: created.id, orderId, items: cleanItems.length, initiatedBy });
   return c.json({ data: { id: created.id, status: created.status } }, 201);
 });
@@ -589,6 +606,7 @@ app.post('/returns/:id{[0-9]+}/label', async (c) => {
       orderId: ret.orderId,
       reason: ret.reason ?? undefined,
       actorEmail: scope.email,
+      actorType: scope.isGlobal ? 'operator' : 'client',
     });
     await recordPortalAudit('portal.returns.label.create', scope, { returnId: id });
     return c.json({ data: result });
@@ -641,6 +659,14 @@ app.post('/returns/:id{[0-9]+}/deliver', async (c) => {
   if (!order) return c.json({ error: 'Order not found' }, 404);
 
   const result = await deliverReturn({ returnRow: ret, returnShipment, order });
+  await recordReturnActivity({
+    returnId: id,
+    shipmentId: ret.returnShipmentId,
+    eventType: 'label_delivered',
+    status: result.deliveryStatus,
+    actorType: scope.isGlobal ? 'operator' : 'client',
+    actorEmail: scope.email,
+  });
   await recordPortalAudit('portal.returns.deliver', scope, { returnId: id, method: result.deliveryMethod, status: result.deliveryStatus });
   return c.json({ data: result });
 });
@@ -699,8 +725,8 @@ app.get('/returns/receiving', async (c) => {
 });
 
 // ── POST /returns/:id/inspection — record 3PL receiving/inspection ───────────
-// 3PL/admin WRITE only (a client user is 403'd by the operator gate). Upserts
-// the return_inspections row for this return: receivedAt, condition (validated
+// 3PL/admin WRITE only (a client user is 403'd by the operator gate). Appends a
+// return_inspections row: receivedAt, condition (validated
 // against INSPECTION_CONDITIONS), status, comments; stamps inspectorEmail from
 // the caller and links returnShipmentId from the return. Advances the return's
 // lifecycle → 'received' (bare ack) or 'inspected' (a condition was recorded).
@@ -745,45 +771,20 @@ app.post('/returns/:id{[0-9]+}/inspection', async (c) => {
         : 'pending';
   const status = ['pending', 'passed', 'failed'].includes(body.status ?? '') ? (body.status as string) : derivedStatus;
 
-  // Upsert: one inspection row per return (the latest ack). Update the existing
-  // row when present, else insert a fresh one.
-  const [existing] = await db
-    .select({ id: returnInspections.id })
-    .from(returnInspections)
-    .where(eq(returnInspections.returnId, id))
-    .orderBy(desc(returnInspections.id))
-    .limit(1);
-
-  let inspectionId: number;
-  if (existing) {
-    await db
-      .update(returnInspections)
-      .set({
-        returnShipmentId: ret.returnShipmentId,
-        receivedAt,
-        condition,
-        status,
-        comments,
-        inspectorEmail: scope.email ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(returnInspections.id, existing.id));
-    inspectionId = existing.id;
-  } else {
-    const [inserted] = await db
-      .insert(returnInspections)
-      .values({
-        returnId: id,
-        returnShipmentId: ret.returnShipmentId,
-        receivedAt,
-        condition,
-        status,
-        comments,
-        inspectorEmail: scope.email ?? null,
-      })
-      .returning({ id: returnInspections.id });
-    inspectionId = inserted!.id;
-  }
+  // Append-only: every receiving pass remains visible in order history.
+  const [inserted] = await db
+    .insert(returnInspections)
+    .values({
+      returnId: id,
+      returnShipmentId: ret.returnShipmentId,
+      receivedAt,
+      condition,
+      status,
+      comments,
+      inspectorEmail: scope.email ?? null,
+    })
+    .returning({ id: returnInspections.id });
+  const inspectionId = inserted!.id;
 
   // Advance the return lifecycle: 'inspected' once a condition is recorded,
   // otherwise 'received'. Never regress a return that is already closed/cancelled.
@@ -800,7 +801,7 @@ app.post('/returns/:id{[0-9]+}/inspection', async (c) => {
     status,
     returnStatus: nextReturnStatus,
   });
-  return c.json({ data: { id: inspectionId, returnId: id, status, condition, returnStatus: nextReturnStatus } }, existing ? 200 : 201);
+  return c.json({ data: { id: inspectionId, returnId: id, status, condition, returnStatus: nextReturnStatus } }, 201);
 });
 
 // ── POST /returns/:id/inspection/:iid/media — upload inspection media ────────
@@ -859,11 +860,11 @@ app.post('/returns/:id{[0-9]+}/inspection/:iid{[0-9]+}/media', async (c) => {
   if (file.size > MEDIA_MAX_BYTES) {
     return c.json({ error: 'File exceeds the 25 MB limit' }, 413);
   }
+  if ((mediaType === 'photo' && !file.type.startsWith('image/')) || (mediaType === 'video' && !file.type.startsWith('video/'))) return c.json({ error: `The uploaded file does not match mediaType '${mediaType}'` }, 400);
   const capturedRaw = form.get('capturedAt');
   const capturedAt = typeof capturedRaw === 'string' && capturedRaw ? new Date(capturedRaw) : new Date();
   if (Number.isNaN(capturedAt.getTime())) return c.json({ error: 'Invalid capturedAt' }, 400);
-
-  const contentType = (file.type || (mediaType === 'video' ? 'video/mp4' : 'image/jpeg')).slice(0, 200);
+  const contentType = file.type.slice(0, 200);
   const safeName = (file.name || 'media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
   // Durable, scannable, collision-free object path — never carrier/provider data.
   const objectPath = `returns/${id}/inspection/${iid}/${randomUUID()}-${safeName}`;
@@ -885,6 +886,8 @@ app.post('/returns/:id{[0-9]+}/inspection/:iid{[0-9]+}/media', async (c) => {
       storageRef: objectPath,
       contentType,
       sizeBytes: file.size,
+      originalFileName: safeName,
+      uploadedByEmail: scope.email ?? null,
       capturedAt,
     })
     .returning({ id: returnInspectionMedia.id });

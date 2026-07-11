@@ -162,7 +162,28 @@ function responseFor(pathname, admin) {
         requestedAt: '2026-07-09T12:00:00.000Z',
         closedAt: null,
         items: [{ id: 1, sku: 'E2E-SKU', name: 'E2E product', quantity: 1, orderItemId: 10 }],
-        inspections: [],
+        inspections: [{
+          id: 4,
+          status: 'passed',
+          condition: 'opened_good',
+          comments: 'Contents checked and complete.',
+          receivedAt: '2026-07-10T14:30:00.000Z',
+          actorLabel: 'PrepShip',
+          createdAt: '2026-07-10T14:30:00.000Z',
+          updatedAt: '2026-07-10T14:30:00.000Z',
+          media: [{
+            id: 8,
+            mediaType: 'photo',
+            url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+            contentType: 'image/gif',
+            fileName: 'received-item.gif',
+            sizeBytes: 43,
+            capturedAt: '2026-07-10T14:29:00.000Z',
+            uploadedAt: '2026-07-10T14:31:00.000Z',
+          }],
+        }],
+        activity: [{ id: 1, eventType: 'return_requested', status: 'requested', detail: null, actorLabel: 'Client', eventAt: '2026-07-09T12:00:00.000Z' }],
+        orderActivity: [{ id: -1, eventType: 'original_order_placed', status: 'placed', detail: null, actorLabel: 'System', eventAt: '2026-07-01T12:00:00.000Z' }],
       },
     };
   }
@@ -319,6 +340,28 @@ test('tables expose keyboard sorting, row actions, and column movement', async (
   await page.keyboard.press('Enter');
   await expect(moveOrderLeft).toBeDisabled();
   await expect(page.getByRole('button', { name: 'View return E2E-RET-1' })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('return side panel keeps inspection attachments and order history accessible on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/returns`);
+  await page.getByRole('button', { name: 'View return E2E-RET-1' }).click();
+
+  const drawer = page.getByRole('dialog');
+  const inspectionTab = drawer.getByRole('tab', { name: 'Inspection' });
+  await inspectionTab.click();
+  await expect(drawer.getByText('Contents checked and complete.')).toBeVisible();
+  await expect(drawer.getByRole('img', { name: 'received-item.gif' })).toBeVisible();
+
+  await inspectionTab.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(drawer.getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'true');
+  await expect(drawer.getByText('Original order placed')).toBeVisible();
+  await expect.poll(() => page.evaluate(
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+  )).toBe(true);
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

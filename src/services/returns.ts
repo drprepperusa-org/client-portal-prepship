@@ -23,6 +23,7 @@ import {
 import { saveMockLabel } from './mock-label-store';
 import { addMockLabelSignature } from '../lib/mock-label-access';
 import type { Rate } from '../lib/shipstation';
+import { recordReturnActivity } from './return-activity';
 
 // ── CP-027 — backend return-label service ─────────────────────────────────────
 //
@@ -46,6 +47,7 @@ export type CreateReturnLabelInput = {
   adminOverride?: boolean;
   adminOverrideReason?: string;
   actorEmail?: string;
+  actorType?: 'client' | 'operator';
 };
 
 /**
@@ -357,18 +359,33 @@ function returnLabelFailureMessage(kind: ReturnLabelFailureDiagnostics['failureK
     : 'No return rates were returned for this shipment';
 }
 
-async function markReturnLabelFailed(returnId: number | null, message: string): Promise<void> {
+async function markReturnLabelFailed(
+  returnId: number | null,
+  message: string,
+  actorType: 'client' | 'operator' | 'system' = 'system',
+  actorEmail?: string,
+): Promise<void> {
   if (returnId == null) return;
   try {
+    const now = new Date();
     await db
       .update(returns)
-      .set({ status: 'label_failed', deliveryError: message, updatedAt: new Date() })
+      .set({ status: 'label_failed', deliveryError: message, updatedAt: now })
       .where(
         and(
           eq(returns.id, returnId),
           sql`${returns.status} in ('requested', 'label_failed')`,
         ),
       );
+    await recordReturnActivity({
+      returnId,
+      eventType: 'label_failed',
+      status: 'label_failed',
+      detail: message,
+      actorType,
+      actorEmail,
+      eventAt: now,
+    });
   } catch (err) {
     console.warn('[returns] failed to mark return label_failed:', err);
   }
@@ -491,17 +508,32 @@ async function persistReturnShipment(args: {
 }
 
 /** Update a CP-026 returns workflow row once its label exists. */
-async function markReturnLabelCreated(returnId: number, returnShipmentId: number): Promise<void> {
+async function markReturnLabelCreated(
+  returnId: number,
+  returnShipmentId: number,
+  actorType: 'client' | 'operator' | 'system' = 'system',
+  actorEmail?: string,
+): Promise<void> {
   try {
+    const now = new Date();
     await db
       .update(returns)
-      .set({ status: 'label_created', returnShipmentId, deliveryError: null, updatedAt: new Date() })
+      .set({ status: 'label_created', returnShipmentId, deliveryError: null, updatedAt: now })
       .where(
         and(
           eq(returns.id, returnId),
           sql`${returns.status} in ('requested', 'label_failed')`,
         ),
       );
+    await recordReturnActivity({
+      returnId,
+      shipmentId: returnShipmentId,
+      eventType: 'label_created',
+      status: 'label_created',
+      actorType,
+      actorEmail,
+      eventAt: now,
+    });
   } catch (err) {
     console.warn('[returns] failed to update returns workflow row:', err);
   }
@@ -665,7 +697,7 @@ export async function createReturnLabel(
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
       const message = returnLabelFailureMessage(diagnostics.failureKind);
-      await markReturnLabelFailed(returnRow?.id ?? null, message);
+      await markReturnLabelFailed(returnRow?.id ?? null, message, input.actorType, input.actorEmail);
       console.warn('[returns] return label rate lookup failed', {
         ...diagnostics,
         errorName: err instanceof Error ? err.name : 'UnknownError',
@@ -704,7 +736,7 @@ export async function createReturnLabel(
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
       const message = returnLabelFailureMessage(diagnostics.failureKind);
-      await markReturnLabelFailed(returnRow?.id ?? null, message);
+      await markReturnLabelFailed(returnRow?.id ?? null, message, input.actorType, input.actorEmail);
       console.warn('[returns] return label rate unavailable', diagnostics);
       throw new ReturnLabelRateUnavailableError(message, diagnostics);
     }
@@ -780,7 +812,9 @@ export async function createReturnLabel(
       createdAt,
     });
 
-    if (returnRow) await markReturnLabelCreated(returnRow.id, returnShipmentId);
+    if (returnRow) {
+      await markReturnLabelCreated(returnRow.id, returnShipmentId, input.actorType, input.actorEmail);
+    }
 
     return toClientSafeResult({
       returnCustomerShippingRate: await resolveReturnCustomerPrice(0, clientId),
@@ -842,7 +876,9 @@ export async function createReturnLabel(
     createdAt,
   });
 
-  if (returnRow) await markReturnLabelCreated(returnRow.id, returnShipmentId);
+  if (returnRow) {
+    await markReturnLabelCreated(returnRow.id, returnShipmentId, input.actorType, input.actorEmail);
+  }
 
   return toClientSafeResult({
     returnCustomerShippingRate: await resolveReturnCustomerPrice(created.cost || rateCost, clientId),

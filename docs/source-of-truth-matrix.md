@@ -1047,9 +1047,12 @@ client-safe (no carrier/service). Guards:
 | Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
 | Inspection condition | `condition` | `condition` | `return_inspections` (6-value enum) | receiving/inspection | backend-owned-truth (CP-030) |
 | Inspection media | `media[]` | `media[]` (`storageRef`) | `return_inspection_media` (metadata only, never the binary) | receiving | backend-owned-truth (CP-030) |
+| Inspection history | `inspections[]` | append-only inspection DTOs | `return_inspections` | each receiving/inspection save | backend-owned-truth |
+| Return activity | `activity[]` | redaction-safe lifecycle events | `return_activity_events`; tracking status sourced from `shipments` updates | source event time | backend-owned-truth |
+| Original order milestones | `orderActivity[]` | redaction-safe placed/shipment-created/shipped/delivered events | `orders.order_date` + outbound `shipments` event timestamps | canonical source timestamp | backend-owned-truth |
 
 Owner: `src/db/schema/returns.ts` (`returns` / `return_items` /
-`return_inspections` / `return_inspection_media`), route
+`return_inspections` / `return_inspection_media` / `return_activity_events`), route
 `src/routes/client-portal/returns.ts`, services `src/services/returns.ts`
 (label) + `src/services/return-delivery.ts`. **The new tables never re-declare
 label money / tracking / rate — that truth stays on `shipments`.** The route
@@ -1071,6 +1074,9 @@ Return billing lines reuse that canonical return reference as their displayed
 per-label uniqueness. Inspection writes are available from both the receiving
 queue and the clicked return drawer through one shared editor; API permissions
 remain operator-gated and media stays in the private returns storage bucket.
+Inspection saves append rows rather than overwriting prior evidence. The return
+drawer merges canonical lifecycle activity, inspection rows, and attachment
+metadata for presentation; it never reconstructs carrier, rate, or billing truth.
 
 ### Inbound
 

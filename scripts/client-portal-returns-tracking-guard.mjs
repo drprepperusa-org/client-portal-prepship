@@ -27,6 +27,7 @@ function assert(cond, msg) {
 }
 
 const tracking = read('src/services/shipment-tracking.ts');
+const activity = read('src/services/return-activity.ts');
 const returnsRoute = read('src/routes/client-portal/returns.ts');
 const returnsPage = [
   read('portal-client/src/pages/Returns.tsx'),
@@ -52,6 +53,10 @@ assert(
   !/set status\s*=\s*'received'/.test(tracking) && !/set status\s*=\s*'inspected'/.test(tracking),
   'tracking NEVER auto-marks a return received/inspected (warehouse receiving owns those)',
 );
+assert(
+  /recordReturnTrackingActivities/.test(tracking) && /tracking_status_changed/.test(activity),
+  'changed return-shipment tracking snapshots append a return history event',
+);
 
 // ── 2. Detail DTO: canonical lifecycle status + a DISTINCT trackingStatus ──
 assert(
@@ -61,6 +66,10 @@ assert(
 assert(
   /trackingStatus:\s*row\.returnTrackingStatus/.test(returnsRoute),
   'the return detail exposes a DISTINCT backend trackingStatus (carrier state)',
+);
+assert(
+  /listOriginalOrderActivity/.test(activity) && /original_order_placed/.test(activity),
+  'the return drawer order timeline is derived from canonical order/shipment event clocks',
 );
 
 // ── 3. Frontend renders backend status; NO inference from tracking ──

@@ -15,12 +15,14 @@ const CONDITIONS: Array<{ value: ReturnInspectionCondition; label: string }> = [
   { value: 'wrong_item', label: 'Wrong item' },
   { value: 'other', label: 'Other' },
 ];
+const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
 
 interface CapturedMedia {
   id: string;
   mediaType: 'photo' | 'video';
   file: File;
   name: string;
+  status: 'queued' | 'uploading' | 'saved' | 'failed';
 }
 
 interface ReturnInspectionEditorProps {
@@ -43,6 +45,7 @@ export function ReturnInspectionEditor({
   const [comments, setComments] = useState('');
   const [media, setMedia] = useState<CapturedMedia[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savedInspectionId, setSavedInspectionId] = useState<number | null>(null);
   const canSave = useMemo(
     () => Boolean(accessToken && receivedAt) && !saving,
     [accessToken, receivedAt, saving],
@@ -50,11 +53,17 @@ export function ReturnInspectionEditor({
 
   function captureFiles(files: FileList | null) {
     if (!files) return;
-    const next = Array.from(files).map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}`,
+    const selected = Array.from(files);
+    const accepted = selected.filter((file) => file.size <= MEDIA_MAX_BYTES);
+    if (accepted.length !== selected.length) {
+      toast.warning('Some files were skipped', 'Each picture or video must be 25 MB or smaller.');
+    }
+    const next = accepted.map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
       mediaType: file.type.startsWith('video') ? 'video' as const : 'photo' as const,
       file,
       name: file.name,
+      status: 'queued' as const,
     }));
     setMedia((current) => [...current, ...next]);
   }
@@ -63,25 +72,28 @@ export function ReturnInspectionEditor({
     if (!accessToken || !canSave) return;
     setSaving(true);
     try {
-      const result = await portalApi.recordInspection(accessToken, returnId, {
-        receivedAt: fromLocalInput(receivedAt),
-        condition: condition || undefined,
-        comments: comments.trim() || undefined,
-      });
+      let inspectionId = savedInspectionId;
+      if (inspectionId == null) {
+        const result = await portalApi.recordInspection(accessToken, returnId, {
+          receivedAt: fromLocalInput(receivedAt),
+          condition: condition || undefined,
+          comments: comments.trim() || undefined,
+        });
+        inspectionId = result.data.id;
+        setSavedInspectionId(inspectionId);
+      }
 
-      let failedUploads = 0;
-      for (const item of media) {
+      const uploads = media.filter((item) => item.status !== 'saved');
+      const failedIds = new Set<string>();
+      for (const item of uploads) {
+        setMedia((current) => current.map((file) => file.id === item.id ? { ...file, status: 'uploading' } : file));
         try {
-          await portalApi.uploadInspectionMedia(
-            accessToken,
-            returnId,
-            result.data.id,
-            item.file,
-            item.mediaType,
-          );
+          await portalApi.uploadInspectionMedia(accessToken, returnId, inspectionId, item.file, item.mediaType);
+          setMedia((current) => current.map((file) => file.id === item.id ? { ...file, status: 'saved' } : file));
         } catch (error) {
           console.error('[returns] inspection media upload failed:', error);
-          failedUploads += 1;
+          failedIds.add(item.id);
+          setMedia((current) => current.map((file) => file.id === item.id ? { ...file, status: 'failed' } : file));
         }
       }
 
@@ -91,23 +103,24 @@ export function ReturnInspectionEditor({
         queryClient.invalidateQueries({ queryKey: ['returns-receiving'] }),
       ]);
 
-      if (failedUploads > 0) {
+      if (failedIds.size > 0) {
+        setMedia((current) => current.filter((file) => failedIds.has(file.id)));
         toast.warning(
           'Notes saved; some files failed',
-          `${failedUploads} of ${media.length} file${media.length === 1 ? '' : 's'} did not upload.`,
+          `${failedIds.size} file${failedIds.size === 1 ? '' : 's'} did not upload. Retry below.`,
         );
       } else {
-        const uploadSummary = media.length
-          ? ` ${media.length} file${media.length === 1 ? '' : 's'} uploaded.`
+        const uploadSummary = uploads.length
+          ? ` ${uploads.length} file${uploads.length === 1 ? '' : 's'} uploaded.`
           : '';
-        toast.success('Inspection saved', uploadSummary || 'The return inspection was updated.');
+        toast.success('Inspection saved', uploadSummary || 'The return inspection was recorded.');
+        setCondition('');
+        setComments('');
+        setMedia([]);
+        setReceivedAt(toLocalInput(new Date()));
+        setSavedInspectionId(null);
+        onSaved?.();
       }
-
-      setCondition('');
-      setComments('');
-      setMedia([]);
-      setReceivedAt(toLocalInput(new Date()));
-      onSaved?.();
     } catch (error) {
       toast.error('Could not save inspection', error instanceof Error ? error.message : 'Please try again.');
     } finally {
@@ -123,6 +136,7 @@ export function ReturnInspectionEditor({
           className={`${field} h-12 text-base`}
           value={receivedAt}
           onChange={(event) => setReceivedAt(event.target.value)}
+          disabled={saving || savedInspectionId != null}
         />
       </Labeled>
 
@@ -137,6 +151,7 @@ export function ReturnInspectionEditor({
                 type="button"
                 onClick={() => setCondition(active ? '' : item.value)}
                 aria-pressed={active}
+                disabled={saving || savedInspectionId != null}
                 className={
                   'focus-ring min-h-11 rounded-glass-sm px-2 py-2 text-sm font-medium ring-1 transition-colors ' +
                   (active
@@ -157,6 +172,7 @@ export function ReturnInspectionEditor({
           value={comments}
           onChange={(event) => setComments(event.target.value)}
           placeholder="Add notes about the returned goods..."
+          disabled={saving || savedInspectionId != null}
         />
       </Labeled>
 
@@ -176,6 +192,7 @@ export function ReturnInspectionEditor({
             capture="environment"
             multiple
             className="sr-only"
+            disabled={saving || savedInspectionId != null}
             onChange={(event) => {
               captureFiles(event.target.files);
               event.target.value = '';
@@ -183,15 +200,19 @@ export function ReturnInspectionEditor({
           />
         </label>
         {media.length > 0 && (
-          <ul className="mt-2 flex flex-wrap gap-2" aria-label="Files ready to upload">
+          <ul className="mt-2 flex flex-wrap gap-2" aria-label="Files ready to upload" aria-live="polite">
             {media.map((item) => (
               <li key={item.id} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-white px-2 py-1 text-xs text-ink-2 ring-1 ring-slate-200/70">
                 <span>{item.mediaType === 'video' ? 'Video' : 'Photo'}</span>
                 <span className="max-w-32 truncate text-ink-3">{item.name}</span>
+                <span className={item.status === 'failed' ? 'text-rose-600' : item.status === 'saved' ? 'text-teal-600' : 'text-ink-3'}>
+                  {item.status === 'uploading' ? 'Uploading...' : item.status === 'failed' ? 'Failed' : item.status === 'saved' ? 'Saved' : 'Ready'}
+                </span>
                 <button
                   type="button"
                   aria-label={`Remove ${item.name}`}
                   onClick={() => setMedia((current) => current.filter((file) => file.id !== item.id))}
+                  disabled={saving}
                   className="focus-ring grid h-9 w-9 place-items-center rounded text-ink-3 hover:text-ink"
                 >
                   <X size={14} />
@@ -202,14 +223,14 @@ export function ReturnInspectionEditor({
         )}
       </div>
 
-      <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+      <div className="sticky -bottom-3 flex flex-col-reverse gap-2 bg-brand-50/95 py-3 backdrop-blur sm:flex-row sm:justify-end">
         {onCancel && <Button variant="secondary" onClick={onCancel}>Cancel</Button>}
         <Button
           leadingIcon={<PackageCheck size={16} />}
           onClick={submit}
           disabled={!canSave}
         >
-          {saving ? 'Saving...' : condition ? 'Save inspection' : 'Mark received'}
+          {saving ? 'Saving...' : savedInspectionId ? 'Retry failed uploads' : condition ? 'Save inspection' : 'Mark received'}
         </Button>
       </div>
     </div>

@@ -51,10 +51,14 @@ function stripLineComments(src) {
 const route = read('src/routes/client-portal/returns.ts');
 const routeCode = stripLineComments(route);
 const api = read('portal-client/src/lib/api.ts');
+const activityService = read('src/services/return-activity.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
 const page = [
   read('portal-client/src/pages/Returns.tsx'),
   read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/ReturnInspectionHistory.tsx'),
+  read('portal-client/src/components/returns/ReturnAttachmentGallery.tsx'),
+  read('portal-client/src/components/returns/ReturnHistoryTimeline.tsx'),
   read('portal-client/src/components/returns/returnPresentation.ts'),
 ].join('\n');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
@@ -198,8 +202,16 @@ assert(
 // The client return detail renders the inspection media (signed URL) so the
 // client can view what the 3PL captured.
 assert(
-  /inspection\.media\.map/.test(stripLineComments(page)) && /media\.url/.test(page),
+  /ReturnAttachmentGallery/.test(page) && /item\.url/.test(page),
   'the client return detail renders inspection media via its (signed) url',
+);
+assert(
+  /insert\(returnInspections\)/.test(routeCode) && !/update\(returnInspections\)/.test(routeCode),
+  'inspection writes are append-only so prior receiving notes remain history',
+);
+assert(
+  /originalFileName:\s*safeName/.test(routeCode) && /uploadedByEmail:\s*scope\.email/.test(routeCode),
+  'attachment metadata records its safe file name and server-derived uploader',
 );
 
 // ── 4. The condition enum is exactly the agreed 6-value set ──
@@ -283,6 +295,22 @@ for (const bad of ['getRates', 'carrierCode', 'issueRefund', 'cheapest', 'bestRa
 assert(
   /ReturnInspectionEditor/.test(receiving) && /ReturnInspectionEditor/.test(page),
   'the same inspection editor is available from the receiving flow and clicked return drawer',
+);
+assert(
+  /ReturnDrawerTabs/.test(page) && /ReturnHistoryTimeline/.test(page) && /ReturnInspectionHistory/.test(page),
+  'the clicked return drawer contains Overview, Inspection, and History views',
+);
+assert(
+  /listReturnActivity/.test(activityService) && /listOriginalOrderActivity/.test(activityService) && /orderActivity/.test(api),
+  'the side-panel history combines persisted return events with canonical original-order milestones',
+);
+const activityType = api.slice(api.indexOf('export type PortalReturnActivity'), api.indexOf('export interface PortalReturnDetail'));
+for (const forbidden of ['actorEmail', 'shipmentId', 'carrierCode', 'serviceCode', 'selectedRate']) {
+  assert(!activityType.includes(forbidden), `return activity DTO redacts ${forbidden}`);
+}
+assert(
+  /Retry failed uploads/.test(inspectionEditor) && /status:\s*'failed'/.test(inspectionEditor),
+  'failed attachment uploads remain retryable without creating another inspection',
 );
 
 // ── package.json wiring ──

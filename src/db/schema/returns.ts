@@ -156,6 +156,8 @@ export const returnInspectionMedia = pgTable(
     mediaType: text().notNull(),
     // Object-storage key or URL (never the binary).
     storageRef: text().notNull(),
+    originalFileName: text('original_file_name'),
+    uploadedByEmail: text('uploaded_by_email'),
     contentType: text(),
     sizeBytes: integer(),
     capturedAt: timestamp({ withTimezone: true }),
@@ -172,3 +174,34 @@ export type ReturnInspection = typeof returnInspections.$inferSelect;
 export type NewReturnInspection = typeof returnInspections.$inferInsert;
 export type ReturnInspectionMedia = typeof returnInspectionMedia.$inferSelect;
 export type NewReturnInspectionMedia = typeof returnInspectionMedia.$inferInsert;
+
+/**
+ * Append-only return lifecycle events that cannot be reconstructed from the
+ * current workflow snapshot alone. Inspection and media events remain owned by
+ * their canonical tables and are merged into the client timeline at read time.
+ */
+export const returnActivityEvents = pgTable(
+  'return_activity_events',
+  {
+    id: serial().primaryKey(),
+    returnId: integer()
+      .notNull()
+      .references(() => returns.id, { onDelete: 'cascade' }),
+    shipmentId: integer().references(() => shipments.id, { onDelete: 'set null' }),
+    eventType: text('event_type').notNull(),
+    status: text(),
+    // Redaction-safe event detail only. Never carrier/rate/provider payloads.
+    detail: text(),
+    actorType: text('actor_type').default('system').notNull(),
+    actorEmail: text('actor_email'),
+    eventAt: timestamp('event_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('return_activity_events_return_time_idx').on(t.returnId, t.eventAt.desc()),
+    index('return_activity_events_shipment_idx').on(t.shipmentId),
+  ]
+);
+
+export type ReturnActivityEvent = typeof returnActivityEvents.$inferSelect;
+export type NewReturnActivityEvent = typeof returnActivityEvents.$inferInsert;

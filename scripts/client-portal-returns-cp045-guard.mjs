@@ -36,6 +36,8 @@ const createModal = read('portal-client/src/components/returns/ReturnCreateModal
 const returnsPage = [
   read('portal-client/src/pages/Returns.tsx'),
   read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
+  read('portal-client/src/components/returns/ReturnInspectionHistory.tsx'),
+  read('portal-client/src/components/returns/ReturnAttachmentGallery.tsx'),
   read('portal-client/src/components/returns/returnPresentation.ts'),
 ].join('\n');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
@@ -178,7 +180,7 @@ assert(
   'return detail exposes a manual PDF download button',
 );
 assert(
-  /inspection\.media\.map/.test(returnsPage) && /media\.url/.test(returnsPage),
+  /ReturnAttachmentGallery/.test(returnsPage) && /item\.url/.test(returnsPage),
   'client/admin return detail renders inspection photos/videos from signed URLs',
 );
 assert(

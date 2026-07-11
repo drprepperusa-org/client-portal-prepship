@@ -17,12 +17,8 @@ import { portalScopeFromToken } from './portalScope';
 const configured = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 export const API_BASE = import.meta.env.DEV ? '' : (configured ?? '').replace(/\/+$/, '');
 
-// 30s (not 15s): the Render API can cold-start after a period of idle and take
-// ~30s to wake on the first request. A shorter timeout aborts that wake-up and
-// leaves the page stuck retrying (long skeletons + failed background calls).
-// 30s lets the first request ride out the boot. Real queries can't run longer
-// than the 12s server-side statement timeout, so this only ever waits on
-// connection / cold-start, never on a genuinely slow query.
+// 30s allows the first request to survive a Render cold start; server queries
+// still have their own shorter statement timeout.
 const TIMEOUT_MS = 30000;
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -289,32 +285,39 @@ export interface PortalReturnInspectionMedia {
   // object can't be signed (missing/renamed) → render a "media unavailable" state.
   url: string | null;
   contentType: string | null;
+  fileName: string | null;
+  sizeBytes: number | null;
   capturedAt: string | null;
+  uploadedAt: string | null;
 }
-
 export interface PortalReturnInspection {
   id: number;
   status: string;
   condition: string | null;
   comments: string | null;
   receivedAt: string | null;
+  actorLabel: string;
+  createdAt: string | null;
+  updatedAt: string | null;
   media: PortalReturnInspectionMedia[];
 }
 
+export type PortalReturnActivity = {
+  id: number; eventType: string; status: string | null; detail: string | null;
+  actorLabel: string; eventAt: string;
+};
 export interface PortalReturnDetail extends PortalReturnRow {
   trackingStatus: string | null;
   deliveryError: string | null;
   returnToLocationId: number | null;
-  // The return label PDF, served by the existing /labels/... route the return
-  // shipment's labelUrl points at. Downloaded via the detail panel button.
   pdfUrl: string | null;
   requestedAt: string | null;
   closedAt: string | null;
   items: PortalReturnItem[];
   inspections: PortalReturnInspection[];
+  activity: PortalReturnActivity[]; orderActivity: PortalReturnActivity[];
 }
 
-/** Result of creating a return label (CP-027 client-safe result, verbatim). */
 export interface ReturnLabelResult {
   returnCustomerShippingRate: number;
   trackingNumber: string | null;

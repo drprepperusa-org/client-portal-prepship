@@ -56,6 +56,7 @@ assert(schema.includes("'returns'"), 'returns workflow table defined');
 assert(schema.includes("'return_items'"), 'return_items table defined');
 assert(schema.includes("'return_inspections'"), 'return_inspections table defined');
 assert(schema.includes("'return_inspection_media'"), 'return_inspection_media table defined');
+assert(schema.includes("'return_activity_events'"), 'append-only return_activity_events table defined');
 
 // ── Partial returns + canonical item linkage ──
 assert(
@@ -84,6 +85,14 @@ assert(
   schema.includes('mediaType') && schema.includes('storageRef'),
   'return_inspection_media stores media metadata + a storage reference (never the binary)',
 );
+assert(
+  schema.includes('originalFileName') && schema.includes('uploadedByEmail'),
+  'return inspection attachments retain display metadata and uploader audit identity',
+);
+assert(
+  schema.includes('eventType') && schema.includes('actorType') && schema.includes('eventAt'),
+  'return activity persists redaction-safe event, actor, and event-time fields',
+);
 
 // ── Return-to location uses canonical locations ──
 assert(
@@ -106,6 +115,12 @@ assert(
   migrationSql.includes("'-RETURN' AS base_reference") &&
     migrationSql.includes("nullif(trim(r.return_reference), '') IS NULL"),
   'an additive backfill gives legacy returns a stable ORDER-RETURN reference',
+);
+assert(
+  migrationSql.includes('CREATE TABLE IF NOT EXISTS "return_activity_events"') &&
+    migrationSql.includes('original_file_name') &&
+    migrationSql.includes("'return_requested'"),
+  'an additive migration creates/backfills return history and attachment metadata',
 );
 
 assert(

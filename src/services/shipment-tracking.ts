@@ -8,6 +8,7 @@ import {
   lookupOfficialCarrierTracking,
   officialCarrierTrackingReadiness,
 } from './carrier-tracking';
+import { recordReturnTrackingActivities } from './return-activity';
 
 /**
  * On-demand live tracking refresh. It reads official carrier tracking first,
@@ -254,6 +255,13 @@ export async function refreshShipmentTracking(
   // this batch that just moved (label_created → in_transit). Received/inspected
   // stay warehouse-owned — see advanceReturnsFromTracking.
   await advanceReturnsFromTracking(updated.map((u) => u.id));
+  await recordReturnTrackingActivities(
+    updated.map((update) => ({
+      shipmentId: update.id,
+      status: update.trackingStatus,
+      eventAt: now,
+    })),
+  );
 
   return { checked: trackable.length, updated };
 }
