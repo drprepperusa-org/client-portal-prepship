@@ -1039,6 +1039,7 @@ client-safe (no carrier/service). Guards:
 | Return status | `status` | `status` | `returns.status` (workflow table) | return workflow | backend-owned-truth (CP-026) |
 | Reason | `reason` | `reason` | `returns.reason` | return workflow | presentation-only |
 | Return tracking | `trackingNumber` | `returnTracking` = `coalesce(shipments.labelTracking, shipments.trackingNumber)` | **`shipments`** (label SOT stays there) | label time | backend-owned-truth (CP-026/027) |
+| Return reference | `returnReference` | same | persisted `returns.return_reference`; legacy fallback/backfill derives `order_number + '-RETURN'` once | return workflow creation | backend-owned identity |
 | Return label PDF | `pdfUrl` | `returnLabelUrl` | `shipments.labelUrl` (never a new URL) | label time | presentation-only |
 | Label needs attention | `status` / `deliveryError` | same | `returns.status = 'label_failed'` + redaction-safe `returns.deliveryError` | latest label attempt | backend-owned-truth (CP-043) |
 | Return postage | `returnCustomerShippingRate` | same | `resolveReturnCustomerPrice` over canonical return-shipment house cost + return-specific `billing_config` policy | label cost + billing policy read | derived-from-canonical (backend-owned, CP-031/043) |
@@ -1064,6 +1065,12 @@ postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
 `client-portal-returns-receiving-guard.mjs` (CP-030, operator-gated inspection),
 `client-portal-returns-cp043-guard.mjs` (fresh raw rate attempt, explicit account
 policy, safe diagnostics, and recoverable failure state).
+
+Return billing lines reuse that canonical return reference as their displayed
+`orderNumber` (for example `2050-RETURN`) while retaining `shipmentId` for
+per-label uniqueness. Inspection writes are available from both the receiving
+queue and the clicked return drawer through one shared editor; API permissions
+remain operator-gated and media stays in the private returns storage bucket.
 
 ### Inbound
 

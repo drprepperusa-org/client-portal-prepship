@@ -164,12 +164,17 @@ assert(
 // The customer-visible copy stays safe and canonical: no internal below-trigger
 // / override policy wording can leak into the Billing SOT.
 assert(
-  returnBlock.includes('description: `Order ${r.orderNumber ?? r.orderId} · return postage · return #${r.shipmentId}`'),
-  'return_postage description is customer-safe: Order <orderNumber> · return postage · return #<shipmentId>',
+  returnBlock.includes('const returnReference = resolveReturnReference(r.returnReference, r.orderNumber, r.orderId);') &&
+    returnBlock.includes('orderNumber: returnReference'),
+  'return billing tracks each line under the canonical ORDER-RETURN reference',
 );
 assert(
-  returnBlock.includes('description: `Order ${r.orderNumber ?? r.orderId} · return processing fee · return #${r.shipmentId}`'),
-  'return_processing_fee description is customer-safe: Order <orderNumber> · return processing fee · return #<shipmentId>',
+  returnBlock.includes('description: `${returnReference} · return postage · return #${r.shipmentId}`'),
+  'return_postage description starts with the canonical ORDER-RETURN reference',
+);
+assert(
+  returnBlock.includes('description: `${returnReference} · return processing fee · return #${r.shipmentId}`'),
+  'return_processing_fee description starts with the canonical ORDER-RETURN reference',
 );
 assert(
   !/Return postage \(below-\$|description:[\s\S]{0,180}?override/i.test(returnBlock),

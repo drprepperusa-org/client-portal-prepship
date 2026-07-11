@@ -258,7 +258,7 @@ export interface PortalReturnRow {
   id: number;
   orderId: number | null;
   orderNumber: string | null;
-  returnReference: string | null;
+  returnReference: string;
   clientId: number | null;
   clientName: string | null;
   status: string;
@@ -346,13 +346,10 @@ export interface NewReturnInput {
 // CP-030 — 3PL receiving + inspection. These surfaces are OPERATOR-ONLY: the
 // backend 403s a client user on every write. A row in the receiving queue is a
 // return the warehouse still expects or is receiving.
-export interface PortalReturnReceivingRow {
-  id: number;
-  orderId: number | null;
-  orderNumber: string | null;
-  clientName: string | null;
-  status: string;
-  trackingNumber: string | null;
+export interface PortalReturnReceivingRow extends Pick<
+  PortalReturnRow,
+  'id' | 'orderId' | 'orderNumber' | 'returnReference' | 'clientName' | 'status' | 'trackingNumber'
+> {
   returnToLocation: string | null;
   requestedAt: string | null;
 }

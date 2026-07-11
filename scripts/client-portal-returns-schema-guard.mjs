@@ -102,6 +102,11 @@ assert(
     migrationSql.includes('returns_one_active_per_order_idx'),
   'an additive migration creates all four tables + the one-active-per-order index',
 );
+assert(
+  migrationSql.includes("'-RETURN' AS base_reference") &&
+    migrationSql.includes("nullif(trim(r.return_reference), '') IS NULL"),
+  'an additive backfill gives legacy returns a stable ORDER-RETURN reference',
+);
 
 assert(
   pkg.scripts?.['test:client-portal-returns-schema'] === 'node scripts/client-portal-returns-schema-guard.mjs',

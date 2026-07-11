@@ -58,6 +58,8 @@ const page = [
   read('portal-client/src/components/returns/returnPresentation.ts'),
 ].join('\n');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
+const inspectionEditor = read('portal-client/src/components/returns/ReturnInspectionEditor.tsx');
+const receivingUi = `${receiving}\n${inspectionEditor}`;
 const envFile = read('src/lib/env.ts');
 const supa = read('src/lib/supabase.ts');
 const pkg = JSON.parse(read('package.json'));
@@ -182,15 +184,15 @@ assert(
 );
 // The frontend uploads the real File and never persists a blob: object URL.
 assert(
-  /uploadInspectionMedia\(/.test(stripLineComments(receiving)),
-  'the receiving modal uploads captured files via uploadInspectionMedia (durable), not preview-only',
+  /uploadInspectionMedia\(/.test(stripLineComments(receivingUi)),
+  'the shared receiving editor uploads captured files via uploadInspectionMedia (durable), not preview-only',
 );
 assert(
-  !/createObjectURL/.test(receiving),
-  'the receiving modal no longer creates a blob: object URL for media (no createObjectURL)',
+  !/createObjectURL/.test(receivingUi),
+  'the receiving UI creates no blob: object URL for media (no createObjectURL)',
 );
 assert(
-  !/Photos not saved yet/.test(receiving),
+  !/Photos not saved yet/.test(receivingUi),
   'the preview-only "Photos not saved yet" stub is gone (media is durably uploaded)',
 );
 // The client return detail renders the inspection media (signed URL) so the
@@ -253,19 +255,20 @@ assert(
 
 // ── 8. Mobile-capture inspection form (photo/video), phone-first ──
 const receivingCode = stripLineComments(receiving);
+const receivingUiCode = stripLineComments(receivingUi);
 assert(
-  /type="file"/.test(receivingCode) &&
-    /accept="image\/\*,video\/\*"/.test(receivingCode) &&
-    /capture=/.test(receivingCode),
+  /type="file"/.test(receivingUiCode) &&
+    /accept="image\/\*,video\/\*"/.test(receivingUiCode) &&
+    /capture=/.test(receivingUiCode),
   'the inspection form uses a mobile-capture file input (accept image/video + capture)',
 );
 // The 6 condition values are offered in the form.
 for (const cond of CONDITIONS) {
-  assert(new RegExp(`'${cond}'`).test(receivingCode), `the inspection form offers the '${cond}' condition`);
+  assert(new RegExp(`'${cond}'`).test(receivingUiCode), `the inspection form offers the '${cond}' condition`);
 }
 // A received date/time field + a scan/search box are present (phone receiving).
 assert(
-  /datetime-local/.test(receivingCode),
+  /datetime-local/.test(receivingUiCode),
   'the inspection form captures a received date/time',
 );
 assert(
@@ -274,8 +277,13 @@ assert(
 );
 // The receiving flow must not compute rates/carrier or issue refunds.
 for (const bad of ['getRates', 'carrierCode', 'issueRefund', 'cheapest', 'bestRate']) {
-  assert(!new RegExp(bad).test(receivingCode), `the receiving flow never computes rates/carrier or refunds (no ${bad})`);
+  assert(!new RegExp(bad).test(receivingUiCode), `the receiving flow never computes rates/carrier or refunds (no ${bad})`);
 }
+
+assert(
+  /ReturnInspectionEditor/.test(receiving) && /ReturnInspectionEditor/.test(page),
+  'the same inspection editor is available from the receiving flow and clicked return drawer',
+);
 
 // ── package.json wiring ──
 assert(

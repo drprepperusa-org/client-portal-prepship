@@ -11,8 +11,17 @@ import { cn } from '@/lib/cn';
 import { useReturnDetail } from '@/lib/hooks';
 import { money, shortDate } from '@/lib/status';
 import { RETURN_DELIVERY_LABEL, returnStatusMeta } from './returnPresentation';
+import { ReturnInspectionEditor } from './ReturnInspectionEditor';
 
-export function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
+export function ReturnDetailDrawer({
+  id,
+  onClose,
+  canInspect = false,
+}: {
+  id: number | null;
+  onClose: () => void;
+  canInspect?: boolean;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { accessToken } = useAuth();
@@ -55,7 +64,7 @@ export function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose
     <Drawer
       open={id != null}
       onClose={onClose}
-      title={detail ? (detail.returnReference ?? `Return #${detail.id}`) : 'Return'}
+      title={detail ? detail.returnReference : 'Return'}
     >
       {query.isLoading ? (
         <p className="text-sm text-ink-3">Loading…</p>
@@ -73,7 +82,7 @@ export function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <DetailField label="Return ref" value={detail.returnReference ?? `Return #${detail.id}`} />
+            <DetailField label="Return ref" value={detail.returnReference} />
             <DetailField label="Order" value={detail.orderNumber ?? (detail.orderId ? `#${detail.orderId}` : '—')} />
             <DetailField label="Started by" value={detail.initiatedBy === 'three_pl' ? 'Warehouse' : 'Client'} />
             <DetailField label="Delivery" value={detail.deliveryMethod ? RETURN_DELIVERY_LABEL[detail.deliveryMethod] ?? detail.deliveryMethod : '—'} />
@@ -190,6 +199,11 @@ export function ReturnDetailDrawer({ id, onClose }: { id: number | null; onClose
 
           <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Inspection</p>
+            {canInspect && (
+              <div className="mb-4">
+                <ReturnInspectionEditor returnId={detail.id} />
+              </div>
+            )}
             {detail.inspections.length === 0 ? (
               <p className="text-sm text-ink-3">No inspection recorded yet.</p>
             ) : (

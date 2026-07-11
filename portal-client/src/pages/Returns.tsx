@@ -78,10 +78,10 @@ export default function Returns() {
         defaultWidth: 150,
         render: (row) => (
           <span className="font-mono text-xs font-semibold text-ink">
-            {row.returnReference ?? `Return #${row.id}`}
+            {row.returnReference}
           </span>
         ),
-        sortAccessor: (row) => row.returnReference ?? String(row.id),
+        sortAccessor: (row) => row.returnReference,
       },
       {
         key: 'order',
@@ -276,7 +276,7 @@ export default function Returns() {
             rows={rows}
             rowKey={(row) => String(row.id)}
             onRowClick={(row) => setSelectedId(row.id)}
-            rowActionLabel={(row) => `View return ${row.returnReference ?? `#${row.id}`}`}
+            rowActionLabel={(row) => `View return ${row.returnReference}`}
             allowColumnCustomization={canCustomizeTables}
           />
           {pagination && (
@@ -291,7 +291,11 @@ export default function Returns() {
         </QueryState>
       </GlassPanel>
 
-      <ReturnDetailDrawer id={selectedId} onClose={() => setSelectedId(null)} />
+      <ReturnDetailDrawer
+        id={selectedId}
+        onClose={() => setSelectedId(null)}
+        canInspect={isOperator}
+      />
       <ReturnCreateModal
         open={createOrderId != null}
         orderId={createOrderId}

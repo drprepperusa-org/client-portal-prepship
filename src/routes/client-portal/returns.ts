@@ -41,6 +41,7 @@ import {
   ReturnLabelStateError,
 } from '../../services/returns';
 import { deliverReturn } from '../../services/return-delivery';
+import { baseReturnReference, resolveReturnReference } from '../../services/return-reference';
 import { trackingUrlForCarrier } from '../../lib/tracking-url';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
@@ -151,11 +152,6 @@ function returnSearchPredicate(search: string): SQL | undefined {
   );
 }
 
-function baseReturnReference(orderNumber: string | null, orderId: number): string {
-  const base = (orderNumber?.trim() || String(orderId)).replace(/\s+/g, '-');
-  return `${base}-RETURN`;
-}
-
 async function buildReturnReference(orderId: number, orderNumber: string | null): Promise<string> {
   const base = baseReturnReference(orderNumber, orderId);
   const [row] = await db
@@ -197,7 +193,7 @@ async function toClientSafeReturnRow(
     id: row.ret.id,
     orderId: row.ret.orderId,
     orderNumber: row.orderNumber,
-    returnReference: row.ret.returnReference,
+    returnReference: resolveReturnReference(row.ret.returnReference, row.orderNumber, row.ret.orderId),
     clientId: row.ret.clientId,
     clientName: row.clientName,
     status: row.ret.status,
@@ -692,6 +688,7 @@ app.get('/returns/receiving', async (c) => {
       id: row.ret.id,
       orderId: row.ret.orderId,
       orderNumber: row.orderNumber,
+      returnReference: resolveReturnReference(row.ret.returnReference, row.orderNumber, row.ret.orderId),
       clientName: row.clientName,
       status: row.ret.status,
       trackingNumber: row.returnTracking,

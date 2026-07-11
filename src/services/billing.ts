@@ -6,7 +6,9 @@ import { orderOverrides, orders } from '../db/schema/orders';
 import { packages } from '../db/schema/packages';
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
+import { returns } from '../db/schema/returns';
 import { computeCustomerShippingRate, resolveCustomerShippingRate } from './customer-shipping-rate';
+import { resolveReturnReference } from './return-reference';
 import { refreshBillingSummaryMetrics } from './reporting-metrics';
 
 export { computeCustomerShippingRate, resolveCustomerShippingRate } from './customer-shipping-rate';
@@ -797,6 +799,7 @@ export async function generateLineItems(input: GenerateInput) {
       otherCost: shipments.otherCost,
       orderId: orders.id,
       orderNumber: orders.orderNumber,
+      returnReference: returns.returnReference,
       orderClientId: orders.clientId,
       orderStoreId: orders.storeId,
       orderDate: orders.orderDate,
@@ -804,6 +807,7 @@ export async function generateLineItems(input: GenerateInput) {
     })
     .from(shipments)
     .innerJoin(orders, eq(shipments.orderId, orders.id))
+    .leftJoin(returns, eq(returns.returnShipmentId, shipments.id))
     .where(
       and(
         eq(shipments.isReturn, true),
@@ -837,6 +841,7 @@ export async function generateLineItems(input: GenerateInput) {
     // a rerun's delete window (which filters billing_line_items.ship_date ∈
     // [from,to]) always catches these return lines and replaces them — no dup.
     const labelDate = r.labelShipDate ?? r.shipDate ?? r.orderDate ?? null;
+    const returnReference = resolveReturnReference(r.returnReference, r.orderNumber, r.orderId);
 
     // ── return_postage ──────────────────────────────────────────────────────
     // Priced by backend policy from the return label house cost with the
@@ -856,13 +861,13 @@ export async function generateLineItems(input: GenerateInput) {
         allRows.push({
           clientId,
           orderId: r.orderId,
-          orderNumber: r.orderNumber,
+          orderNumber: returnReference,
           shipmentId: r.shipmentId,
           shipDate: labelDate,
           lineType: 'return_postage',
           // shipmentId keeps the description unique per return label, so multiple
           // returns on one order don't collide on (order_id, line_type, description).
-          description: `Order ${r.orderNumber ?? r.orderId} · return postage · return #${r.shipmentId}`,
+          description: `${returnReference} · return postage · return #${r.shipmentId}`,
           qty: '1',
           unitCost: returnRate.toFixed(2),
           totalCost: returnRate.toFixed(2),
@@ -878,11 +883,11 @@ export async function generateLineItems(input: GenerateInput) {
       allRows.push({
         clientId,
         orderId: r.orderId,
-        orderNumber: r.orderNumber,
+        orderNumber: returnReference,
         shipmentId: r.shipmentId,
         shipDate: labelDate,
         lineType: 'return_processing_fee',
-        description: `Order ${r.orderNumber ?? r.orderId} · return processing fee · return #${r.shipmentId}`,
+        description: `${returnReference} · return processing fee · return #${r.shipmentId}`,
         qty: '1',
         unitCost: processingFee.toFixed(2),
         totalCost: processingFee.toFixed(2),

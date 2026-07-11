@@ -251,8 +251,10 @@ assert(
   'NewReturnInput does not accept returnToLocationId from the client',
 );
 assert(
-  /returnReference:\s*string \| null/.test(api) && /Return ref/.test(page),
-  'returns UI exposes the persisted returnReference for display/search',
+  /returnReference:\s*string;/.test(api) &&
+    /resolveReturnReference/.test(route) &&
+    /Return ref/.test(page),
+  'returns UI exposes the canonical non-null returnReference for display/search',
 );
 
 // ── CP-032: the create-return modal creates the LABEL immediately (PDF-only) ──
