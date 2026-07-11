@@ -1,5 +1,5 @@
 // CP-045 - Return labels use PrepShip best rate, fixed DRP return address,
-// exact outbound package facts, persisted return reference, and client-safe
+// exact outbound physical facts, safe package fallback, persisted return reference, and client-safe
 // inspection/download visibility.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,6 +39,8 @@ const returnsPage = [
   read('portal-client/src/components/returns/returnPresentation.ts'),
 ].join('\n');
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
+const inspectionEditor = read('portal-client/src/components/returns/ReturnInspectionEditor.tsx');
+const receivingUi = `${receiving}\n${inspectionEditor}`;
 const migrations = fs.existsSync(path.join(root, 'drizzle'))
   ? fs
       .readdirSync(path.join(root, 'drizzle'))
@@ -78,18 +80,21 @@ assert(
   'customer sender/from address is validated before label creation',
 );
 
-// 3. Package facts copy exactly from the outbound shipment and missing facts block.
+// 3. Physical package facts copy exactly from the outbound shipment. Legacy
+// shipments with no selected package use ShipStation's generic protocol code;
+// canonical weight and dimensions still control rating and label creation.
 assert(
   shipmentSchema.includes('selectedPackageId'),
   'shipments has selectedPackageId as the existing outbound package owner',
 );
 assert(
   /assertOutboundReturnPackage\(outbound\)/.test(service),
-  'return-label service validates outbound weight/dims/package before rating or labeling',
+  'return-label service validates outbound weight/dims before rating or labeling',
 );
 assert(
-  /Missing outbound shipment return-label facts/.test(service),
-  'missing outbound package/weight/dims produces a clear blocking error',
+  /Missing outbound shipment return-label facts/.test(service) &&
+    !/if \(!outbound\.selectedPackageId\) missing\.push\('package'\)/.test(service),
+  'missing weight/dims blocks, but missing legacy package selection does not',
 );
 assert(
   !/outbound\.weightOz\s*\?\?\s*order\.weightOz\s*\?\?\s*1/.test(service),
@@ -104,8 +109,9 @@ assert(
   'return shipment persists exact outbound weight/dims/package facts',
 );
 assert(
-  /packageCode:\s*outbound\.selectedPackageId/.test(service),
-  'live label purchase sends the exact outbound package code',
+  /packageCode:\s*outbound\.selectedPackageId \|\| 'package'/.test(service) &&
+    /selectedPackageId:\s*string \| null/.test(service),
+  'live label purchase uses saved package code or generic package for legacy dimensioned shipments',
 );
 
 // 4. Best-rate selection remains backend-only and cheapest eligible.
@@ -128,12 +134,12 @@ assert(
   'returns route generates, persists, and searches the order-number return reference',
 );
 assert(
-  /returnReference:\s*row\.ret\.returnReference/.test(route),
-  'client-safe return DTO includes persisted returnReference',
+  /returnReference:\s*resolveReturnReference\(row\.ret\.returnReference/.test(route),
+  'client-safe return DTO resolves persisted or legacy returnReference',
 );
 assert(
-  /returnReference:\s*string \| null/.test(api),
-  'PortalReturnRow exposes returnReference as a client-visible field',
+  /returnReference:\s*string;/.test(api),
+  'PortalReturnRow exposes non-null returnReference as a client-visible field',
 );
 assert(
   /returnReference/.test(returnsPage) && /Return ref/.test(returnsPage),
@@ -176,7 +182,9 @@ assert(
   'client/admin return detail renders inspection photos/videos from signed URLs',
 );
 assert(
-  /multiple/.test(receiving) && /capture="environment"/.test(receiving) && /accept="image\/\*,video\/\*"/.test(receiving),
+  /multiple/.test(receivingUi) &&
+    /capture="environment"/.test(receivingUi) &&
+    /accept="image\/\*,video\/\*"/.test(receivingUi),
   'inspection capture supports multiple mobile camera photo/video uploads',
 );
 

@@ -71,7 +71,7 @@ type ReturnReadyOutboundShipment = OutboundShipment & {
   dimsL: number;
   dimsW: number;
   dimsH: number;
-  selectedPackageId: string;
+  selectedPackageId: string | null;
 };
 type ReturnRatePolicy = {
   rateClientId: null;
@@ -175,7 +175,6 @@ function assertOutboundReturnPackage(
   if (!(Number(outbound.dimsL) > 0)) missing.push('length');
   if (!(Number(outbound.dimsW) > 0)) missing.push('width');
   if (!(Number(outbound.dimsH) > 0)) missing.push('height');
-  if (!outbound.selectedPackageId) missing.push('package');
   if (missing.length) {
     throw new Error(`Missing outbound shipment return-label facts: ${missing.join(', ')}`);
   }
@@ -807,7 +806,10 @@ export async function createReturnLabel(
     apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
     carrierId: chosen.carrier_id,
     serviceCode: chosen.service_code,
-    packageCode: outbound.selectedPackageId,
+    // Older canonical shipment rows may have dimensions but no saved package
+    // selection. ShipStation's generic package code preserves those exact
+    // dimensions without inventing a customer-visible package or rate fact.
+    packageCode: outbound.selectedPackageId || 'package',
     weightOz,
     length: outbound.dimsL,
     width: outbound.dimsW,
