@@ -4,6 +4,18 @@ const baseUrl = 'http://127.0.0.1:5177';
 const storageKey = 'sb-portal-e2e-auth-token';
 const day = '2026-07-09';
 
+function dashboardMetric(value, periodTotal = value) {
+  return {
+    value,
+    periodTotal,
+    dailyAverage: periodTotal,
+    periodSharePercent: periodTotal > 0 ? (value / periodTotal) * 100 : 0,
+    vsDailyAveragePercent: periodTotal > 0 ? ((value - periodTotal) / periodTotal) * 100 : 0,
+    busiestRank: 1,
+    periodDayCount: 1,
+  };
+}
+
 const portalRoutes = [
   ['/', 'Dashboard'],
   ['/orders', 'Orders'],
@@ -125,17 +137,37 @@ function responseFor(pathname, admin, capabilities = {}) {
     return {
       revenue: 25,
       units: 3,
+      openOrderCount: 1,
+      period: {
+        dayCount: 1,
+        orderedOrderCount: 2,
+        orderedUnitCount: 3,
+        allOrderCount: 2,
+        awaitingOrderCount: 1,
+        shippedOrderCount: 1,
+        cancelledOrderCount: 0,
+        shipmentCount: 1,
+        averageShippedOrdersPerDay: 1,
+        peakShippedOrderCount: 1,
+      },
       bySku: [{
         sku: 'E2E-SKU',
         name: 'E2E product',
         units30: 3,
         revenue: 25,
         avgShippingPrice: 4,
-        billedShippingTotal: 12,
-        chargedUnits: 3,
       }],
-      daily: [{ day, orders: 2, units: 3 }],
-      dailyRevenue: [{ day, revenue: 25 }],
+      daily: [{
+        day,
+        orderedOrders: dashboardMetric(2),
+        orderedUnits: dashboardMetric(3),
+        allOrders: dashboardMetric(2),
+        awaitingOrders: dashboardMetric(1),
+        shippedOrders: dashboardMetric(1),
+        cancelledOrders: dashboardMetric(0, 0),
+        shipmentsCreated: dashboardMetric(1),
+        unitsPerOrder: 1.5,
+      }],
     };
   }
   if (pathname === '/api/client-portal/daily-counts') {
@@ -260,6 +292,8 @@ for (const viewport of [
     for (const [route, title] of portalRoutes) {
       await page.goto(`${baseUrl}${route}`);
       await expect(page).toHaveURL(new RegExp(`${route === '/' ? '/$' : `${route}$`}`));
+      await page.waitForTimeout(100);
+      expect(errors, errors.join('\n')).toEqual([]);
       await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
       await expect(page.getByRole('main')).toBeVisible();
       await expect.poll(() => page.evaluate(

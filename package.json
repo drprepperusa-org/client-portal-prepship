@@ -88,6 +88,7 @@
     "test:client-portal-analysis-order-combinations": "node scripts/client-portal-analysis-order-combinations-guard.mjs",
     "test:client-portal-sku-orders-scope": "node scripts/client-portal-sku-orders-scope-guard.mjs",
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",
+    "test:client-portal-dashboard-full-scope": "tsx scripts/client-portal-dashboard-full-scope-guard.ts",
     "test:client-portal-dashboard-sot": "node scripts/client-portal-dashboard-sot-guard.mjs",
     "test:client-portal-sales-sot-drift": "node scripts/client-portal-sales-sot-drift-guard.mjs",
     "test:client-portal-shadow-renderer": "node scripts/client-portal-shadow-renderer-guard.mjs",

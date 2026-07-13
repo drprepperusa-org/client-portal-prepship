@@ -30,7 +30,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   const dash = read('portal-client/src/pages/Dashboard.tsx');
   assert(dash.includes("openDay('orders')") && dash.includes("openDay('shipments')"), 'Dashboard wires both charts to a day drill-down');
   assert(dash.includes('<ChartDayModal'), 'Dashboard renders the ChartDayModal');
-  assert(dash.includes('day: d.day,') && dash.includes('day: r.day,'), 'chart series carry the full YYYY-MM-DD (not pre-sliced)');
+  assert(dash.includes('day: row.day,') && !/day:\s*row\.day\.slice/.test(dash), 'chart series carry the full YYYY-MM-DD (not pre-sliced)');
 }
 
 // ── The day modal shows a detailed breakdown, growing from the click point ──
@@ -41,6 +41,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
     assert(modal.includes(field), `day modal surfaces ${field}`);
   }
   assert(modal.includes('Share of period') && modal.includes('vs daily avg') && modal.includes('Busiest rank'), 'day modal includes period-context insights');
+  assert(!modal.includes('.reduce(') && !modal.includes('.filter('), 'day modal renders backend-owned context without reductions');
   assert(modal.includes('CountUp') && modal.includes("from './KpiPeekModal'"), 'day modal reuses the shared count-up animation');
 }
 

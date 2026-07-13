@@ -8,15 +8,9 @@ import { CountUp, niceDate } from './KpiPeekModal';
 import { ACCENTS, type Accent } from '@/lib/accents';
 import { liquidSpring, staggerContainer, staggerItem } from '@/lib/motion';
 import { cn } from '@/lib/cn';
+import type { DashboardSummary } from '@/lib/api';
 
 export type DayPeekSource = 'orders' | 'shipments';
-
-export interface ChartDayData {
-  days: number;
-  daily: Array<{ day: string; orders: number; units: number }>;
-  counts: Array<{ day: string; awaiting: number; shipped: number; cancelled: number; total: number }>;
-  shipments: Array<{ day: string; shipments: number }>;
-}
 
 const PANEL_W = 460;
 const int = (n: number) => Math.round(n).toLocaleString();
@@ -54,14 +48,14 @@ export function ChartDayModal({
   day,
   source,
   origin,
-  data,
+  daily,
   onClose,
   onNavigate,
 }: {
   day: string | null;
   source: DayPeekSource;
   origin?: { x: number; y: number } | null;
-  data: ChartDayData;
+  daily: DashboardSummary['daily'];
   onClose: () => void;
   onNavigate: (to: string) => void;
 }) {
@@ -73,17 +67,14 @@ export function ChartDayModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [day, onClose]);
 
-  const dailyRow = day ? data.daily.find((r) => r.day === day) : undefined;
-  const countRow = day ? data.counts.find((r) => r.day === day) : undefined;
-  const shipRow = day ? data.shipments.find((r) => r.day === day) : undefined;
-
-  const orders = dailyRow?.orders ?? countRow?.total ?? 0;
-  const units = dailyRow?.units ?? 0;
-  const shipped = countRow?.shipped ?? 0;
-  const awaiting = countRow?.awaiting ?? 0;
-  const cancelled = countRow?.cancelled ?? 0;
-  const shipmentsCount = shipRow?.shipments ?? 0;
-  const unitsPerOrder = orders > 0 ? units / orders : 0;
+  const selectedDay = day ? daily.find((row) => row.day === day) : undefined;
+  const orders = selectedDay?.orderedOrders.value ?? 0;
+  const units = selectedDay?.orderedUnits.value ?? 0;
+  const shipped = selectedDay?.shippedOrders.value ?? 0;
+  const awaiting = selectedDay?.awaitingOrders.value ?? 0;
+  const cancelled = selectedDay?.cancelledOrders.value ?? 0;
+  const shipmentsCount = selectedDay?.shipmentsCreated.value ?? 0;
+  const unitsPerOrder = selectedDay?.unitsPerOrder ?? 0;
 
   // Period context for the metric this chart represents.
   const isOrders = source === 'orders';
@@ -91,12 +82,11 @@ export function ChartDayModal({
   const icon: LucideIcon = isOrders ? ShoppingCart : Truck;
   const primaryValue = isOrders ? orders : shipmentsCount;
   const primaryLabel = isOrders ? 'orders' : 'shipments';
-  const series = isOrders ? data.daily.map((r) => r.orders) : data.shipments.map((r) => r.shipments);
-  const total = series.reduce((n, v) => n + v, 0);
-  const avg = series.length ? total / series.length : 0;
-  const share = total > 0 ? (primaryValue / total) * 100 : 0;
-  const vsAvg = avg > 0 ? ((primaryValue - avg) / avg) * 100 : 0;
-  const rank = series.filter((v) => v > primaryValue).length + 1;
+  const primaryMetric = isOrders ? selectedDay?.orderedOrders : selectedDay?.shipmentsCreated;
+  const share = primaryMetric?.periodSharePercent ?? 0;
+  const vsAvg = primaryMetric?.vsDailyAveragePercent ?? 0;
+  const rank = primaryMetric?.busiestRank ?? 0;
+  const periodDayCount = primaryMetric?.periodDayCount ?? 0;
 
   const from = pointTransform(origin, reduce);
   const grad = ACCENTS[accent].grad;
@@ -141,7 +131,7 @@ export function ChartDayModal({
                 <div className="grid grid-cols-3 gap-2">
                   <Insight label="Share of period" value={`${share.toFixed(0)}%`} />
                   <Insight label="vs daily avg" value={`${vsAvg >= 0 ? '+' : ''}${vsAvg.toFixed(0)}%`} tone={vsAvg >= 0 ? 'up' : 'down'} />
-                  <Insight label="Busiest rank" value={`#${rank} of ${series.length}`} />
+                  <Insight label="Busiest rank" value={`#${rank} of ${periodDayCount}`} />
                 </div>
 
                 {/* Order breakdown */}

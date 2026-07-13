@@ -14,9 +14,6 @@ export function PeekChart({ data, color, format }: { data: ChartPoint[]; color: 
   const id = useId();
   const [sel, setSel] = useState<ChartPoint | null>(null);
   const reduceMotion = useReducedMotion();
-  const values = data.map((d) => d.value);
-  const total = values.reduce((n, v) => n + v, 0);
-  const avg = values.length ? total / values.length : 0;
 
   /** Chart clicks carry the active index/label (Recharts 3 dropped the
    *  activePayload array from click state) — map back to our own data row. */
@@ -27,8 +24,8 @@ export function PeekChart({ data, color, format }: { data: ChartPoint[]; color: 
     if (p) setSel((cur) => (cur?.day === p.day ? null : p));
   };
 
-  const share = sel && total > 0 ? (sel.value / total) * 100 : 0;
-  const vsAvg = sel && avg > 0 ? ((sel.value - avg) / avg) * 100 : 0;
+  const share = sel?.periodSharePercent ?? 0;
+  const vsAvg = sel?.vsDailyAveragePercent ?? 0;
 
   return (
     <div role="group" aria-label="KPI trend by day" className="rounded-glass-sm bg-white/45 p-3 ring-1 ring-slate-200/60">

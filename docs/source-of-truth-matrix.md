@@ -491,15 +491,14 @@ verbatim (no client-side ranking, revenue, units, or shipping math).
 
 | UI label | Frontend field | Backend DTO field | Canonical table / read-model | Event clock |
 | --- | --- | --- | --- | --- |
-| Open orders | `aw.data.count` | `count` | `awaitingActiveOrderCount` over `orders` (live awaiting) | order state (now) |
-| Shipped orders (Nd) | `countRows[].shipped` | `daily[].shipped` | `/daily-counts` — `orders.order_status='shipped'` grouped by `order_date` | order date |
-| Ordered units (Nd) | `dash.data.units` | `units` | `getClientPortalSalesTotals` — Σ `order_items.quantity` (set-based) | order date |
-| Revenue (Nd) | `dash.data.revenue` | `revenue` | `getClientPortalSalesTotals` — Σ `order_items.unit_price × quantity` (set-based, financially gated) | order date |
-| Orders over time (bar) | `dash.data.daily[]` | `daily[]` | `dailyOrderUnitsRows` over a bounded `orders.limit(1000)` visual sample (non-ranking, non-financial) | order date |
-| Shipments created (bar) | `ships.data.data[]` | `daily-shipments[].shipments` | `/analysis/daily-shipments` — `shipments` rows by `ship_date` | ship date |
-| Top SKUs → SKU / Unit Count Last 30 Days | `dash.data.bySku[].units30` | `bySku[].units30` | `dashboardTopSkus` → `getSkuBreakdownFromOrderItems` (`total_qty`, set-based over `order_items`) — SAME query as the Analysis Top-SKUs table | order date |
-| Top SKUs → Avg Shipping Price | `dash.data.bySku[].avgShippingPrice` (+ `shipAlloc`/`shipUnits`) | `bySku[].avgShippingPrice` | `dashboardTopSkus` — allocated shipment `label_cost` (`total_shipping`) ÷ shipped-with-cost units (`std_qty_total + exp_qty_total`); financially gated | ship date (label cost), allocated over order units |
-| Revenue KPI drill-down (revenue/day) | `dash.data.dailyRevenue[]` | `dailyRevenue[]` | `getClientPortalDailyRevenue` — same filters as the Revenue KPI | order date |
+| Open orders | `dash.data.openOrderCount` | `openOrderCount` | `awaitingActiveOrderCount` over `orders` (live awaiting) | order state (now) |
+| Shipped orders (Nd) | `dash.data.period.shippedOrderCount` | `period.shippedOrderCount` | `getClientPortalDashboardSummary` — `orders.order_status='shipped'` grouped by `order_date` | order date |
+| Ordered units (Nd) | `dash.data.units` | `units` | `getClientPortalSalesMetrics` — Σ `order_items.quantity` (set-based) | order date |
+| Revenue (Nd) | `dash.data.revenue` | `revenue` | `getClientPortalSalesMetrics` — Σ `order_items.unit_price × quantity` (set-based, financially gated) | order date |
+| Orders over time (bar) | `dash.data.daily[]` | `daily[].orderedOrders.value`, `daily[].orderedUnits.value` | `getClientPortalDashboardSummary` + `getClientPortalSalesMetrics`; complete scoped SQL aggregate with no row cap | order date |
+| Shipments created (bar) | `dash.data.daily[]` | `daily[].shipmentsCreated.value` | `getClientPortalDashboardSummary` — active `shipments` rows grouped by `ship_date` | ship date |
+| Top SKUs → SKU / Unit Count Last 30 Days | `dash.data.bySku[].units30` | `bySku[].units30` | `projectDashboardTopSkus` → `getSkuBreakdownFromOrderItems` (`total_qty`, set-based over `order_items`) — SAME query as the Analysis Top-SKUs table | order date |
+| Top SKUs → Avg Shipping Price | `dash.data.bySku[].avgShippingPrice` | `bySku[].avgShippingPrice` | canonical billed shipping (`billing_line_items`, `customer_billed`) ÷ charged units; financially gated | billing shipment/order allocation |
 
 Ownership rules established by CP-021:
 
@@ -508,12 +507,12 @@ Ownership rules established by CP-021:
   (`getSkuBreakdownFromOrderItems`). Because it is the same query for the same
   scope/date window, numeric parity with the Analysis page is structurally
   guaranteed — there is no second definition to drift.
-- The capped `orders.limit(1000)` array may back ONLY the non-ranking,
-  non-financial per-day orders/units bar chart. It must never rank SKUs,
-  allocate shipping, or total revenue/units.
-- Avg Shipping Price has ONE source of truth: allocated shipment `label_cost`
-  (the same allocation basis Analysis uses), NOT the raw `orders.shippingAmount`
-  JSONB. Financial redaction lives in the backend owner.
+- `getClientPortalDashboardSummary` owns the complete multi-client/store scope
+  union, daily status/shipment aggregates, period totals, averages, shares, and
+  ranks. No Dashboard business aggregate is capped or merged in the browser.
+- Avg Shipping Price has ONE source of truth: canonical customer-billed shipping
+  from `billing_line_items`, NOT raw `orders.shippingAmount` or internal label
+  cost. Financial redaction lives in the backend owner.
 - Labels name the entity: "Shipped orders" (`orders.order_status`) is distinct
   from "Shipments created" (`shipments` rows by `ship_date`); "Ordered units"
   (order-clock `order_items` quantity) is NOT shipped units.
@@ -897,9 +896,10 @@ choice — see the Carrier redaction remediation (CP-009/CP-018) below.
 Detailed per-widget mapping lives in the **CP-021 Dashboard KPI/widget SOT
 mapping** table above (`### Reporting / Dashboard / Analysis` →
 `#### CP-021`). In short: every ranked/financial KPI is backend-owned
-(`getClientPortalSalesTotals`, `getClientPortalDailyRevenue`, `dashboardTopSkus`
-reusing the canonical `getSkuBreakdownFromOrderItems`); the capped
-`orders.limit(1000)` array backs only the non-ranking per-day bar chart. Guard:
+(`getClientPortalDashboardSummary`, reusing the canonical
+`getSkuBreakdownFromOrderItems` and full-window `getClientPortalSalesMetrics`).
+The same DTO owns daily status/shipment facts and period context; the browser
+does not fan out, cap, merge, total, average, share, or rank them. Guard:
 `scripts/client-portal-dashboard-sot-guard.mjs`.
 
 ### Orders
@@ -974,14 +974,14 @@ ships not order units), `client-portal-inventory-status-guard.ts` (CP-013).
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
-| Ordered units | `totalUnits` | `totalUnits` | `getClientPortalSalesTotals` — Σ `order_items.quantity` (set-based) | order date | backend-owned-truth (CP-010) |
-| Revenue | `totalRevenue` | `totalRevenue` | `getClientPortalSalesTotals` — Σ `unit_price × qty` (financially gated) | order date | backend-owned-truth (CP-010) |
+| Ordered units | `totalUnits` | `totalUnits` | `getClientPortalSalesMetrics` — Σ `order_items.quantity` (set-based) | order date | backend-owned-truth (CP-010/049) |
+| Revenue | `totalRevenue` | `totalRevenue` | `getClientPortalSalesMetrics` — Σ `unit_price × qty` (financially gated) | order date | backend-owned-truth (CP-010/049) |
 | Top-SKU rows | `rows[]` (`sku`, item identity, scoped IDs, `orders`, `pending`, `total_qty`, `total_revenue`, `daily_qty`) | explicit `ClientAnalysisSkuRow` whitelist | `getSkuBreakdownFromOrderItems` (set-based over `order_items`), narrowed at the Client Portal API boundary | order date | backend-owned-truth (CP-047) |
 | Std/Exp ship counts | not exposed | not exposed | retained only in the shared backend analysis owner for operator/admin consumers | ship date | backend-owned-truth (CP-020/CP-047) |
 
-Owner: `src/routes/analysis.ts` (`getClientPortalSalesTotals`,
-`getClientPortalDailyRevenue`, `getSkuBreakdownFromOrderItems`). The Dashboard
-shadows this exact query set — parity is structural, not a re-implementation.
+Owner: `src/routes/analysis.ts` (`getClientPortalSalesMetrics`, with compatibility
+projections for totals/daily revenue, and `getSkuBreakdownFromOrderItems`). The
+Dashboard shadows this exact query set — parity is structural, not a re-implementation.
 Guards: `client-portal-analytics-parity-guard.mjs` (CP-010),
 `client-portal-sales-sot-drift-guard.mjs`,
 `client-portal-analysis-ship-bucket-guard.mjs` (CP-020),
@@ -1132,7 +1132,7 @@ and must still document source inputs, event clock, and formula.
 - **CP-009 / CP-018** — carrier / service / provider / rate identity is
   hard-nulled in the order + shipment DTOs and dropped from the invoice-details
   SQL/DTO; the client shows tracking numbers, never carriers.
-- **CP-010** — one canonical sales-metrics owner (`getClientPortalSalesTotals`)
+- **CP-010 / CP-049** — one canonical full-window sales-metrics owner (`getClientPortalSalesMetrics`)
   so Dashboard and Analysis revenue/units cannot drift.
 - **CP-012** — Finance charge breakdown / totals / billable count / avg per
   order are backend-owned (`/reports`), not React reductions.

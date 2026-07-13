@@ -38,8 +38,8 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(!dash.includes('Revenue (${days}d)'), 'Dashboard does not render a Revenue KPI card');
   assert(dash.includes('<KpiPeekModal'), 'Dashboard renders KpiPeekModal');
   assert(
-    dash.includes('counts: countRows') && dash.includes('daily: dash.data?.daily'),
-    'peek modal is fed already-cached dashboard/daily data',
+    dash.includes('period: dash.data?.period') && dash.includes('daily: dailyRows'),
+    'peek modal is fed the single cached Dashboard DTO',
   );
 }
 
@@ -68,6 +68,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(chart.includes('function PeekChart') && chart.includes("from 'recharts'"), 'trend uses an interactive Recharts chart');
   assert(chart.includes('<Tooltip') && chart.includes('activeDot'), 'chart shows on-hover indicators');
   assert(chart.includes('onClick={pick}') && chart.includes('Tap any day for detail'), 'clicking a day pins a detail readout');
+  assert(!chart.includes('.reduce('), 'chart renders backend-owned share and average context');
 }
 
 // peek/OpenOrdersPeek + peek/buildConfig: live list and per-metric configs.

@@ -459,14 +459,45 @@ export interface IntegrationValidationResult {
 export interface DashboardSummary {
   revenue: number;
   units: number;
+  openOrderCount: number;
   // CP-021: canonical Top-SKUs. Backend-ranked (units desc) by the SAME Analysis
   // SKU query, so these rows equal the Analysis Top-SKUs for the same scope/date.
   // The frontend renders them in the order received — it never ranks/sorts/slices
   // an orders array or re-derives units/revenue/shipping. `name` mirrors Analysis.
-  bySku: Array<{ sku: string; name?: string | null; units30: number; revenue: number; avgShippingPrice: number | null; billedShippingTotal: number | null; chargedUnits: number | null }>;
-  /** Per-day order + shippable-unit counts backing the cumulative bar chart. */
-  daily: Array<{ day: string; orders: number; units: number }>;
-  dailyRevenue: Array<{ day: string; revenue: number }>;
+  bySku: Array<{ sku: string; name?: string | null; units30: number; revenue: number; avgShippingPrice: number | null }>;
+  period: {
+    dayCount: number;
+    orderedOrderCount: number;
+    orderedUnitCount: number;
+    allOrderCount: number;
+    awaitingOrderCount: number;
+    shippedOrderCount: number;
+    cancelledOrderCount: number;
+    shipmentCount: number;
+    averageShippedOrdersPerDay: number;
+    peakShippedOrderCount: number;
+  };
+  daily: Array<{
+    day: string;
+    orderedOrders: DashboardDailyMetric;
+    orderedUnits: DashboardDailyMetric;
+    allOrders: DashboardDailyMetric;
+    awaitingOrders: DashboardDailyMetric;
+    shippedOrders: DashboardDailyMetric;
+    cancelledOrders: DashboardDailyMetric;
+    shipmentsCreated: DashboardDailyMetric;
+    unitsPerOrder: number;
+  }>;
+}
+
+export interface DashboardDailyMetric {
+  value: number;
+  periodTotal: number;
+  dailyAverage: number;
+  periodSharePercent: number;
+  vsDailyAveragePercent: number;
+  busiestRank: number;
+  periodDayCount: number;
 }
 
 export interface DailyCount {
@@ -850,76 +881,12 @@ async function scopedDashboard(
   rangeInput: PortalDateRange,
   clientId?: number,
 ): Promise<DashboardSummary> {
-  const scope = portalScopeFromToken(token);
-  // CP-010: send dateFrom/dateTo timestamps (identical to the Analysis client)
-  // so Dashboard and Analysis evaluate the exact same date window — no more
-  // "to = today midnight" vs "to = end of today" off-by-a-day drift.
   const range = dashboardRangeParams(rangeInput);
-  // Explicit client filter from the top-bar switcher → one scoped request for
-  // that client. The backend re-checks the client against the caller's scope,
-  // so passing it can only ever narrow, never widen, visibility.
-  if (clientId !== undefined) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', { ...range, clientId });
-  if (!scope.isRestricted) return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', range);
-  if (!scope.clientIds.length && !scope.storeIds.length) return { revenue: 0, units: 0, bySku: [], daily: [], dailyRevenue: [] };
-  const ids = scope.clientIds.length ? scope.clientIds : [undefined];
-  const pages = await Promise.all(
-    ids.map((clientId) =>
-      apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', {
-        ...range,
-        clientId,
-        storeId: clientId === undefined ? firstStoreId(token) : undefined,
-      }),
-    ),
-  );
-  // Restricted users with >1 client get one response per client; combine by SKU
-  // and by day so a SKU shipped under two clients shows a single row (concat
-  // would duplicate it and skew the ranking). This is a per-client SCOPE UNION
-  // — not a ranking re-derivation: every summand is a backend-owned canonical
-  // per-client total, and we re-order strictly by the backend's units30 field.
-  const bySku = new Map<string, DashboardSummary['bySku'][number]>();
-  const daily = new Map<string, DashboardSummary['daily'][number]>();
-  let revenue = 0;
-  let units = 0;
-  const dailyRevenueByDay = new Map<string, number>();
-  for (const p of pages) {
-    revenue += Number(p.revenue ?? 0);
-    units += Number(p.units ?? 0);
-    for (const d of p.dailyRevenue ?? []) dailyRevenueByDay.set(d.day, (dailyRevenueByDay.get(d.day) ?? 0) + Number(d.revenue ?? 0));
-    for (const s of p.bySku ?? []) {
-      const cur = bySku.get(s.sku);
-      if (!cur) {
-        bySku.set(s.sku, { ...s });
-        continue;
-      }
-      // Combine the shipping numerator/denominator exactly, then re-derive the
-      // per-unit average — no weighting approximation, and the calculation
-      // tooltip's operands stay correct across the multi-client fan-out.
-      const alloc = (cur.billedShippingTotal ?? 0) + (s.billedShippingTotal ?? 0);
-      const chargedUnits = (cur.chargedUnits ?? 0) + (s.chargedUnits ?? 0);
-      cur.billedShippingTotal = chargedUnits > 0 ? Math.round(alloc * 100) / 100 : null;
-      cur.chargedUnits = chargedUnits > 0 ? chargedUnits : null;
-      cur.avgShippingPrice = chargedUnits > 0 ? alloc / chargedUnits : null;
-      cur.units30 += s.units30;
-      cur.revenue += s.revenue;
-    }
-    for (const d of p.daily ?? []) {
-      const cur = daily.get(d.day);
-      if (!cur) daily.set(d.day, { ...d });
-      else {
-        cur.orders += d.orders;
-        cur.units += d.units;
-      }
-    }
-  }
-  return {
-    revenue,
-    units,
-    bySku: [...bySku.values()].sort((a, b) => b.units30 - a.units30),
-    daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),
-    dailyRevenue: [...dailyRevenueByDay.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([day, revenue]) => ({ day, revenue })),
-  };
+  return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', {
+    ...range,
+    clientId,
+    storeId: clientId === undefined ? firstStoreId(token) : undefined,
+  });
 }
 
 async function scopedDailyCounts(
@@ -927,34 +894,12 @@ async function scopedDailyCounts(
   rangeInput: PortalDateRange,
   clientId?: number,
 ): Promise<{ data: DailyCount[] }> {
-  const scope = portalScopeFromToken(token);
   const range = dailyRangeParams(rangeInput);
-  // Explicit client filter from the top-bar switcher → one scoped request.
-  if (clientId !== undefined) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', { ...range, clientId });
-  if (!scope.isRestricted) return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', range);
-  if (!scope.clientIds.length && !scope.storeIds.length) return { data: [] };
-  const ids = scope.clientIds.length ? scope.clientIds : [undefined];
-  const pages = await Promise.all(
-    ids.map((clientId) =>
-      apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', {
-        ...range,
-        clientId,
-        storeId: clientId === undefined ? firstStoreId(token) : undefined,
-      }),
-    ),
-  );
-  const byDay = new Map<string, DailyCount>();
-  for (const p of pages) {
-    for (const r of p.data ?? []) {
-      const cur = byDay.get(r.day) ?? { day: r.day, awaiting: 0, shipped: 0, cancelled: 0, total: 0 };
-      cur.awaiting += Number(r.awaiting ?? 0);
-      cur.shipped += Number(r.shipped ?? 0);
-      cur.cancelled += Number(r.cancelled ?? 0);
-      cur.total += Number(r.total ?? 0);
-      byDay.set(r.day, cur);
-    }
-  }
-  return { data: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)) };
+  return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', {
+    ...range,
+    clientId,
+    storeId: clientId === undefined ? firstStoreId(token) : undefined,
+  });
 }
 
 async function scopedReports(token: string, rangeInput: PortalDateRange): Promise<PortalReports> {

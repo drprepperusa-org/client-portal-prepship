@@ -78,8 +78,8 @@ assert(
 
 // ── 2. /dashboard sources Top-SKUs from the read-model, not a capped-array fold ──
 assert(
-  routeFlat.includes('dashboardTopSkus('),
-  '/dashboard sources bySku from the canonical dashboardTopSkus read-model',
+  routeFlat.includes('getClientPortalDashboardSummary('),
+  '/dashboard delegates to the canonical full-scope Dashboard read-model',
 );
 assert(
   !routeFlat.includes('topSkuRows('),
@@ -94,16 +94,16 @@ assert(
 
 // ── 3. The capped orders array feeds ONLY the non-ranking per-day bar chart ──
 assert(
-  /const rows = await db\.select\(\)\.from\(orders\)\.where\(where\)\.limit\(1000\)/.test(routeFlat),
-  'the capped orders array is explicitly bounded (limit 1000)',
+  !routeFlat.includes('limit(1000)') && !routeFlat.includes('dailyOrderUnitsRows'),
+  'the capped visual sample is removed',
 );
 assert(
-  routeFlat.includes('daily: dailyOrderUnitsRows(rows)'),
-  'the capped rows feed only the per-day orders/units bar series (a bounded visual sample)',
+  readModelFlat.includes('buildDashboardDailyRows(') && readModelFlat.includes('getSkuBreakdownFromOrderItems(salesQuery)'),
+  'daily orders/units come from complete backend aggregates',
 );
 assert(
-  routeFlat.includes('bySku,') && !routeFlat.includes('bySku: topSkuRows'),
-  '/dashboard returns the backend-owned bySku (never the capped-array fold)',
+  readModelFlat.includes('bySku: projectDashboardTopSkus(analysis.rows, 10)') && !routeFlat.includes('topSkuRows'),
+  '/dashboard returns backend-owned canonical bySku rows',
 );
 
 // ── 4. Frontend renders backend-ranked Top-SKUs verbatim (no ranking sort/slice) ──
@@ -126,12 +126,13 @@ assert(
   'Avg Shipping Price is computed in the backend read-model, not the frontend',
 );
 assert(
-  readModelFlat.includes('std_qty_total') && readModelFlat.includes('exp_qty_total'),
-  'Avg Shipping Price divides the SAME allocated label-cost (total_shipping) by the SAME shipped-unit denominator Analysis uses',
+  readModelFlat.includes("shippingBasis: 'customer_billed'") &&
+    readModelFlat.includes('std_qty_total') && readModelFlat.includes('exp_qty_total'),
+  'Avg Shipping Price divides canonical customer-billed shipping by the Analysis charged-unit denominator',
 );
 assert(
   !/shippingAmount/.test(readModel),
-  'the read-model does NOT re-derive Avg Shipping from the raw orders.shippingAmount JSONB (single SOT = allocated shipment label_cost)',
+  'the read-model does NOT re-derive Avg Shipping from raw orders.shippingAmount',
 );
 // The canonical owner zeroes revenue/shipping for non-financial callers, so the
 // read-model inherits redaction (avgShippingPrice becomes null when shipping=0).

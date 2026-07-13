@@ -2,16 +2,13 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
-import { and, gte, lte, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../../db/client';
-import { orders } from '../../db/schema/orders';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { activeClientPredicate, orderScopePredicate } from '../../lib/client-portal/predicates';
-import { dailyOrderUnitsRows } from '../../lib/client-portal/dashboard-aggregate';
-import { dashboardTopSkus } from '../../lib/client-portal/read-models/dashboard';
-import { getClientPortalSalesTotals, getClientPortalDailyRevenue } from '../analysis';
+import { getClientPortalDashboardSummary } from '../../lib/client-portal/read-models/dashboard';
 import { parseDate, asTimestamp, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
@@ -46,54 +43,17 @@ app.get('/dashboard', async (c) => {
   const to = parseDate(c.req.query('dateTo') ?? c.req.query('to')) ?? new Date();
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
-  const where = and(
-    orderScopePredicate(scope, { clientId, storeId }),
-    activeClientPredicate(),
-    gte(orders.orderDate, from),
-    lte(orders.orderDate, to)
-  );
-  // The capped orders array feeds ONLY the non-ranking per-day orders/units bar
-  // chart (`daily` below) — a bounded VISUAL sample, never a business ranking or
-  // financial total. Every ranked/financial number on this page comes from a
-  // set-based backend owner instead (see below), so nothing truncates at 1000.
-  const rows = await db.select().from(orders).where(where).limit(1000);
-  // CP-010 / CP-021: Revenue + Units KPIs, the revenue drill-down, AND the
-  // Top-SKUs ranking (with per-SKU units + Avg Shipping Price) all come from the
-  // ONE canonical Analysis SKU owner (set-based SQL over order_items + shipment
-  // label_cost allocation — no 1000-row truncation, same definition/filters as
-  // the Analysis page), NEVER from folding/sorting/slicing the capped rows above.
-  // Sharing the query is what STRUCTURALLY GUARANTEES Dashboard == Analysis for
-  // the same window/scope (same numbers, one definition).
-  const salesQuery = {
-    dateFrom: asTimestamp(from),
-    dateTo: asTimestamp(to),
-    clientId: clientId ?? undefined,
-    storeId: storeId ?? undefined,
-    clientIds: scope.clientIds,
-    storeIds: scope.storeIds,
-    scopeRestricted: scope.isRestricted,
-    canViewFinancials: scope.canViewFinancials,
-    includeCancelled: false,
-    hideTestOrders: false,
-  };
-  const [totals, dailyRevenue, bySku] = await Promise.all([
-    getClientPortalSalesTotals(salesQuery),
-    getClientPortalDailyRevenue(salesQuery),
-    // Backend ranks the Top-SKUs (units desc) via the canonical Analysis query;
-    // the frontend just renders these rows in order — no client-side ranking.
-    dashboardTopSkus({ ...salesQuery, limit: 10 }, 10),
-  ]);
-  await recordPortalAudit('portal.dashboard.view', scope, { from, to, rows: rows.length });
-  return c.json({
-    revenue: totals.revenue,
-    units: totals.units,
-    // CP-021: canonical, Analysis-parity Top-SKUs from the shared read-model.
-    bySku,
-    // Order + unit counts per day power the cumulative bar chart. Counts are
-    // non-financial, so they are returned regardless of canViewFinancials.
-    daily: dailyOrderUnitsRows(rows),
-    dailyRevenue,
+  // CP-049: the backend owns the complete scoped Dashboard DTO. The browser
+  // receives full-window aggregates and never fans out or folds business facts.
+  const summary = await getClientPortalDashboardSummary({
+    scope,
+    dateFrom: from,
+    dateTo: to,
+    clientId,
+    storeId,
   });
+  await recordPortalAudit('portal.dashboard.view', scope, { from, to });
+  return c.json(summary);
 });
 
 app.get('/daily-counts', async (c) => {

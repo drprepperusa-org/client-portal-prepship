@@ -10,7 +10,7 @@ import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts'
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
 import { ChartDayModal, type DayPeekSource } from '@/components/dashboard/ChartDayModal';
 import { staggerContainer } from '@/lib/motion';
-import { useDashboard, useDailyCounts, useDailyShipments, useAwaitingCount, useCanCustomizeTables } from '@/lib/hooks';
+import { useDashboard, useCanCustomizeTables } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useAuth } from '@/auth';
 import { money } from '@/lib/status';
@@ -35,16 +35,13 @@ const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.
 // Compact formulas, mirroring the backend-owned math in
 // src/lib/client-portal/read-models/dashboard.ts -> dashboardTopSkus.
 const UNITS_TOOLTIP = 'Sum order_items quantity (order_items SOT, matches Analysis)';
-const AVG_SHIPPING_TOOLTIP = 'Sum allocated shipment label cost / shipped units (same SOT as Analysis)';
+const AVG_SHIPPING_TOOLTIP = 'Canonical customer-billed shipping / charged units (same SOT as Analysis)';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
   const { userId } = useAuth();
   const nav = useNavigate();
   const dash = useDashboard();
-  const counts = useDailyCounts();
-  const ships = useDailyShipments();
-  const aw = useAwaitingCount();
   const canCustomizeTables = useCanCustomizeTables();
 
   // Live-peek modal: which KPI is open + the rect of the card it grew from.
@@ -77,17 +74,18 @@ export default function Dashboard() {
     setLayout((l) => ({ ...l, widths: { ...l.widths, [id]: l.widths[id] === 'full' ? 'half' : 'full' } }));
   const resetLayout = () => setLayout(DEFAULT_LAYOUT);
 
-  const loading = dash.isLoading || counts.isLoading || ships.isLoading || aw.isLoading;
-
-  const countRows = counts.data?.data ?? [];
-  // Open orders = current orders still awaiting shipment (live state count),
-  // sourced from the same endpoint as the sidebar badge.
-  const openOrders = aw.data?.count ?? 0;
-  const shipped = countRows.reduce((n, r) => n + Number(r.shipped ?? 0), 0);
+  const loading = dash.isLoading;
+  const dailyRows = dash.data?.daily ?? [];
+  const openOrders = dash.data?.openOrderCount ?? 0;
+  const shipped = dash.data?.period.shippedOrderCount ?? 0;
 
   // Full YYYY-MM-DD is kept so bar clicks resolve the day's full detail.
-  const ordersUnitsSeries = (dash.data?.daily ?? []).map((d) => ({ day: d.day, orders: d.orders, units: d.units }));
-  const volumeSeries = (ships.data?.data ?? []).map((r) => ({ day: r.day, vol: r.shipments }));
+  const ordersUnitsSeries = dailyRows.map((row) => ({
+    day: row.day,
+    orders: row.orderedOrders.value,
+    units: row.orderedUnits.value,
+  }));
+  const volumeSeries = dailyRows.map((row) => ({ day: row.day, vol: row.shipmentsCreated.value }));
   const topSkuRows = (dash.data?.bySku ?? []).slice(0, 8);
   const topSku = topSkuRows[0]?.sku ?? '-';
 
@@ -326,8 +324,8 @@ export default function Dashboard() {
           days,
           openOrders,
           units: Number(dash.data?.units ?? 0),
-          counts: countRows,
-          daily: dash.data?.daily ?? [],
+          period: dash.data?.period,
+          daily: dailyRows,
           bySku: dash.data?.bySku ?? [],
         }}
       />
@@ -338,7 +336,7 @@ export default function Dashboard() {
         origin={dayPeek?.origin}
         onClose={() => setDayPeek(null)}
         onNavigate={nav}
-        data={{ days, daily: dash.data?.daily ?? [], counts: countRows, shipments: ships.data?.data ?? [] }}
+        daily={dailyRows}
       />
     </div>
   );

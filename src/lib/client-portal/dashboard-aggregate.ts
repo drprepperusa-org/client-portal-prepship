@@ -1,35 +1,8 @@
-// Pure dashboard aggregation helpers, factored out of the client-portal route
-// so they carry NO heavy imports (no db client, no Hono app). The route feeds
-// them already-scoped order rows; a focused guard can import them directly to
-// unit-test the per-SKU shipping allocation without booting a database.
-//
-// READ-ONLY: these functions only fold over rows the caller already fetched.
-// They never query or mutate, so they are safe under the production data rails.
+// Pure dashboard aggregation helpers. Database read models feed these helpers
+// already-grouped daily facts, so this module owns only customer-visible period
+// context and carries no database/Hono imports.
 
-/**
- * Minimal structural shape of an order row consumed by the dashboard
- * aggregations. The route passes full `orders.$inferSelect` rows, which are
- * assignable to this — keeping the schema import out of this module.
- */
-export interface DashboardOrderRow {
-  items: unknown;
-  orderDate: Date | string | null;
-  orderTotal?: number | string | null;
-  shippingAmount?: number | string | null;
-}
-
-// CP-021: the former `topSkuRows(...)` folder — which ranked Top-SKUs and
-// allocated Avg Shipping Price by reducing a capped `orders.limit(1000)` array
-// in JS — was REMOVED. Those business rankings/financials now come from the ONE
-// canonical Analysis SKU query (src/lib/client-portal/read-models/dashboard.ts →
-// dashboardTopSkus, over getSkuBreakdownFromOrderItems). The helpers below stay
-// because they still power the non-ranking, non-financial per-day orders/units
-// bar chart (`dailyOrderUnitsRows`), a bounded visual sample only.
-
-/** A promo/discount line carries a negative unit price and is NOT a shippable
- *  item. Excluding it keeps the dashboard's unit counts and SKU rollups in
- *  lock-step with the order item list (src/lib/client-portal/dto.ts uses this
- *  same predicate), so every client-portal surface agrees on "units". */
+/** A promo/discount line carries a negative unit price and is not shippable. */
 export function isDiscountLine(item: unknown): boolean {
   if (!item || typeof item !== 'object') return false;
   const row = item as Record<string, unknown>;
@@ -37,37 +10,179 @@ export function isDiscountLine(item: unknown): boolean {
   return Number.isFinite(price) && price < 0;
 }
 
-/** Sum of shippable line-item quantities on an order (ignores non-numeric/qty<=0
- *  and discount/promo lines). */
-export function safeItemQty(value: unknown): number {
-  if (!Array.isArray(value)) return 0;
-  return value.reduce((sum, item) => {
-    if (!item || typeof item !== 'object' || isDiscountLine(item)) return sum;
-    const qty = Number((item as Record<string, unknown>).quantity ?? (item as Record<string, unknown>).qty ?? 0);
-    return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
-  }, 0);
+export interface DashboardDailySalesInput {
+  day: string;
+  orders: number;
+  units: number;
 }
 
-/** YYYY-MM-DD bucket key for an order date, or null when unparseable. */
-export function dayKey(value: unknown): string | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+export interface DashboardDailyStatusInput {
+  day: string;
+  awaiting: number;
+  shipped: number;
+  cancelled: number;
+  total: number;
 }
 
-/** Per-day order count + shippable unit count, ascending by day. Both metrics
- *  come from the same scoped row set so the Dashboard's cumulative bar always
- *  has aligned orders/units segments. */
-export function dailyOrderUnitsRows(rows: DashboardOrderRow[]): Array<{ day: string; orders: number; units: number }> {
-  const byDay = new Map<string, { day: string; orders: number; units: number }>();
-  for (const row of rows) {
-    const key = dayKey(row.orderDate);
-    if (!key) continue;
-    const current = byDay.get(key) ?? { day: key, orders: 0, units: 0 };
-    current.orders += 1;
-    current.units += safeItemQty(row.items);
-    byDay.set(key, current);
-  }
-  return [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
+export interface DashboardDailyShipmentInput {
+  day: string;
+  shipments: number;
+}
+
+/**
+ * Backend-owned context for one daily metric.
+ *
+ * Source input: one full-window set-based daily series. Event clock: the
+ * metric's documented order_date or ship_date day. Formula owner: this module.
+ * The browser may format these fields but must never recompute them.
+ */
+export interface DashboardDailyMetric {
+  value: number;
+  periodTotal: number;
+  dailyAverage: number;
+  periodSharePercent: number;
+  vsDailyAveragePercent: number;
+  busiestRank: number;
+  periodDayCount: number;
+}
+
+export interface DashboardDailyRow {
+  day: string;
+  orderedOrders: DashboardDailyMetric;
+  orderedUnits: DashboardDailyMetric;
+  allOrders: DashboardDailyMetric;
+  awaitingOrders: DashboardDailyMetric;
+  shippedOrders: DashboardDailyMetric;
+  cancelledOrders: DashboardDailyMetric;
+  shipmentsCreated: DashboardDailyMetric;
+  unitsPerOrder: number;
+}
+
+export interface DashboardPeriodSummary {
+  dayCount: number;
+  orderedOrderCount: number;
+  orderedUnitCount: number;
+  allOrderCount: number;
+  awaitingOrderCount: number;
+  shippedOrderCount: number;
+  cancelledOrderCount: number;
+  shipmentCount: number;
+  averageShippedOrdersPerDay: number;
+  peakShippedOrderCount: number;
+}
+
+type BaseDailyRow = {
+  day: string;
+  orderedOrders: number;
+  orderedUnits: number;
+  allOrders: number;
+  awaitingOrders: number;
+  shippedOrders: number;
+  cancelledOrders: number;
+  shipmentsCreated: number;
+};
+
+function finiteCount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function total(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function metricContext(values: number[], index: number, periodTotal: number): DashboardDailyMetric {
+  const value = values[index] ?? 0;
+  const periodDayCount = values.length;
+  const dailyAverage = periodDayCount > 0 ? periodTotal / periodDayCount : 0;
+  return {
+    value,
+    periodTotal,
+    dailyAverage,
+    periodSharePercent: periodTotal > 0 ? (value / periodTotal) * 100 : 0,
+    vsDailyAveragePercent: dailyAverage > 0 ? ((value - dailyAverage) / dailyAverage) * 100 : 0,
+    busiestRank: values.filter((candidate) => candidate > value).length + 1,
+    periodDayCount,
+  };
+}
+
+/**
+ * Merge backend daily aggregates into the single Dashboard day DTO. The inputs
+ * are already complete, scoped SQL aggregates; this function owns only the
+ * period total/average/share/rank formulas exposed to customers.
+ */
+export function buildDashboardDailyRows(
+  salesRows: DashboardDailySalesInput[],
+  statusRows: DashboardDailyStatusInput[],
+  shipmentRows: DashboardDailyShipmentInput[],
+): { daily: DashboardDailyRow[]; period: DashboardPeriodSummary } {
+  const days = Array.from(
+    new Set([
+      ...salesRows.map((row) => row.day),
+      ...statusRows.map((row) => row.day),
+      ...shipmentRows.map((row) => row.day),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
+  const salesByDay = new Map(salesRows.map((row) => [row.day, row]));
+  const statusByDay = new Map(statusRows.map((row) => [row.day, row]));
+  const shipmentsByDay = new Map(shipmentRows.map((row) => [row.day, row]));
+  const baseRows: BaseDailyRow[] = days.map((day) => {
+    const sales = salesByDay.get(day);
+    const status = statusByDay.get(day);
+    const shipment = shipmentsByDay.get(day);
+    return {
+      day,
+      orderedOrders: finiteCount(sales?.orders),
+      orderedUnits: finiteCount(sales?.units),
+      allOrders: finiteCount(status?.total),
+      awaitingOrders: finiteCount(status?.awaiting),
+      shippedOrders: finiteCount(status?.shipped),
+      cancelledOrders: finiteCount(status?.cancelled),
+      shipmentsCreated: finiteCount(shipment?.shipments),
+    };
+  });
+  const values = {
+    orderedOrders: baseRows.map((row) => row.orderedOrders),
+    orderedUnits: baseRows.map((row) => row.orderedUnits),
+    allOrders: baseRows.map((row) => row.allOrders),
+    awaitingOrders: baseRows.map((row) => row.awaitingOrders),
+    shippedOrders: baseRows.map((row) => row.shippedOrders),
+    cancelledOrders: baseRows.map((row) => row.cancelledOrders),
+    shipmentsCreated: baseRows.map((row) => row.shipmentsCreated),
+  };
+  const totals = {
+    orderedOrders: total(values.orderedOrders),
+    orderedUnits: total(values.orderedUnits),
+    allOrders: total(values.allOrders),
+    awaitingOrders: total(values.awaitingOrders),
+    shippedOrders: total(values.shippedOrders),
+    cancelledOrders: total(values.cancelledOrders),
+    shipmentsCreated: total(values.shipmentsCreated),
+  };
+  const daily = baseRows.map((row, index): DashboardDailyRow => ({
+    day: row.day,
+    orderedOrders: metricContext(values.orderedOrders, index, totals.orderedOrders),
+    orderedUnits: metricContext(values.orderedUnits, index, totals.orderedUnits),
+    allOrders: metricContext(values.allOrders, index, totals.allOrders),
+    awaitingOrders: metricContext(values.awaitingOrders, index, totals.awaitingOrders),
+    shippedOrders: metricContext(values.shippedOrders, index, totals.shippedOrders),
+    cancelledOrders: metricContext(values.cancelledOrders, index, totals.cancelledOrders),
+    shipmentsCreated: metricContext(values.shipmentsCreated, index, totals.shipmentsCreated),
+    unitsPerOrder: row.orderedOrders > 0 ? row.orderedUnits / row.orderedOrders : 0,
+  }));
+  return {
+    daily,
+    period: {
+      dayCount: days.length,
+      orderedOrderCount: totals.orderedOrders,
+      orderedUnitCount: totals.orderedUnits,
+      allOrderCount: totals.allOrders,
+      awaitingOrderCount: totals.awaitingOrders,
+      shippedOrderCount: totals.shippedOrders,
+      cancelledOrderCount: totals.cancelledOrders,
+      shipmentCount: totals.shipmentsCreated,
+      averageShippedOrdersPerDay: days.length > 0 ? totals.shippedOrders / days.length : 0,
+      peakShippedOrderCount: values.shippedOrders.length > 0 ? Math.max(...values.shippedOrders) : 0,
+    },
+  };
 }

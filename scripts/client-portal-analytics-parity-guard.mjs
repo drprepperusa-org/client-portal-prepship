@@ -35,6 +35,8 @@ const analysisFlat = flat(analysis);
 // in analysis.ts. Concatenate both so the parity pins resolve in one string.
 const route = read('src/routes/client-portal/dashboard.ts') + '\n' + read('src/routes/client-portal/analysis.ts');
 const routeFlat = flat(route);
+const dashboardReadModel = read('src/lib/client-portal/read-models/dashboard.ts');
+const dashboardReadModelFlat = flat(dashboardReadModel);
 const analysisPage = read('portal-client/src/pages/Analysis.tsx');
 const analysisPageFlat = flat(analysisPage);
 const hooks = read('portal-client/src/lib/hooks.ts');
@@ -44,8 +46,8 @@ const pkg = JSON.parse(read('package.json'));
 
 // ── 1. One canonical owner, set-based (no capped row reduction) ──
 assert(
-  analysis.includes('export async function getClientPortalSalesTotals'),
-  'analysis.ts exports the canonical sales-metrics owner getClientPortalSalesTotals',
+  analysis.includes('export async function getClientPortalSalesMetrics'),
+  'analysis.ts exports the canonical full-window sales-metrics owner',
 );
 assert(
   analysis.includes('export async function getClientPortalDailyRevenue'),
@@ -64,13 +66,15 @@ assert(
   'per-SKU rows define revenue as sum(unit_price * qty) (line-item product revenue)',
 );
 assert(
-  (analysisFlat.match(/coalesce\(oi\.unit_price, 0\)::numeric \* greatest\(0, coalesce\(oi\.quantity, 0\)\)/g) || []).length >= 2,
+  (analysisFlat.match(/coalesce\(oi\.unit_price, 0\)::numeric \* greatest\(0, coalesce\(oi\.quantity, 0\)\)/g) || []).length >= 1 &&
+    analysisFlat.includes('period_revenue') && analysisFlat.includes('daily: rows.map'),
   'the canonical total + daily revenue both use the same unit_price × quantity definition (rows roll up to KPI)',
 );
 
 // ── 3. Financial redaction is owned by the backend owner, not the UI ──
 assert(
-  analysisFlat.includes('revenue: canViewFinancials ? Number(raw.revenue) || 0 : 0'),
+  analysisFlat.includes('revenue: canViewFinancials ? Number(first?.period_revenue) || 0 : 0') &&
+    analysisFlat.includes('revenue: canViewFinancials ? Number(row.revenue) || 0 : 0'),
   'the owner zeroes revenue when canViewFinancials is false (redaction in the owner)',
 );
 assert(
@@ -80,12 +84,13 @@ assert(
 
 // ── 4. /dashboard KPIs come from the owner — never from the .limit(1000) rows ──
 assert(
-  routeFlat.includes('getClientPortalSalesTotals(salesQuery)') &&
-    routeFlat.includes('getClientPortalDailyRevenue(salesQuery)'),
-  '/dashboard sources Revenue/Units + daily revenue from the canonical owner',
+  routeFlat.includes('getClientPortalDashboardSummary') &&
+    dashboardReadModelFlat.includes('getSkuBreakdownFromOrderItems(salesQuery)'),
+  '/dashboard delegates to a read model backed by the canonical Analysis owner',
 );
 assert(
-  routeFlat.includes('revenue: totals.revenue') && routeFlat.includes('units: totals.units'),
+  dashboardReadModelFlat.includes('revenue: analysis.totalRevenue') &&
+    dashboardReadModelFlat.includes('units: analysis.totalUnits'),
   '/dashboard renders the owner totals as its Revenue/Units KPIs',
 );
 assert(
@@ -94,7 +99,7 @@ assert(
   '/dashboard no longer reduces the capped rows into an authoritative revenue KPI',
 );
 assert(
-  routeFlat.includes('includeCancelled: false'),
+  dashboardReadModelFlat.includes('includeCancelled: false'),
   '/dashboard applies the same non-cancelled policy the owner/Analysis use',
 );
 

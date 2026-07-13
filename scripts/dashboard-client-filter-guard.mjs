@@ -38,7 +38,8 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(/dailyShipments:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(api), 'portalApi.dailyShipments accepts clientId');
   assert(/awaitingCount:\s*\(token: string, clientId\?: number\)/.test(api), 'portalApi.awaitingCount accepts clientId');
   assert(/async function scopedDashboard\(\s*token: string,\s*rangeInput: PortalDateRange,\s*clientId\?: number,?/.test(api), 'scopedDashboard threads clientId');
-  assert(api.includes('if (clientId !== undefined) return apiGet<DashboardSummary>'), 'scopedDashboard short-circuits to a single scoped request for an explicit client');
+  const dashboardOwner = api.slice(api.indexOf('async function scopedDashboard'), api.indexOf('async function scopedDailyCounts'));
+  assert(dashboardOwner.includes('return apiGet<DashboardSummary>') && !dashboardOwner.includes('Promise.all'), 'scopedDashboard always makes one scoped backend request');
   assert(/async function scopedDailyCounts\(\s*token: string,\s*rangeInput: PortalDateRange,\s*clientId\?: number,?/.test(api), 'scopedDailyCounts threads clientId');
 }
 

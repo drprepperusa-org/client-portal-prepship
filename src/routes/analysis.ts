@@ -276,10 +276,7 @@ function withAnalysisScope<T extends object>(c: Context, q: T): T & ClientStoreS
 function analysisOrderScopePredicate(q: AnalysisScopeInput): SQL {
   const predicates: SQL[] = [];
   const clientIds = normalizeScopeIds(q.clientIds);
-  const storeIds = normalizeScopeIds([
-    ...(q.storeIds ?? []),
-    ...(q.storeId !== undefined ? [q.storeId] : []),
-  ]);
+  const storeIds = normalizeScopeIds(q.storeIds);
 
   if (clientIds.length) {
     predicates.push(sql`o.client_id = any(${intArraySql(clientIds)})`);
@@ -287,11 +284,14 @@ function analysisOrderScopePredicate(q: AnalysisScopeInput): SQL {
   if (storeIds.length) {
     predicates.push(sql`o.store_id = any(${intArraySql(storeIds)})`);
   }
-  if (!predicates.length) {
-    return q.scopeRestricted === true || q.isRestricted === true ? sql`false` : sql`true`;
-  }
-  if (predicates.length === 1) return predicates[0]!;
-  return sql`(${sql.join(predicates, sql` or `)})`;
+  const scopePredicate = !predicates.length
+    ? (q.scopeRestricted === true || q.isRestricted === true ? sql`false` : sql`true`)
+    : predicates.length === 1
+      ? predicates[0]!
+      : sql`(${sql.join(predicates, sql` or `)})`;
+  return q.storeId === undefined
+    ? scopePredicate
+    : sql`(${scopePredicate}) and o.store_id = ${q.storeId}`;
 }
 
 function analysisShipmentScopePredicate(q: AnalysisScopeInput): SQL {
@@ -652,7 +652,18 @@ export interface ClientPortalSalesTotals {
   orders: number;
 }
 
-export async function getClientPortalSalesTotals(q: SalesTotalsQuery): Promise<ClientPortalSalesTotals> {
+export interface ClientPortalDailySales {
+  day: string;
+  revenue: number;
+  units: number;
+  orders: number;
+}
+
+export interface ClientPortalSalesMetrics extends ClientPortalSalesTotals {
+  daily: ClientPortalDailySales[];
+}
+
+export async function getClientPortalSalesMetrics(q: SalesTotalsQuery): Promise<ClientPortalSalesMetrics> {
   const fromIso = new Date(q.dateFrom).toISOString();
   const toIso = new Date(q.dateTo).toISOString();
   const cid: number | null = q.clientId ?? null;
@@ -670,33 +681,82 @@ export async function getClientPortalSalesTotals(q: SalesTotalsQuery): Promise<C
       )`
     : sql``;
 
-  const rows = await db.execute<{ revenue: string; units: number; orders: number }>(sql`
+  const rows = await db.execute<{
+    day: string;
+    revenue: string;
+    units: number;
+    orders: number;
+    period_revenue: string;
+    period_units: number;
+    period_orders: number;
+  }>(sql`
+    with calendar as (
+      select generate_series(
+        (${fromIso}::timestamptz at time zone 'UTC')::date,
+        (${toIso}::timestamptz at time zone 'UTC')::date,
+        interval '1 day'
+      )::date as day
+    ),
+    daily_sales as (
+      select
+        (o.order_date at time zone 'UTC')::date as day,
+        coalesce(sum(coalesce(oi.unit_price, 0)::numeric * greatest(0, coalesce(oi.quantity, 0))), 0) as revenue,
+        coalesce(sum(greatest(0, coalesce(oi.quantity, 0))), 0)::int as units,
+        count(distinct o.id)::int as orders
+      from order_items oi
+      join orders o on o.id = oi.order_id
+      left join clients c on c.id = o.client_id
+      where ${cancelledFilter}
+        and o.order_date >= ${fromIso}::timestamptz
+        and o.order_date <= ${toIso}::timestamptz
+        ${testOrderFilter}
+        and (${cid}::int is null or o.client_id = ${cid}::int)
+        and ${analysisOrderScopePredicate(q)}
+        and oi.quantity > 0
+        and oi.sku <> ''
+        and (o.client_id is null or coalesce(c.active, true) = true)
+      group by (o.order_date at time zone 'UTC')::date
+    ),
+    dense_daily as (
+      select
+        to_char(calendar.day, 'YYYY-MM-DD') as day,
+        coalesce(daily_sales.revenue, 0) as revenue,
+        coalesce(daily_sales.units, 0)::int as units,
+        coalesce(daily_sales.orders, 0)::int as orders
+      from calendar
+      left join daily_sales on daily_sales.day = calendar.day
+    )
     select
-      coalesce(sum(coalesce(oi.unit_price, 0)::numeric * greatest(0, coalesce(oi.quantity, 0))), 0)::text as revenue,
-      coalesce(sum(greatest(0, coalesce(oi.quantity, 0))), 0)::int as units,
-      count(distinct o.id)::int as orders
-    from order_items oi
-    join orders o on o.id = oi.order_id
-    left join clients c on c.id = o.client_id
-    where ${cancelledFilter}
-      and o.order_date >= ${fromIso}::timestamptz
-      and o.order_date <= ${toIso}::timestamptz
-      ${testOrderFilter}
-      and (${cid}::int is null or o.client_id = ${cid}::int)
-      and ${analysisOrderScopePredicate(q)}
-      and oi.quantity > 0
-      and oi.sku <> ''
-      and (o.client_id is null or coalesce(c.active, true) = true)
+      day,
+      revenue::text as revenue,
+      units,
+      orders,
+      coalesce(sum(revenue) over (), 0)::text as period_revenue,
+      coalesce(sum(units) over (), 0)::int as period_units,
+      coalesce(sum(orders) over (), 0)::int as period_orders
+    from dense_daily
+    order by day asc
   `);
 
-  const raw = rows[0] ?? { revenue: '0', units: 0, orders: 0 };
+  const first = rows[0];
   const canViewFinancials = q.canViewFinancials !== false;
   return {
     // Revenue is financially gated here — the owner enforces redaction, not the UI.
-    revenue: canViewFinancials ? Number(raw.revenue) || 0 : 0,
-    units: Number(raw.units) || 0,
-    orders: Number(raw.orders) || 0,
+    revenue: canViewFinancials ? Number(first?.period_revenue) || 0 : 0,
+    units: Number(first?.period_units) || 0,
+    orders: Number(first?.period_orders) || 0,
+    daily: rows.map((row) => ({
+      day: row.day,
+      revenue: canViewFinancials ? Number(row.revenue) || 0 : 0,
+      units: Number(row.units) || 0,
+      orders: Number(row.orders) || 0,
+    })),
   };
+}
+
+export async function getClientPortalSalesTotals(q: SalesTotalsQuery): Promise<ClientPortalSalesTotals> {
+  const { daily: _daily, ...totals } = await getClientPortalSalesMetrics(q);
+  return totals;
 }
 
 // CP-010: per-day companion to getClientPortalSalesTotals, using the SAME filter
@@ -704,41 +764,8 @@ export async function getClientPortalSalesTotals(q: SalesTotalsQuery): Promise<C
 // Revenue KPI. Financially gated (empty when the caller can't view financials).
 export async function getClientPortalDailyRevenue(q: SalesTotalsQuery): Promise<Array<{ day: string; revenue: number }>> {
   if (q.canViewFinancials === false) return [];
-  const fromIso = new Date(q.dateFrom).toISOString();
-  const toIso = new Date(q.dateTo).toISOString();
-  const cid: number | null = q.clientId ?? null;
-  const cancelledFilter = q.includeCancelled
-    ? sql`true`
-    : sql`coalesce(o.order_status, '') <> 'cancelled'`;
-  const testOrderFilter = q.hideTestOrders
-    ? sql`and not (
-        coalesce(c.is_test, false) = true
-        or coalesce(o.order_number, '') ilike 'TESTING-%'
-        or o.raw @> '{"test": true}'::jsonb
-        or o.raw @> '{"testing": true}'::jsonb
-      )`
-    : sql``;
-
-  const rows = await db.execute<{ day: string; revenue: string }>(sql`
-    select
-      to_char(o.order_date at time zone 'UTC', 'YYYY-MM-DD') as day,
-      coalesce(sum(coalesce(oi.unit_price, 0)::numeric * greatest(0, coalesce(oi.quantity, 0))), 0)::text as revenue
-    from order_items oi
-    join orders o on o.id = oi.order_id
-    left join clients c on c.id = o.client_id
-    where ${cancelledFilter}
-      and o.order_date >= ${fromIso}::timestamptz
-      and o.order_date <= ${toIso}::timestamptz
-      ${testOrderFilter}
-      and (${cid}::int is null or o.client_id = ${cid}::int)
-      and ${analysisOrderScopePredicate(q)}
-      and oi.quantity > 0
-      and oi.sku <> ''
-      and (o.client_id is null or coalesce(c.active, true) = true)
-    group by to_char(o.order_date at time zone 'UTC', 'YYYY-MM-DD')
-    order by day asc
-  `);
-  return rows.map((r) => ({ day: r.day, revenue: Number(r.revenue) || 0 }));
+  const metrics = await getClientPortalSalesMetrics(q);
+  return metrics.daily.map(({ day, revenue }) => ({ day, revenue }));
 }
 type SkuBreakdownRow = {
   sku: string;
@@ -1027,8 +1054,8 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
   // CP-010: canonical KPI totals from the single sales-metrics owner. These are
   // set-based (no LIMIT), so the Revenue/Units KPI never truncates and always
   // equals the roll-up of the per-SKU rows above (same filter set).
-  const [salesTotals, orderCombinations] = await Promise.all([
-    getClientPortalSalesTotals(q),
+  const [salesMetrics, orderCombinations] = await Promise.all([
+    getClientPortalSalesMetrics(q),
     q.includeOrderCombinations === true
       ? getOrderCombinationsFromOrderItems(q)
       : Promise.resolve([] as AnalysisOrderCombination[]),
@@ -1061,8 +1088,9 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
     totalSkus: enrichedRows.length,
     totalOrders: totalOrders[0]?.count ?? 0,
     // CP-010: backend-owned canonical KPI totals (already financially redacted).
-    totalRevenue: salesTotals.revenue,
-    totalUnits: salesTotals.units,
+    totalRevenue: salesMetrics.revenue,
+    totalUnits: salesMetrics.units,
+    dailySales: salesMetrics.daily,
     orderCombinations,
   };
 }
