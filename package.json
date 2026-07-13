@@ -135,6 +135,7 @@
     "test:secrets-governance": "node scripts/secrets-governance-guard.mjs",
     "test:audit-logging": "node scripts/audit-logging-guard.mjs",
     "test:client-portal-audit-log": "node scripts/client-portal-audit-log-guard.mjs",
+    "test:client-portal-access-security": "tsx scripts/client-portal-access-security-guard.ts",
     "test:reconciliation-plan": "node scripts/reconciliation-plan-guard.mjs",
     "test:observability-alerting": "node scripts/observability-alerting-guard.mjs",    "test:operational-runbooks": "node scripts/operational-runbooks-guard.mjs",
     "test:privacy-compliance": "node scripts/privacy-compliance-guard.mjs",

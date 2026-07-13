@@ -51,18 +51,25 @@ function IconBtn({ tone, label, onClick, disabled, children }: { tone: IconTone;
 export function AccessUserCard({
   user,
   isSelf,
+  canManageAdmins,
   onEdit,
   onConfirm,
 }: {
   user: PortalAccessUser;
   isSelf: boolean;
+  canManageAdmins: boolean;
   onEdit: () => void;
   onConfirm: (kind: ConfirmKind) => void;
 }) {
   const handledClients = user.clients;
   const lastSeen = relativeTime(user.lastSignInAt);
   // Why an action is blocked, surfaced as a tooltip + disabled state.
-  const lockReason = user.isProtected ? 'Protected operator account' : isSelf ? 'This is your own login' : null;
+  const adminLockReason = user.isAdmin && !canManageAdmins ? 'Global admin access required' : null;
+  const destructiveLockReason = adminLockReason ?? (user.isProtected
+    ? 'Protected operator account'
+    : isSelf
+      ? 'This is your own login'
+      : null);
 
   return (
     <motion.div layout className="rounded-glass-sm bg-white/65 ring-1 ring-slate-200/70 transition-shadow hover:shadow-glass">
@@ -83,27 +90,37 @@ export function AccessUserCard({
           <Chip accent={user.isAdmin ? 'violet' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
           {user.isGlobal && <Chip accent="emerald" dot={false}>Global</Chip>}
           <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200/70 pl-1.5">
-            <IconBtn tone="brand" label="Edit access" onClick={onEdit}>
+            <IconBtn
+              tone="brand"
+              label={adminLockReason ? `Can't edit · ${adminLockReason}` : 'Edit access'}
+              disabled={Boolean(adminLockReason)}
+              onClick={onEdit}
+            >
               <Pencil size={15} />
             </IconBtn>
             {user.active !== false ? (
               <IconBtn
                 tone="amber"
-                label={lockReason ? `Can't deactivate · ${lockReason}` : 'Deactivate login'}
-                disabled={Boolean(lockReason)}
+                label={destructiveLockReason ? `Can't deactivate · ${destructiveLockReason}` : 'Deactivate login'}
+                disabled={Boolean(destructiveLockReason)}
                 onClick={() => onConfirm('deactivate')}
               >
                 <UserX size={15} />
               </IconBtn>
             ) : (
-              <IconBtn tone="emerald" label="Activate login" onClick={() => onConfirm('activate')}>
+              <IconBtn
+                tone="emerald"
+                label={adminLockReason ? `Can't activate · ${adminLockReason}` : 'Activate login'}
+                disabled={Boolean(adminLockReason)}
+                onClick={() => onConfirm('activate')}
+              >
                 <UserCheck size={15} />
               </IconBtn>
             )}
             <IconBtn
               tone="rose"
-              label={lockReason ? `Can't delete · ${lockReason}` : 'Delete login'}
-              disabled={Boolean(lockReason)}
+              label={destructiveLockReason ? `Can't delete · ${destructiveLockReason}` : 'Delete login'}
+              disabled={Boolean(destructiveLockReason)}
               onClick={() => onConfirm('delete')}
             >
               <Trash2 size={15} />

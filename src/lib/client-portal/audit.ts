@@ -29,24 +29,43 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 
 export async function recordPortalAudit(
   event: string,
-  scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds' | 'auditSource'>,
+  scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds'>,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
-  if (scope.auditSource === 'background') return;
-
-  const safeMetadata = metadataRecord(sanitizePortalAuditMetadata(metadata));
   try {
-    await db.insert(clientPortalAuditLogs).values({
-      event,
-      actorUserId: scope.userId || null,
-      actorEmail: scope.email ?? null,
-      clientIds: scope.clientIds,
-      storeIds: scope.storeIds,
-      metadata: safeMetadata,
-    });
+    await persistPortalAudit(event, scope, metadata);
   } catch (error) {
     console.warn('[client-portal:audit] persist failed', error);
   }
+}
+
+export async function recordCriticalPortalAudit(
+  event: string,
+  scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds'>,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await persistPortalAudit(event, scope, metadata);
+  } catch (error) {
+    console.warn('[client-portal:audit] critical persist failed', error);
+    throw new Error('Portal audit persistence unavailable');
+  }
+}
+
+async function persistPortalAudit(
+  event: string,
+  scope: Pick<ClientPortalScope, 'userId' | 'email' | 'clientIds' | 'storeIds'>,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  const safeMetadata = metadataRecord(sanitizePortalAuditMetadata(metadata));
+  await db.insert(clientPortalAuditLogs).values({
+    event,
+    actorUserId: scope.userId || null,
+    actorEmail: scope.email ?? null,
+    clientIds: scope.clientIds,
+    storeIds: scope.storeIds,
+    metadata: safeMetadata,
+  });
 
   console.info('[client-portal:audit]', {
     event,

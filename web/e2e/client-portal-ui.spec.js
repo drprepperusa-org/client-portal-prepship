@@ -98,7 +98,7 @@ const invoiceTotals = {
   rowTotal: 0,
 };
 
-function responseFor(pathname, admin) {
+function responseFor(pathname, admin, capabilities = {}) {
   if (pathname === '/api/client-portal/me') {
     return {
       id: admin ? 'e2e-admin' : 'e2e-client',
@@ -110,6 +110,9 @@ function responseFor(pathname, admin) {
       clientIds: admin ? [] : [1],
       storeIds: [],
       canViewFinancials: true,
+      canManageUsers: capabilities.canManageUsers ?? admin,
+      canManageAdmins: capabilities.canManageAdmins ?? admin,
+      canViewAudit: capabilities.canViewAudit ?? admin,
     };
   }
   if (pathname === '/api/client-portal/clients') {
@@ -214,7 +217,7 @@ function responseFor(pathname, admin) {
   return { data: [], pagination: emptyPagination };
 }
 
-async function setupPortal(page, { admin = true } = {}) {
+async function setupPortal(page, { admin = true, capabilities = {} } = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
@@ -231,7 +234,7 @@ async function setupPortal(page, { admin = true } = {}) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(responseFor(url.pathname, admin)),
+        body: JSON.stringify(responseFor(url.pathname, admin, capabilities)),
       });
       return;
     }
@@ -393,4 +396,18 @@ test('client users remain denied from admin settings', async ({ page }) => {
   await page.goto(`${baseUrl}/settings`);
   await expect(page).toHaveURL(`${baseUrl}/`);
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+});
+
+test('scoped user managers see client access controls without admin escalation options', async ({ page }) => {
+  await setupPortal(page, {
+    admin: false,
+    capabilities: { canManageUsers: true, canManageAdmins: false, canViewAudit: false },
+  });
+  await page.goto(`${baseUrl}/settings`);
+  await expect(page).toHaveURL(`${baseUrl}/settings`);
+  await expect(page.getByText('Account access')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Profile' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Invite User' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByText('Admin - global access')).toHaveCount(0);
 });

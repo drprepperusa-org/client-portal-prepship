@@ -109,7 +109,7 @@ app.use(
   '*',
   cors({
     origin: (origin) => (isAllowedCorsOrigin(origin) ? origin : null),
-    allowHeaders: ['Authorization', 'Content-Type', 'X-Request-Id', 'X-Correlation-Id', 'X-Portal-Audit-Source'],
+    allowHeaders: ['Authorization', 'Content-Type', 'X-Request-Id', 'X-Correlation-Id'],
     exposeHeaders: ['X-Request-Id', 'Server-Timing'],
   })
 );

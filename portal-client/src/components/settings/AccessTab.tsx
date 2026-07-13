@@ -8,7 +8,7 @@ import { SkeletonRows } from '@/components/ui/Display';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useClients, useAccessList } from '@/lib/hooks';
+import { useClients, useAccessList, useMe } from '@/lib/hooks';
 import { portalApi, type PortalAccessUser, type PortalClientRow } from '@/lib/api';
 import { ACCENTS, type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
@@ -24,6 +24,7 @@ export function AccessTab() {
   const { accessToken, userId } = useAuth();
   const clients = useClients().data?.data ?? [];
   const accessList = useAccessList();
+  const canManageAdmins = useMe().data?.canManageAdmins ?? false;
   const [accessSearch, setAccessSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const accessUsers = accessList.data?.data ?? [];
@@ -44,15 +45,19 @@ export function AccessTab() {
 
   const accessStats: { label: string; value: number; icon: typeof Users; accent: Accent }[] = [
     { label: 'Total logins', value: accessUsers.length, icon: Users, accent: 'indigo' },
-    { label: 'Admins', value: adminCount, icon: ShieldCheck, accent: 'violet' },
+    ...(canManageAdmins ? [{ label: 'Admins', value: adminCount, icon: ShieldCheck, accent: 'violet' as const }] : []),
     { label: 'Client users', value: clientCount, icon: User, accent: 'sky' },
     { label: 'Stores covered', value: storesCovered, icon: Store, accent: 'emerald' },
   ];
   const roleFilters: { id: RoleFilter; label: string; count: number }[] = [
     { id: 'all', label: 'All', count: accessUsers.length },
-    { id: 'admin', label: 'Admins', count: adminCount },
     { id: 'client', label: 'Clients', count: clientCount },
-    { id: 'global', label: 'Global', count: globalCount },
+    ...(canManageAdmins
+      ? [
+          { id: 'admin' as const, label: 'Admins', count: adminCount },
+          { id: 'global' as const, label: 'Global', count: globalCount },
+        ]
+      : []),
   ];
 
   const filteredAccessUsers = accessUsers.filter((user) => {
@@ -188,6 +193,7 @@ export function AccessTab() {
             key={user.id}
             user={user}
             isSelf={user.id === userId}
+            canManageAdmins={canManageAdmins}
             onEdit={() => setEditTarget(user)}
             onConfirm={(kind) => setConfirm({ kind, user })}
           />
@@ -242,6 +248,7 @@ export function AccessTab() {
           user={editTarget}
           clients={allClients.length ? allClients : clients}
           token={accessToken}
+          canManageAdmins={canManageAdmins}
           onClose={() => setEditTarget(null)}
           onSaved={async () => {
             await accessList.refetch();
@@ -253,6 +260,7 @@ export function AccessTab() {
         <AccessInviteModal
           clients={allClients.length ? allClients : clients}
           token={accessToken}
+          canManageAdmins={canManageAdmins}
           onClose={() => setInviteOpen(false)}
           onInvited={async () => {
             await accessList.refetch();

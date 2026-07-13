@@ -94,11 +94,16 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const { signOut, email, accessToken } = useAuth();
   const me = useMe();
   const isAdmin = me.data?.isAdmin ?? false;
+  const canManageUsers = me.data?.canManageUsers ?? false;
+  const canViewAudit = me.data?.canViewAudit ?? false;
   const displayName = email ? email.split('@')[0] : 'Account';
   const awaitingCount = useAwaitingCount().data?.count ?? 0;
-  // Settings is admin-only — hide it from the rail for non-admins so the nav
-  // mirrors the route guard (server also enforces admin scope).
-  const navItems = isAdmin ? NAV : NAV.filter((item) => item.to !== '/settings' && item.to !== '/audit-log');
+  // Backend capabilities own access-management and audit navigation.
+  const navItems = NAV.filter((item) => {
+    if (item.to === '/settings') return canManageUsers;
+    if (item.to === '/audit-log') return canViewAudit;
+    return true;
+  });
 
   function handleNavItemClick(item: NavItem) {
     if (!accessToken) return;

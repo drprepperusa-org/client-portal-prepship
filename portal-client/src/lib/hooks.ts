@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/auth';
-import { backgroundRequest, portalApi, type ListOpts } from './api';
+import { portalApi, type ListOpts } from './api';
 // ListOpts is re-used by useReturns below (returns filter shape mirrors it).
 import { usePortalFilters } from './portalContext';
 
@@ -42,7 +42,7 @@ export function useAuditLog(search = '', limit = 100) {
     refetchOnWindowFocus: true,
   });
 }
-export const useClients = () => useTokenQuery(['clients'], (t) => portalApi.clients(t, backgroundRequest));
+export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
 export const useAccessList = () => useTokenQuery(['access-list'], portalApi.accessList);
 export const useSyncStatus = () => useTokenQuery(['sync-status'], portalApi.syncStatus);
 export function useAwaitingCount() {

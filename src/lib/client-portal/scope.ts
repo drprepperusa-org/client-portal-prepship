@@ -9,7 +9,6 @@ export type ClientPortalScope = ClientStoreScope & {
   permissions: string[];
   canViewFinancials: boolean;
   canViewCredentials: boolean;
-  auditSource: 'user' | 'background';
 };
 
 function valueFromContext<T>(c: Context, key: string): T | undefined {
@@ -21,7 +20,6 @@ export function resolveClientPortalScope(c: Context): ClientPortalScope {
   const email = valueFromContext<string>(c, 'email');
   const role = valueFromContext<string>(c, 'role');
   const permissions = valueFromContext<string[]>(c, 'permissions') ?? [];
-  const auditSource = c.req.header('x-portal-audit-source') === 'background' ? 'background' : 'user';
   const scope = getClientStoreScope({
     email,
     role,
@@ -38,7 +36,6 @@ export function resolveClientPortalScope(c: Context): ClientPortalScope {
     permissions,
     canViewFinancials: hasAppPermission({ email, role, permissions }, 'financials:read'),
     canViewCredentials: hasAppPermission({ email, role, permissions }, 'credentials:read'),
-    auditSource,
   };
 }
 

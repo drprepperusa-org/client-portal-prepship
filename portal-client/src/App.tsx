@@ -51,13 +51,18 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return children;
 }
 
-/** Admin-only route guard. Settings is restricted to admins (e.g.
- *  admin@drprepper.com); non-admins are redirected to the dashboard. The
- *  server independently enforces admin scope on the underlying endpoints. */
-function RequireAdmin({ children }: { children: JSX.Element }) {
+type PortalCapability = 'canManageUsers' | 'canViewAudit';
+
+function RequireCapability({
+  capability,
+  children,
+}: {
+  capability: PortalCapability;
+  children: JSX.Element;
+}) {
   const me = useMe();
   if (me.isLoading) return <Spinner label="Loading…" />;
-  if (!me.data?.isAdmin) return <Navigate to="/" replace />;
+  if (!me.data?.[capability]) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -94,8 +99,14 @@ export default function App() {
         <Route path="/invoices" element={<Navigate to="/billing" replace />} />
         <Route path="/rates" element={<Lazy el={<Rates />} />} />
         <Route path="/connections" element={<Lazy el={<Connections />} />} />
-        <Route path="/audit-log" element={<RequireAdmin><Lazy el={<AuditLog />} /></RequireAdmin>} />
-        <Route path="/settings" element={<RequireAdmin><Lazy el={<Settings />} /></RequireAdmin>} />
+        <Route
+          path="/audit-log"
+          element={<RequireCapability capability="canViewAudit"><Lazy el={<AuditLog />} /></RequireCapability>}
+        />
+        <Route
+          path="/settings"
+          element={<RequireCapability capability="canManageUsers"><Lazy el={<Settings />} /></RequireCapability>}
+        />
         <Route path="/components" element={<Lazy el={<Components />} />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

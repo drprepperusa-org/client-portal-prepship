@@ -5,8 +5,8 @@ import { Hono } from 'hono';
 import { and, gte, lte, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { orders } from '../../db/schema/orders';
-import { isAdminEmail } from '../../lib/admin-emails';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { activeClientPredicate, orderScopePredicate } from '../../lib/client-portal/predicates';
 import { dailyOrderUnitsRows } from '../../lib/client-portal/dashboard-aggregate';
@@ -19,12 +19,13 @@ const app = new Hono();
 app.get('/me', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
+  const capabilities = clientPortalCapabilities(scope);
   await recordPortalAudit('portal.me.view', scope);
   return c.json({
     id: scope.userId || null,
     email: scope.email ?? null,
     role: scope.role ?? null,
-    isAdmin: isAdminEmail(scope.email),
+    isAdmin: scope.isGlobal,
     isGlobal: scope.isGlobal,
     isRestricted: scope.isRestricted,
     clientIds: scope.clientIds,
@@ -32,6 +33,7 @@ app.get('/me', async (c) => {
     permissions: scope.permissions,
     canViewFinancials: scope.canViewFinancials,
     canViewCredentials: scope.canViewCredentials,
+    ...capabilities,
   });
 });
 

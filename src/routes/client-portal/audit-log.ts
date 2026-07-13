@@ -5,9 +5,9 @@ import { and, desc, ilike, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
-import { isAdminEmail } from '../../lib/admin-emails';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
-import { isClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
+import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
+import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { parsePositiveInt, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
@@ -17,10 +17,6 @@ const clickBody = z.object({
   to: z.string().trim().max(160).optional(),
   from: z.string().trim().max(160).optional(),
 });
-
-function canViewAuditLog(scope: ClientPortalScope): boolean {
-  return isAdminEmail(scope.email) || scope.role === 'admin';
-}
 
 function uniqueIds(rows: Array<{ clientIds: number[]; storeIds: number[] }>, key: 'clientIds' | 'storeIds'): number[] {
   return Array.from(new Set(rows.flatMap((row) => row[key]).filter((id) => Number.isInteger(id) && id > 0)));
@@ -90,7 +86,7 @@ app.get('/audit-log', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
 
-  if (!canViewAuditLog(scope)) {
+  if (!clientPortalCapabilities(scope).canViewAudit) {
     await recordPortalAudit('portal.audit_log.denied', scope);
     return c.json({ error: 'Admin access required' }, 403);
   }

@@ -11,7 +11,9 @@ import { supabaseAdmin } from '../../lib/supabase';
 import { isAdminEmail } from '../../lib/admin-emails';
 import { env } from '../../lib/env';
 import { isAllowedCorsOrigin } from '../../lib/http/cors';
-import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { recordCriticalPortalAudit, recordPortalAudit } from '../../lib/client-portal/audit';
+import { canManageAccessTarget, isAccessAssignmentWithinBoundary, type PortalAccessBoundary } from '../../lib/client-portal/access-policy';
+import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { isClientPortalScope, resolveClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import {
@@ -20,6 +22,7 @@ import {
   DEACTIVATE_BAN_DURATION,
   listPortalAccessRoster,
   normalizeMetadataIds,
+  portalAccessAssignment,
   stringArray,
   userIsAdminLike,
 } from '../../lib/client-portal/read-models/access';
@@ -32,6 +35,13 @@ const inviteAccessUserBody = z.object({
   displayName: z.string().trim().max(120).optional().default(''),
   role: z.enum(['admin', 'client_user']),
   clientIds: z.unknown().optional(),
+});
+
+const patchAccessUserBody = z.object({
+  role: z.enum(['admin', 'client_user']).optional(),
+  clientIds: z.unknown().optional(),
+  displayName: z.string().trim().max(120).nullable().optional(),
+  active: z.boolean().optional(),
 });
 
 function firstConfiguredPortalOrigin(): string | null {
@@ -97,6 +107,46 @@ async function activeClientIdsFor(ids: number[]): Promise<number[]> {
   return rows.map((row) => row.id);
 }
 
+async function accessBoundaryFor(scope: ClientPortalScope): Promise<PortalAccessBoundary> {
+  if (scope.isGlobal) return { clientIds: [], storeIds: [] };
+  const rows = scope.clientIds.length
+    ? await db.select({ storeIds: clients.storeIds }).from(clients).where(inArray(clients.id, scope.clientIds))
+    : [];
+  return {
+    clientIds: scope.clientIds,
+    storeIds: Array.from(
+      new Set([
+        ...scope.storeIds,
+        ...rows.flatMap((row) => (row.storeIds ?? []).map(Number)),
+      ]),
+    ),
+  };
+}
+
+function accessTarget(user: { email?: string | null; app_metadata?: unknown }) {
+  const assignment = portalAccessAssignment(user);
+  const metadata = accessAppMeta(user);
+  return {
+    ...assignment,
+    isGlobal: userIsAdminLike(user),
+    isClientUser: metadata.role === 'client_user',
+  };
+}
+
+async function requireAccessMutationAudit(
+  c: Context,
+  event: string,
+  scope: ClientPortalScope,
+  metadata: Record<string, unknown>,
+): Promise<Response | null> {
+  try {
+    await recordCriticalPortalAudit(event, scope, metadata);
+    return null;
+  } catch {
+    return c.json({ error: 'Access change could not be audited. No changes were made.' }, 503);
+  }
+}
+
 app.get('/clients', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -113,13 +163,29 @@ app.get('/clients', async (c) => {
 app.get('/access-list', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  if (!scope.isGlobal && !scope.permissions.includes('users:manage')) {
+  const capabilities = clientPortalCapabilities(scope);
+  if (!capabilities.canManageUsers) {
     return c.json({ error: 'Admin access required' }, 403);
   }
   const roster = await listPortalAccessRoster();
   if ('error' in roster) return c.json({ error: roster.error }, 500);
-  await recordPortalAudit('portal.access_list.view', scope, { users: roster.users.length });
-  return c.json({ data: roster.users });
+  const boundary = await accessBoundaryFor(scope);
+  const visibleUsers = scope.isGlobal
+    ? roster.users
+    : roster.users.filter((user) =>
+        canManageAccessTarget(
+          { isGlobal: false, canManageUsers: capabilities.canManageUsers },
+          {
+            isGlobal: user.isGlobal,
+            isClientUser: user.role === 'client_user',
+            clientIds: user.clientIds,
+            storeIds: user.storeIds,
+          },
+          boundary,
+        ),
+      );
+  await recordPortalAudit('portal.access_list.view', scope, { users: visibleUsers.length });
+  return c.json({ data: visibleUsers });
 });
 
 /* ---- Access roster admin mutations (deactivate/activate, edit, delete) ----
@@ -127,8 +193,8 @@ app.get('/access-list', async (c) => {
    guarded against lock-out: nobody can deactivate/delete their own login, a
    protected operator (hardcoded admin email), or the last remaining admin. */
 
-function requireUserManageAdmin(c: Context, scope: ClientPortalScope) {
-  if (!scope.isGlobal && !scope.permissions.includes('users:manage')) {
+function requireUserManagement(c: Context, scope: ClientPortalScope) {
+  if (!clientPortalCapabilities(scope).canManageUsers) {
     return c.json({ error: 'Admin access required' }, 403);
   }
   return null;
@@ -138,7 +204,7 @@ function requireUserManageAdmin(c: Context, scope: ClientPortalScope) {
 app.post('/access-list/invite', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const denied = requireUserManageAdmin(c, scope);
+  const denied = requireUserManagement(c, scope);
   if (denied) return denied;
 
   const parsed = inviteAccessUserBody.safeParse(await c.req.json().catch(() => ({})));
@@ -148,6 +214,17 @@ app.post('/access-list/invite', async (c) => {
   const displayName = parsed.data.displayName;
   const role = parsed.data.role;
   const clientIds = normalizeMetadataIds(parsed.data.clientIds);
+  const capabilities = clientPortalCapabilities(scope);
+
+  if (role === 'admin' && !capabilities.canManageAdmins) {
+    return c.json({ error: 'Global admin access required' }, 403);
+  }
+  if (!scope.isGlobal) {
+    const boundary = await accessBoundaryFor(scope);
+    if (!isAccessAssignmentWithinBoundary({ clientIds, storeIds: [] }, boundary)) {
+      return c.json({ error: 'Selected client stores exceed your access scope' }, 403);
+    }
+  }
 
   if (role === 'client_user' && clientIds.length > 0) {
     const validClientIds = await activeClientIdsFor(clientIds);
@@ -170,6 +247,13 @@ app.post('/access-list/invite', async (c) => {
     role === 'admin'
       ? { role: 'admin', portalInvitePending: true }
       : { role: 'client_user', clientIds, portalInvitePending: true };
+
+  const auditDenied = await requireAccessMutationAudit(c, 'portal.access_list.invite.requested', scope, {
+    email,
+    role,
+    clientIds: role === 'client_user' ? clientIds : undefined,
+  });
+  if (auditDenied) return auditDenied;
 
   const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
     redirectTo,
@@ -244,6 +328,11 @@ app.post('/access-list/activate', async (c) => {
   if (meta.portalInvitePending !== true) return c.json({ ok: true });
   delete meta.portalInvitePending;
 
+  const auditDenied = await requireAccessMutationAudit(c, 'portal.access_list.activate.requested', scope, {
+    targetId: scope.userId,
+  });
+  if (auditDenied) return auditDenied;
+
   const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(scope.userId, {
     app_metadata: meta,
   });
@@ -260,24 +349,42 @@ app.post('/access-list/activate', async (c) => {
 app.patch('/access-list/:id', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const denied = requireUserManageAdmin(c, scope);
+  const denied = requireUserManagement(c, scope);
   if (denied) return denied;
 
   const id = c.req.param('id');
-  const body = (await c.req.json().catch(() => ({}))) as {
-    role?: string | null;
-    clientIds?: unknown;
-    displayName?: string | null;
-    active?: boolean;
-  };
+  const parsed = patchAccessUserBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: 'Invalid access update' }, 400);
+  const body = parsed.data;
 
   const { data: target, error: getErr } = await supabaseAdmin.auth.admin.getUserById(id);
   if (getErr || !target?.user) return c.json({ error: 'User not found' }, 404);
   const user = target.user;
+  const capabilities = clientPortalCapabilities(scope);
+  const boundary = await accessBoundaryFor(scope);
+  const currentAccess = accessTarget(user);
+
+  if (!canManageAccessTarget({ isGlobal: scope.isGlobal, canManageUsers: capabilities.canManageUsers }, currentAccess, boundary)) {
+    return c.json({ error: 'Target user exceeds your access scope' }, 403);
+  }
+  if (body.role === 'admin' && !capabilities.canManageAdmins) {
+    return c.json({ error: 'Global admin access required' }, 403);
+  }
+
+  const nextClientIds = body.clientIds === undefined ? currentAccess.clientIds : normalizeMetadataIds(body.clientIds);
+  if (body.clientIds !== undefined) {
+    const validClientIds = await activeClientIdsFor(nextClientIds);
+    if (validClientIds.length !== nextClientIds.length) {
+      return c.json({ error: 'One or more selected client stores are not active or do not exist.' }, 400);
+    }
+    if (!scope.isGlobal && !isAccessAssignmentWithinBoundary({ clientIds: nextClientIds, storeIds: currentAccess.storeIds }, boundary)) {
+      return c.json({ error: 'Selected client stores exceed your access scope' }, 403);
+    }
+  }
 
   const isSelf = user.id === scope.userId;
   const deactivating = body.active === false;
-  const demotingAdmin = typeof body.role === 'string' && body.role !== 'admin' && userIsAdminLike(user);
+  const demotingAdmin = body.role === 'client_user' && currentAccess.isGlobal;
 
   // Lock-out guardrails.
   if (deactivating && isSelf) return c.json({ error: "You can't deactivate your own login." }, 400);
@@ -313,6 +420,15 @@ app.patch('/access-list/:id', async (c) => {
   }
   if (body.active !== undefined) updates.ban_duration = body.active ? 'none' : DEACTIVATE_BAN_DURATION;
 
+  const auditDenied = await requireAccessMutationAudit(c, 'portal.access_list.update.requested', scope, {
+    targetId: id,
+    role: body.role,
+    active: body.active,
+    clientIds: body.clientIds !== undefined ? nextClientIds : undefined,
+    renamed: body.displayName !== undefined ? true : undefined,
+  });
+  if (auditDenied) return auditDenied;
+
   const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(id, updates);
   if (updErr) {
     console.warn('[client-portal/access-list] update failed:', updErr.message);
@@ -332,13 +448,20 @@ app.patch('/access-list/:id', async (c) => {
 app.delete('/access-list/:id', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const denied = requireUserManageAdmin(c, scope);
+  const denied = requireUserManagement(c, scope);
   if (denied) return denied;
 
   const id = c.req.param('id');
   const { data: target, error: getErr } = await supabaseAdmin.auth.admin.getUserById(id);
   if (getErr || !target?.user) return c.json({ error: 'User not found' }, 404);
   const user = target.user;
+  const capabilities = clientPortalCapabilities(scope);
+  const boundary = await accessBoundaryFor(scope);
+  const currentAccess = accessTarget(user);
+
+  if (!canManageAccessTarget({ isGlobal: scope.isGlobal, canManageUsers: capabilities.canManageUsers }, currentAccess, boundary)) {
+    return c.json({ error: 'Target user exceeds your access scope' }, 403);
+  }
 
   if (user.id === scope.userId) return c.json({ error: "You can't delete your own login." }, 400);
   if (isAdminEmail(user.email)) {
@@ -347,6 +470,12 @@ app.delete('/access-list/:id', async (c) => {
   if (userIsAdminLike(user) && (await countActiveAdmins()) <= 1) {
     return c.json({ error: 'At least one active admin must remain.' }, 400);
   }
+
+  const auditDenied = await requireAccessMutationAudit(c, 'portal.access_list.delete.requested', scope, {
+    targetId: id,
+    email: user.email ?? null,
+  });
+  if (auditDenied) return auditDenied;
 
   const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(id);
   if (delErr) {

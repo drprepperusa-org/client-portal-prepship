@@ -36,6 +36,20 @@ export function accessAppMeta(user: { app_metadata?: unknown }): Record<string, 
     : {};
 }
 
+export function portalAccessAssignment(
+  user: { app_metadata?: unknown },
+): { clientIds: number[]; storeIds: number[] } {
+  const metadata = accessAppMeta(user);
+  return {
+    clientIds: normalizeMetadataIds(
+      metadata.clientIds ?? metadata.client_ids ?? metadata.assignedClientIds ?? metadata.assigned_client_ids,
+    ),
+    storeIds: normalizeMetadataIds(
+      metadata.storeIds ?? metadata.store_ids ?? metadata.assignedStoreIds ?? metadata.assigned_store_ids,
+    ),
+  };
+}
+
 export function userIsBanned(user: { banned_until?: string | null }): boolean {
   const until = user.banned_until ?? null;
   return Boolean(until && new Date(until).getTime() > Date.now());
@@ -74,12 +88,7 @@ export async function listPortalAccessRoster(): Promise<{ users: PortalAccessRos
         user.app_metadata && typeof user.app_metadata === 'object' && !Array.isArray(user.app_metadata)
           ? (user.app_metadata as Record<string, unknown>)
           : {};
-      const clientIds = normalizeMetadataIds(
-        metadata.clientIds ?? metadata.client_ids ?? metadata.assignedClientIds ?? metadata.assigned_client_ids,
-      );
-      const storeIds = normalizeMetadataIds(
-        metadata.storeIds ?? metadata.store_ids ?? metadata.assignedStoreIds ?? metadata.assigned_store_ids,
-      );
+      const { clientIds, storeIds } = portalAccessAssignment(user);
       const role = typeof metadata.role === 'string' ? metadata.role : null;
       const permissions = stringArray(metadata.permissions);
       const matchedClients = clientIds

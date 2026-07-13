@@ -13,12 +13,14 @@ export function AccessEditModal({
   user,
   clients,
   token,
+  canManageAdmins,
   onClose,
   onSaved,
 }: {
   user: PortalAccessUser;
   clients: PortalClientRow[];
   token: string | null;
+  canManageAdmins: boolean;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
@@ -72,15 +74,17 @@ export function AccessEditModal({
 
         <TextInput label="Display name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Jane from DJC" />
 
-        <RadioGroup
-          label="Role"
-          value={role}
-          onChange={setRole}
-          options={[
-            { value: 'admin', label: 'Admin · full global access' },
-            { value: 'client_user', label: 'Client user · only assigned stores' },
-          ]}
-        />
+        {canManageAdmins && (
+          <RadioGroup
+            label="Role"
+            value={role}
+            onChange={setRole}
+            options={[
+              { value: 'admin', label: 'Admin · full global access' },
+              { value: 'client_user', label: 'Client user · only assigned stores' },
+            ]}
+          />
+        )}
         {user.isProtected && (
           <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
             <ShieldAlert size={14} /> Protected operator account — admin role is enforced regardless of this setting.

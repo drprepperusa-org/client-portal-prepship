@@ -10,11 +10,13 @@ import { portalApi, type PortalClientRow } from '@/lib/api';
 export function AccessInviteModal({
   clients,
   token,
+  canManageAdmins,
   onClose,
   onInvited,
 }: {
   clients: PortalClientRow[];
   token: string | null;
+  canManageAdmins: boolean;
   onClose: () => void;
   onInvited: () => Promise<void> | void;
 }) {
@@ -86,15 +88,17 @@ export function AccessInviteModal({
           />
         </div>
 
-        <RadioGroup
-          label="Role"
-          value={role}
-          onChange={setRole}
-          options={[
-            { value: 'client_user', label: 'Client user - assigned stores' },
-            { value: 'admin', label: 'Admin - global access' },
-          ]}
-        />
+        {canManageAdmins && (
+          <RadioGroup
+            label="Role"
+            value={role}
+            onChange={setRole}
+            options={[
+              { value: 'client_user', label: 'Client user - assigned stores' },
+              { value: 'admin', label: 'Admin - global access' },
+            ]}
+          />
+        )}
 
         {role === 'client_user' ? (
           <Select

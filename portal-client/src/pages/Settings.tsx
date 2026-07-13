@@ -7,6 +7,7 @@ import { NotificationsTab } from '@/components/settings/NotificationsTab';
 import { AccessTab } from '@/components/settings/AccessTab';
 import { BillingTab } from '@/components/settings/BillingTab';
 import { cn } from '@/lib/cn';
+import { useMe } from '@/lib/hooks';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -18,14 +19,17 @@ type TabId = (typeof TABS)[number]['id'];
 
 export default function Settings() {
   const [tab, setTab] = useState<TabId>('profile');
+  const canManageAdmins = useMe().data?.canManageAdmins ?? false;
+  const availableTabs = canManageAdmins ? TABS : TABS.filter((item) => item.id === 'team');
+  const activeTab = availableTabs.some((item) => item.id === tab) ? tab : 'team';
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
       {/* Tab rail */}
       <GlassPanel className="h-max p-2">
         <div className="flex gap-1 overflow-x-auto lg:flex-col">
-          {TABS.map((t) => {
-            const active = tab === t.id;
+          {availableTabs.map((t) => {
+            const active = activeTab === t.id;
             return (
               <button
                 key={t.id}
@@ -47,11 +51,11 @@ export default function Settings() {
       {/* Panel */}
       <GlassPanel className="p-5 sm:p-6">
         <AnimatePresence mode="wait">
-          <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
-            {tab === 'profile' && <ProfileTab />}
-            {tab === 'notifications' && <NotificationsTab />}
-            {tab === 'team' && <AccessTab />}
-            {tab === 'billing' && <BillingTab />}
+          <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+            {activeTab === 'profile' && <ProfileTab />}
+            {activeTab === 'notifications' && <NotificationsTab />}
+            {activeTab === 'team' && <AccessTab />}
+            {activeTab === 'billing' && <BillingTab />}
           </motion.div>
         </AnimatePresence>
       </GlassPanel>

@@ -94,25 +94,27 @@ assert(
     audit.includes("from '../../db/schema/client-portal-audit-logs'") &&
     audit.includes('db.insert(clientPortalAuditLogs)') &&
     audit.includes('sanitizePortalAuditMetadata') &&
-    audit.includes("console.warn('[client-portal:audit] persist failed'"),
-  'recordPortalAudit persists sanitized events without blocking portal flows',
+    audit.includes("console.warn('[client-portal:audit] persist failed'") &&
+    audit.includes('recordCriticalPortalAudit') &&
+    audit.includes("console.warn('[client-portal:audit] critical persist failed'"),
+  'audit helper persists sanitized events and supports fail-closed critical writes',
 );
 assert(
-  scope.includes('auditSource') &&
-    scope.includes("'x-portal-audit-source'") &&
-    audit.includes("scope.auditSource === 'background'"),
-  'background preload/API reads are tagged at scope resolution and skipped by audit persistence',
+  !scope.includes('auditSource') &&
+    !scope.toLowerCase().includes('x-portal-audit-source') &&
+    !audit.includes("scope.auditSource === 'background'"),
+  'public request scope cannot suppress audit persistence',
 );
 assert(
-  main.includes("'X-Portal-Audit-Source'") &&
-    corsHelper.includes('X-Portal-Audit-Source'),
-  'CORS preflight allows the portal background audit header',
+  !main.includes('X-Portal-Audit-Source') &&
+    !corsHelper.includes('X-Portal-Audit-Source'),
+  'CORS does not allow a client-controlled audit source header',
 );
 assert(routeExists, 'audit-log route file exists');
 assert(
   routeFlat.includes("app.get('/audit-log'") &&
     routeFlat.includes("app.post('/audit-log/click'") &&
-    routeFlat.includes('isAdminEmail(scope.email) || scope.role ===') &&
+    routeFlat.includes('clientPortalCapabilities(scope).canViewAudit') &&
     routeFlat.includes('clientPortalAuditLogs') &&
     routeFlat.includes('scopeLabel: buildScopeLabel') &&
     route.includes('loadAuditScopeNames') &&
@@ -132,21 +134,24 @@ assert(
 );
 assert(
   api.includes('export interface PortalAuditLogRow') &&
-    api.includes('clientNames: string[]') &&
+  api.includes('clientNames: string[]') &&
     api.includes('storeNames: string[]') &&
     api.includes('scopeLabel: string') &&
-    api.includes('X-Portal-Audit-Source') &&
-    api.includes('backgroundRequest') &&
+    api.includes('canManageUsers: boolean') &&
+    api.includes('canManageAdmins: boolean') &&
+    api.includes('canViewAudit: boolean') &&
+    !api.includes('X-Portal-Audit-Source') &&
+    !api.includes('backgroundRequest') &&
     api.includes('auditLog: (token: string') &&
     api.includes("'/api/client-portal/audit-log'") &&
     api.includes('auditClick: (token: string'),
-  'portal API exposes audit-log readable scope fields, helpers, and background request tagging',
+  'portal API exposes audit-log scope fields and backend-owned capabilities without spoofable audit tagging',
 );
 assert(
   hooks.includes('export function useAuditLog') &&
     hooks.includes('portalApi.auditLog') &&
     hooks.includes("['audit-log'") &&
-    hooks.includes('backgroundRequest') &&
+    !hooks.includes('backgroundRequest') &&
     hooks.includes('portalApi.backgroundDashboard') &&
     hooks.includes('portalApi.backgroundOrders') &&
     hooks.includes('portalApi.backgroundInventory'),
@@ -160,8 +165,8 @@ assert(
 assert(
   app.includes("const AuditLog = lazy(() => import('./pages/AuditLog'))") &&
     app.includes('path="/audit-log"') &&
-    app.includes('<RequireAdmin><Lazy el={<AuditLog />} /></RequireAdmin>'),
-  'App routes Audit log through RequireAdmin',
+    app.includes('<RequireCapability capability="canViewAudit">'),
+  'App routes Audit log through backend-owned canViewAudit capability',
 );
 assert(
   prefetch.includes("'/audit-log': () => import('@/pages/AuditLog')"),
@@ -171,8 +176,9 @@ assert(
   sidebar.includes('portalApi.auditClick') &&
     sidebar.includes("target: item.label") &&
     sidebar.includes("target: 'Sign out'") &&
-    sidebar.includes("item.to !== '/audit-log'"),
-  'sidebar logs nav/sign-out clicks and hides Audit log from non-admins',
+    sidebar.includes('me.data?.canManageUsers') &&
+    sidebar.includes('me.data?.canViewAudit'),
+  'sidebar logs nav/sign-out clicks and uses backend capabilities for protected navigation',
 );
 assert(pageExists, 'AuditLog page exists');
 assert(
