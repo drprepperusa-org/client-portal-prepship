@@ -164,7 +164,7 @@ assert(
 assert(
   /detail\.deliveryError\s*\?\?/.test(page) &&
     /canCreateLabel/.test(page) &&
-    /detail\?\.status === 'requested' \|\| labelFailed/.test(page),
+    /detail\??\.status === 'requested' \|\| labelFailed/.test(page),
   'the drawer shows the safe failure reason and limits retry to valid states',
 );
 assert(
@@ -175,7 +175,7 @@ assert(
 
 assert(
   /isReturn:\s*true/.test(service) &&
-    /markReturnLabelCreated\(returnRow\.id, returnShipmentId\)/.test(service) &&
+    /markReturnLabelCreated\(returnRow\.id,\s*returnShipmentId,/.test(service) &&
     /selectedRate:\s*chosen/.test(service),
   'successful creation persists the canonical return shipment, link, and chosen quote',
 );

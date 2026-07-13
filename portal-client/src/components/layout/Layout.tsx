@@ -36,6 +36,15 @@ export function Layout() {
     setDrawer(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!drawer) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [drawer]);
+
   return (
     <div className="relative min-h-screen">
       <a
@@ -67,7 +76,7 @@ export function Layout() {
               its `initial` (opacity:0) state → a blank content area on nav.
               Re-keying the motion.div replays initial→enter on every route. */}
           {/* pb-24 on phones clears the fixed bottom tab bar; none at lg+. */}
-          <main id="portal-main" tabIndex={-1} className="min-h-[calc(100vh-6rem)] pb-24 lg:pb-0">
+          <main id="portal-main" tabIndex={-1} className="min-h-[calc(100vh-6rem)] min-w-0 overflow-x-hidden pb-24 lg:pb-0">
             <motion.div key={pathname} variants={pageVariants} initial="initial" animate="enter">
               <Outlet />
             </motion.div>

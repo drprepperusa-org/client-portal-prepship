@@ -27,7 +27,6 @@ import {
   userIsAdminLike,
 } from '../../lib/client-portal/read-models/access';
 import { requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
-
 const app = new Hono();
 
 const inviteAccessUserBody = z.object({

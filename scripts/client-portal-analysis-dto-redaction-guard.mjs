@@ -52,7 +52,7 @@ const forbiddenFields = [
 ];
 
 const dtoMatch = route.match(
-  /export function toClientAnalysisRow[\s\S]*?return \{([\s\S]*?)\n  \};\n\}/,
+  /export function toClientAnalysisRow[\s\S]*?return \{([\s\S]*?)\r?\n  \};\r?\n\}/,
 );
 const dtoBody = dtoMatch?.[1] ?? '';
 const dtoFields = [...dtoBody.matchAll(/^\s+([a-z_]+):/gm)].map((match) => match[1]);

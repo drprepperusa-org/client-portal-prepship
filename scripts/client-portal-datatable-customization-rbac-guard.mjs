@@ -35,7 +35,10 @@ assert(
 );
 
 // 3. Controls, drag, and persisted layout are gated; width resize is universal.
-assert(/\{customizable && \(/.test(dt), 'the Columns chooser + Reset controls render only when customizable');
+assert(
+  /\{customizable && <DataTableColumnControls\b/.test(dt),
+  'the Columns chooser + Reset controls render only when customizable',
+);
 assert(/const canDrag\s*=\s*customizable\s*&&/.test(dt), 'header drag-to-reorder is gated on customizable');
 assert(/const canResize\s*=\s*c\.resizable\s*!==\s*false/.test(dt), 'column resize is available to every desktop/tablet user');
 assert(

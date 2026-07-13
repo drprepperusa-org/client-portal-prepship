@@ -225,7 +225,7 @@ export function DataTable<T>({
   return (
     <>
       {/* ---- Desktop / tablet: resizable + reorderable table ---- */}
-      <div className="hidden md:block">
+      <div className="hidden min-w-0 max-w-full md:block">
         {customizable && <DataTableColumnControls layout={layout} byKey={byKey} />}
 
         {/* Horizontal scroll so wide tables scroll instead of overlapping. When
@@ -233,7 +233,7 @@ export function DataTable<T>({
             (bounded height) so the sticky <th> has a scroll container to stick
             within — page-level sticky can't reach past this overflow ancestor. */}
         <div
-          className={cn('rounded-glass', stickyHeader ? 'overflow-auto' : 'overflow-x-auto')}
+          className={cn('max-w-full rounded-glass', stickyHeader ? 'overflow-auto' : 'overflow-x-auto')}
           style={stickyHeader ? { maxHeight: maxBodyHeight } : undefined}
         >
           <table className="border-collapse text-sm" style={{ width: layout.totalWidth + (onRowClick ? 52 : 0), tableLayout: 'fixed' }}>
