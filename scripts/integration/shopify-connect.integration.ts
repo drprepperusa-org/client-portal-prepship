@@ -45,6 +45,8 @@ async function cleanup(): Promise<void> {
 }
 
 async function main(): Promise<number> {
+  await cleanup();
+
   // order_items itself lives in the drizzle TS schema (created by
   // `drizzle-kit push` in setup.ts), but the refresh FUNCTION + TRIGGER that
   // keep it populated on every order insert/update are raw SQL migrations
@@ -73,7 +75,6 @@ async function main(): Promise<number> {
   }
 
   // ── seed ──
-  await cleanup();
   // If clients has additional NOT NULL columns in your schema, copy the client
   // seed shape from scripts/integration/client-portal.integration.ts instead.
   const clientRows = await db.execute<{ id: number }>(sql`
