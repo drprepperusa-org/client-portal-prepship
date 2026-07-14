@@ -1081,7 +1081,7 @@ Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
 `client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
 postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
 `client-portal-returns-ui-guard.mjs` (CP-029, carrier/service-free UI+API),
-`client-portal-returns-receiving-guard.mjs` (CP-030, operator-gated inspection),
+`client-portal-returns-receiving-guard.mjs` (CP-030, scoped inspection/media writes),
 `client-portal-returns-cp043-guard.mjs` (fresh raw rate attempt, explicit account
 policy, safe diagnostics, and recoverable failure state), and
 `client-portal-returns-cp057-guard.mjs` (durable purchase ownership,
@@ -1092,7 +1092,9 @@ Return billing lines reuse that canonical return reference as their displayed
 `orderNumber` (for example `2050-RETURN`) while retaining `shipmentId` for
 per-label uniqueness. Inspection writes are available from both the receiving
 queue and the clicked return drawer through one shared editor; API permissions
-remain operator-gated and media stays in the private returns storage bucket.
+allow each authenticated client to write only against returns inside its resolved
+scope, while the receiving queue remains operator-gated. Media stays in the
+private returns storage bucket. Images are limited to 15 MB and videos to 25 MB.
 Inspection saves append rows rather than overwriting prior evidence. The return
 drawer merges canonical lifecycle activity, inspection rows, and attachment
 metadata for presentation; it never reconstructs carrier, rate, or billing truth.

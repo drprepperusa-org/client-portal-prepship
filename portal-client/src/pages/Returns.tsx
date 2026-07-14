@@ -294,7 +294,6 @@ export default function Returns() {
       <ReturnDetailDrawer
         id={selectedId}
         onClose={() => setSelectedId(null)}
-        canInspect={isOperator}
       />
       <ReturnCreateModal
         open={createOrderId != null}

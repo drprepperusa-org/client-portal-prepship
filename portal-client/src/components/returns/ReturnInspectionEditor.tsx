@@ -15,7 +15,8 @@ const CONDITIONS: Array<{ value: ReturnInspectionCondition; label: string }> = [
   { value: 'wrong_item', label: 'Wrong item' },
   { value: 'other', label: 'Other' },
 ];
-const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+const PHOTO_MAX_BYTES = 15 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
 interface CapturedMedia {
   id: string;
@@ -31,7 +32,7 @@ interface ReturnInspectionEditorProps {
   onCancel?: () => void;
 }
 
-/** Operator-only editor. The backend remains the authoritative permission gate. */
+/** Shared inspection editor. The backend scopes every write to the caller's returns. */
 export function ReturnInspectionEditor({
   returnId,
   onSaved,
@@ -54,17 +55,37 @@ export function ReturnInspectionEditor({
   function captureFiles(files: FileList | null) {
     if (!files) return;
     const selected = Array.from(files);
-    const accepted = selected.filter((file) => file.size <= MEDIA_MAX_BYTES);
-    if (accepted.length !== selected.length) {
-      toast.warning('Some files were skipped', 'Each picture or video must be 25 MB or smaller.');
+    const next: CapturedMedia[] = [];
+    let skipped = 0;
+    for (const file of selected) {
+      const mediaType = file.type.startsWith('image/')
+        ? 'photo'
+        : file.type.startsWith('video/')
+          ? 'video'
+          : null;
+      if (!mediaType) {
+        skipped += 1;
+        continue;
+      }
+      const maxBytes = mediaType === 'photo' ? PHOTO_MAX_BYTES : VIDEO_MAX_BYTES;
+      if (file.size > maxBytes) {
+        skipped += 1;
+        continue;
+      }
+      next.push({
+        id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+        mediaType,
+        file,
+        name: file.name,
+        status: 'queued',
+      });
     }
-    const next = accepted.map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-      mediaType: file.type.startsWith('video') ? 'video' as const : 'photo' as const,
-      file,
-      name: file.name,
-      status: 'queued' as const,
-    }));
+    if (skipped > 0) {
+      toast.warning(
+        'Some files were skipped',
+        'Use image or video files only. Images can be up to 15 MB and videos up to 25 MB.',
+      );
+    }
     setMedia((current) => [...current, ...next]);
   }
 
@@ -178,6 +199,7 @@ export function ReturnInspectionEditor({
 
       <div>
         <span className="mb-1 block text-xs font-medium text-ink-2">Pictures or video (optional)</span>
+        <p className="mb-2 text-xs text-ink-3">Images up to 15 MB. Videos up to 25 MB.</p>
         <label
           className={
             'focus-within:ring-2 focus-within:ring-brand-400 flex min-h-12 cursor-pointer items-center ' +

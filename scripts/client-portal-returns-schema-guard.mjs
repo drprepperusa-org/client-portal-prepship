@@ -78,8 +78,8 @@ assert(
 
 // ── Inspection + media ──
 assert(
-  schema.includes('inspectorEmail') && schema.includes('receivedAt') && schema.includes('condition'),
-  'return_inspections captures inspector identity, received date, and condition',
+  schema.includes('inspectorEmail') && schema.includes('inspectorType') && schema.includes('receivedAt') && schema.includes('condition'),
+  'return_inspections captures inspector identity/type, received date, and condition',
 );
 assert(
   schema.includes('mediaType') && schema.includes('storageRef'),
@@ -121,6 +121,11 @@ assert(
     migrationSql.includes('original_file_name') &&
     migrationSql.includes("'return_requested'"),
   'an additive migration creates/backfills return history and attachment metadata',
+);
+assert(
+  migrationSql.includes('ADD COLUMN IF NOT EXISTS "inspector_type"') &&
+    migrationSql.includes("DEFAULT 'operator' NOT NULL"),
+  'an additive migration records whether an inspection came from a client or operator',
 );
 
 assert(

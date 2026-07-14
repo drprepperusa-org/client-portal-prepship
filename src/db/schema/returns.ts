@@ -132,6 +132,7 @@ export const returnInspections = pgTable(
     status: text().default('pending').notNull(),
     comments: text(),
     inspectorEmail: text(),
+    inspectorType: text('inspector_type').default('operator').notNull(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },

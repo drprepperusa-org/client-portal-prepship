@@ -31,7 +31,8 @@ export const INSPECTION_CONDITIONS = new Set([
 ]);
 
 export const INSPECTION_MEDIA_TYPES = new Set(['photo', 'video']);
-export const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+export const PHOTO_MAX_BYTES = 15 * 1024 * 1024;
+export const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
 export function operatorGateOrResponse(c: Context, scope: ClientPortalScope): Response | null {
   if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {

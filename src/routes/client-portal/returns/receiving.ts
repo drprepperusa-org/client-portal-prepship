@@ -20,12 +20,15 @@ import {
   INSPECTION_CONDITIONS,
   INSPECTION_MEDIA_TYPES,
   iso,
-  MEDIA_MAX_BYTES,
   operatorGateOrResponse,
+  PHOTO_MAX_BYTES,
   RECEIVING_STATUSES,
   returnScopePredicate,
   returnSearchPredicate,
+  VIDEO_MAX_BYTES,
 } from './shared';
+
+const MEDIA_REQUEST_MAX_BYTES = VIDEO_MAX_BYTES + 1024 * 1024;
 
 function registerReceivingQueueRoute(app: Hono): void {
   app.get('/returns/receiving', async (c) => {
@@ -78,8 +81,6 @@ function registerInspectionRoute(app: Hono): void {
   app.post('/returns/:id{[0-9]+}/inspection', async (c) => {
     const scope = scopeOrResponse(c);
     if (!isClientPortalScope(scope)) return scope;
-    const gated = operatorGateOrResponse(c, scope);
-    if (gated) return gated;
     const id = Number(c.req.param('id'));
 
     const [ret] = await db
@@ -109,6 +110,9 @@ function registerInspectionRoute(app: Hono): void {
           ? 'failed'
           : 'pending';
     const status = ['pending', 'passed', 'failed'].includes(body.status ?? '') ? (body.status as string) : derivedStatus;
+    const inspectorType = scope.isGlobal || scope.permissions.includes('settings:write')
+      ? 'operator'
+      : 'client';
 
     const [inserted] = await db
       .insert(returnInspections)
@@ -120,6 +124,7 @@ function registerInspectionRoute(app: Hono): void {
         status,
         comments,
         inspectorEmail: scope.email ?? null,
+        inspectorType,
       })
       .returning({ id: returnInspections.id });
     const inspectionId = inserted!.id;
@@ -135,6 +140,7 @@ function registerInspectionRoute(app: Hono): void {
       inspectionId,
       condition,
       status,
+      inspectorType,
       returnStatus: nextReturnStatus,
     });
     return c.json({ data: { id: inspectionId, returnId: id, status, condition, returnStatus: nextReturnStatus } }, 201);
@@ -145,8 +151,6 @@ function registerInspectionMediaRoute(app: Hono): void {
   app.post('/returns/:id{[0-9]+}/inspection/:iid{[0-9]+}/media', async (c) => {
     const scope = scopeOrResponse(c);
     if (!isClientPortalScope(scope)) return scope;
-    const gated = operatorGateOrResponse(c, scope);
-    if (gated) return gated;
     const id = Number(c.req.param('id'));
     const iid = Number(c.req.param('iid'));
 
@@ -159,7 +163,9 @@ function registerInspectionMediaRoute(app: Hono): void {
     if (!match) return c.json({ error: 'Inspection not found' }, 404);
 
     const declaredLen = Number(c.req.header('content-length') ?? 0);
-    if (declaredLen > MEDIA_MAX_BYTES) return c.json({ error: 'File exceeds the 25 MB limit' }, 413);
+    if (declaredLen > MEDIA_REQUEST_MAX_BYTES) {
+      return c.json({ error: 'File exceeds the 25 MB limit' }, 413);
+    }
 
     let form: FormData;
     try {
@@ -176,7 +182,11 @@ function registerInspectionMediaRoute(app: Hono): void {
     if (!(file instanceof File) || file.size === 0) {
       return c.json({ error: 'A non-empty file field is required' }, 400);
     }
-    if (file.size > MEDIA_MAX_BYTES) return c.json({ error: 'File exceeds the 25 MB limit' }, 413);
+    const maxBytes = mediaType === 'photo' ? PHOTO_MAX_BYTES : VIDEO_MAX_BYTES;
+    if (file.size > maxBytes) {
+      const maxMb = mediaType === 'photo' ? 15 : 25;
+      return c.json({ error: `File exceeds the ${maxMb} MB ${mediaType} limit` }, 413);
+    }
     if (
       (mediaType === 'photo' && !file.type.startsWith('image/')) ||
       (mediaType === 'video' && !file.type.startsWith('video/'))

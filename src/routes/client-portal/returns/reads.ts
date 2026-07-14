@@ -186,7 +186,11 @@ function registerReturnDetailRoute(app: Hono): void {
           condition: inspection.condition,
           comments: inspection.comments,
           receivedAt: iso(inspection.receivedAt),
-          actorLabel: inspection.inspectorEmail ? 'PrepShip' : 'System',
+          actorLabel: inspection.inspectorType === 'client'
+            ? 'Client'
+            : inspection.inspectorEmail
+              ? 'PrepShip'
+              : 'System',
           createdAt: iso(inspection.createdAt),
           updatedAt: iso(inspection.updatedAt),
           media: (mediaByInspection.get(inspection.id) ?? []).map((item) => ({

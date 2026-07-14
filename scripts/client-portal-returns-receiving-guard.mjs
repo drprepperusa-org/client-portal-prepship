@@ -24,6 +24,7 @@ const route = readSourceTree([
   'src/routes/client-portal/returns',
 ]);
 const routeCode = stripLineComments(route);
+const receivingRouteCode = stripLineComments(read('src/routes/client-portal/returns/receiving.ts'));
 const api = readActiveClientPortalApiSource();
 const activityService = read('src/services/return-activity.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
@@ -57,29 +58,33 @@ assert(
   'POST /returns/:id/inspection/:iid/media (attach media) is declared',
 );
 
-// ── 1. Operator/admin gate on the WRITE endpoints (client cannot write) ──
-// The exact operator gate the sibling operator writes use (inbound.ts):
-//   if (!scope.isGlobal && !scope.permissions.includes('settings:write')) { 403 }
+// ── 1. Receiving queue is operator-only; scoped clients may write inspections ──
 assert(
   /!scope\.isGlobal\s*&&\s*!scope\.permissions\.includes\('settings:write'\)/.test(routeCode),
   "the operator gate (!scope.isGlobal && !scope.permissions.includes('settings:write')) is present",
 );
-// Every inspection/media WRITE must reach that gate. We route them through a
-// single operatorGateOrResponse helper; require it to be invoked in each write.
-const operatorGateCalls = (routeCode.match(/operatorGateOrResponse\(/g) || []).length;
 assert(
   /function operatorGateOrResponse\(/.test(routeCode),
   'a single operatorGateOrResponse helper carries the 403 operator gate',
 );
-// receiving list + inspection + media = 3 gated surfaces (definition + ≥3 calls).
+const receivingQueueStart = receivingRouteCode.indexOf('function registerReceivingQueueRoute');
+const inspectionStart = receivingRouteCode.indexOf('function registerInspectionRoute');
+const mediaStart = receivingRouteCode.indexOf('function registerInspectionMediaRoute');
+const registrationStart = receivingRouteCode.indexOf('export function registerReturnReceivingRoutes');
+const receivingQueueBlock = receivingRouteCode.slice(receivingQueueStart, inspectionStart);
+const inspectionBlock = receivingRouteCode.slice(inspectionStart, mediaStart);
+const mediaBlock = receivingRouteCode.slice(mediaStart, registrationStart);
 assert(
-  operatorGateCalls >= 4,
-  `the operator gate is applied to the receiving list + both inspection writes (${operatorGateCalls} references incl. definition)`,
+  /operatorGateOrResponse\(c,\s*scope\)/.test(receivingQueueBlock),
+  'the warehouse receiving queue remains operator-gated',
 );
-// The gate must 403.
 assert(
   /operatorGateOrResponse[\s\S]{0,220}?return\s+c\.json\(\s*\{\s*error:[^}]*\}\s*,\s*403\s*\)/.test(routeCode),
-  'the operator gate returns a 403 (client users are forbidden from writing)',
+  'the receiving-queue operator gate returns a 403',
+);
+assert(
+  !/operatorGateOrResponse\(/.test(inspectionBlock) && !/operatorGateOrResponse\(/.test(mediaBlock),
+  'authenticated clients may create inspections and media without an operator role',
 );
 
 // ── 2. Scope-gated + scope-revalidated like the siblings ──
@@ -87,9 +92,8 @@ assert(
   /scopeOrResponse\(c\)/.test(routeCode) && /isClientPortalScope/.test(routeCode),
   'the new endpoints use scopeOrResponse + isClientPortalScope (same scope guard as the siblings)',
 );
-// The receiving list + inspection + media must all bound by returnScopePredicate
-// so a scoped operator only touches their own returns. Count the predicate uses
-// added by CP-030 (the CP-029 endpoints already use it; require it to have grown).
+// The receiving list + inspection + media must all be bounded by
+// returnScopePredicate so a client can only touch its own returns.
 const scopePredicateUses = (routeCode.match(/returnScopePredicate\(/g) || []).length;
 assert(
   scopePredicateUses >= 6,
@@ -99,6 +103,10 @@ assert(
 assert(
   /returnInspections\.returnId/.test(routeCode) && /eq\(returnInspections\.id,\s*iid\)/.test(routeCode),
   'the media write validates the inspection belongs to THIS return (returnId + inspection id)',
+);
+assert(
+  /returnScopePredicate\(scope\)/.test(inspectionBlock) && /returnScopePredicate\(scope\)/.test(mediaBlock),
+  'both client write endpoints enforce canonical return scope',
 );
 // Audit on the new surfaces.
 assert(
@@ -134,6 +142,12 @@ assert(
   /inspectorEmail:\s*scope\.email/.test(routeCode),
   'the inspection stamps inspectorEmail from the caller scope (not client-supplied)',
 );
+assert(
+  /const inspectorType\s*=\s*scope\.isGlobal\s*\|\|\s*scope\.permissions\.includes\('settings:write'\)/.test(routeCode) &&
+    /inspectorEmail:\s*scope\.email[\s\S]{0,100}?inspectorType,/.test(routeCode) &&
+    /actorLabel:\s*inspection\.inspectorType\s*===\s*'client'/.test(routeCode),
+  'inspection history distinguishes client submissions from PrepShip operators',
+);
 
 // ── 3b. CP-030 acceptance: media is DURABLE (Supabase Storage), not preview-only ──
 // The media endpoint relays the uploaded binary to a PRIVATE Supabase bucket
@@ -159,6 +173,12 @@ assert(
 assert(
   /createSignedUrl\(/.test(supa) && /\.upload\(/.test(supa),
   'the storage helper uploads objects and mints signed URLs (private bucket — never public)',
+);
+assert(
+  /PHOTO_MAX_BYTES\s*=\s*15\s*\*\s*1024\s*\*\s*1024/.test(routeCode) &&
+    /VIDEO_MAX_BYTES\s*=\s*25\s*\*\s*1024\s*\*\s*1024/.test(routeCode) &&
+    /mediaType\s*===\s*'photo'\s*\?\s*PHOTO_MAX_BYTES\s*:\s*VIDEO_MAX_BYTES/.test(routeCode),
+  'the backend enforces 15 MB photos and 25 MB videos independently',
 );
 // The frontend uploads the real File and never persists a blob: object URL.
 assert(
@@ -248,6 +268,11 @@ assert(
     /capture=/.test(receivingUiCode),
   'the inspection form uses a mobile-capture file input (accept image/video + capture)',
 );
+assert(
+  /PHOTO_MAX_BYTES\s*=\s*15\s*\*\s*1024\s*\*\s*1024/.test(receivingUiCode) &&
+    /VIDEO_MAX_BYTES\s*=\s*25\s*\*\s*1024\s*\*\s*1024/.test(receivingUiCode),
+  'the client validates 15 MB photos and 25 MB videos before upload',
+);
 // The 6 condition values are offered in the form.
 for (const cond of CONDITIONS) {
   assert(new RegExp(`'${cond}'`).test(receivingUiCode), `the inspection form offers the '${cond}' condition`);
@@ -269,6 +294,10 @@ for (const bad of ['getRates', 'carrierCode', 'issueRefund', 'cheapest', 'bestRa
 assert(
   /ReturnInspectionEditor/.test(receiving) && /ReturnInspectionEditor/.test(page),
   'the same inspection editor is available from the receiving flow and clicked return drawer',
+);
+assert(
+  /<ReturnInspectionEditor\s+returnId=\{detail\.id\}\s*\/>/.test(pageCode) && !/canInspect/.test(pageCode),
+  'the clicked return drawer exposes inspection notes and attachments to scoped client users',
 );
 assert(
   /ReturnDrawerTabs/.test(page) && /ReturnHistoryTimeline/.test(page) && /ReturnInspectionHistory/.test(page),
