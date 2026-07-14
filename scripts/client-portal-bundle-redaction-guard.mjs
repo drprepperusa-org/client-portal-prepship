@@ -54,6 +54,12 @@ const FORBIDDEN = [
   'exp_total',
   'ship_count_with_cost',
   'total_selling_fee',
+  // CP-054: raw Connections identifiers/errors and Shopify's canonical domain
+  // are backend-only. Customer chunks use displayAccountIdentifier plus safe
+  // status/reason enums.
+  'accountIdentifier',
+  'lastSyncError',
+  'myshopifyDomain',
 ];
 
 // CP-038b DONE: the Markups admin UI (MarkupsEditor + markups API client + Markup*

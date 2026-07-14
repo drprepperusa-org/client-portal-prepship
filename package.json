@@ -120,6 +120,7 @@
     "test:shopify-connect-integration": "tsx scripts/integration/shopify-connect.integration.ts",
     "test:client-portal-effective-stock": "tsx scripts/client-portal-effective-stock-guard.ts",
     "test:client-portal-inventory-status": "tsx scripts/client-portal-inventory-status-guard.ts",
+    "test:client-portal-connections-cp054": "tsx scripts/client-portal-connections-cp054-guard.ts",
     "test:client-portal-weight-redaction": "tsx scripts/client-portal-weight-redaction-guard.ts",
     "test:client-portal-manual-refresh-controls": "tsx scripts/client-portal-manual-refresh-controls-guard.ts",
     "test:inventory-client-scope": "node scripts/inventory-client-store-scope-guard.mjs",    "test:inventory-auto-deduct": "node scripts/inventory-auto-deduct-guard.mjs",    "test:inventory-reconciliation-dry-run": "node scripts/inventory-reconciliation-dry-run-guard.mjs",

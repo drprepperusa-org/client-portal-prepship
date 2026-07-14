@@ -70,14 +70,20 @@ function readShopifyCredentialInput(credentials: Record<string, unknown>): Shopi
 app.get('/integrations', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const { data, carrierCount, storeCount } = await listPortalIntegrations(scope);
-  await recordPortalAudit('portal.integrations.list', scope, { carriers: carrierCount, stores: storeCount });
-  return c.json({ data });
+  try {
+    const { data, carrierCount, storeCount } = await listPortalIntegrations(scope);
+    await recordPortalAudit('portal.integrations.list', scope, { carriers: carrierCount, stores: storeCount });
+    return c.json({ data });
+  } catch (error) {
+    console.error('[client-portal] connections list unavailable:', error);
+    return c.json({ error: 'connections_unavailable' }, 503);
+  }
 });
 
 // Live credential check for pre-submit UX feedback ONLY — nothing from the
 // browser is trusted at submit time (submit re-verifies server-side).
-// Rate-limited per user; response carries shop name/domain and NOTHING else.
+// Rate-limited per user; the response carries a masked display identifier
+// only. The canonical domain and Shopify response remain backend-only.
 app.post('/integrations/validate', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -111,7 +117,12 @@ app.post('/integrations/validate', async (c) => {
     accountIdentifier: result.ok ? maskAccountIdentifier(result.myshopifyDomain) : null,
   });
   if (!result.ok) return c.json({ error: shopifyConnectError(result) }, 422);
-  return c.json({ data: { ok: true, shopName: result.shopName, myshopifyDomain: result.myshopifyDomain } });
+  return c.json({
+    data: {
+      ok: true,
+      displayAccountIdentifier: maskAccountIdentifier(result.myshopifyDomain),
+    },
+  });
 });
 
 // Submit a store connection from the portal (M7, unlocked for client users

@@ -5,6 +5,7 @@ import type { Shipment } from '../../db/schema/shipments';
 import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
 import { isDiscountLine } from './dashboard-aggregate';
 import { trackingUrlForCarrier } from '../tracking-url';
+import { maskAccountIdentifier } from '../credential-accounts';
 import { resolveOrderFulfillmentStatus } from './order-status';
 import { normalizePortalShipmentStatus } from './shipment-status';
 
@@ -472,6 +473,62 @@ export function toPortalInventoryDto(
   };
 }
 
+export const PORTAL_CONNECTION_STATUSES = [
+  'pending',
+  'active',
+  'reconnect',
+  'degraded',
+  'inactive',
+] as const;
+export type PortalConnectionStatus = (typeof PORTAL_CONNECTION_STATUSES)[number];
+
+export const PORTAL_RECONNECT_REASON_CODES = [
+  'authentication_required',
+  'permissions_required',
+  'configuration_required',
+] as const;
+export type PortalReconnectReasonCode = (typeof PORTAL_RECONNECT_REASON_CODES)[number];
+
+function portalReconnectReasonCode(error: string | null | undefined): PortalReconnectReasonCode | null {
+  const normalized = error?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'auth' || normalized === 'invalid_credentials') {
+    return 'authentication_required';
+  }
+  if (normalized === 'missing_scopes' || normalized.includes('scope')) {
+    return 'permissions_required';
+  }
+  if (normalized === 'misconfigured' || normalized === 'no-client' || normalized === 'token_exchange') {
+    return 'configuration_required';
+  }
+  return null;
+}
+
+/**
+ * CP-054 connection policy.
+ *
+ * Owner: backend integration read-model. Inputs are the canonical store/carrier
+ * account source, active flag, and latest sync error. The frontend only renders
+ * this enum; raw policy inputs and detailed sync errors never cross the DTO.
+ */
+export function resolvePortalConnectionStatus(row: {
+  source?: string | null;
+  type?: string;
+  active?: boolean | null;
+  lastSyncError?: string | null;
+}): { connectionStatus: PortalConnectionStatus; reconnectReasonCode: PortalReconnectReasonCode | null } {
+  if (row.type === 'store' && row.source === 'portal') {
+    return { connectionStatus: 'pending', reconnectReasonCode: null };
+  }
+  const reconnectReasonCode = portalReconnectReasonCode(row.lastSyncError);
+  if (reconnectReasonCode) return { connectionStatus: 'reconnect', reconnectReasonCode };
+  if (row.lastSyncError) return { connectionStatus: 'degraded', reconnectReasonCode: null };
+  return {
+    connectionStatus: (row.active ?? true) ? 'active' : 'inactive',
+    reconnectReasonCode: null,
+  };
+}
+
 export function toPortalIntegrationDto(row: {
   id?: number;
   clientId?: number | null;
@@ -490,14 +547,17 @@ export function toPortalIntegrationDto(row: {
   lastSyncError?: string | null;
   lastSyncedAt?: Date | string | null;
 }) {
+  const status = resolvePortalConnectionStatus(row);
   return {
     id: row.id,
     clientId: row.clientId ?? null,
     provider: row.provider ?? null,
     label: row.label ?? null,
-    accountIdentifier: row.accountIdentifier ?? null,
-    source: row.source ?? null,
-    active: row.active ?? true,
+    // Masking happens at the backend boundary. The raw seller ID, shop domain,
+    // or account number is never serialized into customer JSON.
+    displayAccountIdentifier: maskAccountIdentifier(row.accountIdentifier ?? null),
+    connectionStatus: status.connectionStatus,
+    reconnectReasonCode: status.reconnectReasonCode,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     type: row.type ?? 'carrier',
@@ -505,7 +565,7 @@ export function toPortalIntegrationDto(row: {
     clientName: row.clientName ?? row.storeName ?? null,
     storeName: row.storeName ?? row.clientName ?? null,
     storeIds: row.storeIds ?? [],
-    lastSyncError: row.lastSyncError ?? null,
+    // Tenant connection freshness is the canonical store_accounts clock.
     lastSyncedAt: iso(row.lastSyncedAt ?? null),
   };
 }

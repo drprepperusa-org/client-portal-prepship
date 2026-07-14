@@ -32,7 +32,12 @@ export function StoreConnectModal({
   open: boolean;
   onClose: () => void;
   onConnect: (draft: ConnectDraft) => void;
-  onValidate?: (draft: ConnectDraft) => Promise<{ ok: boolean; shopName?: string; myshopifyDomain?: string; rateLimited?: boolean; message?: string }>;
+  onValidate?: (draft: ConnectDraft) => Promise<{
+    ok: boolean;
+    displayAccountIdentifier?: string;
+    rateLimited?: boolean;
+    message?: string;
+  }>;
 }) {
   const [stage, setStage] = useState<Stage>('list');
   const [filter, setFilter] = useState<Filter>('all');
@@ -104,7 +109,10 @@ export function StoreConnectModal({
           });
           return;
         }
-        setValidation({ ok: true, message: `Connected to ${result.myshopifyDomain ?? 'your store'} — pending PrepShip approval after submit.` });
+        setValidation({
+          ok: true,
+          message: `Connected to ${result.displayAccountIdentifier ?? 'your store'} — pending PrepShip approval after submit.`,
+        });
         setStage('review');
       } finally {
         setValidating(false);

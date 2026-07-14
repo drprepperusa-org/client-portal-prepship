@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { CheckCircle2, Loader2, RefreshCw, Settings2, Unplug, Plug } from 'lucide-react';
 import { BrandMark } from './StoreLogo';
 import type { PortalIntegration } from '@/lib/api';
+import { connectionStatusMeta } from '@/lib/connection-status';
 import { staggerItem } from '@/lib/motion';
 import { shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
@@ -64,6 +65,8 @@ export function ConnectionCard({
   const c = integration;
   const name = c.label ?? c.provider ?? 'Integration';
   const typeLabel = c.type === 'carrier' ? 'Carrier' : 'Store';
+  const status = connectionStatusMeta(c.connectionStatus);
+  const isActive = c.connectionStatus === 'active';
   const stop = (e: MouseEvent) => e.stopPropagation();
 
   return (
@@ -86,9 +89,9 @@ export function ConnectionCard({
           <div className={cn(FACE, 'glass')} style={backface}>
             <div className="flex items-start justify-between">
               <BrandMark provider={c.provider} label={c.label} name={name} size={48} />
-              <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', c.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-ink-3')}>
-                {c.active ? <CheckCircle2 size={13} /> : <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />}
-                {c.active ? 'Connected' : 'Inactive'}
+              <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', status.className)}>
+                {isActive ? <CheckCircle2 size={13} /> : <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />}
+                {status.label}
               </span>
             </div>
 
@@ -98,7 +101,9 @@ export function ConnectionCard({
             <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">Last sync</p>
-                <p className="text-sm font-semibold text-emerald-600">Live</p>
+                <p className="text-sm font-semibold text-ink tnum">
+                  {c.lastSyncedAt ? shortDate(c.lastSyncedAt) : 'Not yet'}
+                </p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">Connected</p>
@@ -140,7 +145,9 @@ export function ConnectionCard({
 
             <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-ink-3">Account identifier</p>
             <div className="mt-1 rounded-glass-sm bg-white/70 px-3 py-2 ring-1 ring-slate-200/70">
-              <code className="block break-all font-mono text-[12px] text-ink-2">{c.accountIdentifier ?? '—'}</code>
+              <code className="block break-all font-mono text-[12px] text-ink-2">
+                {c.displayAccountIdentifier ?? '—'}
+              </code>
             </div>
 
             <div className="mt-auto grid grid-cols-2 gap-2 pt-4">

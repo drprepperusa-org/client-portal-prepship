@@ -434,18 +434,23 @@ export interface InventoryMovement {
   createdAt: string | null;
 }
 
+export type PortalConnectionStatus = 'pending' | 'active' | 'reconnect' | 'degraded' | 'inactive';
+export type PortalReconnectReasonCode =
+  | 'authentication_required'
+  | 'permissions_required'
+  | 'configuration_required';
+
 export interface PortalIntegration {
   id?: number;
   provider: string | null;
   label: string | null;
-  accountIdentifier: string | null;
-  source: string | null;
-  active: boolean;
+  displayAccountIdentifier: string | null;
+  connectionStatus: PortalConnectionStatus;
+  reconnectReasonCode: PortalReconnectReasonCode | null;
   type: string;
   clientName: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  lastSyncError: string | null;
   lastSyncedAt: string | null;
 }
 
@@ -458,15 +463,13 @@ export interface PortalIntegration {
 export interface NewIntegrationInput {
   provider: string;
   label: string;
-  accountIdentifier?: string;
   clientId?: number;
   credentials: Record<string, string>;
 }
 
 export interface IntegrationValidationResult {
   ok: boolean;
-  shopName?: string;
-  myshopifyDomain?: string;
+  displayAccountIdentifier?: string;
 }
 
 export interface DashboardSummary {
@@ -807,11 +810,13 @@ export interface SkuOrdersResult {
 }
 
 export interface SyncStatus {
-  status?: string;
-  lastSyncAt?: string | null;
-  orders?: Record<string, unknown>;
-  shipments?: Record<string, unknown>;
-  worker?: Record<string, unknown>;
+  connectionStatus: 'attention' | 'active' | 'pending' | 'inactive' | 'not_connected';
+  lastSyncAt: string | null;
+  connections: Array<{
+    id?: number;
+    connectionStatus: PortalConnectionStatus;
+    lastSyncedAt: string | null;
+  }>;
 }
 
 export interface ListOpts {

@@ -16,36 +16,10 @@ import { ConnectionCard } from '@/components/store/ConnectionCard';
 import { STORE_PLATFORMS } from '@/data/storePlatforms';
 import { staggerContainer, staggerItem } from '@/lib/motion';
 import { cn } from '@/lib/cn';
+import { connectionStatusMeta, reconnectReasonCopy } from '@/lib/connection-status';
 
-/** A store submitted from the portal awaiting operator promotion
- *  (source='portal'); everything else renders as a live connection. */
-const isPending = (r: PortalIntegration) => r.type === 'store' && r.source === 'portal';
-
-/** Client-facing sync status for a store connection. Derived only from
- *  backend-owned fields already on the PortalIntegration DTO
- *  (lastSyncError / source / active) — no independent status truth. */
-type StoreConnStatus = 'pending' | 'active' | 'reconnect' | 'inactive';
-
-function needsStoreReconnect(error: string | null | undefined): boolean {
-  return error === 'auth' || error === 'graphql' || error === 'missing_scopes' || Boolean(error?.includes('scope'));
-}
-
-function storeStatus(i: PortalIntegration): StoreConnStatus {
-  if (needsStoreReconnect(i.lastSyncError)) return 'reconnect';
-  if (i.source === 'portal') return 'pending';
-  return i.active ? 'active' : 'inactive';
-}
-
-// Solid light-tint chip colors, matching this file's own "Pending" badge
-// above and ConnectionCard's Connected/Inactive chip — this app has no dark
-// theme (see index.css `color-scheme: light`; zero `dark:` classes anywhere
-// in portal-client/src), so chips stay light-mode-only like every other one.
-const STATUS_BADGE: Record<StoreConnStatus, { label: string; className: string }> = {
-  pending: { label: 'Pending approval', className: 'bg-amber-50 text-amber-600' },
-  active: { label: 'Active — syncing', className: 'bg-emerald-50 text-emerald-600' },
-  reconnect: { label: 'Reconnect needed', className: 'bg-rose-50 text-rose-600' },
-  inactive: { label: 'Inactive', className: 'bg-slate-100 text-ink-3' },
-};
+/** Backend owns pending/active/reconnect/degraded/inactive policy. */
+const isPending = (row: PortalIntegration) => row.connectionStatus === 'pending';
 
 export default function Connections() {
   const query = useIntegrations();
@@ -197,8 +171,8 @@ export default function Connections() {
                 flip tile with no content slot to extend without editing that
                 component (out of this task's file scope). */}
             {live.map((c, i) => {
-              const status = storeStatus(c);
-              const badge = STATUS_BADGE[status];
+              const badge = connectionStatusMeta(c.connectionStatus);
+              const reconnectCopy = reconnectReasonCopy(c.reconnectReasonCode);
               return (
                 <div key={c.id ?? `${c.type}-${i}`} className="flex flex-col gap-2">
                   <ConnectionCard
@@ -213,7 +187,10 @@ export default function Connections() {
                       <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', badge.className)}>
                         {badge.label}
                       </span>
-                      {status === 'reconnect' && <ReconnectForm onSubmit={(credentials) => handleReconnect(c.id!, credentials)} />}
+                      {reconnectCopy ? <p className="mt-1 text-xs text-ink-3">{reconnectCopy}</p> : null}
+                      {c.connectionStatus === 'reconnect' && (
+                        <ReconnectForm onSubmit={(credentials) => handleReconnect(c.id!, credentials)} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -292,7 +269,7 @@ export default function Connections() {
  *  apps reconnect with Client ID + Client secret; a legacy admin-created app
  *  reconnects by leaving Client ID blank and pasting its long-lived access
  *  token in the secret field. Rendered only when
- *  `storeStatus(integration) === 'reconnect'`. */
+ *  the backend returns `connectionStatus === 'reconnect'`. */
 function ReconnectForm({ onSubmit }: { onSubmit: (credentials: Record<string, string>) => Promise<void> }) {
   const [clientId, setClientId] = useState('');
   const [secret, setSecret] = useState('');

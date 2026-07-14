@@ -6,6 +6,7 @@ import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
 import { cn } from '@/lib/cn';
+import { connectionFreshnessMeta } from '@/lib/connection-status';
 import { DateRangeFilter } from './DateRangeFilter';
 import { AccountMenu } from './AccountMenu';
 
@@ -21,7 +22,8 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
   const clients = clientsQuery.data?.data ?? [];
   const showClientSwitcher = clients.length > 1;
   const activeClientName = clientId ? clients.find((c) => c.id === clientId)?.name ?? 'Client' : 'All clients';
-  const lastSync = (sync.data?.lastSyncAt as string | null | undefined) ?? null;
+  const lastSync = sync.data?.lastSyncAt ?? null;
+  const syncMeta = connectionFreshnessMeta(sync.data?.connectionStatus);
 
   function submitSearch(e: FormEvent) {
     e.preventDefault();
@@ -71,7 +73,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         <div className="relative">
           <button onClick={() => setBellOpen((o) => !o)} aria-label="Notifications" className="focus-ring relative grid h-10 w-10 cursor-pointer place-items-center rounded-glass-sm text-ink-2 transition-colors hover:bg-slate-100">
             <Bell size={19} />
-            <span className={cn('absolute right-2.5 top-2.5 h-2 w-2 rounded-full ring-2 ring-white', lastSync ? 'bg-emerald-500' : 'bg-amber-400')} />
+            <span className={cn('absolute right-2.5 top-2.5 h-2 w-2 rounded-full ring-2 ring-white', syncMeta.dotClassName)} />
           </button>
           <AnimatePresence>
             {bellOpen && (
@@ -86,7 +88,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
                 >
                   <p className="text-sm font-semibold text-ink">Sync status</p>
                   <p className="mt-1 text-[13px] text-ink-3">{lastSync ? `Last synced ${shortDate(lastSync)}` : 'Awaiting first sync…'}</p>
-                  <p className="mt-2 text-[13px] text-ink-3">You're all caught up.</p>
+                  <p className="mt-2 text-[13px] text-ink-3">{syncMeta.label}</p>
                 </motion.div>
               </>
             )}

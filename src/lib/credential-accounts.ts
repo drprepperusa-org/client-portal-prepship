@@ -112,5 +112,9 @@ export function normalizeCredentialAccountPatchBody(
 }
 
 export function maskAccountIdentifier(value: string | null): string | null {
-  return value ? `${value.slice(0, 8)}...` : null;
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  if (normalized.length <= 4) return '••••';
+  const hiddenLength = Math.min(8, normalized.length - 4);
+  return `${normalized.slice(0, 2)}${'•'.repeat(hiddenLength)}${normalized.slice(-2)}`;
 }

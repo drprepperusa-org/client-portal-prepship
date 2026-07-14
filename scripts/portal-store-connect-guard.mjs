@@ -57,11 +57,13 @@ assert(
 );
 
 const connections = readFileSync('portal-client/src/pages/Connections.tsx', 'utf8').replace(/\r\n/g, '\n');
+const connectionDto = readFileSync('src/lib/client-portal/dto.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(
-  connections.includes('needsStoreReconnect') &&
-    connections.includes("error === 'graphql'") &&
-    connections.includes("error === 'missing_scopes'"),
-  'Connections page must expose reconnect for Shopify scope/GraphQL sync failures',
+  connectionDto.includes("normalized === 'missing_scopes'") &&
+    connectionDto.includes("connectionStatus: 'reconnect'") &&
+    connections.includes("c.connectionStatus === 'reconnect'") &&
+    !connections.includes('needsStoreReconnect'),
+  'backend must own reconnect policy and Connections must render the safe status',
 );
 assert(
   connections.includes('portalApi.disconnectIntegration') &&

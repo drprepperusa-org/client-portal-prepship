@@ -200,10 +200,20 @@ async function main(): Promise<number> {
   } as never;
   const listed = await listPortalIntegrations(scope);
   const storeDto = listed.data.find((d: { type?: string }) => d.type === 'store') as
-    | { lastSyncError: string | null; source: string | null; active: boolean }
+    | {
+        connectionStatus: string;
+        reconnectReasonCode: string | null;
+        displayAccountIdentifier: string | null;
+        lastSyncedAt: string | null;
+      }
     | undefined;
   check(!!storeDto, 'portal integrations list returns the store');
-  eq(storeDto?.lastSyncError ?? null, null, 'no sync error after a clean sync');
+  eq(storeDto?.connectionStatus ?? null, 'active', 'clean store status is backend-owned active');
+  eq(storeDto?.reconnectReasonCode ?? null, null, 'clean store has no reconnect reason');
+  check(
+    !JSON.stringify(storeDto).includes('shopify-integration-test.myshopify.com'),
+    'portal integration DTO never returns the raw Shopify domain',
+  );
 
   // 5) Auth failures increment the counter and pause at 3.
   const authFetch = (async () => new Response('{}', { status: 401 })) as typeof fetch;
