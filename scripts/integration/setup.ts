@@ -2,7 +2,6 @@
  * `drizzle-kit push`. Guarded by setupTestEnv() so it can never push to
  * production. Run once before the integration suite (and in CI). */
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { setupTestEnv } from './guard';
 
 const url = setupTestEnv(); // validates + binds DATABASE_URL to the test DB
@@ -24,9 +23,6 @@ for (const file of [
   'drizzle/0027_credential_accounts_source_of_truth.sql',
   'drizzle/0037_store_account_sync_state.sql',
 ]) {
-  for (const statement of readFileSync(file, 'utf8').split(';')) {
-    const trimmed = statement.trim();
-    if (trimmed) await sql.unsafe(trimmed);
-  }
+  await sql.file(file);
 }
 await sql.end({ timeout: 5 });
