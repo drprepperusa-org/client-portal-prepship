@@ -15,7 +15,7 @@ import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { useCanCustomizeTables, useOrders } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
-import { itemCount, money } from '@/lib/status';
+import { money } from '@/lib/status';
 import type { PortalOrder } from '@/lib/api';
 import { type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
@@ -179,8 +179,8 @@ export default function Orders() {
       header: 'Qty',
       defaultWidth: 80,
       className: 'text-center',
-      render: (o) => <QtyBadge value={itemCount(o.items)} />,
-      sortAccessor: (o) => itemCount(o.items),
+      render: (o) => <QtyBadge value={o.orderedUnits} />,
+      sortAccessor: (o) => o.orderedUnits,
     },
     ...(canCustomizeTables ? [{
       key: 'weight',

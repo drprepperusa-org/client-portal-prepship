@@ -44,13 +44,6 @@ function prettify(s: string) {
   return s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-/** Sum item quantities, falling back to item count. */
-export function itemCount(items: Array<{ quantity: number | null }>): number {
-  if (!items?.length) return 0;
-  const sum = items.reduce((n, it) => n + (Number(it.quantity) || 0), 0);
-  return sum > 0 ? sum : items.length;
-}
-
 export function money(value: number | string | null | undefined): string {
   const n = typeof value === 'number' ? value : Number(value ?? 0);
   return Number.isFinite(n) ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '$0.00';

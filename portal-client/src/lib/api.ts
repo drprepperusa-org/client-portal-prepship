@@ -187,10 +187,14 @@ export interface PortalOrder {
   shipToCountry?: string | null;
   carrierCode: string | null;
   serviceCode: string | null;
-  trackingNumber: string | null;
+  // Backend-selected latest active shipment identity, with a documented legacy
+  // order-override fallback when no shipment is linked.
+  displayTrackingNumber: string | null;
   trackingUrl: string | null;
   shippingService?: string | null;
   items: PortalItemIdentity[];
+  // Backend sum of complete canonical order_items.quantity.
+  orderedUnits: number;
   orderTotal?: number | string | null;
   // Resolved customer shipping charge (frozen billing line → projection).
   // Financially gated.

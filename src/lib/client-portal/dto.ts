@@ -1,4 +1,5 @@
 import type { Inventory } from '../../db/schema/inventory';
+import type { OrderItem } from '../../db/schema/order-items';
 import type { Order, OrderOverrides } from '../../db/schema/orders';
 import type { Shipment } from '../../db/schema/shipments';
 import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
@@ -79,17 +80,17 @@ function moneyKey(src: { taxAmount?: unknown } | undefined, key: 'taxAmount'): n
  * Real sources only (all orders flow through ShipStation V1 — no native Shopify
  * payload is stored): subtotal = Σ cents of the returned items' lineTotal (so it
  * matches the per-item money(lineTotal) column); discount = Σ negative promo LINE
- * items (safeItems strips them, so read the ORIGINAL items); shipping =
+ * items (`canonicalItems` excludes them, so read the ORIGINAL items); shipping =
  * customerShippingRate; tax = raw.taxAmount (manual orders only). The whitelisted
  * `money` never carries carrier/service/account fields.
  */
 function buildCostSummary(args: {
   orderTotal: number | string | null | undefined;
   orderStatus: string | null | undefined;
-  /** The DTO's returned items (post-safeItems, discount-stripped) with lineTotal
-   *  attached — the SAME array the panel renders. */
+  /** The DTO's returned normalized items (discount-stripped) with canonical
+   *  lineTotal attached — the SAME array the panel renders. */
   items: Array<Record<string, unknown>>;
-  /** The ORIGINAL items (pre-safeItems) so negative promo lines are visible. */
+  /** The ORIGINAL compatibility items so negative promo lines are visible. */
   rawItems: unknown;
   customerShippingRate: number | string | null | undefined;
   /** Narrow, pre-extracted money whitelist — NEVER the raw jsonb column. */
@@ -198,27 +199,42 @@ export function toPortalOrderDto(
     activeTrackingStatus?: string | null;
     hasActiveShipment?: boolean;
     hasVoidedShipment?: boolean;
+    /** Complete normalized item rows from order_items. orders.items remains
+     *  compatibility input for legacy discount/address metadata only. */
+    canonicalItems: Array<
+      Pick<OrderItem, 'sku' | 'name' | 'quantity' | 'unitPrice' | 'lineTotal' | 'imageUrl'>
+    >;
+    /** Latest active shipment identity, selected by the order read-model. */
+    activeShipmentTrackingNumber?: string | null;
+    activeShipmentCarrierCode?: string | null;
   },
   options: { includeFinancials?: boolean; includeWeight?: boolean } = {}
 ) {
-  // CP-018: the client portal shows ONLY the customer shipping rate (billed
-  // customer shipping, falling back to buyer-paid store shipping). The internal
+  // CP-018/CP-040: the client portal shows ONLY the resolved customer shipping
+  // rate. Buyer-paid store shipping and the internal
   // selected/label/best rate, carrier, service, and provider-account nickname
   // are never computed into or projected onto the client DTO.
-  // CP-014: product line totals + subtotal are backend-owned money. Compute the
-  // per-line total (unitPrice × quantity) and the order product subtotal here so
-  // the frontend renders them instead of multiplying unit prices itself. Both
-  // are financially gated: with no financial access, safeItems omits unitPrice,
-  // no lineTotal is attached, and the subtotal stays 0 (and is not returned).
-  const items = safeItems(row.items, options.includeFinancials);
-  if (options.includeFinancials) {
-    for (const it of items) {
-      const price = Number(it.unitPrice);
-      const qty = Number(it.quantity) || 1;
-      it.lineTotal = Number.isFinite(price) ? price * qty : null;
-    }
-  }
+  // CP-014: product line totals + subtotal are backend-owned money. Map canonical
+  // order_items.line_total and sum the product subtotal here so the frontend only
+  // renders them. Both are financially gated.
+  // CP-052: order_items is the canonical owner for item identity, quantity, and
+  // line money. The complete array crosses the DTO boundary with no silent cap.
+  // orders.items is retained below only for legacy promo/address compatibility;
+  // malformed raw quantity can never change orderedUnits or a displayed line.
+  const items: Array<Record<string, unknown>> = row.canonicalItems.map((it) => ({
+    sku: it.sku,
+    name: it.name,
+    quantity: Number(it.quantity),
+    ...(options.includeFinancials
+      ? { unitPrice: Number(it.unitPrice), lineTotal: Number(it.lineTotal) }
+      : {}),
+    imageUrl: it.imageUrl,
+  }));
+  const orderedUnits = row.canonicalItems.reduce((sum, it) => sum + Number(it.quantity), 0);
   const productSubtotal = items.reduce((sum, it) => sum + (Number(it.lineTotal) || 0), 0);
+  const activeShipmentTrackingNumber = row.activeShipmentTrackingNumber?.trim() || null;
+  const legacyOverrideTrackingNumber = row.override?.trackingNumber?.trim() || null;
+  const displayTrackingNumber = activeShipmentTrackingNumber ?? legacyOverrideTrackingNumber;
   // Full customer ship-to address. Street lines live in the raw marketplace
   // payload (there is no dedicated column); city/state/postal are columns. This
   // is the CLIENT's own recipient — not provider/internal data — so it is not
@@ -266,7 +282,10 @@ export function toPortalOrderDto(
     // shipping AMOUNT stays (financially gated); only the identity is stripped.
     carrierCode: null,
     serviceCode: null,
-    trackingNumber: row.override?.trackingNumber ?? null,
+    // Canonical display tracking comes from the latest active shipment. The
+    // override is a documented legacy fallback for orders not linked to a
+    // shipment yet; competing raw tracking fields never cross the DTO boundary.
+    displayTrackingNumber,
     // CP-034: backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx) so the
     // order-detail tracking number links to the real carrier site, never 17track.
     // Carrier identity stays redacted (carrierCode/serviceCode null above); only the
@@ -274,11 +293,13 @@ export function toPortalOrderDto(
     // null when the carrier is unknown, so the number renders as plain text.
     trackingUrl:
       trackingUrlForCarrier(
-        row.carrierCode,
-        row.override?.trackingNumber,
+        activeShipmentTrackingNumber ? row.activeShipmentCarrierCode : row.carrierCode,
+        displayTrackingNumber,
       ) || null,
     shippingService: null,
     items,
+    // Backend-owned sum of canonical order_items.quantity at order time.
+    orderedUnits,
     ...(options.includeWeight ? { weightOz: row.weightOz ?? null } : {}),
     ...(options.includeFinancials
       ? (() => {

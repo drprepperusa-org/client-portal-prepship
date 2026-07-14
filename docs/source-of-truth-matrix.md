@@ -912,7 +912,8 @@ does not fan out, cap, merge, total, average, share, or rank them. Guard:
 | Order # | `orderNumber` | `orderNumber` | `orders.order_number` | order date | presentation-only |
 | Status | `orderStatus` | `orderStatus` | `orders.order_status` | order state | presentation-only |
 | Order date | `orderDate` | `orderDate` (ISO) | `orders.order_date` | order date | presentation-only |
-| Tracking | `trackingNumber` | `trackingNumber` | `order_overrides.trackingNumber` / `shipments` | label time | presentation-only |
+| Tracking | `displayTrackingNumber` | `displayTrackingNumber` | latest active `shipments.label_tracking` → legacy `shipments.tracking_number`; documented `order_overrides.trackingNumber` fallback only when no active shipment tracking exists | label time | backend-owned-truth (CP-052) |
+| Ordered units | `orderedUnits` | `orderedUnits` | Σ complete `order_items.quantity` in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-052) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode`/`shippingService` = **null** | hard-nulled in `toPortalOrderDto` | n/a | backend-owned-truth (redaction) |
 | Ship-to | `shipToName/City/State` | same | `orders` columns + raw `shipTo` jsonb (client's own recipient) | order time | presentation-only |
 | Weight (admin only) | `weightOz` | `weightOz` | `orders.weight_oz`, gated by `scope.isGlobal` in the order read-model | order import / packing update time | presentation-only (operator-only) |
@@ -920,7 +921,8 @@ does not fan out, cap, merge, total, average, share, or rank them. Guard:
 
 Owner: `src/lib/client-portal/dto.ts` (`toPortalOrderDto`) over `orders` /
 `order_items` / `order_overrides`. Route: `src/routes/client-portal/orders.ts`.
-Guards: `client-portal-orders-selected-rate-guard.mjs` (no internal
+Guards: `client-portal-orders-canonical-data-guard.ts` (complete canonical
+items, ordered units, and shipment tracking), `client-portal-orders-selected-rate-guard.mjs` (no internal
 selected/label/best rate leaks), `client-portal-orders-search-guard.mjs`,
 `client-portal-carrier-redaction-guard.ts` (CP-009/CP-018 redaction).
 
@@ -928,8 +930,8 @@ selected/label/best rate leaks), `client-portal-orders-search-guard.mjs`,
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
-| Line item name/sku/qty | `items[]` | `items[]` (`safeItems`) | `orders.items` jsonb → canonical `order_items` | order time | presentation-only |
-| Line total | `lineTotal` | `lineTotal` (unitPrice × qty) | backend-computed in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
+| Line item name/sku/qty | `items[]` | complete `items[]` (no silent cap) | normalized `order_items`; `orders.items` is compatibility metadata only | order time | backend-owned-truth (CP-052) |
+| Line total | `lineTotal` | `lineTotal` | normalized `order_items.line_total` | order time | backend-owned-truth (CP-014/CP-052) |
 | Product subtotal | `productSubtotal` | `productSubtotal` | Σ line totals in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
 | Charge summary receipt | `chargeSummary[]` | `chargeSummary[]` | `buildCostSummary` — reconciles to `orders.orderTotal` to the cent | order time | backend-owned-truth (CP-017/CP-038) |
 

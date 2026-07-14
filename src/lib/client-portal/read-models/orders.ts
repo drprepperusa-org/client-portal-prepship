@@ -1,6 +1,7 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
+import { orderItems } from '../../../db/schema/order-items';
 import { orderOverrides, orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
 import { toPortalOrderDto } from '../dto';
@@ -18,6 +19,62 @@ import type { ClientPortalScope } from '../scope';
  * single-order detail, and the live awaiting count. Routes stay responsible
  * for param parsing, RBAC/scope resolution, auditing, and HTTP shaping.
  */
+
+type CanonicalOrderItemRow = {
+  orderId: number;
+  sku: string;
+  name: string | null;
+  quantity: string;
+  unitPrice: string;
+  lineTotal: string;
+  imageUrl: string | null;
+};
+
+async function loadCanonicalOrderItems(orderIds: number[]): Promise<Map<number, CanonicalOrderItemRow[]>> {
+  const byOrder = new Map<number, CanonicalOrderItemRow[]>();
+  if (orderIds.length === 0) return byOrder;
+
+  const rows = await db
+    .select({
+      orderId: orderItems.orderId,
+      sku: orderItems.sku,
+      name: orderItems.name,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      lineTotal: orderItems.lineTotal,
+      imageUrl: orderItems.imageUrl,
+    })
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, orderIds))
+    .orderBy(asc(orderItems.orderId), asc(orderItems.lineIndex));
+
+  for (const row of rows) {
+    const items = byOrder.get(row.orderId) ?? [];
+    items.push(row);
+    byOrder.set(row.orderId, items);
+  }
+  return byOrder;
+}
+
+const activeShipmentTrackingNumberSql = () => sql<string | null>`(
+  select coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), ''))
+  from shipments s
+  where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+    and coalesce(s.voided, false) = false
+    and coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), '')) is not null
+  order by s.id desc
+  limit 1
+)`;
+
+const activeShipmentCarrierCodeSql = () => sql<string | null>`(
+  select coalesce(nullif(trim(s.label_carrier), ''), nullif(trim(s.carrier_code), ''))
+  from shipments s
+  where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+    and coalesce(s.voided, false) = false
+    and coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), '')) is not null
+  order by s.id desc
+  limit 1
+)`;
 
 export async function listPortalOrders(
   scope: ClientPortalScope,
@@ -43,6 +100,8 @@ export async function listPortalOrders(
       // shipments. Never orders.shipping_amount (buyer-paid store shipping); never
       // the internal carrier / service / selected-rate.
       resolvedShippingRate: orderCustomerShippingRateSql(),
+      activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
+      activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts): the latest ACTIVE (non-voided)
       // shipment's tracking status, plus whether the order has any active / any
@@ -77,11 +136,14 @@ export async function listPortalOrders(
     .orderBy(desc(orders.orderDate), desc(orders.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(orders)
-    .leftJoin(clients, eq(clients.id, orders.clientId))
-    .where(where);
+  const [countRows, canonicalItemsByOrder] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(orders)
+      .leftJoin(clients, eq(clients.id, orders.clientId))
+      .where(where),
+    loadCanonicalOrderItems(rows.map((row) => row.order.id)),
+  ]);
   const count = countRows[0]?.count ?? rows.length;
   return {
     data: rows.map((row) =>
@@ -96,6 +158,9 @@ export async function listPortalOrders(
           activeTrackingStatus: row.activeTrackingStatus,
           hasActiveShipment: row.hasActiveShipment,
           hasVoidedShipment: row.hasVoidedShipment,
+          canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
+          activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
+          activeShipmentCarrierCode: row.activeShipmentCarrierCode,
         },
         { includeFinancials: scope.canViewFinancials, includeWeight: scope.isGlobal },
       ),
@@ -119,6 +184,8 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       // summed over the order's shipments — the SAME resolver the Shipments surface
       // uses. Never orders.shipping_amount.
       resolvedShippingRate: orderCustomerShippingRateSql(),
+      activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
+      activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts).
       activeTrackingStatus: sql<string | null>`(
@@ -145,6 +212,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
     .where(and(eq(orders.id, id), orderScopePredicate(scope), activeClientPredicate()))
     .limit(1);
   if (!row) return null;
+  const canonicalItemsByOrder = await loadCanonicalOrderItems([row.order.id]);
   return toPortalOrderDto(
     {
       ...row.order,
@@ -155,6 +223,9 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       activeTrackingStatus: row.activeTrackingStatus,
       hasActiveShipment: row.hasActiveShipment,
       hasVoidedShipment: row.hasVoidedShipment,
+      canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
+      activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
+      activeShipmentCarrierCode: row.activeShipmentCarrierCode,
     },
     { includeFinancials: scope.canViewFinancials, includeWeight: scope.isGlobal },
   );

@@ -342,6 +342,7 @@ async function main(): Promise<number> {
     shipToName: 'Judy Mai', shipToCity: 'Boston', shipToState: 'MA', shipToPostalCode: '02101',
     weightOz: 10, orderTotal: '99.99', shippingAmount: '0',
     items: [{ sku: 'SKU-A', name: 'Item A', quantity: 2, unitPrice: 10 }],
+    canonicalItems: [{ sku: 'SKU-A', name: 'Item A', quantity: '2', unitPrice: '10.00', lineTotal: '20.00', imageUrl: null }],
     raw: { shipTo: { street1: '123 Main St', country: 'US' } },
   };
   const clientOrder: any = dtoMod.toPortalOrderDto(orderRow, { includeFinancials: false });

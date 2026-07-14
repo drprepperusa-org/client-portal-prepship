@@ -47,6 +47,7 @@ const BASE = {
   shipToState: null,
   raw: {},
   items: [],
+  canonicalItems: [],
   orderTotal: '100.00',
   shippingAmount: null,
   shippingCharged: null,

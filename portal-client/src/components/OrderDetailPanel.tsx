@@ -1,7 +1,7 @@
 import { MapPin, Truck, ExternalLink } from 'lucide-react';
 import { Chip } from '@/components/ui/Display';
 import { Thumb } from '@/components/ui/Thumb';
-import { orderStatusMeta, itemCount, money, shortDate } from '@/lib/status';
+import { orderStatusMeta, money, shortDate } from '@/lib/status';
 import type { PortalOrder } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
@@ -93,7 +93,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
 
       {/* Full order — every line item */}
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Items ({itemCount(o.items)})</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Items ({o.orderedUnits})</p>
         <ul className="space-y-3">
           {o.items.length === 0 && <li className="text-sm text-ink-3">No line items.</li>}
           {o.items.map((it, i) => {
@@ -106,7 +106,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
                   {it.sku && <p className="truncate font-mono text-[11px] text-ink-3">{it.sku}</p>}
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-sm tnum text-ink-2">×{it.quantity ?? 1}</p>
+                  <p className="text-sm tnum text-ink-2">×{it.quantity}</p>
                   {lt != null && <p className="text-xs tnum text-ink-3">{money(lt)}</p>}
                 </div>
               </li>
@@ -115,7 +115,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
         </ul>
       </div>
 
-      {o.trackingNumber && (
+      {o.displayTrackingNumber && (
         <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
           <p className="text-xs text-ink-3">Tracking number</p>
           {o.trackingUrl ? (
@@ -125,11 +125,11 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
               rel="noreferrer"
               className="focus-ring inline-flex max-w-full items-center gap-1.5 font-mono text-sm font-medium text-brand-700 underline decoration-dotted decoration-brand-300 underline-offset-2 hover:text-brand-800"
             >
-              <span className="truncate">{o.trackingNumber}</span>
+              <span className="truncate">{o.displayTrackingNumber}</span>
               <ExternalLink size={13} className="shrink-0" />
             </a>
           ) : (
-            <p className="truncate font-mono text-sm text-ink">{o.trackingNumber}</p>
+            <p className="truncate font-mono text-sm text-ink">{o.displayTrackingNumber}</p>
           )}
         </div>
       )}

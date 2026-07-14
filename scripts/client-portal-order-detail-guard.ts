@@ -1,5 +1,5 @@
 // CP-014 / CP-015 — the order-detail cost summary and rate display must be
-// backend-owned. The DTO computes product line totals + subtotal (CP-014) and a
+// backend-owned. The DTO maps canonical product line totals + subtotal (CP-014) and a
 // normalized best-rate amount (CP-015); the frontend renders those fields and
 // never multiplies unitPrice × quantity or parses raw bestRateJson. All money is
 // financially gated. Enforced at runtime against the real (pure) DTO builder.
@@ -49,6 +49,10 @@ const baseRow: any = {
     { sku: 'B', name: 'Item B', quantity: 3, unitPrice: 5 },   // 15.00
     { sku: 'PROMO', name: 'Promo', quantity: 1, unitPrice: -2 }, // discount → excluded
   ],
+  canonicalItems: [
+    { sku: 'A', name: 'Item A', quantity: '2', unitPrice: '7.50', lineTotal: '15.00', imageUrl: null },
+    { sku: 'B', name: 'Item B', quantity: '3', unitPrice: '5.00', lineTotal: '15.00', imageUrl: null },
+  ],
   // CP-015: raw provider rate JSON (two nested amount shapes) the backend must
   // normalize into a single numeric bestRateAmount.
   override: { bestRateJson: { shipping_amount: { amount: 4 }, other_amount: { amount: 1 } } },
@@ -57,7 +61,7 @@ const baseRow: any = {
 // ── CP-014: financial DTO computes per-line totals + subtotal (discount excluded) ──
 const admin: any = dto.toPortalOrderDto(baseRow, { includeFinancials: true });
 check(admin.productSubtotal === 30, 'CP-014: backend product subtotal = Σ line totals (30), discount excluded');
-check(admin.items.find((i: any) => i.sku === 'A')?.lineTotal === 15, 'CP-014: per-line total is backend-owned (unitPrice × qty)');
+check(admin.items.find((i: any) => i.sku === 'A')?.lineTotal === 15, 'CP-014: per-line total comes from normalized order_items');
 check(!admin.items.some((i: any) => i.sku === 'PROMO'), 'CP-014: discount/promo lines excluded from the item list');
 
 // ── CP-018: the internal selected/best rate is gone from the client DTO ──
@@ -101,6 +105,9 @@ const dj: any = dto.toPortalOrderDto(
       { sku: 'DJ', name: 'DJ Item', quantity: 1, unitPrice: 148.7 },
       { sku: 'PROMO', name: 'Promo', quantity: 1, unitPrice: -29.54 },
     ],
+    canonicalItems: [
+      { sku: 'DJ', name: 'DJ Item', quantity: '1', unitPrice: '148.70', lineTotal: '148.70', imageUrl: null },
+    ],
   },
   { includeFinancials: true },
 );
@@ -137,7 +144,17 @@ check(baseSum === Math.round(Number(baseRow.orderTotal) * 100), 'CP-017: even th
 
 // A cancelled order below goods value → a Refund row, not a "100% discount".
 const cancelled: any = dto.toPortalOrderDto(
-  { ...baseRow, orderStatus: 'cancelled', orderTotal: '0.00', shippingCharged: '0.00', shippingAmount: '0.00', items: [{ sku: 'X', name: 'X', quantity: 1, unitPrice: 30 }] },
+  {
+    ...baseRow,
+    orderStatus: 'cancelled',
+    orderTotal: '0.00',
+    shippingCharged: '0.00',
+    shippingAmount: '0.00',
+    items: [{ sku: 'X', name: 'X', quantity: 1, unitPrice: 30 }],
+    canonicalItems: [
+      { sku: 'X', name: 'X', quantity: '1', unitPrice: '30.00', lineTotal: '30.00', imageUrl: null },
+    ],
+  },
   { includeFinancials: true },
 );
 check(
@@ -151,7 +168,7 @@ check(
 
 // A zero subtotal emits no $0.00 subtotal row.
 const zeroSub: any = dto.toPortalOrderDto(
-  { ...baseRow, orderTotal: '5.99', shippingCharged: '5.99', shippingAmount: '5.99', items: [] },
+  { ...baseRow, orderTotal: '5.99', shippingCharged: '5.99', shippingAmount: '5.99', items: [], canonicalItems: [] },
   { includeFinancials: true },
 );
 check(!zeroSub.chargeSummary.some((r: any) => r.kind === 'subtotal'), 'CP-017: a zero subtotal emits no subtotal row (no $0.00 noise)');

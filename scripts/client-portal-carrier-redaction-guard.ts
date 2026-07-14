@@ -49,6 +49,7 @@ const orderRow: any = {
   // carries a billed value and the DTO must surface it (5.99), not 5.00.
   shippingCharged: '5.99',
   items: [],
+  canonicalItems: [],
   override: { trackingNumber: '1Z999' },
   latestShipment: { carrierCode: 'ups', serviceCode: 'ups_ground_saver', amount: 5.99 },
   bestRateJson: null,
@@ -60,7 +61,7 @@ check(
   'client order DTO exposes no carrier code / service code / service name',
 );
 check(!('selectedRate' in clientOrder), 'CP-018: client order DTO no longer exposes selectedRate at all');
-check(clientOrder.trackingNumber === '1Z999', 'client order DTO keeps the tracking number');
+check(clientOrder.displayTrackingNumber === '1Z999', 'client order DTO keeps the legacy fallback tracking number');
 check(!('shippingAccount' in clientOrder), 'client order DTO omits the provider-account nickname (CP-001/CP-018)');
 // CP-009 sweep: the client portal is customer-facing, so carrier/service is
 // NEVER exposed — not even to financials-enabled clients or admins. Money (order
