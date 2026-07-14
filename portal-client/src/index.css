@@ -93,13 +93,6 @@ body {
     outline-offset: 2px;
   }
 
-  /* Recharts keyboard navigation keeps a visible, branded focus indicator. */
-  .recharts-wrapper:focus-visible,
-  .recharts-wrapper :focus-visible {
-    outline: 2px solid rgb(var(--brand-rgb) / 0.55);
-    outline-offset: 2px;
-  }
-
   /* Skeleton shimmer sweep */
   .skeleton {
     position: relative;
@@ -119,6 +112,14 @@ body {
     );
     animation: shimmer 1.6s infinite;
   }
+}
+
+/* Recharts adds this class at runtime, so keep the rule outside Tailwind's
+   managed layers to prevent it from being removed from production builds. */
+.recharts-wrapper:focus-visible,
+.recharts-wrapper :focus-visible {
+  outline: 2px solid rgb(var(--brand-rgb) / 0.55);
+  outline-offset: 2px;
 }
 
 @layer utilities {
