@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { canManageAccessTarget, isAccessAssignmentWithinBoundary } from '../src/lib/client-portal/access-policy';
@@ -78,7 +79,10 @@ assert.equal(
 );
 
 const read = (path: string) => readFileSync(path, 'utf8');
-const accessRoute = read('src/routes/client-portal/access.ts');
+const accessRoute = readSourceTree([
+  'src/routes/client-portal/access.ts',
+  'src/routes/client-portal/access',
+]);
 const scope = read('src/lib/client-portal/scope.ts');
 const audit = read('src/lib/client-portal/audit.ts');
 const main = read('src/main.ts');
