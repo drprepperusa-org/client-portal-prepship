@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-031 — Client-portal Billing "returns are a visible category" guard.
 //
 // The backend already generates `return_postage` / `return_processing_fee`
@@ -34,7 +35,7 @@ const count = (src, re) => (src.match(re) || []).length;
 
 const readModel = read('src/lib/client-portal/read-models/invoice-details.ts');
 const route = read('src/routes/client-portal/invoices.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const page = [
   read('portal-client/src/pages/Invoices.tsx'),
   read('portal-client/src/components/billing/invoiceColumns.tsx'),

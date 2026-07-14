@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // Portal order search must span every status ("search bar not working" card):
 // the global top-bar search lands on the All tab, Orders adopts ?tab=/?q=,
 // an in-tab miss offers the cross-status escape, and the server predicate
@@ -20,7 +21,7 @@ function assert(condition, message) {
 
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const predicates = read('src/lib/client-portal/predicates.ts');
 const readModel = read('src/lib/client-portal/read-models/orders.ts');
 const packageJson = JSON.parse(read('package.json'));

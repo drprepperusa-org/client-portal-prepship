@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-046 - Analysis Pending must use the Orders awaiting-shipment SOT.
 //
 // Customer-visible Analysis pending is not "missing shipping billing" and not
@@ -26,7 +27,7 @@ const analysisFlat = flat(analysis);
 const predicates = read('src/lib/client-portal/predicates.ts');
 const predicatesFlat = flat(predicates);
 const ordersReadModel = read('src/lib/client-portal/read-models/orders.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const integration = read('scripts/integration/client-portal.integration.ts');
 const pkg = JSON.parse(read('package.json'));
 

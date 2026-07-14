@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-008 guard: Billing Order # opens a scoped shipment-information modal.
 // Shipment truth comes from the backend shipments read path (scope-checked,
 // DTO-redacted); the modal never exposes label URLs, provider payloads, or
@@ -58,7 +59,7 @@ check(
 );
 
 // 3) Portal API + modal wiring.
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 check(api.includes('/api/client-portal/orders/${orderId}/shipments'), 'portal API exposes orderShipments');
 
 const invoicesPage = [

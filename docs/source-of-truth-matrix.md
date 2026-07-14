@@ -993,7 +993,7 @@ Guards: `client-portal-analytics-parity-guard.mjs` (CP-010),
 `client-portal-analysis-columns-guard.mjs`,
 `client-portal-analysis-dto-redaction-guard.mjs` (CP-047).
 
-### Finance
+### Billing reports summary
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
@@ -1003,8 +1003,10 @@ Guards: `client-portal-analytics-parity-guard.mjs` (CP-010),
 | Avg charge / order | `avgChargePerOrder` | `avgChargePerOrder` | `totalCharges / billableOrders` (zero-guarded, backend) | billing time | backend-owned-truth (CP-012/CP-038) |
 
 Owner: `src/routes/client-portal/billing.ts` (`/reports`). Redacted
-(`billingVisible:false`) for non-financial callers. Frontend issues ONE scoped
-request and reduces nothing. Guard: `client-portal-finance-sot-guard.mjs`.
+(`billingVisible:false`) for non-financial callers. The routed Billing page
+issues one scoped request and reduces nothing. The former unrouted
+`Finance.tsx` surface is retired. Guards: `client-portal-contract-drift-guard.mjs`
+and `client-portal-active-surfaces-guard.mjs`.
 
 ### Billing
 
@@ -1152,8 +1154,8 @@ and must still document source inputs, event clock, and formula.
   SQL/DTO; the client shows tracking numbers, never carriers.
 - **CP-010 / CP-049** — one canonical full-window sales-metrics owner (`getClientPortalSalesMetrics`)
   so Dashboard and Analysis revenue/units cannot drift.
-- **CP-012** — Finance charge breakdown / totals / billable count / avg per
-  order are backend-owned (`/reports`), not React reductions.
+- **CP-012** — Billing report charge breakdown / totals / billable count / avg
+  per order are backend-owned (`/reports`), not React reductions.
 - **CP-013** — inventory stock status (In/Low/Out) is a backend enum shared by
   the filter and the badge.
 - **CP-014** — product line totals + subtotal are backend-owned money.

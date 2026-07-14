@@ -29,6 +29,7 @@ import {
 } from '../predicates';
 import type { ClientPortalScope } from '../scope';
 import { awaitingActiveOrderCount } from './orders';
+import type { DashboardSummary } from '../contracts/dashboard';
 
 /** One ranked Dashboard Top-SKU row. Every field is backend-owned and already
  *  financially redacted by the canonical owner; the frontend only renders it. */
@@ -101,7 +102,9 @@ export interface DashboardSummaryQuery {
  * Full-scope Dashboard read model. One HTTP request reaches this owner; all
  * tenant/store unions and business aggregates stay in set-based backend SQL.
  */
-export async function getClientPortalDashboardSummary(input: DashboardSummaryQuery) {
+export async function getClientPortalDashboardSummary(
+  input: DashboardSummaryQuery,
+): Promise<DashboardSummary> {
   const { scope, dateFrom, dateTo, clientId, storeId } = input;
   const filters = { clientId, storeId };
   const orderDay = sql<string>`to_char(${orders.orderDate} at time zone 'UTC', 'YYYY-MM-DD')`;

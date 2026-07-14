@@ -1,6 +1,7 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-011 — Billing summary grand totals must be backend-owned. The Billing
 // footer (Total row) previously reduced the per-period rows in React, which
-// could drift from the printable invoice HTML, the Excel export, Finance, and
+// could drift from the printable invoice HTML, the Excel export, Billing, and
 // the canonical billing ledger. The /invoice-summary route now returns the
 // grand totals; the frontend renders them (no row reduction for money).
 import fs from 'node:fs';
@@ -26,7 +27,7 @@ const invoices = [
   read('portal-client/src/components/billing/invoiceColumns.tsx'),
 ].join('\n');
 const invoicesFlat = flat(invoices);
-const api = flat(read('portal-client/src/lib/api.ts'));
+const api = flat(readActiveClientPortalApiSource());
 const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
 const pkg = JSON.parse(read('package.json'));
 

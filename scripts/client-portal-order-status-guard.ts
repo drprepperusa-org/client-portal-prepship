@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP order fulfillment status guard.
 //
 // Pins the backend-owned order fulfillment status (Pending / In Transit /
@@ -100,10 +101,11 @@ check(
 );
 
 // ── 4. Frontend renders the enum, never derives it ──
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const orders = read('portal-client/src/pages/Orders.tsx');
 check(
-  /fulfillmentStatus:\s*'pending'\s*\|\s*'in_transit'\s*\|\s*'delivered'\s*\|\s*'cancelled'\s*\|\s*'voided'/.test(api),
+  /export type PortalOrderFulfillmentStatus\s*=\s*[\s\S]*?'pending'[\s\S]*?'in_transit'[\s\S]*?'delivered'[\s\S]*?'cancelled'[\s\S]*?'voided'/.test(api) &&
+    api.includes('fulfillmentStatus: PortalOrderFulfillmentStatus'),
   'PortalOrder declares the 5-value fulfillmentStatus enum',
 );
 check(/header:\s*'Status'/.test(orders) && /status=\{o\.fulfillmentStatus\}/.test(orders), 'Orders table renders a Status column from fulfillmentStatus');

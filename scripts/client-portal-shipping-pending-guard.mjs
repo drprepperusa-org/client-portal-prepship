@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // Client-portal "Customer Shipping Rate: Pending" guard.
 //
 // A shipped-but-not-yet-billed order/shipment shows a muted "Pending" (not a
@@ -23,7 +24,7 @@ function assert(cond, msg) {
 }
 
 const dto = read('src/lib/client-portal/dto.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const cell = read('portal-client/src/components/ShippingRateCell.tsx');
 const orders = read('portal-client/src/pages/Orders.tsx');
 const shipments = read('portal-client/src/pages/Shipments.tsx');
@@ -41,7 +42,7 @@ assert(
 
 // 2. Frontend types carry the flag (PortalOrder + PortalShipment).
 assert(
-  (api.match(/customerShippingRatePending\?:\s*boolean/g) ?? []).length >= 2,
+  (api.match(/customerShippingRatePending\??:\s*boolean/g) ?? []).length >= 2,
   'PortalOrder + PortalShipment declare customerShippingRatePending',
 );
 

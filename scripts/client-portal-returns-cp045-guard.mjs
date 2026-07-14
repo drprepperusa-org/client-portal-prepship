@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-045 - Return labels use PrepShip best rate, fixed DRP return address,
 // exact outbound physical facts, safe package fallback, persisted return reference, and client-safe
 // inspection/download visibility.
@@ -25,7 +26,7 @@ const service = read('src/services/returns.ts');
 const route = read('src/routes/client-portal/returns.ts');
 const schema = read('src/db/schema/returns.ts');
 const shipmentSchema = read('src/db/schema/shipments.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const returnApi = stripComments(
   api.slice(
     api.indexOf('export interface PortalReturnRow'),

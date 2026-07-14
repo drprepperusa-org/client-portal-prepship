@@ -20,13 +20,14 @@
 1. **Backend / read-model / DTO owns business truth** — scoped data, money,
    rates, inventory counts, billing math, access scope, financial visibility.
 2. **The portal frontend renders safe DTO state and sends user intent only.** It
-   may hold UI-only state (filters, pagination, the client switcher) and may
-   fan out / merge per-client requests, but it must never become the authority
+   may hold UI-only state (filters, pagination, the client switcher), but it
+   sends one request for the backend-owned scope union and must never become the authority
    for rate selection, billing math, inventory truth, client/store scope, or
    financial-visibility decisions.
 3. **Wrappers/helpers may translate and render, never decide.** `portal-client`
-   API helpers (`portal-client/src/lib/api.ts`) translate params and merge
-   scoped responses; the backend re-checks every client/store id, so a frontend
+   domain helpers (`portal-client/src/lib/api/domains/`) translate params while
+   shared DTO contracts live in `src/lib/client-portal/contracts/`; the backend
+   re-checks every client/store id, so a frontend
    filter can only ever *narrow* visibility, never widen it.
 
 ## Deployment topology
@@ -48,7 +49,7 @@ Browser ──▶ Vercel (portal-client/dist, static)
 
 ## SOT / mapping matrix
 
-| Surface | Internal source | Backend owner (route → read-model/DTO) | Portal DTO fields (`portal-client/src/lib/api.ts`) | Frontend consumer | Guard / test | Redaction & scope rule |
+| Surface | Internal source | Backend owner (route → read-model/DTO) | Portal DTO fields (`src/lib/client-portal/contracts/`) | Frontend consumer | Guard / test | Redaction & scope rule |
 |---|---|---|---|---|---|---|
 | **Orders list/detail** | `orders` + normalized `order_items` + latest active `shipments` tracking; `order_overrides` tracking is legacy fallback only; `clients`/`stores` for names | `GET /orders`, `GET /orders/:id` → shared `toPortalOrderDto()` (`src/lib/client-portal/dto.ts`) | `PortalOrder` (`items[]`, `orderedUnits`, `displayTrackingNumber`) | `pages/Orders.tsx` (`portalApi.orders`/`order`) and shared `OrderDetailLoader` | `test:client-portal-orders-canonical-data`, `guard:client-portal-api` | Scope by `clientIds`/`storeIds` (`scope.ts`); financial fields only when `canViewFinancials`; carrier/service identity hard-nulled |
 | **SKU / items / quantity** | normalized `order_items` for reporting and order display; `orders.items` JSON is compatibility metadata only; `inventory` master | `getClientPortalSalesMetrics()` / `getSkuBreakdownFromOrderItems()` for Dashboard and Analysis; `toPortalOrderDto()` maps the complete normalized item set and sums `orderedUnits` | `PortalOrder.items[{sku,name,quantity,imageUrl}]`, `PortalOrder.orderedUnits`; `DashboardSummary.units`, `daily[].orderedUnits`, `bySku[]` | `pages/Orders.tsx`, `pages/Dashboard.tsx`, `pages/Analysis.tsx` | `test:client-portal-orders-canonical-data`, `test:client-portal-analytics-parity`, `test:dashboard-bar-chart-top-skus` | `unitPrice`/`lineTotal` withheld unless `canViewFinancials`; no frontend quantity fallback or item cap |
@@ -56,7 +57,7 @@ Browser ──▶ Vercel (portal-client/dist, static)
 | **Shipments / tracking** | `shipments` | `GET /shipments` → `toPortalShipmentDto()` (`dto.ts`) | `PortalShipment` | `pages/Shipments.tsx` | `guard:client-portal-api`, `test:label-shipment-scope-review` | No raw label URLs/payloads in DTO; scope by `clientIds`/`storeIds` |
 | **Inventory stock / effective qty** | `inventory` (+ `packages`, sold-last-30 aggregate) | `GET /inventory`, `GET /inventory-history` → `toPortalInventoryDto()` (`dto.ts`) | `PortalInventory`, `InventoryMovement` | `pages/Inventory.tsx` | `test:inventory-client-scope`, `guard:client-portal-api` | Scope by `clientIds`/`storeIds`; effective stock computed server-side |
 | **Dashboard daily orders/units/status/shipments + Top SKUs** | scoped `order_items` + `orders` + `shipments` for the full date range | `GET /dashboard` → `getClientPortalDashboardSummary()`; canonical sales/SKU owner `getSkuBreakdownFromOrderItems()` / `getClientPortalSalesMetrics()`; `buildDashboardDailyRows()` owns period context | `DashboardSummary` (`openOrderCount`, `period`, intent-named `daily[]` metrics, `bySku[]`) | `pages/Dashboard.tsx`, `ChartDayModal`, KPI peek, chart components | `test:client-portal-dashboard-full-scope`, `test:client-portal-analytics-parity`, `test:dashboard-client-filter` | One backend request handles the complete client/store union; no 1,000-row cap or browser totals/ranks; revenue and billed shipping are financially redacted by the canonical owner |
-| **Billing / invoices / financial visibility** | billing line items, `orders`, `shipments`, markups | `/reports`, `/invoice-details`, `/invoice`, `/billing/status`, `POST /billing/generate`, `/markups` | `BillingSummaryRow`, `BillingInvoiceDetailRow`, `billingVisible`, `MarkupGroup`/`MarkupValue` | `pages/Billing.tsx`, `pages/Invoices.tsx`, `pages/Finance.tsx`, `pages/Settings.tsx` (markups) | `test:billing-client-scope`, `guard:client-portal-api` | `billingVisible` gate (`canViewFinancials`); `billing/generate` + `markups` write paths are admin-only |
+| **Billing / invoices / financial visibility** | billing line items, `orders`, `shipments`, markups | `/reports`, `/invoice-details`, `/invoice`, `/billing/status`, `POST /billing/generate`, `/markups` | `PortalReports`, `BillingInvoiceDetailRow`, `billingVisible` | `pages/Billing.tsx`, with `pages/Invoices.tsx` imported as its reachable detail implementation; `pages/Settings.tsx` owns markups | `test:billing-client-scope`, `guard:client-portal-api`, `test:client-portal-contract-drift`, `test:client-portal-active-surfaces` | `billingVisible` gate (`canViewFinancials`); `billing/generate` + `markups` write paths are admin-only; the unrouted Finance page is retired |
 | **Access roster / users / roles / scope** | Supabase users + app metadata (`clientIds`/`storeIds`/`role`/`permissions`) | `GET /me`, `/clients`, `/access-list`, `PATCH`/`DELETE /access-list/:id`; `resolveClientPortalScope()`/`assertClientPortalScope()` (`scope.ts`) | `PortalMe`, `PortalClientRow`, `PortalAccessUser`, `AccessUserPatch` | `pages/Settings.tsx`, top-bar client switcher | `test:rbac-permissions`, `test:client-store-scope`, `test:field-level-rbac`, `guard:client-portal-architecture` | Invite-only (no public signup); `client_user`/`read_only_support` require explicit scope; filters narrow only; protected operator account cannot be deactivated/deleted |
 | **Integrations / connections** | tenant-scoped `store_accounts` + carrier accounts; detailed `last_sync_error` remains server-side | `GET /integrations` → `listPortalIntegrations()` → `toPortalIntegrationDto()`; `GET /sync-status` → scoped connection freshness only; `POST /integrations` → pending row until operator promotion | `PortalIntegration` (`provider`, `label`, `displayAccountIdentifier`, `connectionStatus`, `reconnectReasonCode`, `lastSyncedAt`, `type`); `SyncStatus` (`connectionStatus`, `lastSyncAt`, scoped `connections[]`) | `pages/Connections.tsx`, `ConnectionCard`, top-bar sync notice render backend enums/timestamps only | `test:client-portal-connections-cp054`, `test:credential-accounts`, `test:client-redaction`, `guard:client-portal-api`, bundle redaction | Raw account identifiers/source/active/error fields, credentials/tokens/secrets, and global worker/order/shipment diagnostics never serialize to customer JSON; DB failures return explicit 503; restricted scope fails closed; audit retains masked identifiers and server-side detail |
 | **Inbound / receiving** | `inbound_shipments` + `inbound_items` | `GET`/`POST /inbound`, `PATCH /inbound/:id/receive`, `POST /inbound/import` → `toPortalInboundDto()` (`dto.ts`) | `PortalInbound`, `PortalInboundItem`, `NewInboundInput` | `pages/Inbound.tsx` | `guard:client-portal-api` | Scope by `clientId`; receive→inventory bump is server-owned |
@@ -72,7 +73,10 @@ npm run build:web                              # builds portal-client/dist
 npm run test:client-portal-orders-selected-rate   # CP-001
 npm run test:dashboard-bar-chart-top-skus         # CP-002
 npm run guard:client-portal-api
+npm run guard:backend-connectivity
 npm run guard:client-portal-architecture
+npm run test:client-portal-contract-drift
+npm run test:client-portal-active-surfaces
 npm run test:client-portal-failure-states         # CP-003 follow-up (active failure-state coverage)
 ```
 
@@ -82,7 +86,13 @@ Legacy `web/` typecheck is preserved but no longer gates the active build:
 npm run typecheck:web:legacy                   # tsc -p web/tsconfig.json (legacy-only)
 ```
 
-## Legacy guards — removed ✅
+## Legacy guards — removed or quarantined
+
+The former admin API and connectivity checks remain available only as
+`legacy:guard:admin-api` and `legacy:guard:backend-connectivity`. Their scripts
+are explicitly named `legacy-admin-*.mjs`; active Client Portal guards read
+`portal-client/` plus the shared backend contracts and cannot pass from
+`web/src` content.
 
 All guards that hard-read the removed `web/src/components/Views/*` files have been
 **deleted** (guard files + their `package.json` script entries), so the project no

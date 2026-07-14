@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // Client Portal audit-log guard.
 //
 // The admin audit log must persist portal access/click events server-side and
@@ -38,7 +39,7 @@ const router = read('src/routes/client-portal.ts');
 const main = read('src/main.ts');
 const corsHelper = read('src/lib/http/cors.ts');
 const scope = read('src/lib/client-portal/scope.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const hooks = read('portal-client/src/lib/hooks.ts');
 const nav = read('portal-client/src/nav.ts');
 const app = read('portal-client/src/App.tsx');

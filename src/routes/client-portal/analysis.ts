@@ -11,6 +11,12 @@ import { inventoryScopePredicate, rawOrderScopeForAlias, shipmentScopePredicate 
 import { getSkuBreakdownFromOrderItems } from '../analysis';
 import { getSkuOrdersForSku } from '../../services/sku-orders';
 import { parseDate, parsePageSize, parsePositiveInt, asTimestamp, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
+import type {
+  AnalysisBreakdown,
+  AnalysisSkuRow,
+  SkuOrderRow,
+  SkuOrdersResult,
+} from '../../lib/client-portal/contracts/analysis';
 
 const app = new Hono();
 
@@ -20,19 +26,7 @@ type ClientAnalysisSourceRow = Awaited<
 type ClientAnalysisSkuOrdersSource = Awaited<ReturnType<typeof getSkuOrdersForSku>>;
 type ClientAnalysisSkuOrderSource = ClientAnalysisSkuOrdersSource['orders'][number];
 
-export type ClientAnalysisSkuRow = {
-  sku: string;
-  name: string | null;
-  image_url: string | null;
-  inv_sku_id: number | null;
-  client_id: number | null;
-  client_name: string | null;
-  orders: number;
-  pending: number;
-  total_qty: number;
-  total_revenue: string;
-  daily_qty: number[];
-};
+export type ClientAnalysisSkuRow = AnalysisSkuRow;
 
 export function toClientAnalysisRow(
   row: ClientAnalysisSourceRow,
@@ -53,27 +47,8 @@ export function toClientAnalysisRow(
   };
 }
 
-export type ClientAnalysisSkuOrderDto = {
-  order_id: number;
-  order_number: string;
-  order_date: string | null;
-  order_status: string;
-  ship_to_name: string | null;
-  qty: number;
-  unit_price: string | null;
-  item_name: string | null;
-  shippingCharge: string | null;
-};
-
-export type ClientAnalysisSkuOrdersDto = {
-  sku: string;
-  name: string | null;
-  totalUnits: number;
-  avgShippingCharge: string;
-  averageUnitsPerDay: number;
-  dailySales: Array<{ day: string; units: number }>;
-  orders: ClientAnalysisSkuOrderDto[];
-};
+export type ClientAnalysisSkuOrderDto = SkuOrderRow;
+export type ClientAnalysisSkuOrdersDto = SkuOrdersResult;
 
 export function toClientAnalysisSkuOrderDto(order: ClientAnalysisSkuOrderSource): ClientAnalysisSkuOrderDto {
   return {
@@ -140,7 +115,7 @@ app.get('/analysis', async (c) => {
     totalRevenue: result.totalRevenue,
     totalUnits: result.totalUnits,
     orderCombinations: result.orderCombinations,
-  });
+  } satisfies AnalysisBreakdown);
 });
 
 // Per-SKU "Recent Orders" payload for the Analysis page detail drawer.

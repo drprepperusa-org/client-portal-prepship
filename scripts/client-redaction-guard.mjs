@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -27,7 +28,7 @@ const clientsRoute = read('src/routes/clients.ts');
 const initRoute = read('src/routes/init.ts');
 // Active portal surfaces (the legacy web/ ClientModal/v2Hooks/v2-apiClient files
 // this guard used to read were removed with the legacy app).
-const portalApi = read('portal-client/src/lib/api.ts');
+const portalApi = readActiveClientPortalApiSource();
 const portalHooks = read('portal-client/src/lib/hooks.ts');
 
 assert(

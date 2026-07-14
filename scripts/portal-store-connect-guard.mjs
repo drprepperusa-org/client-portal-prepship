@@ -83,15 +83,15 @@ assert(
   'Connections pending store card must show an admin-only Approve button that calls the portal approval API',
 );
 
-const api = readFileSync('portal-client/src/lib/api.ts', 'utf8').replace(/\r\n/g, '\n');
+const api = readFileSync('portal-client/src/lib/api/domains/connections.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(
   api.includes('disconnectIntegration: (token: string, id: number)') &&
-    api.includes('apiDelete<{ data: { id: number; deleted: boolean; cascadedClientId: number | null } }>(token, `/api/client-portal/integrations/${id}`)'),
+    /apiDelete<\{ data: \{ id: number; deleted: boolean; cascadedClientId: number \| null \} \}>\([\s\S]*?`\/api\/client-portal\/integrations\/\$\{id\}`/.test(api),
   'portal API client must expose DELETE /client-portal/integrations/:id',
 );
 assert(
   api.includes('approveIntegration: (token: string, id: number)') &&
-    api.includes('apiPost<{ data: PortalIntegration }>(token, `/api/client-portal/integrations/${id}/approve`)'),
+    /apiPost<\{ data: PortalIntegration \}>\([\s\S]*?`\/api\/client-portal\/integrations\/\$\{id\}\/approve`/.test(api),
   'portal API client must expose POST /client-portal/integrations/:id/approve',
 );
 

@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-009 guard: client users never receive carrier or shipping-service
 // identity (carrier code, service code/name, carrier/account nickname,
 // provider/account id) — admins keep it unchanged. Enforcement is backend
@@ -179,7 +180,7 @@ check(
   !/carrierCode:\s*row\.carrier_code/.test(invoiceDetailsSource) && !/max\(o\.carrier_code\)/.test(invoiceDetailsSource),
   'CP-018: invoice-details DTO never ships the real carrier code (nulled at source, SQL select dropped)',
 );
-const clientApiSource = read('portal-client/src/lib/api.ts');
+const clientApiSource = readActiveClientPortalApiSource();
 check(
   !/interface BillingInvoiceDetailRow \{[^}]*carrierCode/.test(clientApiSource),
   'CP-018: BillingInvoiceDetailRow no longer declares carrierCode',

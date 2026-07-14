@@ -1,6 +1,6 @@
 // Sales SOT drift guard — makes "the frontend must not compute an authoritative
 // money/units KPI" a build-time invariant, not a discipline. Every drift bug
-// this cycle (CP-010 revenue, CP-012 Finance, CP-011 Billing footer) was the
+// this cycle (CP-010 revenue, CP-012 Billing reports, CP-011 Billing footer) was the
 // same shape: a React `.reduce(...)` summing a money field the backend already
 // owns. This fails the build if that shape reappears on ANY client-portal page.
 //

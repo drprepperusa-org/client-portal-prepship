@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // Frontend auth/session caching for the ACTIVE client portal (portal-client/).
 // Repointed from the legacy web/ app when it was retired. The concern is the
 // same one the legacy auth-session-cache helper solved: API calls must never
@@ -65,7 +66,7 @@ assert(
   'data hooks pass the cached token into the API client and gate queries on it',
 );
 
-const apiSource = read('portal-client/src/lib/api.ts');
+const apiSource = readActiveClientPortalApiSource();
 assert(
   !apiSource.includes('.getSession('),
   'API client never fetches the session itself — it receives the token as an argument',

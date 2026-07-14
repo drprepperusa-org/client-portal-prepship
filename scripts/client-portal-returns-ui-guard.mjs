@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-029 — Client-portal Returns UI + API guard.
 //
 // Statically pins the safety + correctness invariants of the Returns section
@@ -48,7 +49,7 @@ function stripComments(src) {
 
 const route = read('src/routes/client-portal/returns.ts');
 const aggregator = read('src/routes/client-portal.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const hooks = read('portal-client/src/lib/hooks.ts');
 const nav = read('portal-client/src/nav.ts');
 const appRouter = read('portal-client/src/App.tsx');

@@ -104,7 +104,6 @@ const SURFACES = [
   'Shipments',
   'Inventory',
   'Analysis',
-  'Finance',
   'Billing',
   'Invoices',
   'Returns',

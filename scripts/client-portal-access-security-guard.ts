@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { canManageAccessTarget, isAccessAssignmentWithinBoundary } from '../src/lib/client-portal/access-policy';
@@ -82,7 +83,7 @@ const scope = read('src/lib/client-portal/scope.ts');
 const audit = read('src/lib/client-portal/audit.ts');
 const main = read('src/main.ts');
 const cors = read('src/lib/http/cors.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const app = read('portal-client/src/App.tsx');
 const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
 const integrationWorkflow = read('.github/workflows/integration-tests.yml');

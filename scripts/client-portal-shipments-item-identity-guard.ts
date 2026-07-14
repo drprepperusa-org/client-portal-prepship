@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-005 guard: Shipments must use backend-owned item identity and shipping
 // cost data, while matching the accepted Orders item display pattern.
 import fs from 'node:fs';
@@ -28,7 +29,7 @@ const shipmentsReadModel = read('src/lib/client-portal/read-models/shipments.ts'
 const dto = read('src/lib/client-portal/dto.ts');
 const predicates = read('src/lib/client-portal/predicates.ts');
 const shippingRate = read('src/lib/client-portal/customer-shipping-rate.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
 const orderDetailLoader = read('portal-client/src/components/OrderDetailLoader.tsx');
@@ -65,7 +66,7 @@ assert(
 
 assert(
   portalShipmentBlock.includes('items: PortalItemIdentity[]') &&
-    portalShipmentBlock.includes('customerShippingRate?: number | string | null') &&
+    /customerShippingRate\??: number \| string \| null/.test(portalShipmentBlock) &&
     !portalShipmentBlock.includes('serviceCode:'),
   'PortalShipment exposes items and gated customerShippingRate, without the removed Service field',
 );

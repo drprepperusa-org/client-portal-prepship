@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-030 — Client-portal Returns 3PL receiving + inspection guard.
 //
 // Statically pins the safety + correctness invariants of the mobile receiving /
@@ -50,7 +51,7 @@ function stripLineComments(src) {
 
 const route = read('src/routes/client-portal/returns.ts');
 const routeCode = stripLineComments(route);
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const activityService = read('src/services/return-activity.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
 const page = [

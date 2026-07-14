@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-047/CP-050: both Client Portal Analysis routes must expose explicit
 // customer-safe contracts. Shared operator fields cannot cross either API or
 // frontend type boundary.
@@ -17,7 +18,7 @@ function assert(condition, message) {
 }
 
 const route = read('src/routes/client-portal/analysis.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const sharedOwner = read('src/routes/analysis.ts');
 const bundleGuard = read('scripts/client-portal-bundle-redaction-guard.mjs');
 const analysisPage = read('portal-client/src/pages/Analysis.tsx');

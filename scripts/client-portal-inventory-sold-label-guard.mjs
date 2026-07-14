@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-023 — the Inventory "sold" column is warehouse ledger ships, NOT order
 // units. Pin the honest rename + the SOT-encoding field name end-to-end, and pin
 // that Analysis (ordered units) and Inventory (warehouse-shipped) keep DISTINCT
@@ -31,7 +32,7 @@ assert(
 
 const dto = read('src/lib/client-portal/dto.ts');
 const rm = read('src/lib/client-portal/read-models/inventory.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 assert(
   dto.includes('warehouseShipped30d') && !dto.includes('soldLast30Days'),
   'portal DTO field is warehouseShipped30d (old key gone)',

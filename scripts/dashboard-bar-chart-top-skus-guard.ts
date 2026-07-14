@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-002 + CP-021 + CP-049: the Dashboard bar chart and Top SKUs consume the
 // complete backend-owned Dashboard read model. The browser may display-cap rows
 // but cannot fold, rank, or recompute authoritative facts.
@@ -53,7 +54,7 @@ assert(dashboard.includes('avgShippingPrice == null'), 'missing shipping average
 assert(/Shipped orders \(\$\{days\}d\)/.test(dashboard), 'shipped KPI names the order-status entity');
 assert(dashboard.includes('Shipments created'), 'shipment chart names the shipment entity');
 
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 for (const field of ['orderedOrders', 'orderedUnits', 'shipmentsCreated', 'periodSharePercent']) {
   assert(api.includes(field), `DashboardSummary exposes ${field}`);
 }

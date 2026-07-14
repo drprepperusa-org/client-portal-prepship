@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-054 — Connections must be a tenant-safe backend projection: backend-owned
 // status, masked display identifiers, safe reason codes, honest DB failures,
 // and no global worker diagnostics in customer JSON or bundle contracts.
@@ -184,7 +185,7 @@ check(
   'sync freshness DB failure is explicit',
 );
 
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const integrationContract = /export interface PortalIntegration \{[\s\S]*?\n\}/.exec(api)?.[0] ?? '';
 const syncContract = /export interface SyncStatus \{[\s\S]*?\n\}/.exec(api)?.[0] ?? '';
 check(

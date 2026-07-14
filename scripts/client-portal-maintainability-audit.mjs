@@ -10,7 +10,6 @@ const scanRoots = [
   path.join(root, 'src', 'routes', 'client-portal'),
 ];
 const exceptions = new Map([
-  ['portal-client/src/lib/api.ts', 1_284],
   ['src/routes/client-portal/returns.ts', 904],
 ]);
 const excludedPathParts = [

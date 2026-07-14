@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // Client Portal Analysis order-combinations guard.
 //
 // This metric is customer-visible business data, so the portal must render a
@@ -23,7 +24,7 @@ function assert(condition, message) {
 
 const analysisRoute = read('src/routes/analysis.ts');
 const clientPortalAnalysisRoute = read('src/routes/client-portal/analysis.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const page = read('portal-client/src/pages/Analysis.tsx');
 const pageFlat = flat(page);
 const pkg = JSON.parse(read('package.json'));

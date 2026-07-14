@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildDashboardDailyRows } from '../src/lib/client-portal/dashboard-aggregate';
@@ -38,7 +39,8 @@ const route = read('src/routes/client-portal/dashboard.ts');
 const readModel = read('src/lib/client-portal/read-models/dashboard.ts');
 const aggregate = read('src/lib/client-portal/dashboard-aggregate.ts');
 const analysis = read('src/routes/analysis.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
+const dashboardApi = read('portal-client/src/lib/api/domains/dashboard.ts');
 const dashboard = read('portal-client/src/pages/Dashboard.tsx');
 const modal = read('portal-client/src/components/dashboard/ChartDayModal.tsx');
 const peekChart = read('portal-client/src/components/dashboard/peek/PeekChart.tsx');
@@ -57,7 +59,7 @@ assert.doesNotMatch(salesMetrics, /\blimit\b/i, 'canonical daily sales aggregati
 assert.match(salesMetrics, /generate_series/, 'canonical daily sales covers the complete selected window');
 assert.match(salesMetrics, /analysisOrderScopePredicate\(q\)/, 'canonical daily sales applies backend scope');
 
-const scopedDashboard = sliceBetween(api, 'async function scopedDashboard', 'async function scopedDailyCounts');
+const scopedDashboard = sliceBetween(dashboardApi, 'function dashboard', 'function dailyCounts');
 assert.doesNotMatch(scopedDashboard, /Promise\.all|portalScopeFromToken|\.reduce\(|\.sort\(/, 'browser makes one Dashboard request and performs no business merge');
 assert.match(scopedDashboard, /apiGet<DashboardSummary>/, 'browser consumes the backend Dashboard DTO');
 

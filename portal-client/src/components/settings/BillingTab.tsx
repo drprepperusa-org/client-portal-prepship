@@ -6,7 +6,7 @@ import { Chip } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
 import { useClients } from '@/lib/hooks';
 
-/* BILLING - point at the real Invoices/Finance data instead of a
+/* BILLING - point at the real Billing/Invoices data instead of a
    fabricated card + plan. Payment methods are operator-managed. */
 export function BillingTab() {
   const query = useClients();

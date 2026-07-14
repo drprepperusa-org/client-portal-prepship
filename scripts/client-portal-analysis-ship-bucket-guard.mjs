@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-020 (customer layer SUPERSEDED by CP-035) — the Std/Exp ship-bucket SOT.
 //
 // CP-020 made the Analysis Std/Exp columns honest: the COUNT (std_ship_count) is
@@ -35,7 +36,7 @@ assert(
 );
 
 // ── 2. Backend bucket contract still intact (retained for admin/operator use) ──
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const clientRowType = /export interface AnalysisSkuRow \{([\s\S]*?)\n\}/.exec(api)?.[1] ?? '';
 assert(
   !clientRowType.includes('std_ship_count') && !clientRowType.includes('exp_ship_count'),

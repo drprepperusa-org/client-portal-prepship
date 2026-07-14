@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -5,7 +6,7 @@ import path from 'node:path';
 const root = process.cwd();
 const orders = readFileSync(path.join(root, 'portal-client/src/pages/Orders.tsx'), 'utf8');
 const itemLines = readFileSync(path.join(root, 'portal-client/src/components/ItemIdentityLines.tsx'), 'utf8');
-const api = readFileSync(path.join(root, 'portal-client/src/lib/api.ts'), 'utf8');
+const api = readActiveClientPortalApiSource();
 const dto = readFileSync(path.join(root, 'src/lib/client-portal/dto.ts'), 'utf8');
 const ordersReadModel = readFileSync(path.join(root, 'src/lib/client-portal/read-models/orders.ts'), 'utf8');
 

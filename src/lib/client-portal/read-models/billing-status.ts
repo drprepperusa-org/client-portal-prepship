@@ -1,7 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
+import type { BillingLastGenerated } from '../contracts/billing';
 
-export type BillingLastGenerated = { at: string } | null;
+export type { BillingLastGenerated } from '../contracts/billing';
 
 type BillingStatusRow = { at: string | null };
 type BillingStatusExecutor = (query: SQL) => Promise<BillingStatusRow[]>;
@@ -12,7 +13,7 @@ const executeBillingStatusQuery: BillingStatusExecutor = (query) =>
 /** A successful empty table is `null`; query failures intentionally propagate. */
 export async function getBillingLastGenerated(
   execute: BillingStatusExecutor = executeBillingStatusQuery,
-): Promise<BillingLastGenerated> {
+): Promise<BillingLastGenerated | null> {
   const rows = await execute(sql`
     select to_char(max(created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at
     from billing_line_items

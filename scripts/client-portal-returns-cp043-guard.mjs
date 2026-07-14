@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-043 - return-label rate policy, diagnostics, and recovery guard.
 // Static only: this script never calls carriers, buys postage, or mutates data.
 import fs from 'node:fs';
@@ -52,7 +53,7 @@ const page = [
   read('portal-client/src/components/returns/returnPresentation.ts'),
 ].join('\n');
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const sotMatrix = read('docs/source-of-truth-matrix.md');
 const integration = read('scripts/integration/client-portal-returns-cp043.integration.ts');
 const integrationWorkflow = read('.github/workflows/integration-tests.yml');

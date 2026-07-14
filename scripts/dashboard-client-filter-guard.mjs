@@ -32,15 +32,16 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 // ── API layer accepts + forwards clientId with a scope-safe short-circuit ──
 {
-  const api = read('portal-client/src/lib/api.ts');
-  assert(/dashboard:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(api), 'portalApi.dashboard accepts clientId');
-  assert(/dailyCounts:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(api), 'portalApi.dailyCounts accepts clientId');
-  assert(/dailyShipments:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(api), 'portalApi.dailyShipments accepts clientId');
-  assert(/awaitingCount:\s*\(token: string, clientId\?: number\)/.test(api), 'portalApi.awaitingCount accepts clientId');
-  assert(/async function scopedDashboard\(\s*token: string,\s*rangeInput: PortalDateRange,\s*clientId\?: number,?/.test(api), 'scopedDashboard threads clientId');
-  const dashboardOwner = api.slice(api.indexOf('async function scopedDashboard'), api.indexOf('async function scopedDailyCounts'));
-  assert(dashboardOwner.includes('return apiGet<DashboardSummary>') && !dashboardOwner.includes('Promise.all'), 'scopedDashboard always makes one scoped backend request');
-  assert(/async function scopedDailyCounts\(\s*token: string,\s*rangeInput: PortalDateRange,\s*clientId\?: number,?/.test(api), 'scopedDailyCounts threads clientId');
+  const dashboardApi = read('portal-client/src/lib/api/domains/dashboard.ts');
+  const ordersApi = read('portal-client/src/lib/api/domains/orders.ts');
+  assert(/function dashboard\(token: string, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dashboard accepts clientId');
+  assert(/function dailyCounts\(token: string, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dailyCounts accepts clientId');
+  assert(/dailyShipments:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dailyShipments accepts clientId');
+  assert(/awaitingCount:\s*\(token: string, clientId\?: number\)/.test(ordersApi), 'portalApi.awaitingCount accepts clientId');
+  const dashboardOwner = dashboardApi.slice(dashboardApi.indexOf('function dashboard'), dashboardApi.indexOf('function dailyCounts'));
+  assert(dashboardOwner.includes('apiGet<DashboardSummary>') && dashboardOwner.includes('clientId') && !dashboardOwner.includes('Promise.all'), 'dashboard always makes one narrowed backend request');
+  const dailyCountsOwner = dashboardApi.slice(dashboardApi.indexOf('function dailyCounts'), dashboardApi.indexOf('export const dashboardApi'));
+  assert(dailyCountsOwner.includes('clientId'), 'dailyCounts threads clientId');
 }
 
 // ── Backend honors the explicit client filter for GLOBAL admins too ──

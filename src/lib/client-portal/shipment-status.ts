@@ -1,17 +1,11 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { shipments } from '../../db/schema/shipments';
+import {
+  PORTAL_SHIPMENT_STATUSES,
+  type PortalShipmentStatus,
+} from './contracts/shipments';
 
-export const PORTAL_SHIPMENT_STATUSES = [
-  'delivered',
-  'in_transit',
-  'exception',
-  'attempted',
-  'label_created',
-  'voided',
-  'unavailable',
-] as const;
-
-export type PortalShipmentStatus = (typeof PORTAL_SHIPMENT_STATUSES)[number];
+export { PORTAL_SHIPMENT_STATUSES, type PortalShipmentStatus } from './contracts/shipments';
 
 const PORTAL_SHIPMENT_STATUS_SET = new Set<string>(PORTAL_SHIPMENT_STATUSES);
 

@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-013 / PS-378 - Inventory stock status (LOW/OUT/IN) and the Low/Out
 // filter must be backend-owned from effectiveStock, not raw inventory.stockQty.
 import fs from 'node:fs';
@@ -69,7 +70,7 @@ check(
 
 // Frontend renders the backend enum, derives nothing, filters server-side.
 const page = read('portal-client/src/pages/Inventory.tsx');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const inventoryContract = /export interface PortalInventory \{[\s\S]*?\n\}/.exec(api)?.[0] ?? '';
 check(
   inventoryContract.includes("stockStatus: 'out' | 'low' | 'in';") && !inventoryContract.includes('stockStatus?'),

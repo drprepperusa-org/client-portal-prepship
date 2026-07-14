@@ -42,15 +42,12 @@ if (existsSync(ownerPath)) {
   check('billingDayRange returns UTC-midnight exclusive upper bounds', true);
 }
 
-const api = read('portal-client/src/lib/api.ts');
+const apiScope = read('portal-client/src/lib/api/scope.ts');
+const billingApi = read('portal-client/src/lib/api/domains/billing.ts');
 check('billing API calls send selected days, not client-minted end-of-day instants',
-  /function billingRangeParams/.test(api) &&
-    /dateFrom:\s*r\.from,\s*dateTo:\s*r\.to/.test(api) &&
-    !/invoiceDetailsRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?invoiceSummaryRange:/.test(api) &&
-    !/invoiceSummaryRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?invoicePeriodSummaryRange:/.test(api) &&
-    !/invoicePeriodSummaryRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?invoiceHtml:/.test(api) &&
-    !/invoiceHtmlRange:[\s\S]*?T23:59:59\.999Z[\s\S]*?reportsRange:/.test(api) &&
-    !/generateBilling:[\s\S]*?T23:59:59\.999Z[\s\S]*?billingStatus:/.test(api));
+  /function billingRangeParams/.test(apiScope) &&
+    /dateFrom:\s*range\.from,\s*dateTo:\s*range\.to/.test(apiScope) &&
+    !billingApi.includes('T23:59:59.999Z'));
 
 const invoiceRoute = read('src/routes/client-portal/invoices.ts');
 check('invoice routes normalize billing ranges before read-model calls',

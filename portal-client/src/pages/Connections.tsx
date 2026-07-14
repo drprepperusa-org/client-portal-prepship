@@ -213,7 +213,7 @@ export default function Connections() {
             });
             return res.data;
           } catch (err) {
-            // fail() (portal-client/src/lib/api.ts) throws an Error whose
+            // fail() (portal-client/src/lib/api/transport.ts) throws an Error whose
             // message is the backend's `error` string verbatim, so 429 and
             // missing-scope messages can surface directly in the modal.
             const rateLimited = err instanceof Error && err.message.includes('too many validation attempts');

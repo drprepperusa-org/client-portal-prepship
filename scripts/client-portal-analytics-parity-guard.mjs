@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-010 — Dashboard and Analysis customer-visible sales revenue/units must come
 // from ONE backend-owned canonical sales-metrics owner, so the two screens can
 // never define revenue independently and drift again (DJ saw $128,975 vs
@@ -40,8 +41,11 @@ const dashboardReadModelFlat = flat(dashboardReadModel);
 const analysisPage = read('portal-client/src/pages/Analysis.tsx');
 const analysisPageFlat = flat(analysisPage);
 const hooks = read('portal-client/src/lib/hooks.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const apiFlat = flat(api);
+const apiScope = read('portal-client/src/lib/api/scope.ts');
+const dashboardApi = read('portal-client/src/lib/api/domains/dashboard.ts');
+const analysisApi = read('portal-client/src/lib/api/domains/analysis.ts');
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. One canonical owner, set-based (no capped row reduction) ──
@@ -133,9 +137,9 @@ assert(
   'api.analysis accepts and forwards clientId',
 );
 assert(
-  apiFlat.includes('function dashboardRangeParams(range: PortalDateRange)') &&
-    apiFlat.includes('const range = dashboardRangeParams(rangeInput);') &&
-    apiFlat.includes('...dashboardRangeParams(range),'),
+  apiScope.includes('function dashboardRangeParams(range: PortalDateRange)') &&
+    dashboardApi.includes('...dashboardRangeParams(range),') &&
+    analysisApi.includes('...dashboardRangeParams(range),'),
   'Dashboard and Analysis send dateFrom/dateTo from the same explicit PortalDateRange helper',
 );
 

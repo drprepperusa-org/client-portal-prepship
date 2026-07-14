@@ -42,6 +42,7 @@ import { deliverReturn } from '../../services/return-delivery';
 import { listOriginalOrderActivity, listReturnActivity, recordReturnActivity } from '../../services/return-activity';
 import { baseReturnReference, resolveReturnReference } from '../../services/return-reference';
 import { trackingUrlForCarrier } from '../../lib/tracking-url';
+import type { PortalReturnRow } from '../../lib/client-portal/contracts/returns';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope, type ClientPortalScope } from '../../lib/client-portal/scope';
 import { intArrayLiteral, orderScopePredicate } from '../../lib/client-portal/predicates';
@@ -54,7 +55,6 @@ import {
   requestedStoreId,
   scopeOrResponse,
 } from '../../lib/client-portal/query-params';
-
 const app = new Hono();
 // The lifecycle statuses a return row can carry (CP-026). Used to validate the
 // ?status= list filter without letting an arbitrary string reach SQL.
@@ -186,7 +186,7 @@ async function toClientSafeReturnRow(
     internalReturnLabelCost: string | null;
   },
   options: { includeFinancials: boolean },
-) {
+): Promise<PortalReturnRow> {
   return {
     id: row.ret.id,
     orderId: row.ret.orderId,

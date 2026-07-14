@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-007 guard: Billing line items use backend-owned structured item identity
 // (image/name/SKU/qty lines) and hide the carrier from customer-facing rows;
 // money columns stay untouched by the display change.
@@ -36,7 +37,7 @@ const dto = read('src/lib/client-portal/dto.ts');
 check(dto.includes('export function safeItems'), 'safeItems shaper is the shared exported source of item identity');
 
 // 2) Portal DTO type exposes the structured lines.
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 check(api.includes('items?: PortalItemIdentity[];'), 'BillingInvoiceDetailRow exposes structured items');
 
 // 3) Billing line items render Orders-standard structured identity from the

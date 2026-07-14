@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-036 — Client-portal returns canonical-field + billing-description redaction
 // guard.
 //
@@ -98,8 +99,8 @@ const FORBIDDEN_FIELDS = [
 ];
 
 // ── 1. Client-facing return TYPES are canonical + leak-free ─────────────────
-const api = read('portal-client/src/lib/api.ts');
-assert(api.length > 0, 'portal-client/src/lib/api.ts exists');
+const api = readActiveClientPortalApiSource();
+assert(api.length > 0, 'active Client Portal API contract source exists');
 
 for (const iface of ['PortalReturnRow', 'PortalReturnDetail', 'ReturnLabelResult']) {
   const block = sliceInterface(api, iface);

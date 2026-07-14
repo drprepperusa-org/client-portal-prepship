@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-052 — Orders list/detail must use complete normalized order_items and the
 // latest active shipment identity. Raw orders.items is compatibility metadata,
 // never the owner of displayed quantity or orderedUnits.
@@ -104,7 +105,7 @@ const orderDtoSource = dtoSource.slice(
 check(!orderDtoSource.includes('safeItems(row.items'), 'order DTO never parses raw orders.items into displayed item truth');
 check(!orderDtoSource.includes('.slice(0, 30)'), 'order DTO has no hidden 30-line cap');
 
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
 const portalOrder = api.slice(api.indexOf('export interface PortalOrder {'), api.indexOf('export type PortalShipmentStatus'));
 check(
   portalOrder.includes('orderedUnits: number') && portalOrder.includes('displayTrackingNumber: string | null') &&

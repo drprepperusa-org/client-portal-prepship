@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const MAX_LENGTH = 240;
@@ -38,7 +38,8 @@ function isIncluded(file) {
 const files = execFileSync('git', ['ls-files'], { encoding: 'utf8' })
   .split(/\r?\n/)
   .filter(Boolean)
-  .filter(isIncluded);
+  .filter(isIncluded)
+  .filter(existsSync);
 
 const failures = [];
 

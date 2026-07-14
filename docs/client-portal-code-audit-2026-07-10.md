@@ -2,11 +2,11 @@
 
 ## Outcome
 
-The active `portal-client/` frontend remains a backend-shadow renderer. This
-pass changed presentation structure, keyboard/focus behavior, browser coverage,
-and code-size enforcement only. It did not change HTTP routes, DTO fields,
-database schema, billing formulas, status ownership, permissions, or canonical
-data owners.
+The active `portal-client/` frontend remains a backend-shadow renderer. CP-056
+replaced the monolithic frontend-owned API contract file with backend-owned,
+versioned contracts and small domain clients. HTTP routes, database schema,
+billing formulas, status ownership, permissions, and canonical data owners did
+not change.
 
 The final validation baseline passes TypeScript, the production build, bundle
 budgets, architecture and shadow-renderer guards, failure-state guards, the
@@ -23,7 +23,7 @@ come from the TypeScript AST.
 | `portal-client/src/pages/Invoices.tsx` | 632 lines / 538-line component | 396 lines / 342-line component | Refactored |
 | `portal-client/src/pages/Returns.tsx` | 531 lines | 306 lines / 274-line component | Drawer and metadata extracted |
 | `portal-client/src/components/ui/DataTable.tsx` | 462 lines / 373-line component | 436 lines / 342-line component | Controls and movement logic extracted |
-| `portal-client/src/lib/api.ts` | 1,284 lines | 1,284 lines | Frozen exception; may not grow |
+| `portal-client/src/lib/api.ts` | 1,284 lines | 20 lines | Compatibility facade; exception removed |
 | `src/routes/client-portal/returns.ts` | 904 lines | 904 lines | Frozen exception; may not grow |
 | `StoreConnectModal.tsx` | 484 lines | 484 lines | Kept; already staged internally |
 | `Dashboard.tsx` | 357 lines / 318-line component | 357 lines / 318-line component | Below function limit |
@@ -31,6 +31,11 @@ come from the TypeScript AST.
 New focused modules include billing column/format helpers, the billing shipment
 drawer, return detail/presentation modules, dialog-focus behavior, chart data
 alternatives, and DataTable column controls.
+
+The CP-056 contract split adds 10 frontend endpoint domains (largest: 105
+lines), a 116-line transport module, a 45-line parameter/scope helper, and 11
+backend contract domains (largest: 119 lines). All are below the default file
+limit.
 
 Generated/vector logo assets are excluded from maintainability measurements.
 
@@ -63,8 +68,8 @@ TypeScript using physical LOC and TypeScript AST function sizes:
 
 - Default file limit: 500 lines.
 - Default function/component limit: 350 lines.
-- Frozen exceptions: `api.ts` at 1,284 lines and the returns backend route at
-  904 lines. Either growing above its baseline fails the audit.
+- Frozen exception: the returns backend route at 904 lines. Growing above its
+  baseline fails the audit. The former `api.ts` exception is resolved.
 
 `npm run test:web-bundle-budget` enforces:
 
@@ -79,8 +84,6 @@ TypeScript using physical LOC and TypeScript AST function sizes:
 
 ## Deferred hotspots
 
-- `portal-client/src/lib/api.ts`: splitting it is a separate contract migration
-  because 30 consumers and 37 guards depend on the current module boundary.
 - `src/routes/client-portal/returns.ts`: route splitting remains deferred until
   its contract and SOT guards can migrate together.
 - The generated UPS/vector logo remains outside maintainability metrics.

@@ -1,3 +1,4 @@
+import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 // CP-021 — Dashboard analytics widgets must use the canonical SOT and honest
 // order/shipment labels.
 //
@@ -50,7 +51,8 @@ const dashboardPage = read('portal-client/src/pages/Dashboard.tsx');
 const dashboardPageFlat = flat(dashboardPage);
 const buildConfig = read('portal-client/src/components/dashboard/peek/buildConfig.tsx');
 const layout = read('portal-client/src/lib/dashboardLayout.ts');
-const api = read('portal-client/src/lib/api.ts');
+const api = readActiveClientPortalApiSource();
+const apiFlat = flat(api);
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. Shared canonical Top-SKUs read-model reusing the Analysis SKU query ──
@@ -166,7 +168,7 @@ assert(
 
 // ── 7. Frontend contract carries name + honest tooltips ──
 assert(
-  /bySku: Array<\{ sku: string; name\?: string \| null; units30: number/.test(api),
+  /bySku: Array<\{ sku: string; name\?: string \| null; units30: number/.test(apiFlat),
   'DashboardSummary.bySku exposes the canonical fields (incl. name mirroring Analysis)',
 );
 assert(

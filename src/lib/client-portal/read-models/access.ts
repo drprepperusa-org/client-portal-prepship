@@ -2,6 +2,7 @@ import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { isAdminEmail } from '../../admin-emails';
 import { supabaseAdmin } from '../../supabase';
+import type { PortalAccessUser } from '../contracts/access';
 
 /**
  * Access-roster read-model + admin-user helpers (extracted from
@@ -155,25 +156,4 @@ export async function listPortalAccessRoster(): Promise<{ users: PortalAccessRos
   return { users };
 }
 
-export type PortalAccessRosterUser = {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string | null;
-  permissions: string[];
-  isAdmin: boolean;
-  isGlobal: boolean;
-  isProtected: boolean;
-  active: boolean;
-  clientIds: number[];
-  storeIds: number[];
-  clients: Array<{
-    id: number;
-    name: string | null;
-    email: string | null;
-    active: boolean | null;
-    storeIds: number[] | null;
-  }>;
-  createdAt: string | null;
-  lastSignInAt: string | null;
-};
+export type PortalAccessRosterUser = PortalAccessUser;

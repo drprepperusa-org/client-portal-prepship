@@ -28,19 +28,19 @@ function assert(condition, message) {
 }
 
 // ── API layer: bounded timeouts + failures surfaced, never swallowed ──
-const api = read('portal-client/src/lib/api.ts');
-assert(api.includes('const TIMEOUT_MS = 30000'), 'api.ts defines a bounded request timeout (30s — long enough to ride out a Render cold-start)');
-assert(api.includes('new AbortController()'), 'api.ts uses AbortController to bound requests');
+const api = read('portal-client/src/lib/api/transport.ts');
+assert(api.includes('const TIMEOUT_MS = 30000'), 'transport defines a bounded request timeout (30s — long enough to ride out a Render cold-start)');
+assert(api.includes('new AbortController()'), 'transport uses AbortController to bound requests');
 assert(
   api.includes('controller.abort()') && api.includes('clearTimeout('),
-  'api.ts aborts timed-out requests and clears the timer',
+  'transport aborts timed-out requests and clears the timer',
 );
 assert(
-  api.includes('Promise<never>') && api.includes('throw err') && api.includes('err.status = res.status'),
-  'api.ts fail() throws an ApiError carrying the HTTP status — errors surfaced, not hidden',
+  api.includes('Promise<never>') && api.includes('throw error') && api.includes('error.status = response.status'),
+  'transport fail() throws an ApiError carrying the HTTP status — errors surfaced, not hidden',
 );
 assert(
-  api.includes('if (!res.ok) await fail(res)'),
+  api.includes('if (!response.ok) await fail(response)') && api.includes('async function apiSend'),
   'apiGet/apiSend rethrow non-OK responses instead of returning empty data',
 );
 

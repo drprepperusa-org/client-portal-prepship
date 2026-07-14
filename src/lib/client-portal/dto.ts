@@ -8,6 +8,18 @@ import { trackingUrlForCarrier } from '../tracking-url';
 import { maskAccountIdentifier } from '../credential-accounts';
 import { resolveOrderFulfillmentStatus } from './order-status';
 import { normalizePortalShipmentStatus } from './shipment-status';
+import type { PortalItemIdentity } from './contracts/common';
+import type { PortalInbound } from './contracts/inbound';
+import type { PortalInventory } from './contracts/inventory';
+import type { PortalOrder, PortalOrderCostSummaryRow } from './contracts/orders';
+import type { PortalShipment } from './contracts/shipments';
+import {
+  PORTAL_CONNECTION_STATUSES,
+  PORTAL_RECONNECT_REASON_CODES,
+  type PortalConnectionStatus,
+  type PortalIntegration,
+  type PortalReconnectReasonCode,
+} from './contracts/connections';
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -16,18 +28,22 @@ function iso(value: Date | string | null | undefined): string | null {
 }
 
 
-export function safeItems(value: unknown, includeFinancials = false): Array<Record<string, unknown>> {
+export function safeItems(value: unknown, includeFinancials = false): PortalItemIdentity[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item) => !isDiscountLine(item))
     .slice(0, 30)
     .map((item) => {
     const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const quantity = Number(row.quantity ?? row.qty);
+    const unitPrice = row.unitPrice ?? row.unit_price ?? row.price;
     return {
       sku: typeof row.sku === 'string' ? row.sku : null,
       name: typeof row.name === 'string' ? row.name : null,
-      quantity: row.quantity ?? row.qty ?? null,
-      ...(includeFinancials ? { unitPrice: row.unitPrice ?? row.unit_price ?? row.price ?? null } : {}),
+      quantity: Number.isFinite(quantity) ? quantity : null,
+      ...(includeFinancials
+        ? { unitPrice: typeof unitPrice === 'number' || typeof unitPrice === 'string' ? unitPrice : null }
+        : {}),
       imageUrl:
         typeof row.imageUrl === 'string'
           ? row.imageUrl
@@ -41,19 +57,8 @@ export function safeItems(value: unknown, includeFinancials = false): Array<Reco
 }
 
 /** CP-017 — a single customer-facing cost-summary row. */
-export type PortalCostKind =
-  | 'subtotal'
-  | 'discount'
-  | 'shipping'
-  | 'tax'
-  | 'adjustment'
-  | 'refund'
-  | 'total';
-export interface PortalCostRow {
-  label: string;
-  amount: number; // dollars, 2-dp; negative for discount/refund/negative adjustment
-  kind: PortalCostKind;
-}
+export type PortalCostKind = PortalOrderCostSummaryRow['kind'];
+export type PortalCostRow = PortalOrderCostSummaryRow;
 
 /** Integer-cent helpers — money is never summed or compared as floats. */
 const toCents = (n: number): number => Math.round((Number(n) || 0) * 100);
@@ -90,7 +95,7 @@ function buildCostSummary(args: {
   orderStatus: string | null | undefined;
   /** The DTO's returned normalized items (discount-stripped) with canonical
    *  lineTotal attached — the SAME array the panel renders. */
-  items: Array<Record<string, unknown>>;
+  items: PortalItemIdentity[];
   /** The ORIGINAL compatibility items so negative promo lines are visible. */
   rawItems: unknown;
   customerShippingRate: number | string | null | undefined;
@@ -159,7 +164,7 @@ function buildCostSummary(args: {
 export function toPortalInboundDto(
   row: InboundShipment & { clientName?: string | null },
   items: InboundItem[] = [],
-) {
+): PortalInbound {
   const expectedUnits = items.reduce((n, it) => n + (Number(it.expectedQty) || 0), 0);
   const receivedUnits = items.reduce((n, it) => n + (Number(it.receivedQty) || 0), 0);
   return {
@@ -210,7 +215,7 @@ export function toPortalOrderDto(
     activeShipmentCarrierCode?: string | null;
   },
   options: { includeFinancials?: boolean; includeWeight?: boolean } = {}
-) {
+): PortalOrder & { carrierCode: null; serviceCode: null; shippingService: null } {
   // CP-018/CP-040: the client portal shows ONLY the resolved customer shipping
   // rate. Buyer-paid store shipping and the internal
   // selected/label/best rate, carrier, service, and provider-account nickname
@@ -222,7 +227,7 @@ export function toPortalOrderDto(
   // line money. The complete array crosses the DTO boundary with no silent cap.
   // orders.items is retained below only for legacy promo/address compatibility;
   // malformed raw quantity can never change orderedUnits or a displayed line.
-  const items: Array<Record<string, unknown>> = row.canonicalItems.map((it) => ({
+  const items: PortalItemIdentity[] = row.canonicalItems.map((it) => ({
     sku: it.sku,
     name: it.name,
     quantity: Number(it.quantity),
@@ -363,7 +368,7 @@ export function toPortalShipmentDto(
     shipmentStatus?: unknown;
   },
   options: { includeFinancials?: boolean } = {},
-) {
+): PortalShipment & { carrierCode: null; serviceCode: null } {
   // Display tracking identity is selected once at the backend boundary. The
   // frozen label result is canonical; trackingNumber is the legacy shipment
   // fallback. Raw competing fields never cross into the customer DTO.
@@ -417,7 +422,7 @@ export function toPortalInventoryDto(
     storeIds?: number[] | null;
     pkg?: { name: string | null; length: number | null; width: number | null; height: number | null } | null;
   },
-) {
+): PortalInventory {
   const length = row.length ?? null;
   const width = row.width ?? null;
   const height = row.height ?? null;
@@ -473,21 +478,12 @@ export function toPortalInventoryDto(
   };
 }
 
-export const PORTAL_CONNECTION_STATUSES = [
-  'pending',
-  'active',
-  'reconnect',
-  'degraded',
-  'inactive',
-] as const;
-export type PortalConnectionStatus = (typeof PORTAL_CONNECTION_STATUSES)[number];
-
-export const PORTAL_RECONNECT_REASON_CODES = [
-  'authentication_required',
-  'permissions_required',
-  'configuration_required',
-] as const;
-export type PortalReconnectReasonCode = (typeof PORTAL_RECONNECT_REASON_CODES)[number];
+export {
+  PORTAL_CONNECTION_STATUSES,
+  PORTAL_RECONNECT_REASON_CODES,
+  type PortalConnectionStatus,
+  type PortalReconnectReasonCode,
+};
 
 function portalReconnectReasonCode(error: string | null | undefined): PortalReconnectReasonCode | null {
   const normalized = error?.trim().toLowerCase();
@@ -546,7 +542,7 @@ export function toPortalIntegrationDto(row: {
   updatedAt?: Date | string | null;
   lastSyncError?: string | null;
   lastSyncedAt?: Date | string | null;
-}) {
+}): PortalIntegration {
   const status = resolvePortalConnectionStatus(row);
   return {
     id: row.id,
