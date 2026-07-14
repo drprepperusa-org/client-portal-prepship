@@ -85,6 +85,7 @@ const cors = read('src/lib/http/cors.ts');
 const api = read('portal-client/src/lib/api.ts');
 const app = read('portal-client/src/App.tsx');
 const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
+const integrationWorkflow = read('.github/workflows/integration-tests.yml');
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 
 function assertBefore(first: string, second: string): void {
@@ -119,5 +120,10 @@ assert.equal(
   pkg.scripts?.['test:client-portal-access-security'],
   'tsx scripts/client-portal-access-security-guard.ts',
 );
+assert.equal(
+  pkg.scripts?.['test:client-portal-access-security:integration'],
+  'tsx scripts/integration/client-portal-access-security.integration.ts',
+);
+assert.match(integrationWorkflow, /npm run test:client-portal-access-security:integration/);
 
 console.log('client portal access security guard passed');
