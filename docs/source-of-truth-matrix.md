@@ -1100,9 +1100,13 @@ metadata for presentation; it never reconstructs carrier, rate, or billing truth
 | Carrier / tracking | `carrier`/`trackingNumber` | same | `inbound_shipments` (inbound carrier, not an outbound label) | inbound time | presentation-only |
 | Expected units | `expectedUnits` | `expectedUnits` | Σ `inbound_items.expectedQty` (backend) | inbound time | derived-from-canonical (backend-owned) |
 | Received units | `receivedUnits` | `receivedUnits` | Σ `inbound_items.receivedQty` (backend) | receiving | derived-from-canonical (backend-owned) |
+| PrepShip received SKU / units | `sku`/`receivedUnits` | same | `inventory.sku` + `inventory_ledger.qty` where `type='receive'` | receipt movement | backend-owned-truth |
+| PrepShip received date | `receivedAt` | `receivedAt` | `coalesce(inventory_ledger.effective_at, inventory_ledger.created_at)` | operator-entered receipt date, then persistence time | backend-owned-truth |
 
 Owner: `toPortalInboundDto` over `inbound_shipments` + `inbound_items`. Route:
-`src/routes/client-portal/inbound.ts`.
+`src/routes/client-portal/inbound.ts`. Received inventory delegates to
+`listPortalInboundReceipts` over the canonical inventory ledger; CP does not
+copy receipts into inbound tables or infer multi-SKU batches.
 
 ### Connections
 

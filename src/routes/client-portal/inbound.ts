@@ -11,13 +11,48 @@ import { applyMovement } from '../../services/inventory';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { toPortalInboundDto } from '../../lib/client-portal/dto';
-import { parsePositiveInt, scopeOrResponse } from '../../lib/client-portal/query-params';
+import { listPortalInboundReceipts } from '../../lib/client-portal/read-models/inbound-receipts';
+import {
+  parseDate,
+  parsePage,
+  parsePageSize,
+  parsePositiveInt,
+  requestedClientId,
+  requestedStoreId,
+  scopeOrResponse,
+} from '../../lib/client-portal/query-params';
 
 const app = new Hono();
 
 // ── Inbound (receiving) shipments ──────────────────────────────────────────
 // Manually-entered POs/ASNs arriving at the warehouse. Read is client-scoped;
 // create is admin-only (global or settings:write).
+app.get('/inbound/receipts', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  const page = parsePage(c.req.query('page'));
+  const pageSize = parsePageSize(c.req.query('pageSize'), 50);
+  const dateTo = parseDate(c.req.query('dateTo')) ?? new Date();
+  const dateFrom = parseDate(c.req.query('dateFrom')) ?? new Date(dateTo.getTime() - 29 * 86_400_000);
+  if (dateFrom > dateTo) return c.json({ error: 'dateFrom must not be after dateTo' }, 400);
+  const result = await listPortalInboundReceipts(scope, {
+    page,
+    pageSize,
+    clientId: requestedClientId(c),
+    storeId: requestedStoreId(c),
+    dateFrom,
+    dateTo,
+  });
+  await recordPortalAudit('portal.inbound.receipts.list', scope, {
+    page,
+    pageSize,
+    dateFrom: dateFrom.toISOString(),
+    dateTo: dateTo.toISOString(),
+    rows: result.data.length,
+  });
+  return c.json(result);
+});
+
 app.get('/inbound', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;

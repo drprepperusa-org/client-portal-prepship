@@ -24,6 +24,19 @@ export interface PortalInbound {
   items: PortalInboundItem[];
 }
 
+/** One canonical PrepShip inventory receipt ledger entry. */
+export interface PortalInboundReceipt {
+  id: number;
+  inventoryId: number;
+  clientId: number | null;
+  clientName: string | null;
+  sku: string;
+  name: string | null;
+  receivedUnits: number;
+  receivedAt: string;
+  note: string | null;
+}
+
 export interface NewInboundInput {
   clientId?: number;
   reference?: string;

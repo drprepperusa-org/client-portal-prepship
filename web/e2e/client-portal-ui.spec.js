@@ -271,6 +271,22 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}) {
     return { data: [], pagination: emptyPagination, billingVisible: true };
   }
   if (pathname === '/api/client-portal/billing/status') return { lastGenerated: null };
+  if (pathname === '/api/client-portal/inbound/receipts') {
+    return {
+      data: [{
+        id: 8047,
+        inventoryId: 1032,
+        clientId: 4,
+        clientName: 'HUGRAB',
+        sku: 'Booster-gel-001',
+        name: 'Booster Gel',
+        receivedUnits: 1980,
+        receivedAt: '2026-07-13T19:00:00.000Z',
+        note: 'MB/L No. 180-20829804',
+      }],
+      pagination: { ...emptyPagination, total: 1 },
+    };
+  }
   if (pathname === '/api/client-portal/inbound') return { data: [] };
   if (pathname === '/api/client-portal/integrations') return { data: [] };
   if (pathname === '/api/client-portal/access-list') return { data: [] };
@@ -344,6 +360,21 @@ for (const viewport of [
     expect(errors, errors.join('\n')).toEqual([]);
   });
 }
+
+test('Inbound renders PrepShip receipt truth without synthetic batching', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/inbound`);
+
+  await expect(page.getByText('Received inventory', { exact: true })).toBeVisible();
+  const receiptTable = page.getByRole('table');
+  await expect(receiptTable.getByText('Booster-gel-001', { exact: true })).toBeVisible();
+  await expect(receiptTable.getByText('Booster Gel', { exact: true })).toBeVisible();
+  await expect(receiptTable.getByText('1,980', { exact: true })).toBeVisible();
+  await expect(receiptTable.getByText('MB/L No. 180-20829804', { exact: true })).toBeVisible();
+  await expect(page.getByText('Expected shipments', { exact: true })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
 
 test('skip link and mobile navigation are keyboard-safe', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });

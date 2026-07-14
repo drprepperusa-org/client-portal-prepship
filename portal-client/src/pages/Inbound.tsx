@@ -1,46 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PackageOpen, Plus, Building2, Upload } from 'lucide-react';
+import { PackageCheck, PackageOpen, Plus, Building2, Upload } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
-import { DataTable, type Column } from '@/components/ui/DataTable';
-import { Chip } from '@/components/ui/Display';
+import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { useInbound, useClients, useMe, useCanCustomizeTables } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { type PortalInbound } from '@/lib/api';
-import { shortDate } from '@/lib/status';
-import { type Accent } from '@/lib/accents';
-import { STATUS_META } from '@/components/inbound/shared';
 import { InboundCreateModal } from '@/components/inbound/InboundCreateModal';
 import { InboundImportModal } from '@/components/inbound/InboundImportModal';
 import { InboundDetailDrawer } from '@/components/inbound/InboundDetailDrawer';
-
-const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
-function clientAccent(name: string | null): Accent {
-  const s = name ?? '';
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i)) % CLIENT_ACCENTS.length;
-  return CLIENT_ACCENTS[h];
-}
-
-function ClientCell({ name }: { name: string | null }) {
-  if (!name) return <span className="text-ink-3">—</span>;
-  return (
-    <Chip accent={clientAccent(name)} dot={false}>
-      {name}
-    </Chip>
-  );
-}
+import { useInboundReceipts } from '@/components/inbound/useInboundReceipts';
+import { INBOUND_COLUMNS, INBOUND_RECEIPT_COLUMNS } from '@/components/inbound/columns';
+import { Pagination } from '@/components/ui/Pagination';
 
 export default function Inbound() {
-  const { clientId: globalClientId } = usePortalFilters();
+  const { clientId: globalClientId, dateRange } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
   const isAdmin = useMe().data?.isAdmin ?? false;
   const canCustomizeTables = useCanCustomizeTables();
 
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<PortalInbound | null>(null);
+  const [receiptPage, setReceiptPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -59,31 +42,13 @@ export default function Inbound() {
 
   const effectiveClientId = clientFilter ?? globalClientId;
   const query = useInbound(effectiveClientId);
+  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage);
   const rows = query.data?.data ?? [];
+  const receiptRows = receiptQuery.data?.data ?? [];
+  const receiptPagination = receiptQuery.data?.pagination;
   const showClientFilter = clients.length > 1;
 
-  const columns: Column<PortalInbound>[] = useMemo(
-    () => [
-      { key: 'ref', header: 'Reference', defaultWidth: 150, render: (r) => <span className="font-semibold text-ink">{r.reference ?? `#${r.id}`}</span>, sortAccessor: (r) => r.reference ?? `#${r.id}` },
-      { key: 'supplier', header: 'Supplier', defaultWidth: 160, render: (r) => <span className="text-ink-2">{r.supplier ?? '—'}</span>, sortAccessor: (r) => r.supplier ?? '' },
-      {
-        key: 'client',
-        header: 'Client',
-        defaultWidth: 150,
-        render: (r) => <ClientCell name={r.clientName} />,
-        sortAccessor: (r) => r.clientName ?? '',
-      },
-      {
-        key: 'status', header: 'Status', defaultWidth: 120,
-        render: (r) => { const m = STATUS_META[r.status] ?? { label: r.status, accent: 'amber' as Accent }; return <Chip accent={m.accent}>{m.label}</Chip>; },
-        sortAccessor: (r) => r.status,
-      },
-      { key: 'units', header: 'Units', defaultWidth: 110, className: 'text-right', render: (r) => <span className="tnum text-ink-2">{r.receivedUnits}/{r.expectedUnits}</span>, sortAccessor: (r) => r.expectedUnits },
-      { key: 'expected', header: 'Expected', defaultWidth: 130, render: (r) => <span className="text-ink-3 tnum">{shortDate(r.expectedDate)}</span>, sortAccessor: (r) => r.expectedDate ?? '' },
-      { key: 'carrier', header: 'Carrier', defaultWidth: 130, render: (r) => <span className="text-ink-2">{r.carrier ?? '—'}</span>, sortAccessor: (r) => r.carrier ?? '' },
-    ],
-    [],
-  );
+  useEffect(() => setReceiptPage(1), [effectiveClientId, dateRange.dateFrom, dateRange.dateTo]);
 
   return (
     <div className="space-y-4">
@@ -91,8 +56,8 @@ export default function Inbound() {
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-glass-sm bg-brand-50 text-brand-600"><PackageOpen size={18} /></span>
           <div>
-            <p className="font-display text-base font-bold text-ink">Inbound shipments</p>
-            <p className="text-xs text-ink-3">Purchase orders arriving at the warehouse</p>
+            <p className="font-display text-base font-bold text-ink">Inbound</p>
+            <p className="text-xs text-ink-3">Expected shipments and PrepShip receiving history</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -117,6 +82,49 @@ export default function Inbound() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
+        <div className="flex items-center gap-2 px-3 py-3">
+          <PackageCheck size={17} className="text-emerald-600" />
+          <div>
+            <p className="text-sm font-semibold text-ink">Received inventory</p>
+            <p className="text-xs text-ink-3">Canonical receipts recorded in PrepShip</p>
+          </div>
+        </div>
+        <QueryState
+          isLoading={receiptQuery.isLoading}
+          isError={receiptQuery.isError}
+          error={receiptQuery.error}
+          isEmpty={receiptRows.length === 0}
+          onRetry={() => receiptQuery.refetch()}
+          emptyTitle="No received inventory"
+          emptyMessage="No PrepShip receipts were recorded in the selected date range."
+        >
+          <DataTable
+            tableId="inbound-receipts"
+            columns={INBOUND_RECEIPT_COLUMNS}
+            rows={receiptRows}
+            rowKey={(row) => String(row.id)}
+            allowColumnCustomization={canCustomizeTables}
+          />
+          {receiptPagination && (
+            <Pagination
+              page={receiptPagination.page}
+              totalPages={receiptPagination.totalPages}
+              total={receiptPagination.total}
+              pageSize={receiptPagination.pageSize}
+              onPage={setReceiptPage}
+            />
+          )}
+        </QueryState>
+      </GlassPanel>
+
+      <GlassPanel className="p-2 sm:p-3">
+        <div className="flex items-center gap-2 px-3 py-3">
+          <PackageOpen size={17} className="text-brand-600" />
+          <div>
+            <p className="text-sm font-semibold text-ink">Expected shipments</p>
+            <p className="text-xs text-ink-3">Purchase orders and ASNs arriving at the warehouse</p>
+          </div>
+        </div>
         <QueryState
           isLoading={query.isLoading}
           isError={query.isError}
@@ -128,7 +136,7 @@ export default function Inbound() {
         >
           <DataTable
             tableId="inbound"
-            columns={columns}
+            columns={INBOUND_COLUMNS}
             rows={rows}
             rowKey={(row) => String(row.id)}
             onRowClick={setSelected}

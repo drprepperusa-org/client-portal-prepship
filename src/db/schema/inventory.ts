@@ -62,6 +62,9 @@ export const inventoryLedger = pgTable(
     orderId: integer().references(() => orders.id),
     note: text(),
     createdBy: text(),
+    // PrepShip's canonical business clock for backdated inventory movements.
+    // The production column already exists; CP maps it read-only.
+    effectiveAt: timestamp('effective_at', { withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
