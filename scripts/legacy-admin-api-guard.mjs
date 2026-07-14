@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 function read(path) {
   return readFileSync(path, 'utf8');
@@ -34,7 +35,11 @@ const subRouteFiles = [
   'dashboard', 'orders', 'shipments', 'inventory', 'analysis', 'billing',
   'invoices', 'access', 'integrations', 'inbound', 'sync',
 ];
-const route = subRouteFiles.map((f) => read(`src/routes/client-portal/${f}.ts`)).join('\n');
+const route = readSourceTree([
+  ...subRouteFiles.map((file) => `src/routes/client-portal/${file}.ts`),
+  'src/routes/client-portal/access',
+  'src/routes/client-portal/integrations',
+]);
 const aggregator = existsSync(routePath) ? read(routePath) : '';
 const dto = existsSync(dtoPath) ? read(dtoPath) : '';
 const scope = existsSync(scopePath) ? read(scopePath) : '';
@@ -78,15 +83,14 @@ for (const f of subRouteFiles) {
 // credential values back in the response.
 assert(route.includes("app.post('/integrations'"), "client portal route missing app.post('/integrations'");
 {
-  // /integrations POST lives in integrations.ts; bound the handler with its own
-  // col-0 `});` sentinel (the old end-marker app.get('/activity' moved to
-  // dashboard.ts) so the negative credential/returning assertions keep a tight
-  // window that appended routes can't loosen.
-  const integrationsSrc = read('src/routes/client-portal/integrations.ts');
+  // The submission module owns only POST /integrations, keeping the negative
+  // credential/returning assertions scoped to that handler.
+  const integrationsSrc = readSourceTree([
+    'src/routes/client-portal/integrations/submission.ts',
+  ]);
   const start = integrationsSrc.indexOf("app.post('/integrations'");
-  const m = start >= 0 ? integrationsSrc.slice(start).match(/[\s\S]*?\n\}\);/) : null;
-  const postIntegrations = m ? m[0] : '';
-  assert(postIntegrations.length > 0, 'POST /integrations handler not found in integrations.ts');
+  const postIntegrations = start >= 0 ? integrationsSrc.slice(start) : '';
+  assert(postIntegrations.length > 0, 'POST /integrations handler not found in submission module');
   assert(
     postIntegrations.includes('resolveSubmittedClientId(') &&
       postIntegrations.includes('account.clientId = attribution.clientId'),

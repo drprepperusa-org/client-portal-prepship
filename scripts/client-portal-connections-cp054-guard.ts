@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // CP-054 — Connections must be a tenant-safe backend projection: backend-owned
 // status, masked display identifiers, safe reason codes, honest DB failures,
 // and no global worker diagnostics in customer JSON or bundle contracts.
@@ -156,7 +157,10 @@ check(
 );
 check(!readModel.includes('return [];'), 'read-model has no DB-error-to-empty-list path');
 
-const integrationsRoute = read('src/routes/client-portal/integrations.ts');
+const integrationsRoute = readSourceTree([
+  'src/routes/client-portal/integrations.ts',
+  'src/routes/client-portal/integrations',
+]);
 check(
   integrationsRoute.includes("return c.json({ error: 'connections_unavailable' }, 503)"),
   'connections route returns explicit 503 on read failure',

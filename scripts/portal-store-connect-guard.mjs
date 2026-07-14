@@ -8,9 +8,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readSourceTree } from './lib/source-tree.mjs';
 
-const route = readFileSync('src/routes/client-portal/integrations.ts', 'utf8').replace(/\r\n/g, '\n');
+const route = readSourceTree([
+  'src/routes/client-portal/integrations.ts',
+  'src/routes/client-portal/integrations',
+]).replace(/\r\n/g, '\n');
 assert(route.includes("account.source = 'portal'"), 'portal submit must force source=portal');
-assert(route.includes("'portal',\n        false"), 'portal submit must insert active=false');
+assert(/'portal',\n\s+false/.test(route), 'portal submit must insert active=false');
 assert(route.includes('resolveSubmittedClientId'), 'portal submit must force clientId from scope');
 assert(route.includes('checkValidationRateLimit'), 'validate/reconnect must be rate-limited');
 assert(route.includes('verified.myshopifyDomain'), 'shopify identifier must come from live verification');
