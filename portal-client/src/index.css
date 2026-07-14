@@ -116,6 +116,11 @@ body {
 
 /* Recharts adds this class at runtime, so keep the rule outside Tailwind's
    managed layers to prevent it from being removed from production builds. */
+.recharts-wrapper:focus,
+.recharts-wrapper :focus {
+  outline: none;
+}
+
 .recharts-wrapper:focus-visible,
 .recharts-wrapper :focus-visible {
   outline: 2px solid rgb(var(--brand-rgb) / 0.55);
