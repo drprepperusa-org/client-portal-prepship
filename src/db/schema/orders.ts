@@ -9,6 +9,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { clients } from './clients';
@@ -89,6 +90,11 @@ export const orders = pgTable(
       .on(t.orderNumber, t.orderDate.desc(), t.id.desc())
       .where(sql`${t.storeId} = 9000001`),
     index('orders_source_idx').on(t.sourceProvider, t.sourceAccountId, t.sourceOrderId),
+    uniqueIndex('orders_source_unique_idx')
+      .on(t.sourceProvider, t.sourceAccountId, t.sourceOrderId)
+      .where(
+        sql`${t.sourceProvider} is not null and ${t.sourceAccountId} is not null and ${t.sourceOrderId} is not null`,
+      ),
     index('orders_dashboard_sales_date_idx')
       .on(t.orderDate.desc())
       .where(sql`${t.orderStatus} <> 'cancelled'`),
