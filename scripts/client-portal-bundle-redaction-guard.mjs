@@ -26,6 +26,11 @@ const FORBIDDEN = [
   'selected_rate',
   'standard_shipping_cost',
   'avgStandardShippingCost', // CP-038 renamed this summary key to avgShippingCharge — backstop its regression
+  'standardShipCount',
+  'standardShippingTotal',
+  'is_external_shipped',
+  'carrier_code',
+  'service_code',
   'shipAlloc',
   'shipUnits',
   // CP-038b: admin Carrier-Markups vocabulary must never ship in the customer bundle.

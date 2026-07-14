@@ -745,7 +745,6 @@ export interface SkuOrderRow {
   unit_price: string | null;
   item_name: string | null;
   shippingCharge: string | null;
-  is_external_shipped: boolean;
 }
 
 export interface PortalInboundItem {
@@ -788,8 +787,8 @@ export interface SkuOrdersResult {
   sku: string;
   name: string | null;
   totalUnits: number;
-  standardShipCount: number;
   avgShippingCharge: string;
+  averageUnitsPerDay: number;
   dailySales: Array<{ day: string; units: number }>;
   orders: SkuOrderRow[];
 }

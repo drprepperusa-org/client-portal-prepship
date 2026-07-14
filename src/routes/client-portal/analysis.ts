@@ -17,6 +17,8 @@ const app = new Hono();
 type ClientAnalysisSourceRow = Awaited<
   ReturnType<typeof getSkuBreakdownFromOrderItems>
 >['rows'][number];
+type ClientAnalysisSkuOrdersSource = Awaited<ReturnType<typeof getSkuOrdersForSku>>;
+type ClientAnalysisSkuOrderSource = ClientAnalysisSkuOrdersSource['orders'][number];
 
 export type ClientAnalysisSkuRow = {
   sku: string;
@@ -48,6 +50,56 @@ export function toClientAnalysisRow(
     total_qty: row.total_qty,
     total_revenue: canViewFinancials ? row.total_revenue : '0',
     daily_qty: row.daily_qty,
+  };
+}
+
+export type ClientAnalysisSkuOrderDto = {
+  order_id: number;
+  order_number: string;
+  order_date: string | null;
+  order_status: string;
+  ship_to_name: string | null;
+  qty: number;
+  unit_price: string | null;
+  item_name: string | null;
+  shippingCharge: string | null;
+};
+
+export type ClientAnalysisSkuOrdersDto = {
+  sku: string;
+  name: string | null;
+  totalUnits: number;
+  avgShippingCharge: string;
+  averageUnitsPerDay: number;
+  dailySales: Array<{ day: string; units: number }>;
+  orders: ClientAnalysisSkuOrderDto[];
+};
+
+export function toClientAnalysisSkuOrderDto(order: ClientAnalysisSkuOrderSource): ClientAnalysisSkuOrderDto {
+  return {
+    order_id: order.order_id,
+    order_number: order.order_number,
+    order_date: order.order_date,
+    order_status: order.order_status,
+    ship_to_name: order.ship_to_name,
+    qty: order.qty,
+    unit_price: order.unit_price,
+    item_name: order.item_name,
+    shippingCharge: order.standard_shipping_cost,
+  };
+}
+
+export function toClientAnalysisSkuOrdersDto(result: ClientAnalysisSkuOrdersSource): ClientAnalysisSkuOrdersDto {
+  return {
+    sku: result.sku,
+    name: result.name,
+    totalUnits: result.totalUnits,
+    avgShippingCharge: result.avgStandardShippingCost,
+    // Backend owner: totalUnits / dense dailySales buckets for the requested
+    // inclusive date window. Empty windows return zero.
+    averageUnitsPerDay: result.dailySales.length > 0 ? result.totalUnits / result.dailySales.length : 0,
+    dailySales: result.dailySales.map((point) => ({ day: point.day, units: point.units })),
+    orders: result.orders.map(toClientAnalysisSkuOrderDto),
   };
 }
 
@@ -147,31 +199,9 @@ app.get('/analysis/sku-orders', async (c) => {
   });
 
   await recordPortalAudit('portal.analysis.sku_orders', scope, { inventoryId, orders: result.orders.length });
-  // CP-018: the client portal never exposes carrier/service identity. The shared
-  // sku-orders service keeps carrier_code/service_code for the operator inventory
-  // drawer; strip them from every row here at the client-portal boundary.
-  // CP-038: rename the per-order + summary shipping to a client-facing CHARGE and drop
-  // the internal *_cost/*_total variants so no cost-named key reaches the client bundle.
-  const { avgStandardShippingCost, ...rest } = result;
-  return c.json({
-    ...rest,
-    avgShippingCharge: avgStandardShippingCost,
-    orders: result.orders.map((o) => ({
-      order_id: o.order_id,
-      order_number: o.order_number,
-      order_date: o.order_date,
-      order_status: o.order_status,
-      ship_to_name: o.ship_to_name,
-      // CP-018: never expose carrier/service identity to the client.
-      carrier_code: null,
-      service_code: null,
-      qty: o.qty,
-      unit_price: o.unit_price,
-      item_name: o.item_name,
-      shippingCharge: o.standard_shipping_cost,
-      is_external_shipped: o.is_external_shipped,
-    })),
-  });
+  // CP-050: explicit top-level and per-order whitelists prevent shared
+  // operator/debug fields from crossing the customer boundary.
+  return c.json(toClientAnalysisSkuOrdersDto(result));
 });
 
 app.get('/daily-shipments', async (c) => {

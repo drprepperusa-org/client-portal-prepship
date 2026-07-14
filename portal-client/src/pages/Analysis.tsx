@@ -100,6 +100,9 @@ export default function Analysis() {
       defaultWidth: 120,
       className: 'text-right',
       render: (r) => {
+        // CP-050 allowlisted presentation formula: backend total_revenue /
+        // backend total_qty for the requested Analysis window. Backend owns
+        // both canonical inputs; this formatted value is not a second SOT.
         const qty = num(r.total_qty);
         return <span className="tnum text-ink-2">{qty > 0 ? money(num(r.total_revenue) / qty) : '—'}</span>;
       },
@@ -270,7 +273,6 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
   const q = useSkuOrders(row.inv_sku_id ?? null);
   const data = q.data as SkuOrdersResult | undefined;
   const chart = useMemo(() => (data?.dailySales ?? []).map((d) => ({ day: d.day.slice(5), units: d.units })), [data]);
-  const avgPerDay = data && data.dailySales.length ? (data.totalUnits / data.dailySales.length) : 0;
 
   if (q.isLoading) {
     return <div className="space-y-3"><Skeleton className="h-20" /><Skeleton className="h-44" /><Skeleton className="h-48" /></div>;
@@ -287,7 +289,7 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SkuStat label="30-day units" value={String(data?.totalUnits ?? 0)} />
         <SkuStat label="Avg shipping charge" value={money(Number(data?.avgShippingCharge ?? 0))} />
-        <SkuStat label="Avg / day" value={avgPerDay.toFixed(1)} />
+        <SkuStat label="Avg / day" value={(data?.averageUnitsPerDay ?? 0).toFixed(1)} />
       </div>
 
       {/* Units-sold bar chart */}

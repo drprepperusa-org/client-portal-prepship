@@ -178,13 +178,18 @@ check(
   !/interface BillingInvoiceDetailRow \{[^}]*carrierCode/.test(clientApiSource),
   'CP-018: BillingInvoiceDetailRow no longer declares carrierCode',
 );
-// CP-018: /analysis/sku-orders reuses a service shared with the operator drawer
-// (which keeps carrier/service), so the client-portal ROUTE must strip carrier/
-// service from every row before returning them.
+// CP-018/CP-050: /analysis/sku-orders reuses an internal service that retains
+// carrier/service fields. Its explicit customer serializer must omit those
+// keys entirely, and the route must return only that DTO.
 const skuOrdersRoute = read('src/routes/client-portal/analysis.ts');
+const skuOrderSerializer = skuOrdersRoute.match(
+  /export function toClientAnalysisSkuOrderDto[\s\S]*?\r?\n\}/,
+)?.[0] ?? '';
 check(
-  /carrier_code:\s*null,\s*service_code:\s*null/.test(skuOrdersRoute),
-  'CP-018: /analysis/sku-orders strips carrier_code + service_code at the client-portal boundary',
+  skuOrderSerializer.length > 0 &&
+    !/carrier_code|service_code/.test(skuOrderSerializer) &&
+    skuOrdersRoute.includes('return c.json(toClientAnalysisSkuOrdersDto(result));'),
+  'CP-018/CP-050: /analysis/sku-orders omits carrier_code + service_code at the customer boundary',
 );
 
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };

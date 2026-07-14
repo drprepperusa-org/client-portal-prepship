@@ -84,7 +84,7 @@
     "test:dashboard-chart-drilldown": "node scripts/dashboard-chart-drilldown-guard.mjs",
     "test:dashboard-customize": "node scripts/dashboard-customize-guard.mjs",    "test:analysis-client-scope": "node scripts/analysis-client-store-scope-guard.mjs",
     "test:analysis-table-columns": "node scripts/client-portal-analysis-columns-guard.mjs",
-    "test:client-portal-analysis-dto-redaction": "node scripts/client-portal-analysis-dto-redaction-guard.mjs",
+    "test:client-portal-analysis-dto-redaction": "node scripts/client-portal-analysis-dto-redaction-guard.mjs && tsx scripts/client-portal-analysis-sku-orders-dto-runtime.ts",
     "test:client-portal-analysis-order-combinations": "node scripts/client-portal-analysis-order-combinations-guard.mjs",
     "test:client-portal-sku-orders-scope": "node scripts/client-portal-sku-orders-scope-guard.mjs",
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",

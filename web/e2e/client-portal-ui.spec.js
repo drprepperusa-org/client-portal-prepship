@@ -179,11 +179,46 @@ function responseFor(pathname, admin, capabilities = {}) {
   if (pathname === '/api/client-portal/orders/awaiting-active-count') return { count: 1 };
   if (pathname === '/api/client-portal/analysis') {
     return {
-      data: [],
+      data: [{
+        sku: 'E2E-SKU',
+        name: 'E2E product',
+        image_url: null,
+        inv_sku_id: 501,
+        client_id: 1,
+        client_name: 'E2E Client',
+        orders: 1,
+        pending: 0,
+        total_qty: 3,
+        total_revenue: '25.00',
+        daily_qty: [3],
+      }],
       dateBuckets: [day],
       orderCombinations: [],
+      totalSkus: 1,
+      totalOrders: 1,
       totalUnits: 3,
       totalRevenue: 25,
+    };
+  }
+  if (pathname === '/api/client-portal/analysis/sku-orders') {
+    return {
+      sku: 'E2E-SKU',
+      name: 'E2E product',
+      totalUnits: 3,
+      avgShippingCharge: '4.00',
+      averageUnitsPerDay: 1.5,
+      dailySales: [{ day, units: 3 }],
+      orders: [{
+        order_id: 501,
+        order_number: 'E2E-501',
+        order_date: '2026-07-09T12:00:00.000Z',
+        order_status: 'shipped',
+        ship_to_name: 'Pat Customer',
+        qty: 3,
+        unit_price: '8.33',
+        item_name: 'E2E product',
+        shippingCharge: '4.00',
+      }],
     };
   }
   if (pathname === '/api/client-portal/returns/1') {
@@ -294,7 +329,7 @@ for (const viewport of [
       await expect(page).toHaveURL(new RegExp(`${route === '/' ? '/$' : `${route}$`}`));
       await page.waitForTimeout(100);
       expect(errors, errors.join('\n')).toEqual([]);
-      await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: title, exact: true, level: 1 })).toBeVisible();
       await expect(page.getByRole('main')).toBeVisible();
       await expect.poll(() => page.evaluate(
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
@@ -422,6 +457,21 @@ test('charts expose summaries, data tables, day selection, and reduced motion', 
   await chart.getByLabel('View day details').selectOption(day);
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('Analysis SKU drawer renders the customer-safe DTO', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/analysis`);
+
+  await page.getByRole('button', { name: 'View SKU details for E2E-SKU' }).click();
+  const drawer = page.getByRole('dialog', { name: 'E2E product' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('E2E-SKU', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('Recent orders (1)')).toBeVisible();
+  await expect(drawer.getByRole('button', { name: /E2E-501/ })).toBeVisible();
+  await expect(drawer.getByText('1.5', { exact: true })).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
