@@ -20,6 +20,16 @@ export class ShipStationError extends Error {
   }
 }
 
+async function readShipStationResponseBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
 type RequestOpts = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -79,8 +89,7 @@ export async function ssRequest<T>(path: string, opts: RequestOpts = {}): Promis
         // giving up. Matches apps/api/src/common/shipstation/client.ts:300-346.
         if (res.status >= 500 && res.status <= 599) {
           if (attempt >= maxRetries) {
-            let body: unknown = null;
-            try { body = await res.json(); } catch { body = await res.text(); }
+            const body = await readShipStationResponseBody(res);
             throw new ShipStationError(
               res.status,
               `ShipStation ${res.status} after ${attempt} retries`,
@@ -93,12 +102,7 @@ export async function ssRequest<T>(path: string, opts: RequestOpts = {}): Promis
         }
 
         if (!res.ok) {
-          let body: unknown = null;
-          try {
-            body = await res.json();
-          } catch {
-            body = await res.text();
-          }
+          const body = await readShipStationResponseBody(res);
           const detail = extractShipStationMessage(body);
           throw new ShipStationError(
             res.status,

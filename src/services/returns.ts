@@ -1080,6 +1080,7 @@ export async function createReturnLabel(
       ssOrderId: order.id,
       orderNumber: order.orderNumber ?? null,
       externalShipmentId: purchaseAction.intent.providerReferenceKey,
+      isReturnLabel: true,
       testLabel: false,
     });
   } catch (error) {

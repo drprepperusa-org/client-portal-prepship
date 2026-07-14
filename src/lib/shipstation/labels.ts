@@ -29,6 +29,7 @@ export type CreateExternalLabelInput = {
   ssOrderId: number | null;
   orderNumber: string | null;
   externalShipmentId?: string;
+  isReturnLabel?: boolean;
   testLabel?: boolean;
 };
 
@@ -212,7 +213,7 @@ export async function ssCreateLabel(input: CreateExternalLabelInput): Promise<Cr
       external_order_id: input.orderNumber ?? undefined,
       external_shipment_id: input.externalShipmentId ?? undefined,
     },
-    is_return_label: false,
+    is_return_label: input.isReturnLabel ?? false,
     label_layout: '4x6',
     label_format: 'pdf',
     label_download_type: 'url',

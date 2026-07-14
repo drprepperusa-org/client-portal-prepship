@@ -52,7 +52,10 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
   if (url.startsWith(prefix)) {
     const key = decodeURIComponent(url.slice(prefix.length));
     const label = remoteLabels.get(key);
-    return label ? response(label) : response({ message: 'not found' }, 404);
+    // ShipStation returns an empty 404 for a missing external shipment id.
+    // Reproduce that exact response so reconciliation cannot depend on a JSON
+    // error body or attempt to consume the body twice.
+    return label ? response(label) : new Response(null, { status: 404 });
   }
   throw new Error(`CP-057 integration blocked unexpected network request: ${url}`);
 }) as typeof fetch;
@@ -82,6 +85,9 @@ function providerPayload(key: string) {
 
 carrierConnectors.shipstation.createLabel = async (input) => {
   providerCalls += 1;
+  if (input.isReturnLabel !== true) {
+    throw new Error('CP-057 provider request was not marked as a return label');
+  }
   const key = input.externalShipmentId;
   if (!key) throw new Error('CP-057 stable external shipment id was not supplied');
   const payload = providerPayload(key);

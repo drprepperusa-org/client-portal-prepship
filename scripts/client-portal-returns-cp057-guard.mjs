@@ -47,6 +47,11 @@ assert(
   'ShipStation create and lookup share the stable external shipment id',
 );
 assert(
+  /is_return_label: input\.isReturnLabel \?\? false/.test(labels) &&
+    /isReturnLabel: true/.test(returnsService),
+  'return-label purchases explicitly mark the provider request as a return label',
+);
+assert(
   /saveReturnLabelSelectedRate\([\s\S]*createLabel\(/.test(returnsService) &&
     /recordReturnLabelProviderReceipt\([\s\S]*finalizeLivePurchase/.test(returnsService),
   'selected rate and provider receipt are persisted around the external side effect',
