@@ -192,7 +192,7 @@
     "test:jwt-session-policy": "node scripts/jwt-session-policy-guard.mjs",
     "test:auth-logout": "node scripts/auth-logout-guard.mjs",
     "test:frontend-auth-cache": "node scripts/frontend-auth-cache-guard.mjs",
-    "test:client-portal-failure-states": "node scripts/client-portal-failure-states-guard.mjs",
+    "test:client-portal-failure-states": "node scripts/client-portal-failure-states-guard.mjs && tsx scripts/client-portal-failure-states-runtime.ts",
     "test:maintenance-page": "node scripts/maintenance-page-guard.mjs",
     "test:walmart-dual-dedupe": "node scripts/walmart-dual-dedupe-guard.mjs",
     "test:orders-query-round2": "node scripts/orders-query-round2-guard.mjs",

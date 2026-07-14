@@ -6,6 +6,7 @@ import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState, Tooltip } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { QueryState } from '@/components/ui/QueryState';
 import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
 import { ChartDayModal, type DayPeekSource } from '@/components/dashboard/ChartDayModal';
@@ -226,6 +227,20 @@ export default function Dashboard() {
   }
 
   const visibleOrder = layout.order.filter((id) => !layout.hidden.includes(id));
+
+  if (dash.isError) {
+    return (
+      <GlassPanel className="p-4 sm:p-5">
+        <QueryState
+          isLoading={false}
+          isError
+          onRetry={() => dash.refetch()}
+        >
+          <></>
+        </QueryState>
+      </GlassPanel>
+    );
+  }
 
   return (
     <div className="space-y-4">

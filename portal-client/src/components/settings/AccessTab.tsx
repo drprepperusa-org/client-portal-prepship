@@ -5,6 +5,7 @@ import { SectionTitle } from '@/components/ui/Glass';
 import { TextInput } from '@/components/ui/Inputs';
 import { Button } from '@/components/ui/Button';
 import { SkeletonRows } from '@/components/ui/Display';
+import { QueryState } from '@/components/ui/QueryState';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
@@ -22,7 +23,8 @@ type RoleFilter = 'all' | 'admin' | 'client' | 'global';
 export function AccessTab() {
   const toast = useToast();
   const { accessToken, userId } = useAuth();
-  const clients = useClients().data?.data ?? [];
+  const clientsQuery = useClients();
+  const clients = clientsQuery.data?.data ?? [];
   const accessList = useAccessList();
   const canManageAdmins = useMe().data?.canManageAdmins ?? false;
   const [accessSearch, setAccessSearch] = useState('');
@@ -101,6 +103,21 @@ export function AccessTab() {
     }
   }
 
+  if (accessList.isError || clientsQuery.isError) {
+    return (
+      <div className="space-y-5">
+        <SectionTitle title="Account access" subtitle="Emails and the client stores each login handles" />
+        <QueryState
+          isLoading={false}
+          isError
+          onRetry={() => Promise.all([accessList.refetch(), clientsQuery.refetch()])}
+        >
+          <></>
+        </QueryState>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <SectionTitle
@@ -174,12 +191,7 @@ export function AccessTab() {
       {accessList.isLoading && (
         <SkeletonRows rows={4} className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70" />
       )}
-      {accessList.isError && (
-        <p className="rounded-glass-sm bg-rose-50 p-4 text-sm font-medium text-rose-700 ring-1 ring-rose-100">
-          Could not load the access roster.
-        </p>
-      )}
-      {!accessList.isLoading && !accessList.isError && filteredAccessUsers.length === 0 && (
+      {!accessList.isLoading && filteredAccessUsers.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-glass-sm bg-white/60 px-6 py-10 text-center ring-1 ring-slate-200/70">
           <span className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-ink-3"><Users size={20} /></span>
           <p className="text-sm font-semibold text-ink">No matching logins</p>

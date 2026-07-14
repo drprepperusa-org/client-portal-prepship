@@ -11,6 +11,7 @@ import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { requestedClientId, scopeOrResponse } from '../../lib/client-portal/query-params';
+import { getBillingLastGenerated } from '../../lib/client-portal/read-models/billing-status';
 
 const app = new Hono();
 
@@ -172,17 +173,15 @@ app.get('/billing/status', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
   if (!scope.canViewFinancials) return c.json({ lastGenerated: null });
-  let lastGenerated: unknown = null;
   try {
-    const rows = await db.execute<{ at: string | null }>(
-      sql`select to_char(max(created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at from billing_line_items`,
+    return c.json({ lastGenerated: await getBillingLastGenerated() });
+  } catch (error) {
+    console.error(
+      '[client-portal] billing status unavailable:',
+      error instanceof Error ? error.message : 'unknown error',
     );
-    const at = rows[0]?.at ?? null;
-    lastGenerated = at ? { at } : null;
-  } catch {
-    lastGenerated = null;
+    return c.json({ error: 'billing_status_unavailable' }, 503);
   }
-  return c.json({ lastGenerated });
 });
 
 export default app;

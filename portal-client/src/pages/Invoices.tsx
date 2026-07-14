@@ -76,7 +76,8 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const [granularity, setGranularity] = useState<'half' | 'month'>('half');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
 
-  const clients = useClients().data?.data ?? [];
+  const clientsQuery = useClients();
+  const clients = clientsQuery.data?.data ?? [];
   const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity, clientFilter);
   const billingDenied = summaryQuery.isError && errorStatus(summaryQuery.error) === 403;
   const billingVisible = summaryQuery.data?.billingVisible !== false && !billingDenied;
@@ -292,11 +293,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             </div>
           </div>
           <QueryState
-            isLoading={summaryQuery.isLoading}
-            isError={summaryQuery.isError}
+            isLoading={summaryQuery.isLoading || clientsQuery.isLoading}
+            isError={summaryQuery.isError || clientsQuery.isError}
             error={summaryQuery.error}
             isEmpty={summary.length === 0}
-            onRetry={() => summaryQuery.refetch()}
+            onRetry={() => Promise.all([summaryQuery.refetch(), clientsQuery.refetch()])}
             emptyTitle="No billing available"
             emptyMessage="There are no billing periods available for this date range."
           >

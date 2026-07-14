@@ -7,6 +7,7 @@ import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState, Chip } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { QueryState } from '@/components/ui/QueryState';
 import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
 import { TopSkuTrendChart } from '@/components/charts/Charts';
@@ -126,6 +127,20 @@ export default function Analysis() {
     // CP-047: the customer Analysis API also drops those internal fields, so
     // hiding a column is not the security boundary.
   ];
+
+  if (analysis.isError) {
+    return (
+      <GlassPanel className="p-4 sm:p-5">
+        <QueryState
+          isLoading={false}
+          isError
+          onRetry={() => analysis.refetch()}
+        >
+          <></>
+        </QueryState>
+      </GlassPanel>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -277,7 +292,13 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
   if (q.isLoading) {
     return <div className="space-y-3"><Skeleton className="h-20" /><Skeleton className="h-44" /><Skeleton className="h-48" /></div>;
   }
-  if (q.isError) return <p className="text-sm text-ink-3">Couldn’t load this SKU’s orders.</p>;
+  if (q.isError) {
+    return (
+      <QueryState isLoading={false} isError onRetry={() => q.refetch()}>
+        <></>
+      </QueryState>
+    );
+  }
 
   return (
     <div className="space-y-5">

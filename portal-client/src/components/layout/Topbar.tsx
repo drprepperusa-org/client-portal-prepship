@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Bell, Menu, ChevronDown, Check } from 'lucide-react';
+import { Search, Bell, Menu, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
@@ -24,6 +24,11 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
   const activeClientName = clientId ? clients.find((c) => c.id === clientId)?.name ?? 'Client' : 'All clients';
   const lastSync = sync.data?.lastSyncAt ?? null;
   const syncMeta = connectionFreshnessMeta(sync.data?.connectionStatus);
+  const syncTimeCopy = sync.isError
+    ? 'Connection freshness is unavailable.'
+    : lastSync
+      ? `Last synced ${shortDate(lastSync)}`
+      : 'Awaiting first sync…';
 
   function submitSearch(e: FormEvent) {
     e.preventDefault();
@@ -55,6 +60,17 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         </form>
 
         {/* Client switcher */}
+        {clientsQuery.isError && (
+          <button
+            type="button"
+            onClick={() => clientsQuery.refetch()}
+            title="Client list unavailable — retry"
+            aria-label="Client list unavailable. Retry."
+            className="focus-ring grid h-10 w-10 place-items-center rounded-glass-sm bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+          >
+            <AlertTriangle size={17} />
+          </button>
+        )}
         {showClientSwitcher && (
           <Dropdown
             open={clientOpen}
@@ -87,8 +103,17 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
                   className="glass-strong absolute right-0 z-20 mt-2 w-[min(90vw,320px)] rounded-glass p-3 shadow-glass-lg"
                 >
                   <p className="text-sm font-semibold text-ink">Sync status</p>
-                  <p className="mt-1 text-[13px] text-ink-3">{lastSync ? `Last synced ${shortDate(lastSync)}` : 'Awaiting first sync…'}</p>
+                  <p className="mt-1 text-[13px] text-ink-3">{syncTimeCopy}</p>
                   <p className="mt-2 text-[13px] text-ink-3">{syncMeta.label}</p>
+                  {sync.isError && (
+                    <button
+                      type="button"
+                      onClick={() => sync.refetch()}
+                      className="focus-ring mt-3 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-slate-200"
+                    >
+                      Retry
+                    </button>
+                  )}
                 </motion.div>
               </>
             )}

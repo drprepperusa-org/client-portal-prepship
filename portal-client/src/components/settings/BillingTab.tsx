@@ -3,12 +3,29 @@ import { Building2, ReceiptText } from 'lucide-react';
 import { SectionTitle, Divider } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Display';
+import { QueryState } from '@/components/ui/QueryState';
 import { useClients } from '@/lib/hooks';
 
 /* BILLING - point at the real Invoices/Finance data instead of a
    fabricated card + plan. Payment methods are operator-managed. */
 export function BillingTab() {
-  const clients = useClients().data?.data ?? [];
+  const query = useClients();
+  const clients = query.data?.data ?? [];
+
+  if (query.isLoading || query.isError) {
+    return (
+      <div className="space-y-5">
+        <SectionTitle title="Billing" subtitle="Your invoices and billed client accounts" />
+        <QueryState
+          isLoading={query.isLoading}
+          isError={query.isError}
+          onRetry={() => query.refetch()}
+        >
+          <></>
+        </QueryState>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

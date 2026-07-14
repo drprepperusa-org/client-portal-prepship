@@ -19,7 +19,6 @@ interface QueryStateProps {
 export function QueryState({
   isLoading,
   isError,
-  error,
   isEmpty,
   onRetry,
   emptyTitle = 'Nothing here yet',
@@ -33,7 +32,7 @@ export function QueryState({
       <EmptyState
         icon={<AlertTriangle size={26} />}
         title="Couldn't load data"
-        message={error instanceof Error ? error.message : 'The request failed. Please try again.'}
+        message="This information is temporarily unavailable. Please retry."
         action={onRetry ? <Button size="sm" onClick={onRetry}>Retry</Button> : undefined}
       />
     );

@@ -242,7 +242,7 @@ export default function AuditLog() {
           <EmptyState
             icon={<ClipboardList size={24} />}
             title="Audit log unavailable"
-            message={audit.error instanceof Error ? audit.error.message : 'Could not load portal audit events.'}
+            message="Portal audit events are temporarily unavailable."
             action={
               <Button variant="secondary" size="sm" onClick={() => void audit.refetch()}>
                 Retry

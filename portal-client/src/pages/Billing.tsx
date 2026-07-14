@@ -13,7 +13,7 @@ import BillingClients from './Invoices';
 function timeAgo(iso?: string | null): string {
   if (!iso) return 'never';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 'never';
+  if (Number.isNaN(d.getTime())) return 'unavailable';
   const mins = Math.round((Date.now() - d.getTime()) / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -30,6 +30,11 @@ export default function Billing() {
   const qc = useQueryClient();
   const billingStatus = useBillingStatus();
   const lastGen = billingStatus.data?.lastGenerated ?? null;
+  const billingStatusLabel = billingStatus.isLoading
+    ? 'checking…'
+    : billingStatus.isError
+      ? 'unavailable'
+      : timeAgo(lastGen?.at);
 
   // Shared date range drives the billing view. Custom dates are staged in a
   // draft first — the query only refires on "Apply range", never on each
@@ -87,10 +92,18 @@ export default function Billing() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3"><FileBarChart size={13} /> Billing summary</p>
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-1.5 text-xs text-ink-3 sm:inline-flex" title={lastGen?.at ? new Date(lastGen.at).toLocaleString() : undefined}>
+            <span
+              className="hidden items-center gap-1.5 text-xs text-ink-3 sm:inline-flex"
+              title={!billingStatus.isError && lastGen?.at ? new Date(lastGen.at).toLocaleString() : undefined}
+            >
               <Clock size={13} />
-              Billing updated <span className="font-semibold text-ink-2">{timeAgo(lastGen?.at)}</span>
+              Billing updated <span className="font-semibold text-ink-2">{billingStatusLabel}</span>
             </span>
+            {billingStatus.isError && (
+              <Button variant="secondary" size="sm" onClick={() => billingStatus.refetch()}>
+                Retry status
+              </Button>
+            )}
             <Button variant="secondary" size="sm" leadingIcon={<RefreshCw size={15} className={cn(refreshing && 'animate-spin')} />} onClick={refresh}>Refresh</Button>
           </div>
         </div>

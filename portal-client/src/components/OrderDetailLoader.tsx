@@ -1,6 +1,7 @@
 import { useOrder } from '@/lib/hooks';
 import { Skeleton } from '@/components/ui/Display';
 import { OrderDetailPanel } from '@/components/OrderDetailPanel';
+import { QueryState } from '@/components/ui/QueryState';
 
 /**
  * CP-022 — the ONE canonical order-detail loader. Every entry point (Orders,
@@ -20,7 +21,11 @@ export function OrderDetailLoader({ id }: { id: number }) {
     );
   }
   if (q.isError || !q.data?.data) {
-    return <p className="text-sm text-ink-3">Couldn’t load this order.</p>;
+    return (
+      <QueryState isLoading={false} isError onRetry={() => q.refetch()}>
+        <></>
+      </QueryState>
+    );
   }
   return <OrderDetailPanel o={q.data.data} />;
 }

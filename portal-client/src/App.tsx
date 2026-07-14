@@ -3,6 +3,7 @@ import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { useAuth } from './auth';
 import { useMe } from './lib/hooks';
+import { QueryState } from './components/ui/QueryState';
 
 // Eager: the login screen is the entry point for unauthenticated users.
 import Login from './pages/Login';
@@ -62,6 +63,15 @@ function RequireCapability({
 }) {
   const me = useMe();
   if (me.isLoading) return <Spinner label="Loading…" />;
+  if (me.isError) {
+    return (
+      <div className="min-h-[60vh] p-4">
+        <QueryState isLoading={false} isError onRetry={() => me.refetch()}>
+          <></>
+        </QueryState>
+      </div>
+    );
+  }
   if (!me.data?.[capability]) return <Navigate to="/" replace />;
   return children;
 }

@@ -24,12 +24,14 @@ function Row({
   onNavigate,
   onItemClick,
   badge,
+  badgeUnavailable,
 }: {
   item: NavItem;
   collapsed: boolean;
   onNavigate?: () => void;
   onItemClick?: (item: NavItem) => void;
   badge?: number;
+  badgeUnavailable?: boolean;
 }) {
   const { pathname } = useLocation();
   const active = item.to === '/' ? pathname === '/' : pathname.startsWith(item.to);
@@ -63,6 +65,7 @@ function Row({
         <AnimatedIcon icon={item.icon} accent={item.accent} active={active} size={19} />
         {/* Collapsed: show a dot on the icon so the badge is still visible. */}
         {collapsed && showBadge && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />}
+        {collapsed && badgeUnavailable && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-white" />}
       </span>
       {!collapsed && <span className="relative z-10 truncate">{item.label}</span>}
       {!collapsed && showBadge && (
@@ -74,6 +77,14 @@ function Row({
         >
           {badgeText}
         </motion.span>
+      )}
+      {!collapsed && badgeUnavailable && (
+        <span
+          title="Awaiting order count unavailable"
+          className="relative z-10 ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white"
+        >
+          !
+        </span>
       )}
     </NavLink>
   );
@@ -97,7 +108,8 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const canManageUsers = me.data?.canManageUsers ?? false;
   const canViewAudit = me.data?.canViewAudit ?? false;
   const displayName = email ? email.split('@')[0] : 'Account';
-  const awaitingCount = useAwaitingCount().data?.count ?? 0;
+  const awaitingQuery = useAwaitingCount();
+  const awaitingCount = awaitingQuery.data?.count;
   // Backend capabilities own access-management and audit navigation.
   const navItems = NAV.filter((item) => {
     if (item.to === '/settings') return canManageUsers;
@@ -145,6 +157,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
             onNavigate={onNavigate}
             onItemClick={handleNavItemClick}
             badge={item.to === '/orders' ? awaitingCount : undefined}
+            badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}
           />
         ))}
       </nav>

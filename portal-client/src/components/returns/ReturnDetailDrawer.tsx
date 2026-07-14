@@ -60,7 +60,10 @@ export function ReturnDetailDrawer({ id, onClose, canInspect = false }: {
   return (
     <Drawer open={id != null} onClose={onClose} title={detail?.returnReference ?? 'Return'} width={620}>
       {query.isLoading ? <p className="text-sm text-ink-3">Loading...</p> : query.isError || !detail ? (
-        <p className="text-sm text-ink-3">Couldn’t load this return.</p>
+        <div className="space-y-3 text-center">
+          <p className="text-sm text-ink-3">This return is temporarily unavailable.</p>
+          <Button variant="secondary" size="sm" onClick={() => query.refetch()}>Retry</Button>
+        </div>
       ) : (
         <div className="space-y-5">
           <div className="flex items-center justify-between gap-3">

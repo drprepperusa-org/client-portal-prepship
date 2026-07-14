@@ -20,12 +20,13 @@ function isActive(to: string, pathname: string): boolean {
   return to === '/' ? pathname === '/' : pathname.startsWith(to);
 }
 
-function Tab({ to, label, icon: Icon, active, badge }: {
+function Tab({ to, label, icon: Icon, active, badge, badgeUnavailable }: {
   to: string;
   label: string;
   icon: LucideIcon;
   active: boolean;
   badge?: number;
+  badgeUnavailable?: boolean;
 }) {
   return (
     <NavLink
@@ -42,6 +43,14 @@ function Tab({ to, label, icon: Icon, active, badge }: {
               {badge > 99 ? '99+' : badge}
             </span>
           )}
+          {badgeUnavailable && (
+            <span
+              aria-label="Awaiting order count unavailable"
+              className="absolute -right-2 -top-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white shadow"
+            >
+              !
+            </span>
+          )}
         </span>
       </span>
       <span className={cn('max-w-full truncate text-[11px] font-medium', active ? 'text-brand-700' : 'text-ink-3')}>{label}</span>
@@ -52,14 +61,23 @@ function Tab({ to, label, icon: Icon, active, badge }: {
 export function BottomNav() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const awaiting = useAwaitingCount().data?.count ?? 0;
+  const awaitingQuery = useAwaitingCount();
+  const awaiting = awaitingQuery.data?.count;
   return (
     <nav
       aria-label="Primary"
       className="glass-strong fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-white/60 px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] lg:hidden"
     >
       {LEFT.map((item) => (
-        <Tab key={item.to} to={item.to} label={item.label} icon={item.icon} active={isActive(item.to, pathname)} badge={item.to === '/orders' ? awaiting : 0} />
+        <Tab
+          key={item.to}
+          to={item.to}
+          label={item.label}
+          icon={item.icon}
+          active={isActive(item.to, pathname)}
+          badge={item.to === '/orders' ? awaiting : undefined}
+          badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}
+        />
       ))}
 
       {/* Raised center create action → New inbound (admin-gated on the page). */}

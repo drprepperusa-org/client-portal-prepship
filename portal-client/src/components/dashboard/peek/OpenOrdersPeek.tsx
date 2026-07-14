@@ -3,6 +3,7 @@ import { Inbox } from 'lucide-react';
 import { useOrders } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
 import { staggerContainer, staggerItem } from '@/lib/motion';
+import { QueryState } from '@/components/ui/QueryState';
 
 /* ───────────────────────── live open-orders list ───────────────────────── */
 
@@ -16,6 +17,13 @@ export function OpenOrdersPeek() {
           <div key={i} className="h-12 animate-pulse rounded-glass-sm bg-slate-100/80" />
         ))}
       </div>
+    );
+  }
+  if (q.isError) {
+    return (
+      <QueryState isLoading={false} isError onRetry={() => q.refetch()}>
+        <></>
+      </QueryState>
     );
   }
   if (!rows.length) {

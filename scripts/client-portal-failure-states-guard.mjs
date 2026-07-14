@@ -105,10 +105,148 @@ assert(
 );
 
 // ── package.json wiring ──
+// CP-055 backend truth: failed canonical reads cannot become normal nulls.
+const billingStatusReadModel = read('src/lib/client-portal/read-models/billing-status.ts');
+const billingRoute = read('src/routes/client-portal/billing.ts');
+assert(
+  billingStatusReadModel.includes('return at ? { at } : null') &&
+    !billingStatusReadModel.includes('catch'),
+  'Billing status reserves null for a successful empty table and propagates query failures',
+);
+assert(
+  billingRoute.includes('await getBillingLastGenerated()') &&
+    billingRoute.includes("return c.json({ error: 'billing_status_unavailable' }, 503)") &&
+    !/catch\s*\{[\s\S]{0,120}lastGenerated\s*=\s*null/.test(billingRoute),
+  'Billing status converts an operational failure to an explicit retriable 503, never a never-generated value',
+);
+const mainRoute = read('src/main.ts');
+assert(
+  mainRoute.includes("isSafeClientError && err.message ? err.message : 'Internal server error'") &&
+    mainRoute.includes('app.onError'),
+  'uncaught portal query failures use the shared redacted 500 response',
+);
+const connectionsReadModel = read('src/lib/client-portal/read-models/integrations.ts');
+assert(
+  connectionsReadModel.includes('if (!isMissingConnectionFreshnessColumnError(error)) throw error') &&
+    !connectionsReadModel.includes('return [];'),
+  'Connections retains only its documented schema-compatibility fallback and rethrows operational failures',
+);
+
+// CP-055 frontend truth: primary surfaces never render failed data as empty.
+const dashboard = read('portal-client/src/pages/Dashboard.tsx');
+const analysis = read('portal-client/src/pages/Analysis.tsx');
+const billing = read('portal-client/src/pages/Billing.tsx');
+assert(
+  dashboard.includes('if (dash.isError)') && dashboard.includes('onRetry={() => dash.refetch()}'),
+  'Dashboard replaces failed zero/empty projections with an explicit retry state',
+);
+assert(
+  analysis.includes('if (analysis.isError)') && analysis.includes('onRetry={() => analysis.refetch()}'),
+  'Analysis replaces failed zero/empty projections with an explicit retry state',
+);
+assert(
+  billing.includes('billingStatus.isError') &&
+    billing.includes("? 'unavailable'") &&
+    billing.includes('onClick={() => billingStatus.refetch()}'),
+  'Billing never presents a failed status read as never and exposes Retry',
+);
+
+const primaryListPages = [
+  'Orders.tsx',
+  'Shipments.tsx',
+  'Returns.tsx',
+  'Inventory.tsx',
+  'Inbound.tsx',
+  'Connections.tsx',
+  'Invoices.tsx',
+];
+for (const file of primaryListPages) {
+  const source = read(`portal-client/src/pages/${file}`);
+  assert(
+    source.includes('QueryState') && source.includes('isError='),
+    `${file} distinguishes primary-query failure from a legitimate empty dataset`,
+  );
+}
+
+const app = read('portal-client/src/App.tsx');
+assert(
+  app.includes('if (me.isError)') && app.includes('onRetry={() => me.refetch()}'),
+  'capability lookup failure renders unavailable/retry instead of a false authorization redirect',
+);
+const topbar = read('portal-client/src/components/layout/Topbar.tsx');
+assert(
+  topbar.includes('clientsQuery.isError') &&
+    topbar.includes('Client list unavailable. Retry.') &&
+    topbar.includes('sync.isError') &&
+    topbar.includes('Connection freshness is unavailable.'),
+  'shell client and connection reads expose explicit unavailable/retry states',
+);
+const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
+const bottomNav = read('portal-client/src/components/layout/BottomNav.tsx');
+assert(
+  sidebar.includes('badgeUnavailable') &&
+    bottomNav.includes('badgeUnavailable') &&
+    !sidebar.includes('useAwaitingCount().data?.count ?? 0') &&
+    !bottomNav.includes('useAwaitingCount().data?.count ?? 0'),
+  'an unavailable awaiting-order count is never rendered as a believable zero badge',
+);
+
+const access = read('portal-client/src/components/settings/AccessTab.tsx');
+const billingSettings = read('portal-client/src/components/settings/BillingTab.tsx');
+assert(
+  access.includes('accessList.isError || clientsQuery.isError') &&
+    access.includes('Promise.all([accessList.refetch(), clientsQuery.refetch()])'),
+  'Access distinguishes roster/client lookup failure from no matching logins',
+);
+assert(
+  billingSettings.includes('query.isLoading || query.isError') &&
+    billingSettings.includes('onRetry={() => query.refetch()}'),
+  'Settings Billing distinguishes client lookup failure from no billed accounts',
+);
+const openOrdersPeek = read('portal-client/src/components/dashboard/peek/OpenOrdersPeek.tsx');
+const orderDetail = read('portal-client/src/components/OrderDetailLoader.tsx');
+const returnDetail = read('portal-client/src/components/returns/ReturnDetailDrawer.tsx');
+assert(
+  openOrdersPeek.includes('if (q.isError)') && openOrdersPeek.includes('onRetry={() => q.refetch()}'),
+  'Dashboard open-orders drill-down distinguishes failure from no awaiting orders',
+);
+assert(
+  orderDetail.includes('onRetry={() => q.refetch()}') &&
+    returnDetail.includes('onClick={() => query.refetch()}'),
+  'order and return detail failures expose retry actions',
+);
+
+assert(
+  !queryState.includes('error instanceof Error ? error.message') &&
+    queryState.includes('This information is temporarily unavailable. Please retry.'),
+  'shared read failures render redaction-safe copy instead of raw backend error detail',
+);
+const auditLog = read('portal-client/src/pages/AuditLog.tsx');
+assert(
+  !auditLog.includes('audit.error instanceof Error ? audit.error.message') &&
+    auditLog.includes('Portal audit events are temporarily unavailable.'),
+  'Audit Log failure copy does not expose backend error detail',
+);
+const rates = read('portal-client/src/pages/Rates.tsx');
+assert(
+  rates.includes('does not (yet) expose as a live endpoint') &&
+    rates.includes('aren’t published to the') &&
+    !rates.includes('useQuery'),
+  'Rate Sheet labels its intentional non-live state instead of fabricating backend truth',
+);
+
+const runtimeFixture = read('scripts/client-portal-failure-states-runtime.ts');
+assert(
+  runtimeFixture.includes('assert.rejects') &&
+    runtimeFixture.includes('a successful empty billing table returns null'),
+  'runtime fixtures distinguish a legitimate empty Billing result from an injected DB failure',
+);
+
 const pkg = JSON.parse(read('package.json'));
 assert(
-  pkg.scripts?.['test:client-portal-failure-states'] === 'node scripts/client-portal-failure-states-guard.mjs',
-  'package.json exposes test:client-portal-failure-states',
+  pkg.scripts?.['test:client-portal-failure-states'] ===
+    'node scripts/client-portal-failure-states-guard.mjs && tsx scripts/client-portal-failure-states-runtime.ts',
+  'package.json exposes the static guard and injected runtime fixtures',
 );
 
 if (failed) process.exit(1);
