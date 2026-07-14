@@ -362,9 +362,10 @@ export async function refreshShipmentTracking(
 }
 
 // ── Background sweep (worker) ─────────────────────────────────────────────────
-// Walks recent undelivered shipments oldest-check-first so tracking state
-// populates without anyone loading pages. Targeted calls run with bounded
-// concurrency and persist label IDs so later checks need one request each.
+// Walks undelivered shipments oldest-check-first so tracking state populates
+// without anyone loading pages. Historical rows are checked once; recent rows
+// keep refreshing. Targeted calls run with bounded concurrency and persist
+// label IDs so later checks need one request each.
 
 const SWEEP_INTERVAL_MS = 3 * 60 * 1000;
 const SWEEP_RECHECK_MS = 60 * 60 * 1000;
@@ -382,7 +383,10 @@ export async function sweepShipmentTracking(): Promise<TrackingRefreshResult> {
         sql`coalesce(${shipments.source}, '') <> 'test_offline'`,
         sql`coalesce(${shipments.trackingStatus}, '') <> 'delivered'`,
         or(sql`${shipments.trackingNumber} is not null`, sql`${shipments.labelTracking} is not null`),
-        sql`${shipments.shipDate} > now() - interval '${sql.raw(String(SWEEP_WINDOW_DAYS))} days'`,
+        or(
+          sql`${shipments.shipDate} > now() - interval '${sql.raw(String(SWEEP_WINDOW_DAYS))} days'`,
+          isNull(shipments.trackingCheckedAt),
+        ),
         or(isNull(shipments.trackingCheckedAt), lt(shipments.trackingCheckedAt, recheckBefore)),
       ),
     )

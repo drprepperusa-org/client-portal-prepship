@@ -176,8 +176,9 @@ check(
   trackingService.includes('options.forceRefresh') &&
     trackingService.includes('LOOKUP_CONCURRENCY') &&
     trackingService.includes('shipstationLabelId') &&
-    trackingService.includes('const SWEEP_RECHECK_MS = 60 * 60 * 1000'),
-  'CP-042: forced refresh bypasses cooldowns; targeted concurrent reconciliation rechecks hourly',
+    trackingService.includes('const SWEEP_RECHECK_MS = 60 * 60 * 1000') &&
+    trackingService.includes('Historical rows are checked once; recent rows'),
+  'CP-042: forced refresh bypasses cooldowns; historical rows backfill once and recent rows recheck hourly',
 );
 check(
   trackingService.indexOf('officialStatus = await lookupOfficialCarrierTracking') <
