@@ -23,6 +23,7 @@ import {
   scopeOrResponse,
 } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
+import { refreshMockLabelSignature } from '../../../lib/mock-label-access';
 import { getReturnMediaSignedUrl } from '../../../lib/supabase';
 import { listOriginalOrderActivity, listReturnActivity } from '../../../services/return-activity';
 import { resolveReturnReference } from '../../../services/return-reference';
@@ -170,7 +171,7 @@ function registerReturnDetailRoute(app: Hono): void {
         trackingStatus: row.returnTrackingStatus ?? null,
         deliveryError: row.ret.deliveryError,
         returnToLocationId: row.ret.returnToLocationId,
-        pdfUrl: row.returnLabelUrl ?? null,
+        pdfUrl: refreshMockLabelSignature(row.returnLabelUrl),
         requestedAt: iso(row.ret.requestedAt),
         closedAt: iso(row.ret.closedAt),
         items: items.map((item: ReturnItem) => ({

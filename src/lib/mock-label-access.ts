@@ -19,6 +19,28 @@ export function addMockLabelSignature(url: string, shipmentId: number): string {
   return `${url}${separator}exp=${expiresAt}&sig=${sign(shipmentId, expiresAt)}`;
 }
 
+export function refreshMockLabelSignature(url: string | null): string | null {
+  if (!url) return url;
+
+  const absolute = /^[a-z][a-z\d+.-]*:\/\//i.test(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url, 'http://mock-label.local');
+  } catch {
+    return url;
+  }
+
+  const match = parsed.pathname.match(/\/labels\/mock\/(-?\d+)\/?$/);
+  if (!match) return url;
+  const shipmentId = Number(match[1]);
+  if (!Number.isSafeInteger(shipmentId)) return url;
+
+  parsed.searchParams.delete('exp');
+  parsed.searchParams.delete('sig');
+  const unsignedUrl = absolute ? parsed.toString() : `${parsed.pathname}${parsed.search}`;
+  return addMockLabelSignature(unsignedUrl, shipmentId);
+}
+
 export function verifyMockLabelSignature(
   shipmentId: number,
   expiresAtRaw: string | undefined,

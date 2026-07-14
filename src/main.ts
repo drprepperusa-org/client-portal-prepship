@@ -15,6 +15,7 @@ import packagesRoute from './routes/packages';
 import clientsRoute from './routes/clients';
 import ratesRoute from './routes/rates';
 import labelsRoute from './routes/labels';
+import mockLabelsRoute from './routes/mock-labels';
 import syncRoute from './routes/sync';
 import inventoryRoute from './routes/inventory';
 import locationsRoute from './routes/locations';
@@ -165,6 +166,7 @@ app.use('/admin/*', requireAdmin);
 app.use('/observability', requireAdmin);
 app.use('/observability/*', requireAdmin);
 
+app.route('/labels/mock', mockLabelsRoute);
 app.route('/api/client-portal', clientPortalRoute);
 if (!clientPortalOnly) {
   app.route('/orders', ordersRoute);

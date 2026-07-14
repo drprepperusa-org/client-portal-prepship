@@ -21,6 +21,10 @@ const page = [
   read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),
   read('portal-client/src/components/returns/returnPresentation.ts'),
 ].join('\n');
+const main = read('src/main.ts');
+const mockLabelsRoute = read('src/routes/mock-labels.ts');
+const mockLabelAccess = read('src/lib/mock-label-access.ts');
+const returnReads = read('src/routes/client-portal/returns/reads.ts');
 const pkg = JSON.parse(read('package.json'));
 
 assert(
@@ -36,6 +40,22 @@ assert(/Return label PDF is not ready yet/.test(page), 'Return detail explains w
 assert(/Create return label/.test(page), 'Return detail lets a pending return retry PrepShip label creation');
 assert(/portalApi\.createReturnLabel/.test(page), 'Return detail retry delegates to the backend return-label endpoint');
 assert(/Download return label/.test(page) && /pdfHref/.test(page), 'Return detail still exposes the actual PDF download link when ready');
+assert(
+  main.includes("app.route('/labels/mock', mockLabelsRoute)") &&
+    main.indexOf("app.route('/labels/mock', mockLabelsRoute)") < main.lastIndexOf('if (!clientPortalOnly) {'),
+  'portal-only API mounts the narrow signed mock-label download route',
+);
+assert(
+  mockLabelsRoute.includes('verifyMockLabelSignature') &&
+    mockLabelsRoute.includes("app.get('/:shipmentId'") &&
+    !mockLabelsRoute.includes('createLabelV2'),
+  'public mock-label route verifies signatures and exposes no label-purchase operations',
+);
+assert(
+  mockLabelAccess.includes("parsed.searchParams.delete('exp')") &&
+    returnReads.includes('refreshMockLabelSignature(row.returnLabelUrl)'),
+  'return details replace persisted mock-label expiry data with a fresh signed URL',
+);
 
 if (failed) process.exit(1);
 console.log('\nclient portal returns PDF download guard passed.');

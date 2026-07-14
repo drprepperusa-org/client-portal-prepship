@@ -7,14 +7,10 @@ import {
   createBatchV2,
   createLabelV2,
   createReturnLabelV2,
-  getMockLabel,
-  getMockLabelAsync,
   lookupLabel,
   retrieveLabelV2,
   voidLabelV2,
 } from '../services/labels';
-import { generateMockLabelHtml } from '../services/mock-label-generator';
-import { verifyMockLabelSignature } from '../lib/mock-label-access';
 
 const app = new Hono();
 
@@ -164,47 +160,6 @@ app.post(
     }
   }
 );
-
-// GET /labels/mock/:shipmentId — dev/test mock label (serves PDF when available, else HTML)
-app.get('/mock/:shipmentId', async (c) => {
-  const param = c.req.param('shipmentId');
-  if (!/^-?\d+$/.test(param)) {
-    return c.json({ error: 'Not found' }, 404);
-  }
-  const shipmentId = Number(param);
-  if (
-    !verifyMockLabelSignature(
-      shipmentId,
-      c.req.query('exp'),
-      c.req.query('sig')
-    )
-  ) {
-    return c.json({ error: 'Mock label link expired' }, 403);
-  }
-  // Try the hot in-memory cache first; fall back to DB so mocks survive restarts.
-  const data = getMockLabel(shipmentId) ?? await getMockLabelAsync(shipmentId);
-  if (!data) {
-    return c.text('Mock label not found (server may have restarted)', 404, {
-      'content-type': 'text/plain',
-    });
-  }
-  if (data.pdfBase64) {
-    const pdfBytes = Buffer.from(data.pdfBase64, 'base64');
-    return new Response(pdfBytes, {
-      status: 200,
-      headers: {
-        'content-type': 'application/pdf',
-        'content-disposition': `inline; filename="mock-label-${shipmentId}.pdf"`,
-        'content-length': String(pdfBytes.byteLength),
-      },
-    });
-  }
-  const html = generateMockLabelHtml(data);
-  return new Response(html, {
-    status: 200,
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  });
-});
 
 // GET /labels/:lookup/retrieve — fetch label URL (fresh=true bypasses cache)
 app.get('/:lookup/retrieve', async (c) => {
