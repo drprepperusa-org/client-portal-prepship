@@ -9,9 +9,7 @@ const scanRoots = [
   path.join(root, 'portal-client', 'src'),
   path.join(root, 'src', 'routes', 'client-portal'),
 ];
-const exceptions = new Map([
-  ['src/routes/client-portal/returns.ts', 904],
-]);
+const exceptions = new Map();
 const excludedPathParts = [
   '/components/store/logos/',
   '/components/store-connections/logos/',

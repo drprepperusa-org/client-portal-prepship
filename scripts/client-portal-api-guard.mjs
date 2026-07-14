@@ -90,7 +90,7 @@ const backendContractOwners = [
   ['src/lib/client-portal/read-models/billing-status.ts', 'contracts/billing'],
   ['src/lib/client-portal/read-models/dashboard.ts', 'contracts/dashboard'],
   ['src/routes/client-portal/analysis.ts', 'contracts/analysis'],
-  ['src/routes/client-portal/returns.ts', 'contracts/returns'],
+  ['src/routes/client-portal/returns/dto.ts', 'contracts/returns'],
 ];
 for (const [file, contractImport] of backendContractOwners) {
   assert.ok(read(file).includes(contractImport), `${file} consumes the shared contract owner`);

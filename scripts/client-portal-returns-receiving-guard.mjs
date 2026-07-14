@@ -1,47 +1,17 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
-// CP-030 — Client-portal Returns 3PL receiving + inspection guard.
-//
-// Statically pins the safety + correctness invariants of the mobile receiving /
-// inspection workflow that CP-030 adds on top of the CP-026 schema and CP-029
-// returns router:
-//   1. The inspection WRITE endpoints carry the operator/admin gate — a client
-//      user cannot write (the SAME gate the sibling operator writes use in
-//      inbound.ts: !scope.isGlobal && !scope.permissions.includes('settings:write')
-//      → 403).
-//   2. Every new read/write stays scope-gated (scopeOrResponse + isClientPortalScope)
-//      exactly like the sibling endpoints, and re-validates the return is in the
-//      caller's scope via the canonical returnScopePredicate.
-//   3. Inspection media persists to return_inspection_media LINKED to the
-//      inspection — never a binary in the DB (metadata-canonical: storageRef).
-//   4. The condition enum is exactly the agreed 6-value set.
-//   5. The mobile receiving UI exists, is operator-gated in the page, and uses a
-//      mobile-capture file input (accept image/video + capture).
-//   6. The route never issues refunds or calls a marketplace (out of scope).
+import { readSourceTree } from './lib/source-tree.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const read = (rel) =>
-  fs.existsSync(path.join(root, rel)) ? fs.readFileSync(path.join(root, rel), 'utf8') : '';
+const read = (rel) => fs.existsSync(path.join(root, rel)) ? fs.readFileSync(path.join(root, rel), 'utf8') : '';
 
 let failed = false;
 function assert(cond, msg) {
-  if (cond) {
-    console.log(`PASS ${msg}`);
-  } else {
-    console.error(`FAIL ${msg}`);
-    failed = true;
-  }
+  console[cond ? 'log' : 'error'](`${cond ? 'PASS' : 'FAIL'} ${msg}`);
+  if (!cond) failed = true;
 }
 
-// Strip ONLY whole-line `//` comments (lines whose first non-space char is `//`)
-// so the checks test executable CODE, not header prose — WITHOUT mangling code
-// like `/api/client-portal/*` that legitimately contains `/*` inside inline
-// comment text. A full block-comment strip is unsafe on these files (their
-// comment prose contains `/api/...*` sequences that would open spurious blocks),
-// so we deliberately only drop full-line line-comments. The forbidden-identifier
-// absence checks below target identifiers that appear NOWHERE in the comments of
-// these files, so raw-source matching is correct for them.
 function stripLineComments(src) {
   return src
     .split('\n')
@@ -49,7 +19,10 @@ function stripLineComments(src) {
     .join('\n');
 }
 
-const route = read('src/routes/client-portal/returns.ts');
+const route = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const routeCode = stripLineComments(route);
 const api = readActiveClientPortalApiSource();
 const activityService = read('src/services/return-activity.ts');

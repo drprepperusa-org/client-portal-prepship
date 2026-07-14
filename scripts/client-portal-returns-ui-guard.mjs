@@ -1,24 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
-// CP-029 — Client-portal Returns UI + API guard.
-//
-// Statically pins the safety + correctness invariants of the Returns section
-// (the UI + API layer over CP-026 schema / CP-027 label service / CP-028
-// delivery):
-//   1. The returns route sub-module exists AND is mounted in the aggregator.
-//   2. Every returns endpoint is scope-gated the SAME way as the sibling
-//      routers (scopeOrResponse + isClientPortalScope guard).
-//   3. The list/detail DTOs are CARRIER/SERVICE/PROVIDER-FREE — they never expose
-//      carrierCode / serviceCode / carrierProvider / providerAccountId /
-//      selectedRate(Json).
-//   4. Create/label/deliver delegate to the backend services (createReturnLabel /
-//      deliverReturn) — the route never rate-shops or picks a carrier itself.
-//   5. The frontend Returns page exists, is registered in the router, and is in
-//      the nav.
-//   6. The frontend renders backend fields only and does NOT compute rates /
-//      carrier / cheapest — it must NOT reference getRates / isBlockedRate /
-//      carrierCode / serviceCode.
-//   7. The create flow POSTs to the backend (portalApi.createReturn →
-//      apiPost .../returns).
+import { readSourceTree } from './lib/source-tree.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -47,7 +28,10 @@ function stripComments(src) {
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-const route = read('src/routes/client-portal/returns.ts');
+const route = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const aggregator = read('src/routes/client-portal.ts');
 const api = readActiveClientPortalApiSource();
 const hooks = read('portal-client/src/lib/hooks.ts');

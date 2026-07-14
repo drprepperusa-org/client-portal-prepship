@@ -14,6 +14,7 @@
 //   7. An admin-override audit path exists.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const root = process.cwd();
 const read = (rel) =>
@@ -31,7 +32,10 @@ function assert(cond, msg) {
 
 const service = read('src/services/returns.ts');
 const envFile = read('src/lib/env.ts');
-const returnsRoute = read('src/routes/client-portal/returns.ts');
+const returnsRoute = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const returnsPage = [
   read('portal-client/src/pages/Returns.tsx'),
   read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),

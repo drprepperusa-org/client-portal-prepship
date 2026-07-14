@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // CP-036 — Client-portal returns canonical-field + billing-description redaction
 // guard.
 //
@@ -127,7 +128,10 @@ assert(
 );
 
 // ── 2. Route client-safe DTO builder returns canonical fields only ──────────
-const route = read('src/routes/client-portal/returns.ts');
+const route = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 assert(route.length > 0, 'src/routes/client-portal/returns.ts exists');
 
 const builder = sliceFn(route, /function toClientSafeReturnRow\s*\(/);

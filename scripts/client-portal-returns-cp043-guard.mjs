@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // CP-043 - return-label rate policy, diagnostics, and recovery guard.
 // Static only: this script never calls carriers, buys postage, or mutates data.
 import fs from 'node:fs';
@@ -46,7 +47,10 @@ function braceBlock(source, startPattern) {
 
 const service = read('src/services/returns.ts');
 const rates = read('src/services/rates.ts');
-const route = read('src/routes/client-portal/returns.ts');
+const route = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const page = [
   read('portal-client/src/pages/Returns.tsx'),
   read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),

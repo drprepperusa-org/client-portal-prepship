@@ -2,6 +2,7 @@
 // No database, network, carrier, or postage operation is performed here.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const read = (relative) => fs.readFileSync(path.join(process.cwd(), relative), 'utf8');
 let failed = false;
@@ -15,7 +16,10 @@ const intentSchema = read('src/db/schema/return-label-purchase-intents.ts');
 const intents = read('src/services/return-label-purchase-intents.ts');
 const returnsService = read('src/services/returns.ts');
 const labels = read('src/lib/shipstation/labels.ts');
-const route = read('src/routes/client-portal/returns.ts');
+const route = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const integration = read('scripts/integration/client-portal-returns-cp057.integration.ts');
 const workflow = read('.github/workflows/integration-tests.yml');
 const runbook = read('docs/client-portal-return-label-live-runbook.md');

@@ -43,7 +43,7 @@ for (const domain of readdirSync(domainRoot).filter((file) => file.endsWith('.ts
 const producerPins = [
   ['src/lib/client-portal/dto.ts', /\): Portal(Order|Shipment|Inventory|Integration)\s*\{/],
   ['src/routes/client-portal/analysis.ts', /satisfies AnalysisBreakdown/],
-  ['src/routes/client-portal/returns.ts', /Promise<PortalReturnRow>/],
+  ['src/routes/client-portal/returns/dto.ts', /Promise<PortalReturnRow>/],
   ['src/lib/client-portal/read-models/dashboard.ts', /Promise<DashboardSummary>/],
   ['src/lib/client-portal/read-models/access.ts', /PortalAccessUser/],
   ['src/lib/client-portal/read-models/billing-status.ts', /Promise<BillingLastGenerated \| null>/],

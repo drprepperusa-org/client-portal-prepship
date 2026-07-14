@@ -11,6 +11,7 @@
 //      it from the carrier tracking status.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const root = process.cwd();
 const read = (rel) =>
@@ -28,7 +29,10 @@ function assert(cond, msg) {
 
 const tracking = read('src/services/shipment-tracking.ts');
 const activity = read('src/services/return-activity.ts');
-const returnsRoute = read('src/routes/client-portal/returns.ts');
+const returnsRoute = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const returnsPage = [
   read('portal-client/src/pages/Returns.tsx'),
   read('portal-client/src/components/returns/ReturnDetailDrawer.tsx'),

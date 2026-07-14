@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // CP-034 — Client Portal tracking links open REAL carrier sites, never 17track.
 //
 // Pins the invariant that shipment + return tracking links route to the official
@@ -32,7 +33,10 @@ function assert(cond, msg) {
 const helper = read('src/lib/tracking-url.ts');
 const confirmation = read('src/services/labels-confirmation.ts');
 const dto = read('src/lib/client-portal/dto.ts');
-const returnsRoute = read('src/routes/client-portal/returns.ts');
+const returnsRoute = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const api = readActiveClientPortalApiSource();
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
 const returnsPage = [

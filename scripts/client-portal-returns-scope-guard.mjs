@@ -6,6 +6,7 @@
 // join, Postgres errored before return-label creation could run.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const root = process.cwd();
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -19,7 +20,10 @@ function assert(condition, message) {
   }
 }
 
-const route = read('src/routes/client-portal/returns.ts');
+const route = readSourceTree([
+  'src/routes/client-portal/returns.ts',
+  'src/routes/client-portal/returns',
+]);
 const pkg = JSON.parse(read('package.json'));
 
 const fnStart = route.indexOf('function returnScopePredicate(');
