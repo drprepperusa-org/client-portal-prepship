@@ -44,6 +44,8 @@ jobs:
         run: npm ci
       - name: Install portal deps
         run: npm --prefix portal-client ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
 
       - name: Typecheck (API + portal)
         run: npm run typecheck
