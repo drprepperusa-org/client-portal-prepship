@@ -45,6 +45,7 @@ const STATUS_OPTIONS = [
   { value: 'attempted', label: 'Attempted' },
   { value: 'label_created', label: 'Label Created' },
   { value: 'voided', label: 'Voided' },
+  { value: 'unavailable', label: 'Unavailable' },
 ] as const;
 
 export default function Shipments() {
@@ -80,7 +81,12 @@ export default function Shipments() {
   useEffect(() => {
     if (!accessToken || !allRows.length) return;
     const ids = allRows
-      .filter((s) => !s.voided && s.trackingStatus !== 'delivered' && (s.trackingNumber || s.labelTracking))
+      .filter(
+        (s) =>
+          s.shipmentStatus !== 'voided' &&
+          s.shipmentStatus !== 'delivered' &&
+          s.displayTrackingNumber,
+      )
       .map((s) => s.id);
     if (!ids.length) return;
     const key = ids.join(',');
@@ -136,7 +142,7 @@ export default function Shipments() {
         header: 'Tracking #',
         defaultWidth: 190,
         render: (s) => {
-          const tn = s.trackingNumber ?? s.labelTracking;
+          const tn = s.displayTrackingNumber;
           const url = s.trackingUrl;
           if (!tn) return <span className="text-ink-3">—</span>;
           return url ? (
@@ -155,17 +161,17 @@ export default function Shipments() {
             <span className="font-mono text-xs text-ink-2">{tn}</span>
           );
         },
-        sortAccessor: (s) => s.trackingNumber ?? s.labelTracking ?? '',
+        sortAccessor: (s) => s.displayTrackingNumber ?? '',
       },
       {
         key: 'status',
         header: 'Status',
         defaultWidth: 120,
         render: (s) => {
-          const m = shipmentStatusMeta(s);
+          const m = shipmentStatusMeta(s.shipmentStatus);
           return <Chip accent={m.accent}>{m.label}</Chip>;
         },
-        sortAccessor: (s) => shipmentStatusMeta(s).label,
+        sortAccessor: (s) => shipmentStatusMeta(s.shipmentStatus).label,
       },
       { key: 'shipped', header: 'Ship date', defaultWidth: 130, render: (s) => <span className="text-ink-3 tnum">{shortDate(s.shipDate)}</span>, sortAccessor: (s) => s.shipDate ?? '' },
     ],
@@ -239,10 +245,10 @@ export default function Shipments() {
             rows={rows}
             rowKey={(s) => String(s.id)}
             rowClassName={(s) => (
-              s.voided ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined
+              s.shipmentStatus === 'voided' ? 'bg-rose-50/70 hover:bg-rose-100/60' : undefined
             )}
             onRowClick={setSelected}
-            rowActionLabel={(row) => `View shipment ${row.trackingNumber ?? `#${row.id}`}`}
+            rowActionLabel={(row) => `View shipment ${row.displayTrackingNumber ?? `#${row.id}`}`}
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
           />
@@ -254,22 +260,24 @@ export default function Shipments() {
         {selected && (
           <div className="space-y-5">
             <div className="flex items-center justify-between">
-              <Chip accent={shipmentStatusMeta(selected).accent}>{shipmentStatusMeta(selected).label}</Chip>
+              <Chip accent={shipmentStatusMeta(selected.shipmentStatus).accent}>
+                {shipmentStatusMeta(selected.shipmentStatus).label}
+              </Chip>
               <span className="flex items-center gap-1 text-sm text-ink-3"><MapPin size={14} /> {selected.clientName ?? '—'}</span>
             </div>
 
             <div className="flex items-center justify-between rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
               <div className="min-w-0">
                 <p className="text-xs text-ink-3">Tracking number</p>
-                <p className="truncate font-mono text-sm text-ink">{selected.trackingNumber ?? selected.labelTracking ?? '—'}</p>
+                <p className="truncate font-mono text-sm text-ink">{selected.displayTrackingNumber ?? '—'}</p>
               </div>
-              {(selected.trackingNumber || selected.labelTracking) && (
+              {selected.displayTrackingNumber && (
                 <Button
                   variant="icon"
                   size="sm"
                   aria-label="Copy tracking number"
                   onClick={() => {
-                    navigator.clipboard?.writeText((selected.trackingNumber ?? selected.labelTracking)!);
+                    navigator.clipboard?.writeText(selected.displayTrackingNumber!);
                     toast.success('Copied', 'Tracking number copied to clipboard');
                   }}
                 >
@@ -299,8 +307,8 @@ export default function Shipments() {
               <Field label="Customer Shipping Rate" value={selected.customerShippingRate != null ? money(selected.customerShippingRate) : selected.customerShippingRatePending ? 'Pending' : '—'} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
               {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
-              {selected.trackingStatusDetail && !selected.deliveredAt && (
-                <Field label="Tracking status" value={selected.trackingStatusDetail} />
+              {selected.shipmentStatusDetail && !selected.deliveredAt && (
+                <Field label="Tracking status" value={selected.shipmentStatusDetail} />
               )}
             </div>
 

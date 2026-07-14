@@ -1,5 +1,4 @@
 import type { Accent } from './accents';
-import type { PortalShipment } from './api';
 
 /** Pretty label + accent for a raw backend order_status. */
 export function orderStatusMeta(status: string | null): { label: string; accent: Accent } {
@@ -21,15 +20,24 @@ export function orderStatusMeta(status: string | null): { label: string; accent:
   }
 }
 
-/** Derive a display status for a shipment. Live carrier state (persisted
- *  from ShipStation tracking lookups) wins over the derived label. */
-export function shipmentStatusMeta(s: PortalShipment): { label: string; accent: Accent } {
-  if (s.voided) return { label: 'Voided', accent: 'rose' };
-  if (s.trackingStatus === 'delivered') return { label: 'Delivered', accent: 'emerald' };
-  if (s.trackingStatus === 'exception') return { label: 'Exception', accent: 'amber' };
-  if (s.trackingStatus === 'attempted') return { label: 'Attempted', accent: 'amber' };
-  if (s.trackingNumber || s.labelTracking) return { label: 'In Transit', accent: 'sky' };
-  return { label: 'Label Created', accent: 'violet' };
+/** Presentation-only mapping for the backend-owned shipmentStatus enum. */
+export function shipmentStatusMeta(status: string | null | undefined): { label: string; accent: Accent } {
+  switch (status) {
+    case 'voided':
+      return { label: 'Voided', accent: 'rose' };
+    case 'delivered':
+      return { label: 'Delivered', accent: 'emerald' };
+    case 'exception':
+      return { label: 'Exception', accent: 'amber' };
+    case 'attempted':
+      return { label: 'Attempted', accent: 'amber' };
+    case 'in_transit':
+      return { label: 'In Transit', accent: 'sky' };
+    case 'label_created':
+      return { label: 'Label Created', accent: 'violet' };
+    default:
+      return { label: 'Unavailable', accent: 'indigo' };
+  }
 }
 
 function prettify(s: string) {

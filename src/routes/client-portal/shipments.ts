@@ -10,6 +10,7 @@ import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { shipmentScopePredicate } from '../../lib/client-portal/predicates';
 import { refreshShipmentTracking } from '../../services/shipment-tracking';
 import { listPortalShipments, SHIPMENT_STATUS_FILTERS } from '../../lib/client-portal/read-models/shipments';
+import { isPortalShipmentStatus } from '../../lib/client-portal/shipment-status';
 import { parsePage, parsePageSize, requestedSearch, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
@@ -21,7 +22,9 @@ app.get('/shipments', async (c) => {
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
   const statusParam = c.req.query('status');
-  const status = statusParam && SHIPMENT_STATUS_FILTERS.has(statusParam) ? statusParam : undefined;
+  const status = isPortalShipmentStatus(statusParam) && SHIPMENT_STATUS_FILTERS.has(statusParam)
+    ? statusParam
+    : undefined;
   const result = await listPortalShipments(scope, {
     page,
     pageSize,

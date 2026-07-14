@@ -214,23 +214,32 @@ export interface PortalOrder {
   chargeSummary?: PortalOrderCostSummaryRow[];
 }
 
+export type PortalShipmentStatus =
+  | 'delivered'
+  | 'in_transit'
+  | 'exception'
+  | 'attempted'
+  | 'label_created'
+  | 'voided'
+  | 'unavailable';
+
 export interface PortalShipment {
   id: number;
   orderId: number | null;
   orderNumber: string | null;
   clientName: string | null;
   storeName: string | null;
-  trackingNumber: string | null;
-  labelTracking: string | null;
+  // Backend-selected label identity. Raw trackingNumber/labelTracking fields
+  // are intentionally not part of the customer contract.
+  displayTrackingNumber: string | null;
+  shipmentStatus: PortalShipmentStatus;
   // CP-034: backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx), or null
   // when the carrier is unknown. The frontend renders it directly — it never
   // builds a tracking URL or a generic 17track link itself.
   trackingUrl: string | null;
   shipDate: string | null;
-  trackingStatus?: string | null;
-  trackingStatusDetail?: string | null;
+  shipmentStatusDetail?: string | null;
   deliveredAt?: string | null;
-  voided: boolean | null;
   items: PortalItemIdentity[];
   customerShippingRate?: number | string | null;
   // True when this (non-voided) shipment has no billed shipping line yet →

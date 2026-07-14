@@ -125,6 +125,7 @@ const MATRIX_FIELDS = [
   'warehouseShipped30d',
   'chargeSummary',
   'trackingNumber',
+  'displayTrackingNumber',
 ];
 for (const fld of MATRIX_FIELDS) {
   assert(matrix.includes(fld), `SOT matrix names the intent-named DTO field ${fld}`);

@@ -13,6 +13,7 @@ import { shipmentCustomerShippingRateSql } from '../../lib/client-portal/custome
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { shipmentScopePredicate } from '../../lib/client-portal/predicates';
 import { toPortalShipmentDto } from '../../lib/client-portal/dto';
+import { portalShipmentStatusSql } from '../../lib/client-portal/shipment-status';
 import { awaitingActiveOrderCount, getPortalOrder, listPortalOrders } from '../../lib/client-portal/read-models/orders';
 import { startBackfillBestRates, getActiveBackfillJob, getLatestBackfillJob, type BackfillJob } from '../../services/rates-backfill';
 import { parsePage, parsePageSize, parsePositiveInt, requestedSearch, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
@@ -68,6 +69,7 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
+      shipmentStatus: portalShipmentStatusSql(),
       // Frozen billed shipping first; projected backend customer-rate fallback
       // only until Admin Billing freezes the period into billing_line_items.
       shippingCost: shipmentCustomerShippingRateSql(),
@@ -90,6 +92,7 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
           storeName: row.clientName,
           storeId: row.storeId,
           orderItems: row.orderItems,
+          shipmentStatus: row.shipmentStatus,
           shippingCost: row.shippingCost,
         },
         { includeFinancials: scope.canViewFinancials },

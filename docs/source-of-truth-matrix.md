@@ -319,7 +319,10 @@ Frozen/snapshot truth:
 
 Derived/read-model/cache truth:
 - Label PDFs, print queue state, shipment status chips, and analytics are
-  derived from durable shipment records and queue state.
+  derived from durable shipment records and queue state. Client Portal
+  shipment status uses the backend `portalShipmentStatusSql` expression over
+  `shipments.voided` plus persisted `shipments.tracking_status`; tracking-number
+  presence is not a lifecycle input.
 
 Mutation owner:
 - `src/services/labels.ts`
@@ -939,9 +942,9 @@ Guard: `client-portal-order-detail-guard.ts`.
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
-| Tracking # | `trackingNumber` | `trackingNumber` | `shipments.tracking_number` | label time | presentation-only |
+| Tracking # | `displayTrackingNumber` | `displayTrackingNumber` | `toPortalShipmentDto`: frozen `shipments.label_tracking`, else legacy `shipments.tracking_number` | label time | backend-owned-truth (CP-051) |
 | Ship date | `shipDate` | `shipDate` | `shipments.ship_date`/`label_ship_date`/`create_date` | ship date | presentation-only |
-| Delivery status | `trackingStatus` | `trackingStatus` | `shipments.tracking_status`, reconciled from official carrier tracking first and ShipStation label status as fallback | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042) |
+| Delivery status | `shipmentStatus` | `shipmentStatus` | `portalShipmentStatusSql`: voided wins; known persisted carrier status passes through; no carrier movement = `label_created`; invalid persisted value = `unavailable` | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042/CP-051) |
 | Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
 | Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → live projection from `shipments.cost`/`label_cost` + `other_cost`, `billing_config` markup/override, and `order_overrides` ref rates via `customer-shipping-rate.ts` | billing / label time | derived-from-canonical (backend-owned, gated) |

@@ -5,6 +5,7 @@ import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
 import { isDiscountLine } from './dashboard-aggregate';
 import { trackingUrlForCarrier } from '../tracking-url';
 import { resolveOrderFulfillmentStatus } from './order-status';
+import { normalizePortalShipmentStatus } from './shipment-status';
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -337,9 +338,14 @@ export function toPortalShipmentDto(
     storeId?: number | null;
     orderItems?: unknown;
     shippingCost?: number | string | null;
+    shipmentStatus?: unknown;
   },
   options: { includeFinancials?: boolean } = {},
 ) {
+  // Display tracking identity is selected once at the backend boundary. The
+  // frozen label result is canonical; trackingNumber is the legacy shipment
+  // fallback. Raw competing fields never cross into the customer DTO.
+  const displayTrackingNumber = row.labelTracking ?? row.trackingNumber ?? null;
   return {
     id: row.id,
     orderId: row.orderId,
@@ -351,8 +357,8 @@ export function toPortalShipmentDto(
     // CP-009: carrier/service identity is never exposed in the client portal.
     carrierCode: null,
     serviceCode: null,
-    trackingNumber: row.trackingNumber,
-    labelTracking: row.labelTracking,
+    displayTrackingNumber,
+    shipmentStatus: normalizePortalShipmentStatus(row.shipmentStatus),
     // CP-034: a backend-built OFFICIAL carrier tracking URL (USPS/UPS/FedEx) so
     // the link opens the real carrier site, never 17track. The carrier identity
     // stays redacted (carrierCode/serviceCode above are null) — only the URL,
@@ -361,13 +367,11 @@ export function toPortalShipmentDto(
     trackingUrl:
       trackingUrlForCarrier(
         row.labelCarrier ?? row.carrierCode,
-        row.labelTracking ?? row.trackingNumber,
+        displayTrackingNumber,
       ) || null,
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),
-    trackingStatus: row.trackingStatus ?? null,
-    trackingStatusDetail: row.trackingStatusDetail ?? null,
+    shipmentStatusDetail: row.trackingStatusDetail ?? null,
     deliveredAt: iso(row.deliveredAt),
-    voided: row.voided,
     items: safeItems(row.orderItems, options.includeFinancials),
     customerShippingRate: options.includeFinancials ? row.shippingCost ?? null : null,
     // A live (non-voided) shipment with no billed shipping line yet is awaiting

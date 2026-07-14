@@ -43,7 +43,7 @@ export function InvoiceShipmentDrawer({
           >
             <div className="space-y-4">
               {(query.data?.data ?? []).map((shipment) => {
-                const status = shipmentStatusMeta(shipment);
+                const status = shipmentStatusMeta(shipment.shipmentStatus);
                 return (
                   <div
                     key={shipment.id}
@@ -56,7 +56,7 @@ export function InvoiceShipmentDrawer({
                     <div className="rounded-glass-sm bg-white/70 p-3 ring-1 ring-slate-200/70">
                       <p className="text-xs text-ink-3">Tracking number</p>
                       <p className="truncate font-mono text-sm text-ink">
-                        {shipment.trackingNumber ?? shipment.labelTracking ?? '—'}
+                        {shipment.displayTrackingNumber ?? '—'}
                       </p>
                     </div>
                     {/* CP-009: no Carrier / Service — customer-facing shipment info only. */}

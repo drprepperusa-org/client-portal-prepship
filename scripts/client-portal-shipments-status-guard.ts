@@ -174,38 +174,87 @@ check(
   'CP-042: worker startup reports official USPS readiness without exposing credentials',
 );
 
-// 4) DTO returns the normalized status fields to the portal.
-const dto = read('src/lib/client-portal/dto.ts');
+// 4) One backend expression owns both filter and DTO status projection.
+const statusOwner = read('src/lib/client-portal/shipment-status.ts');
+const { normalizePortalShipmentStatus } = await import('../src/lib/client-portal/shipment-status');
+const statusFixtures = [
+  'delivered',
+  'in_transit',
+  'exception',
+  'attempted',
+  'label_created',
+  'voided',
+] as const;
+for (const status of statusFixtures) {
+  check(normalizePortalShipmentStatus(status) === status, `CP-051: ${status} survives DTO validation`);
+}
 check(
-  dto.includes('trackingStatus: row.trackingStatus ?? null') && dto.includes('deliveredAt: iso(row.deliveredAt)'),
-  'shipment DTO exposes trackingStatus + deliveredAt',
+  normalizePortalShipmentStatus(null) === 'unavailable' &&
+    normalizePortalShipmentStatus('carrier_mystery') === 'unavailable',
+  'CP-051: missing/invalid projected status fails closed as unavailable',
+);
+check(
+  statusOwner.includes('export function portalShipmentStatusSql') &&
+    statusOwner.includes("then 'label_created'") &&
+    statusOwner.includes("else 'unavailable'") &&
+    !statusOwner.includes('trackingNumber') &&
+    !statusOwner.includes('labelTracking'),
+  'CP-051: backend lifecycle formula covers fixtures and never uses tracking-number presence',
 );
 
-// 5) Server-side status filter whitelist includes delivered (and voided).
 const readModel = read('src/lib/client-portal/read-models/shipments.ts');
 check(
-  readModel.includes("'delivered'") && readModel.includes("'voided'") && readModel.includes('SHIPMENT_STATUS_FILTERS'),
-  'shipments read-model whitelists delivered/voided server-side status filters',
+  readModel.includes('return status ? eq(portalShipmentStatusSql(), status)') &&
+    readModel.includes('shipmentStatus: portalShipmentStatusSql()'),
+  'CP-051: filtering and DTO projection call the same backend status expression',
 );
 
-// 6) Frontend renders backend status first; tracking-number-derived In Transit
-//    is only the fallback for rows with no live status. Voided always wins.
+// 5) DTO exposes intent-named lifecycle/tracking fields and no competing raw fields.
+const dto = read('src/lib/client-portal/dto.ts');
+check(
+  dto.includes('displayTrackingNumber') &&
+    dto.includes('shipmentStatus: normalizePortalShipmentStatus(row.shipmentStatus)') &&
+    dto.includes('shipmentStatusDetail: row.trackingStatusDetail ?? null') &&
+    dto.includes('deliveredAt: iso(row.deliveredAt)'),
+  'CP-051: shipment DTO exposes displayTrackingNumber + normalized shipmentStatus',
+);
+
+// 6) Server-side status filter whitelist includes every rendered enum value.
+check(
+  readModel.includes('new Set<PortalShipmentStatus>(PORTAL_SHIPMENT_STATUSES)'),
+  'CP-051: shipments read-model derives its filter whitelist from the shared enum',
+);
+
+// 7) Frontend maps the enum to presentation only.
 const statusLib = read('portal-client/src/lib/status.ts');
 const metaBody = /shipmentStatusMeta[\s\S]*?\n\}/.exec(statusLib)?.[0] ?? '';
-const voidedIdx = metaBody.indexOf("s.voided");
-const deliveredIdx = metaBody.indexOf("s.trackingStatus === 'delivered'");
-const derivedIdx = metaBody.indexOf('s.trackingNumber || s.labelTracking');
 check(
-  voidedIdx !== -1 && deliveredIdx !== -1 && derivedIdx !== -1 && voidedIdx < deliveredIdx && deliveredIdx < derivedIdx,
-  'shipmentStatusMeta: voided wins, backend delivered beats tracking-number-derived In Transit',
+  metaBody.includes("case 'in_transit':") &&
+    metaBody.includes("label: 'Unavailable'") &&
+    !metaBody.includes('trackingNumber') &&
+    !metaBody.includes('labelTracking') &&
+    !metaBody.includes('trackingStatus'),
+  'CP-051: shipmentStatusMeta only maps backend enum values and fails closed visibly',
 );
 check(metaBody.includes("label: 'Delivered'"), 'Delivered is a rendered shipment status');
 
-// 7) Shipments page filters by backend status (server-side), incl. Delivered.
+// 8) Both shipment UIs render only the intent-named customer contract.
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
+const billingDrawer = read('portal-client/src/components/billing/InvoiceShipmentDrawer.tsx');
 check(
-  shipmentsPage.includes("value: 'delivered'") && shipmentsPage.includes('status: statusFilter || undefined'),
-  'Shipments filter offers Delivered and sends the status to the backend',
+  shipmentsPage.includes("value: 'delivered'") &&
+    shipmentsPage.includes("value: 'unavailable'") &&
+    shipmentsPage.includes('status: statusFilter || undefined') &&
+    shipmentsPage.includes('shipmentStatusMeta(s.shipmentStatus)') &&
+    shipmentsPage.includes('s.displayTrackingNumber'),
+  'CP-051: Shipments filter/badge/tracking render the backend-owned enum and display identity',
+);
+check(
+  billingDrawer.includes('shipmentStatusMeta(shipment.shipmentStatus)') &&
+    billingDrawer.includes('shipment.displayTrackingNumber') &&
+    !billingDrawer.includes('shipment.trackingNumber') &&
+    !billingDrawer.includes('shipment.labelTracking'),
+  'CP-051: Billing shipment drawer uses the same backend-owned contract',
 );
 
 // 8) No frontend code talks to carrier/tracking APIs directly.
@@ -255,4 +304,4 @@ check(
 );
 
 if (failed) process.exit(1);
-console.log('\nCP-006/CP-042 client portal shipment status guard passed.');
+console.log('\nCP-006/CP-042/CP-051 client portal shipment status guard passed.');

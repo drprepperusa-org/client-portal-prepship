@@ -81,8 +81,10 @@ check(
   'missing shipment data shows the clear empty state',
 );
 check(
-  invoicesPage.includes('shipmentStatusMeta(shipment)') && invoicesPage.includes('shipment.deliveredAt'),
-  'modal renders backend tracking status and delivered date (no tracking-number-derived guesses)',
+  invoicesPage.includes('shipmentStatusMeta(shipment.shipmentStatus)') &&
+    invoicesPage.includes('shipment.displayTrackingNumber') &&
+    invoicesPage.includes('shipment.deliveredAt'),
+  'modal renders backend shipment status, display tracking, and delivered date',
 );
 // The billing modal shows the BILLED shipping (from the billing row, matching
 // the table) — never the shipment record's internal label cost, which would

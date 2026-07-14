@@ -91,6 +91,7 @@ const shipmentRow: any = {
   labelShipDate: null,
   createDate: null,
   trackingStatus: 'delivered',
+  shipmentStatus: 'delivered',
   trackingStatusDetail: null,
   deliveredAt: new Date('2026-07-02T00:00:00Z'),
   voided: false,
@@ -103,8 +104,12 @@ check(
   'client shipment DTO exposes no carrier/service',
 );
 check(
-  clientShipment.trackingNumber === '9434' && clientShipment.trackingStatus === 'delivered',
-  'client shipment DTO keeps tracking number + live status',
+  clientShipment.displayTrackingNumber === '9434' && clientShipment.shipmentStatus === 'delivered',
+  'client shipment DTO keeps backend-selected display tracking + lifecycle status',
+);
+check(
+  !('trackingNumber' in clientShipment) && !('labelTracking' in clientShipment) && !('trackingStatus' in clientShipment),
+  'CP-051: client shipment DTO omits competing raw tracking/status fields',
 );
 check(clientShipment.customerShippingRate === null, 'client shipment DTO still gates the customer shipping rate');
 const financialShipment: any = dto.toPortalShipmentDto(shipmentRow, { includeFinancials: true });
