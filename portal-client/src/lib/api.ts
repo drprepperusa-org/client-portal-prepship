@@ -402,9 +402,9 @@ export interface PortalInventory {
   // ordered units. Distinct from Analysis "Ordered Units" by name and source.
   warehouseShipped30d: number | string | null;
   effectiveStock: number | null;
-  // CP-013: backend-owned stock status (shared with the Low/Out filter). The
-  // frontend renders these; it no longer derives status from stock/reorder.
-  stockStatus?: 'out' | 'low' | 'in' | null;
+  // CP-013/CP-053: required backend-owned stock status (shared with the Low/Out
+  // filter). The frontend renders this exhaustive enum and never derives it.
+  stockStatus: 'out' | 'low' | 'in';
   isLow?: boolean | null;
   isOut?: boolean | null;
   // v4 Stock-Levels parity

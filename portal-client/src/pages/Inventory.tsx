@@ -9,6 +9,7 @@ import { Checkbox, Select } from '@/components/ui/Selection';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useCanCustomizeTables, useInventory, useInventoryHistory } from '@/lib/hooks';
+import { inventoryStockStatusMeta } from '@/lib/inventory-status';
 import { useDebounced } from '@/lib/useDebounced';
 import type { PortalInventory, InventoryMovement } from '@/lib/api';
 import type { Accent } from '@/lib/accents';
@@ -29,17 +30,6 @@ function fmtDateTime(iso: string | null): string {
   return d.toLocaleString('en-US', { year: '2-digit', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' });
 }
 
-// CP-013: stock status is backend-owned (dto.stockStatus). The frontend only
-// maps the enum to its label/accent — it no longer decides LOW/OUT/IN from
-// stock vs reorder, so the badge and the server-side Low/Out filter can't drift.
-const STOCK_STATUS_META: Record<'out' | 'low' | 'in', { label: string; accent: Accent }> = {
-  out: { label: 'OUT', accent: 'rose' },
-  low: { label: 'LOW', accent: 'amber' },
-  in: { label: 'IN', accent: 'emerald' },
-};
-function stockStatus(s: PortalInventory): { label: string; accent: Accent } {
-  return STOCK_STATUS_META[s.stockStatus ?? 'in'] ?? STOCK_STATUS_META.in;
-}
 const MOVEMENT_ACCENT: Record<string, Accent> = {
   ship: 'rose',
   receive: 'emerald',
@@ -128,7 +118,10 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       header: 'Stock',
       defaultWidth: 90,
       className: 'text-right',
-      render: (s) => <span className={cn('font-semibold tnum', s.isOut ?? Number(s.effectiveStock ?? 0) <= 0 ? 'text-rose-600' : 'text-ink')}>{s.effectiveStock ?? 0}</span>,
+      render: (s) => {
+        const status = inventoryStockStatusMeta(s.stockStatus);
+        return <span className={cn('font-semibold tnum', status.stockTextClass)}>{s.effectiveStock ?? 0}</span>;
+      },
       sortAccessor: (s) => Number(s.effectiveStock) || 0,
     },
     {
@@ -151,10 +144,10 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       header: 'Status',
       defaultWidth: 100,
       render: (s) => {
-        const st = stockStatus(s);
+        const st = inventoryStockStatusMeta(s.stockStatus);
         return <Chip accent={st.accent}>{st.label}</Chip>;
       },
-      sortAccessor: (s) => stockStatus(s).label,
+      sortAccessor: (s) => inventoryStockStatusMeta(s.stockStatus).label,
     },
     {
       key: 'actions',

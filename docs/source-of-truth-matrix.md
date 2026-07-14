@@ -963,7 +963,7 @@ Portal only renders its persisted result. Guards: `client-portal-shipments-statu
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
 | On-hand stock | `stockQty` / `effectiveStock` | `stockQty` / `effectiveStock` | `inventory.stockQty` | now | presentation-only |
-| Stock status (In/Low/Out) | `stockStatus` (`isLow`/`isOut`) | `stockStatus` | backend enum in `toPortalInventoryDto` (mirrors read-model `lowStock` predicate) | now | backend-owned-truth (CP-013) |
+| Stock status (In/Low/Out) | required `stockStatus`; malformed runtime data → `UNAVAILABLE` | `stockStatus` | backend enum in `toPortalInventoryDto` (mirrors read-model `lowStock` predicate) | now | backend-owned-truth (CP-013/CP-053) |
 | "Sold" / shipped (30d) | `warehouseShipped30d` | `warehouseShipped30d` | `inventory_ledger` ship rows by ship date — **NOT** ordered/sold units | ship date | backend-owned-truth (CP-023) |
 | Reorder level | `reorderLevel` | `reorderLevel` | `inventory.reorderLevel` | now | presentation-only |
 | Cubic feet / dims | `cuFt`, `length/width/height` | same | `inventory` dims, override else L×W×H/1728 | now | derived-from-canonical (backend-owned) |

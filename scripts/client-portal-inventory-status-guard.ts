@@ -17,6 +17,7 @@ function check(condition: boolean, message: string) {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const dto = await import('../src/lib/client-portal/dto');
+const { inventoryStockStatusMeta } = await import('../portal-client/src/lib/inventory-status');
 const mk = (effectiveStock: number, reorderLevel: number, stockQty = effectiveStock): any =>
   dto.toPortalInventoryDto({
     id: 1,
@@ -47,17 +48,37 @@ check(r.stockStatus === 'in', 'CP-013/PS-378: positive effectiveStock with no re
 r = mk(0, 0, 20);
 check(r.stockStatus === 'out', 'PS-378: status follows effectiveStock even when raw stockQty is positive');
 
+// CP-053: presentation is an exhaustive mapping of the backend enum. Broken
+// runtime data must be visibly unavailable, never silently presented as In.
+check(inventoryStockStatusMeta('out').label === 'OUT', 'CP-053: out renders OUT');
+check(inventoryStockStatusMeta('low').label === 'LOW', 'CP-053: low renders LOW');
+check(inventoryStockStatusMeta('in').label === 'IN', 'CP-053: in renders IN');
+check(inventoryStockStatusMeta(undefined).label === 'UNAVAILABLE', 'CP-053: missing status renders UNAVAILABLE, never IN');
+check(inventoryStockStatusMeta('broken').label === 'UNAVAILABLE', 'CP-053: invalid status renders UNAVAILABLE, never IN');
+
 // Status matches the read-model filter (out OR low = the rows lowStock returns).
 const readModel = read('src/lib/client-portal/read-models/inventory.ts');
 check(
   readModel.includes('computeEffectiveStockForIds') && readModel.includes('effectiveStock'),
   'CP-013/PS-378: read-model lowStock filter uses backend effectiveStock like the DTO status',
 );
+check(
+  readModel.includes('inventoryScopePredicate(scope, { clientId, storeId })'),
+  'CP-053: canonical server filter keeps client/store scope unchanged',
+);
 
 // Frontend renders the backend enum, derives nothing, filters server-side.
 const page = read('portal-client/src/pages/Inventory.tsx');
-check(page.includes('STOCK_STATUS_META[s.stockStatus'), 'CP-013: Inventory renders the backend stockStatus enum');
+const api = read('portal-client/src/lib/api.ts');
+const inventoryContract = /export interface PortalInventory \{[\s\S]*?\n\}/.exec(api)?.[0] ?? '';
+check(
+  inventoryContract.includes("stockStatus: 'out' | 'low' | 'in';") && !inventoryContract.includes('stockStatus?'),
+  'CP-053: PortalInventory requires the exhaustive backend stockStatus enum',
+);
+check(page.includes('inventoryStockStatusMeta(s.stockStatus)'), 'CP-013/CP-053: Inventory renders the backend stockStatus enum');
 check(!/reorder\s*>\s*0\s*&&\s*stock\s*<=\s*reorder/.test(page), 'CP-013: Inventory no longer derives LOW from stock vs reorder');
+check(!page.includes("?? 'in'") && !page.includes('STOCK_STATUS_META.in'), 'CP-053: Inventory has no default-to-In path');
+check(!page.includes('s.isOut') && !/effectiveStock[^\n]*<=\s*0/.test(page), 'CP-053: stock styling does not recompute Out from inventory values');
 check(page.includes('lowStock: lowOnly'), 'CP-013: Low/Out filter is requested server-side (spans all pages)');
 check(!page.includes('.filter(isLow)'), 'CP-013: Inventory does not filter the loaded page for low/out');
 
