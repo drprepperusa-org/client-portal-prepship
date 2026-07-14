@@ -35,10 +35,8 @@ import {
   type ReturnItem,
 } from '../../db/schema/returns';
 import {
-  createReturnLabel,
-  resolveReturnCustomerPrice,
-  ReturnLabelRateUnavailableError,
-  ReturnLabelStateError,
+  createReturnLabel, resolveReturnCustomerPrice,
+  ReturnLabelPurchasePendingError, ReturnLabelRateUnavailableError, ReturnLabelStateError,
 } from '../../services/returns';
 import { deliverReturn } from '../../services/return-delivery';
 import { listOriginalOrderActivity, listReturnActivity, recordReturnActivity } from '../../services/return-activity';
@@ -616,6 +614,7 @@ app.post('/returns/:id{[0-9]+}/label', async (c) => {
     // return already exists — surface a clean 409.
     const isDuplicate = /active return already exists/i.test(message);
     const isRateUnavailable = err instanceof ReturnLabelRateUnavailableError;
+    const isPurchasePending = err instanceof ReturnLabelPurchasePendingError;
     const isInvalidState = err instanceof ReturnLabelStateError;
     if (isRateUnavailable) {
       const { rawRateCount, returnLabelRatePolicy, ...safeDiagnostics } = err.diagnostics;
@@ -625,9 +624,10 @@ app.post('/returns/:id{[0-9]+}/label', async (c) => {
         ratePolicy: returnLabelRatePolicy,
       });
     }
-    const status = isDuplicate || isInvalidState ? 409 : isRateUnavailable ? 422 : 500;
+    const status =
+      isDuplicate || isInvalidState || isPurchasePending ? 409 : isRateUnavailable ? 422 : 500;
     const clientMessage =
-      isDuplicate || isInvalidState || isRateUnavailable
+      isDuplicate || isInvalidState || isPurchasePending || isRateUnavailable
         ? message
         : 'Could not create return label. Please try again or contact PrepShip support.';
     return c.json({ error: clientMessage }, status);

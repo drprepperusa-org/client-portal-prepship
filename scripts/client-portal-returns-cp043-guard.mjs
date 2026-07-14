@@ -136,9 +136,10 @@ assert(
   'rate failures persist a recoverable client-safe workflow state',
 );
 assert(
-  /\['requested', 'label_failed'\]\.includes\(returnRow\.status\)/.test(service) &&
+  /\['requested', 'label_failed', 'label_created'\]\.includes\(returnRow\.status\)/.test(service) &&
+    /returnRow\?\.returnShipmentId != null/.test(service) &&
     /ReturnLabelStateError/.test(service),
-  'label creation rejects terminal return states',
+  'label creation rejects terminal states while completed retries read the existing label',
 );
 
 assert(
@@ -177,8 +178,8 @@ assert(
 
 assert(
   /isReturn:\s*true/.test(service) &&
-    /markReturnLabelCreated\(returnRow\.id,\s*returnShipmentId,/.test(service) &&
-    /selectedRate:\s*chosen/.test(service),
+    /markReturnLabelCreated\(/.test(service) &&
+    /selectedRate,/.test(service),
   'successful creation persists the canonical return shipment, link, and chosen quote',
 );
 assert(

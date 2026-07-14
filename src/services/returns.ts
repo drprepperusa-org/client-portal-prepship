@@ -9,9 +9,11 @@ import { getRates, isBlockedRate, type CarrierRateDiagnostic, type RateInput } f
 import { carrierConnectors } from '../connectors/registry';
 import {
   extractShipstationLabelUrl,
+  ssGetLabelByExternalShipmentId,
   type CreatedExternalLabel,
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
+import { ShipStationError } from '../lib/shipstation/client';
 import { resolveReturnPostageRate } from './billing';
 import {
   generateFakeShipmentId,
@@ -24,6 +26,19 @@ import { saveMockLabel } from './mock-label-store';
 import { addMockLabelSignature } from '../lib/mock-label-access';
 import type { Rate } from '../lib/shipstation';
 import { recordReturnActivity } from './return-activity';
+import {
+  acquireReturnLabelPurchase,
+  completeReturnLabelPurchase,
+  getReturnLabelPurchaseIntent,
+  markReturnLabelPurchaseFailed,
+  markReturnLabelPurchaseUnknown,
+  providerReceiptFromIntent,
+  reclaimReturnLabelPurchaseAfterAbsence,
+  recordReturnLabelProviderReceipt,
+  saveReturnLabelSelectedRate,
+  selectedRateFromIntent,
+  type ReturnLabelPurchaseAction,
+} from './return-label-purchase-intents';
 
 // ── CP-027 — backend return-label service ─────────────────────────────────────
 //
@@ -130,6 +145,13 @@ export class ReturnLabelStateError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ReturnLabelStateError';
+  }
+}
+
+export class ReturnLabelPurchasePendingError extends Error {
+  constructor() {
+    super('Return label purchase is being reconciled. Please retry shortly.');
+    this.name = 'ReturnLabelPurchasePendingError';
   }
 }
 
@@ -244,6 +266,22 @@ async function findActiveReturnForOrder(orderId: number): Promise<OutboundShipme
   return row ?? null;
 }
 
+async function findReturnShipmentByProviderKey(
+  providerReferenceKey: string,
+): Promise<OutboundShipment | null> {
+  const [row] = await db
+    .select()
+    .from(shipments)
+    .where(
+      and(
+        eq(shipments.labelProviderKey, providerReferenceKey),
+        eq(shipments.isReturn, true),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 const toNum = (v: string | number | null | undefined): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -324,6 +362,30 @@ function toClientSafeResult(args: {
     returnShipmentId: args.returnShipmentId,
     createdAt: args.createdAt.toISOString(),
   };
+}
+
+async function toClientSafeResultFromShipment(
+  shipment: OutboundShipment,
+  clientId: number | null,
+): Promise<ClientSafeReturnResult> {
+  const rawCost = toNum(shipment.cost ?? shipment.labelCost);
+  return toClientSafeResult({
+    returnCustomerShippingRate: await resolveReturnCustomerPrice(rawCost, clientId),
+    trackingNumber: shipment.trackingNumber ?? shipment.labelTracking,
+    trackingStatus: shipment.trackingStatus,
+    labelUrl: shipment.labelUrl,
+    returnShipmentId: shipment.id,
+    createdAt: shipment.createdAt,
+  });
+}
+
+function providerOutcomeIsAmbiguous(error: unknown): boolean {
+  if (!(error instanceof ShipStationError)) return true;
+  return (
+    error.status < 400 ||
+    error.status >= 500 ||
+    [408, 409, 425, 429].includes(error.status)
+  );
 }
 
 /**
@@ -448,47 +510,63 @@ async function persistReturnShipment(args: {
   selectedRate: Rate | CreatedExternalLabel | null;
   labelFormat: string;
   labelShipmentId: number | null;
+  labelProviderKey?: string | null;
   source: string;
   reason: string;
   createdAt: Date;
 }): Promise<number> {
+  if (args.labelProviderKey) {
+    const existing = await findReturnShipmentByProviderKey(args.labelProviderKey);
+    if (existing) return existing.id;
+  }
+
   const costStr = args.cost.toFixed(2);
-  const [row] = await db
-    .insert(shipments)
-    .values({
-      orderId: args.orderId,
-      clientId: args.clientId,
-      orderNumber: args.orderNumber,
-      carrierCode: args.carrierCode,
-      serviceCode: args.serviceCode,
-      trackingNumber: args.trackingNumber,
-      shipDate: args.createdAt,
-      createDate: args.createdAt,
-      weightOz: args.outbound.weightOz,
-      dimsL: args.outbound.dimsL,
-      dimsW: args.outbound.dimsW,
-      dimsH: args.outbound.dimsH,
-      selectedPackageId: args.outbound.selectedPackageId,
-      cost: costStr,
-      labelUrl: args.labelUrl,
-      labelCreatedAt: args.createdAt,
-      labelFormat: args.labelFormat,
-      labelCarrier: args.carrierCode,
-      labelService: args.serviceCode,
-      labelTracking: args.trackingNumber,
-      labelCost: costStr,
-      labelShipDate: args.createdAt,
-      labelShipmentId: args.labelShipmentId,
-      labelProvider: args.providerAccountId,
-      providerAccountId: args.providerAccountId,
-      selectedRateJson: args.selectedRate as unknown as Record<string, unknown> | null,
-      voided: false,
-      source: args.source,
-      isReturn: true,
-      returnForShipmentId: args.outbound.id,
-      returnReason: args.reason,
-    })
-    .returning({ id: shipments.id });
+  let row: { id: number } | undefined;
+  try {
+    [row] = await db
+      .insert(shipments)
+      .values({
+        orderId: args.orderId,
+        clientId: args.clientId,
+        orderNumber: args.orderNumber,
+        carrierCode: args.carrierCode,
+        serviceCode: args.serviceCode,
+        trackingNumber: args.trackingNumber,
+        shipDate: args.createdAt,
+        createDate: args.createdAt,
+        weightOz: args.outbound.weightOz,
+        dimsL: args.outbound.dimsL,
+        dimsW: args.outbound.dimsW,
+        dimsH: args.outbound.dimsH,
+        selectedPackageId: args.outbound.selectedPackageId,
+        cost: costStr,
+        labelUrl: args.labelUrl,
+        labelCreatedAt: args.createdAt,
+        labelFormat: args.labelFormat,
+        labelCarrier: args.carrierCode,
+        labelService: args.serviceCode,
+        labelTracking: args.trackingNumber,
+        labelCost: costStr,
+        labelShipDate: args.createdAt,
+        labelShipmentId: args.labelShipmentId,
+        labelProvider: args.providerAccountId,
+        providerAccountId: args.providerAccountId,
+        labelProviderKey: args.labelProviderKey ?? null,
+        selectedRateJson: args.selectedRate as unknown as Record<string, unknown> | null,
+        voided: false,
+        source: args.source,
+        isReturn: true,
+        returnForShipmentId: args.outbound.id,
+        returnReason: args.reason,
+      })
+      .returning({ id: shipments.id });
+  } catch (error) {
+    if (args.labelProviderKey) {
+      const existing = await findReturnShipmentByProviderKey(args.labelProviderKey);
+      if (existing) return existing.id;
+    }
+    throw error;
+  }
   if (!row) throw new Error('Failed to persist return shipment row');
 
   // Best-effort v2 mirror — the canonical truth is shipments.isReturn.
@@ -510,33 +588,39 @@ async function persistReturnShipment(args: {
 /** Update a CP-026 returns workflow row once its label exists. */
 async function markReturnLabelCreated(
   returnId: number,
-  returnShipmentId: number,
+  shipmentId: number,
   actorType: 'client' | 'operator' | 'system' = 'system',
   actorEmail?: string,
 ): Promise<void> {
-  try {
-    const now = new Date();
-    await db
-      .update(returns)
-      .set({ status: 'label_created', returnShipmentId, deliveryError: null, updatedAt: now })
-      .where(
-        and(
-          eq(returns.id, returnId),
-          sql`${returns.status} in ('requested', 'label_failed')`,
-        ),
-      );
-    await recordReturnActivity({
-      returnId,
-      shipmentId: returnShipmentId,
-      eventType: 'label_created',
-      status: 'label_created',
-      actorType,
-      actorEmail,
-      eventAt: now,
-    });
-  } catch (err) {
-    console.warn('[returns] failed to update returns workflow row:', err);
+  const now = new Date();
+  const [updated] = await db
+    .update(returns)
+    .set({ status: 'label_created', returnShipmentId: shipmentId, deliveryError: null, updatedAt: now })
+    .where(
+      and(
+        eq(returns.id, returnId),
+        sql`(
+          ${returns.status} in ('requested', 'label_failed')
+          or (
+            ${returns.status} = 'label_created'
+            and (${returns.returnShipmentId} is null or ${returns.returnShipmentId} = ${shipmentId})
+          )
+        )`,
+      ),
+    )
+    .returning({ id: returns.id });
+  if (!updated) {
+    throw new ReturnLabelStateError('Return workflow no longer accepts this label');
   }
+  await recordReturnActivity({
+    returnId,
+    shipmentId,
+    eventType: 'label_created',
+    status: 'label_created',
+    actorType,
+    actorEmail,
+    eventAt: now,
+  });
 }
 
 /**
@@ -554,9 +638,9 @@ export async function createReturnLabel(
     const [row] = await db.select().from(returns).where(eq(returns.id, input.returnId)).limit(1);
     returnRow = row ?? null;
     if (!returnRow) throw new Error('Return workflow record not found');
-    if (!['requested', 'label_failed'].includes(returnRow.status)) {
+    if (!['requested', 'label_failed', 'label_created'].includes(returnRow.status)) {
       throw new ReturnLabelStateError(
-        'Return label creation is only available for requested or failed-label returns',
+        'Return label creation is not available in the current return state',
       );
     }
   }
@@ -583,12 +667,48 @@ export async function createReturnLabel(
 
   const clientId = await resolveClientId(order);
   const isTest = await clientIsTest(clientId);
+  const liveEligible = env.RETURNS_LIVE_LABELS && !isTest;
+
+  // Completed retries are reads, not new side effects. Repair callers receive
+  // the canonical shipment already linked to the workflow.
+  if (returnRow?.returnShipmentId != null) {
+    const [linked] = await db
+      .select()
+      .from(shipments)
+      .where(
+        and(
+          eq(shipments.id, returnRow.returnShipmentId),
+          eq(shipments.isReturn, true),
+        ),
+      )
+      .limit(1);
+    if (linked) return toClientSafeResultFromShipment(linked, clientId);
+  }
+
+  const existingIntent =
+    liveEligible && returnRow
+      ? await getReturnLabelPurchaseIntent(returnRow.id)
+      : null;
 
   // ── Duplicate-active-return guard (code-level; DB partial unique index
   //    returns_one_active_per_order_idx also enforces it). A second active
   //    return requires an explicit, AUDITED admin override. ──
   const existingReturn = await findActiveReturnForOrder(order.id);
   if (existingReturn) {
+    if (
+      returnRow &&
+      existingIntent &&
+      existingReturn.labelProviderKey === existingIntent.providerReferenceKey
+    ) {
+      await completeReturnLabelPurchase(existingIntent.id, existingReturn.id);
+      await markReturnLabelCreated(
+        returnRow.id,
+        existingReturn.id,
+        input.actorType,
+        input.actorEmail,
+      );
+      return toClientSafeResultFromShipment(existingReturn, clientId);
+    }
     if (!input.adminOverride) {
       const err = new Error(
         'An active return already exists for this order. Admin override required to create another.',
@@ -628,7 +748,6 @@ export async function createReturnLabel(
   assertAddressComplete(shipTo, 'ship-to (DRP return address)');
 
   const createdAt = new Date();
-  const liveEligible = env.RETURNS_LIVE_LABELS && !isTest;
 
   // ── CP-032: PrepShip OWNS the return workflow ────────────────────────────────
   // The old ShipStation-return shortcut (delegate to createReturnLabelV2 when the
@@ -669,13 +788,116 @@ export async function createReturnLabel(
     },
   };
 
+  const finalizeLivePurchase = async (
+    intent: ReturnLabelPurchaseAction['intent'],
+    selectedRate: Rate,
+    created: CreatedExternalLabel,
+  ): Promise<ClientSafeReturnResult> => {
+    if (!returnRow) throw new ReturnLabelStateError('Live return labels require a return workflow');
+    const labelUrl = extractShipstationLabelUrl(created.labelUrl);
+    const quotedCost =
+      Number(selectedRate.shipping_amount?.amount ?? 0) +
+      Number(selectedRate.confirmation_amount?.amount ?? 0) +
+      Number(selectedRate.other_amount?.amount ?? 0);
+    const rawCost = created.cost || quotedCost;
+    const returnShipmentId = await persistReturnShipment({
+      outbound,
+      orderId: order.id,
+      clientId,
+      orderNumber: order.orderNumber ?? null,
+      trackingNumber: created.trackingNumber,
+      labelUrl,
+      cost: rawCost,
+      carrierCode: created.carrierCode ?? selectedRate.carrier_code ?? null,
+      serviceCode: created.serviceCode || selectedRate.service_code,
+      providerAccountId: created.providerAccountId,
+      selectedRate,
+      labelFormat: created.labelFormat ?? 'pdf',
+      labelShipmentId: created.shipmentId || null,
+      labelProviderKey: intent.providerReferenceKey,
+      source: 'prepship_return_v2',
+      reason,
+      createdAt,
+    });
+
+    await completeReturnLabelPurchase(intent.id, returnShipmentId);
+    await markReturnLabelCreated(
+      returnRow.id,
+      returnShipmentId,
+      input.actorType,
+      input.actorEmail,
+    );
+    return toClientSafeResult({
+      returnCustomerShippingRate: await resolveReturnCustomerPrice(rawCost, clientId),
+      trackingNumber: created.trackingNumber,
+      trackingStatus: null,
+      labelUrl,
+      returnShipmentId,
+      createdAt,
+    });
+  };
+
+  let purchaseAction: ReturnLabelPurchaseAction | null = null;
+  let chosen: Rate | null = null;
+  if (liveEligible) {
+    if (!returnRow) {
+      throw new ReturnLabelStateError('Live return labels require a return workflow');
+    }
+    purchaseAction = await acquireReturnLabelPurchase(returnRow.id);
+
+    if (purchaseAction.kind === 'in_progress') {
+      throw new ReturnLabelPurchasePendingError();
+    }
+
+    if (purchaseAction.kind === 'completed') {
+      const completedShipment =
+        purchaseAction.intent.returnShipmentId != null
+          ? await loadShipmentById(purchaseAction.intent.returnShipmentId)
+          : await findReturnShipmentByProviderKey(purchaseAction.intent.providerReferenceKey);
+      if (!completedShipment?.isReturn) throw new ReturnLabelPurchasePendingError();
+      await markReturnLabelCreated(
+        returnRow.id,
+        completedShipment.id,
+        input.actorType,
+        input.actorEmail,
+      );
+      return toClientSafeResultFromShipment(completedShipment, clientId);
+    }
+
+    if (purchaseAction.kind === 'recover') {
+      chosen = selectedRateFromIntent(purchaseAction.intent);
+      if (!chosen) throw new ReturnLabelPurchasePendingError();
+
+      let receipt = providerReceiptFromIntent(purchaseAction.intent);
+      if (!receipt) {
+        try {
+          receipt = await ssGetLabelByExternalShipmentId(
+            purchaseAction.intent.providerReferenceKey,
+            returnRatePolicy.apiKeyV2 ?? undefined,
+          );
+        } catch {
+          await markReturnLabelPurchaseUnknown(purchaseAction.intent.id);
+          throw new ReturnLabelPurchasePendingError();
+        }
+      }
+
+      if (receipt) {
+        await recordReturnLabelProviderReceipt(purchaseAction.intent.id, receipt);
+        return finalizeLivePurchase(purchaseAction.intent, chosen, receipt);
+      }
+
+      const reclaimed = await reclaimReturnLabelPurchaseAfterAbsence(purchaseAction.intent.id);
+      if (!reclaimed) throw new ReturnLabelPurchasePendingError();
+      purchaseAction = { kind: 'purchase', intent: reclaimed };
+      chosen = null;
+    }
+  }
+
   // Only quote the carrier when we will actually buy (the live path below).
   // The offline-mock default never needs a live rate — it persists cost 0.00
   // with a generic service — so getRates is NOT called when the flag is off or
   // the client is a test client. That keeps the default path fully carrier-free.
-  let chosen: Rate | null = null;
-  let rateCost = 0;
-  if (liveEligible) {
+  if (liveEligible && purchaseAction?.kind === 'purchase') {
     let rateResult: Awaited<ReturnType<typeof getRates>>;
     try {
       rateResult = await getRates(rateInput, { forceRefresh: true, applyMarkups: false });
@@ -697,6 +919,7 @@ export async function createReturnLabel(
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
       const message = returnLabelFailureMessage(diagnostics.failureKind);
+      await markReturnLabelPurchaseFailed(purchaseAction.intent.id, message);
       await markReturnLabelFailed(returnRow?.id ?? null, message, input.actorType, input.actorEmail);
       console.warn('[returns] return label rate lookup failed', {
         ...diagnostics,
@@ -736,15 +959,11 @@ export async function createReturnLabel(
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
       const message = returnLabelFailureMessage(diagnostics.failureKind);
+      await markReturnLabelPurchaseFailed(purchaseAction.intent.id, message);
       await markReturnLabelFailed(returnRow?.id ?? null, message, input.actorType, input.actorEmail);
       console.warn('[returns] return label rate unavailable', diagnostics);
       throw new ReturnLabelRateUnavailableError(message, diagnostics);
     }
-    rateCost = chosen
-      ? Number(chosen.shipping_amount?.amount ?? 0) +
-        Number(chosen.confirmation_amount?.amount ?? 0) +
-        Number(chosen.other_amount?.amount ?? 0)
-      : 0;
   }
 
   // ── OFFLINE MOCK path (DEFAULT) ──
@@ -834,58 +1053,46 @@ export async function createReturnLabel(
   if (!chosen) {
     throw new Error('No eligible return rate available for this shipment');
   }
-  const created = await carrierConnectors.shipstation.createLabel({
-    // null/undefined delegates to the DR PREPPER environment account, matching
-    // the exact account context used for the fresh rate attempt above.
-    apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
-    carrierId: chosen.carrier_id,
-    serviceCode: chosen.service_code,
-    // Older canonical shipment rows may have dimensions but no saved package
-    // selection. ShipStation's generic package code preserves those exact
-    // dimensions without inventing a customer-visible package or rate fact.
-    packageCode: outbound.selectedPackageId || 'package',
-    weightOz,
-    length: outbound.dimsL,
-    width: outbound.dimsW,
-    height: outbound.dimsH,
-    shipTo,
-    shipFrom,
-    confirmation: null,
-    ssOrderId: order.id,
-    orderNumber: order.orderNumber ?? null,
-    testLabel: false,
-  });
-
-  const labelUrl = extractShipstationLabelUrl(created.labelUrl);
-  const returnShipmentId = await persistReturnShipment({
-    outbound,
-    orderId: order.id,
-    clientId,
-    orderNumber: order.orderNumber ?? null,
-    trackingNumber: created.trackingNumber,
-    labelUrl,
-    cost: created.cost || rateCost,
-    carrierCode: created.carrierCode,
-    serviceCode: created.serviceCode,
-    providerAccountId: created.providerAccountId,
-    selectedRate: chosen,
-    labelFormat: created.labelFormat ?? 'pdf',
-    labelShipmentId: created.shipmentId || null,
-    source: 'prepship_return_v2',
-    reason,
-    createdAt,
-  });
-
-  if (returnRow) {
-    await markReturnLabelCreated(returnRow.id, returnShipmentId, input.actorType, input.actorEmail);
+  if (!purchaseAction || purchaseAction.kind !== 'purchase') {
+    throw new ReturnLabelPurchasePendingError();
   }
 
-  return toClientSafeResult({
-    returnCustomerShippingRate: await resolveReturnCustomerPrice(created.cost || rateCost, clientId),
-    trackingNumber: created.trackingNumber,
-    trackingStatus: null,
-    labelUrl,
-    returnShipmentId,
-    createdAt,
-  });
+  await saveReturnLabelSelectedRate(purchaseAction.intent.id, chosen);
+  let created: CreatedExternalLabel;
+  try {
+    created = await carrierConnectors.shipstation.createLabel({
+      // null/undefined delegates to the DR PREPPER environment account, matching
+      // the exact account context used for the fresh rate attempt above.
+      apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
+      carrierId: chosen.carrier_id,
+      serviceCode: chosen.service_code,
+      // Older canonical shipment rows may have dimensions but no saved package
+      // selection. ShipStation's generic package code preserves those exact
+      // dimensions without inventing a customer-visible package or rate fact.
+      packageCode: outbound.selectedPackageId || 'package',
+      weightOz,
+      length: outbound.dimsL,
+      width: outbound.dimsW,
+      height: outbound.dimsH,
+      shipTo,
+      shipFrom,
+      confirmation: null,
+      ssOrderId: order.id,
+      orderNumber: order.orderNumber ?? null,
+      externalShipmentId: purchaseAction.intent.providerReferenceKey,
+      testLabel: false,
+    });
+  } catch (error) {
+    if (providerOutcomeIsAmbiguous(error)) {
+      await markReturnLabelPurchaseUnknown(purchaseAction.intent.id);
+      throw new ReturnLabelPurchasePendingError();
+    }
+    const safeError = 'Return label purchase was rejected by the provider';
+    await markReturnLabelPurchaseFailed(purchaseAction.intent.id, safeError);
+    await markReturnLabelFailed(returnRow?.id ?? null, safeError, input.actorType, input.actorEmail);
+    throw new ReturnLabelStateError(safeError);
+  }
+
+  await recordReturnLabelProviderReceipt(purchaseAction.intent.id, created);
+  return finalizeLivePurchase(purchaseAction.intent, chosen, created);
 }

@@ -1,4 +1,4 @@
-import { ssRequest } from './client';
+import { ShipStationError, ssRequest } from './client';
 import { ssV1Request } from './v1-client';
 import type { Address } from './types';
 
@@ -28,6 +28,7 @@ export type CreateExternalLabelInput = {
   confirmation?: string | null;
   ssOrderId: number | null;
   orderNumber: string | null;
+  externalShipmentId?: string;
   testLabel?: boolean;
 };
 
@@ -152,6 +153,39 @@ export function extractShipstationLabelUrl(labelDownload: unknown): string | nul
   return pick(labelDownload);
 }
 
+function parseCreatedExternalLabel(
+  response: Record<string, unknown>,
+  fallback: { carrierId?: string; serviceCode?: string } = {},
+): CreatedExternalLabel {
+  const labels = Array.isArray(response.labels) ? response.labels : null;
+  const payload =
+    labels?.[0] && typeof labels[0] === 'object'
+      ? (labels[0] as Record<string, unknown>)
+      : response;
+  const labelDownload = (payload.label_download as Record<string, unknown> | undefined) ?? {};
+  const shipmentCost = payload.shipment_cost as Record<string, unknown> | undefined;
+  const carrierId = payload.carrier_id ? String(payload.carrier_id) : fallback.carrierId;
+  const labelUrl = extractShipstationLabelUrl(labelDownload);
+
+  return {
+    labelId: payload.label_id ? String(payload.label_id) : null,
+    shipmentId: stripSePrefix(payload.shipment_id) ?? 0,
+    trackingNumber: payload.tracking_number ? String(payload.tracking_number) : null,
+    labelUrl,
+    labelFormat: payload.label_format ? String(payload.label_format) : 'pdf',
+    cost: Number(shipmentCost?.amount ?? 0),
+    voided: Boolean(payload.voided),
+    carrierCode: payload.carrier_code ? String(payload.carrier_code) : null,
+    serviceCode: payload.service_code
+      ? String(payload.service_code)
+      : (fallback.serviceCode ?? ''),
+    shipDate: payload.ship_date
+      ? String(payload.ship_date)
+      : new Date().toISOString().slice(0, 10),
+    providerAccountId: stripSePrefix(carrierId),
+  };
+}
+
 export async function ssCreateLabel(input: CreateExternalLabelInput): Promise<CreatedExternalLabel> {
   const pkg: Record<string, unknown> = {
     weight: { value: Number(input.weightOz.toFixed(2)), unit: 'ounce' },
@@ -176,6 +210,7 @@ export async function ssCreateLabel(input: CreateExternalLabelInput): Promise<Cr
       packages: [pkg],
       confirmation: input.confirmation || 'none',
       external_order_id: input.orderNumber ?? undefined,
+      external_shipment_id: input.externalShipmentId ?? undefined,
     },
     is_return_label: false,
     label_layout: '4x6',
@@ -189,28 +224,27 @@ export async function ssCreateLabel(input: CreateExternalLabelInput): Promise<Cr
     apiKey: input.apiKeyV2,
   });
 
-  const labelDownload = (payload.label_download as Record<string, unknown> | undefined) ?? {};
-  const shipmentCost = payload.shipment_cost as Record<string, unknown> | undefined;
-  const providerAccountId = stripSePrefix(input.carrierId);
-  const shipmentId = stripSePrefix(payload.shipment_id) ?? 0;
-  // Per user override `unlock shipped data` on 2026-05-22:
-  // ShipStation can nest Walmart label URLs under object-shaped fields.
-  // Normalize before shipment persistence so text columns never receive objects.
-  const labelUrl = extractShipstationLabelUrl(labelDownload);
+  return parseCreatedExternalLabel(payload, {
+    carrierId: input.carrierId,
+    serviceCode: input.serviceCode,
+  });
+}
 
-  return {
-    labelId: payload.label_id ? String(payload.label_id) : null,
-    shipmentId,
-    trackingNumber: payload.tracking_number ? String(payload.tracking_number) : null,
-    labelUrl,
-    labelFormat: payload.label_format ? String(payload.label_format) : 'pdf',
-    cost: Number(shipmentCost?.amount ?? 0),
-    voided: Boolean(payload.voided),
-    carrierCode: payload.carrier_code ? String(payload.carrier_code) : null,
-    serviceCode: payload.service_code ? String(payload.service_code) : input.serviceCode,
-    shipDate: payload.ship_date ? String(payload.ship_date) : new Date().toISOString().slice(0, 10),
-    providerAccountId,
-  };
+/** Reconcile an ambiguous create-label outcome using the stable CP-057 key. */
+export async function ssGetLabelByExternalShipmentId(
+  externalShipmentId: string,
+  apiKeyV2?: string,
+): Promise<CreatedExternalLabel | null> {
+  try {
+    const payload = await ssRequest<Record<string, unknown>>(
+      `/v2/labels/external_shipment_id/${encodeURIComponent(externalShipmentId)}`,
+      { apiKey: apiKeyV2 },
+    );
+    return parseCreatedExternalLabel(payload);
+  } catch (error) {
+    if (error instanceof ShipStationError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 export async function ssVoidLabel(labelId: string, apiKeyV2?: string): Promise<void> {

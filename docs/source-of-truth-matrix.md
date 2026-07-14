@@ -1061,13 +1061,20 @@ CP-043 keeps return purchase policy in `src/services/returns.ts`: until a
 dedicated return-account field exists, fresh return quotes and purchases use
 the explicit DR PREPPER default ShipStation context, bypass display markups,
 and persist only a redaction-safe failure summary to the return workflow.
+CP-057 adds `return_label_purchase_intents` solely as a side-effect coordinator:
+one row per return, one stable provider reference, and transient recovery
+snapshots that are cleared after reconciliation. It never replaces the
+canonical `shipments` label/tracking/rate/cost record.
 Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
 `client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
 postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
 `client-portal-returns-ui-guard.mjs` (CP-029, carrier/service-free UI+API),
 `client-portal-returns-receiving-guard.mjs` (CP-030, operator-gated inspection),
 `client-portal-returns-cp043-guard.mjs` (fresh raw rate attempt, explicit account
-policy, safe diagnostics, and recoverable failure state).
+policy, safe diagnostics, and recoverable failure state), and
+`client-portal-returns-cp057-guard.mjs` (durable purchase ownership,
+external-reference reconciliation, duplicate-postage fixtures, and live
+runbook).
 
 Return billing lines reuse that canonical return reference as their displayed
 `orderNumber` (for example `2050-RETURN`) while retaining `shipmentId` for

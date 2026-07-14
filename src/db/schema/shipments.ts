@@ -9,6 +9,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { clients } from './clients';
@@ -86,6 +87,9 @@ export const shipments = pgTable(
       .where(sql`${t.orderNumber} is not null and ${t.orderId} is null and coalesce(${t.voided}, false) = false`),
     index('shipments_confirmation_status_idx').on(t.confirmationStatus),
     index('shipments_carrier_provider_idx').on(t.carrierProvider),
+    uniqueIndex('shipments_return_provider_key_idx')
+      .on(t.labelProviderKey)
+      .where(sql`${t.isReturn} = true and ${t.labelProviderKey} is not null`),
   ]
 );
 
