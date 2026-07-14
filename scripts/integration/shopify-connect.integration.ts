@@ -3,7 +3,6 @@
 // Needs TEST_DATABASE_URL (throwaway DB) — refuses prod. Run:
 //   npm run test:client-portal-integration:setup   (drizzle schema)
 //   npm run test:shopify-connect-integration
-import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { setupTestEnv } from './guard';
 
@@ -50,10 +49,9 @@ async function main(): Promise<number> {
   // `drizzle-kit push` in setup.ts), but the refresh FUNCTION + TRIGGER that
   // keep it populated on every order insert/update are raw SQL migrations
   // `push` never applies. Apply them directly, each as ONE whole-file call —
-  // 0025's function body is a `$$ … $$`-quoted block with internal semicolons
-  // that the naive split-on-';' loop below would mangle, but postgres-js
-  // `unsafe()` (no bind params here -> simple query protocol) runs a whole
-  // multi-statement string atomically. Both files were verified
+  // 0025's function body is a `$$ … $$`-quoted block with internal semicolons,
+  // so postgres-js executes each migration as a whole SQL file. Both files
+  // were verified
   // statement-by-statement to be idempotent (CREATE TABLE/INDEX IF NOT
   // EXISTS, CREATE OR REPLACE FUNCTION, DROP TRIGGER IF EXISTS + CREATE
   // TRIGGER, ON CONFLICT DO UPDATE backfills), so no try/catch/split is
@@ -63,7 +61,7 @@ async function main(): Promise<number> {
     'drizzle/0024_order_items_phase2.sql',
     'drizzle/0025_order_items_sync_trigger.sql',
   ]) {
-    await pgClient.unsafe(readFileSync(file, 'utf8'));
+    await pgClient.file(file);
   }
 
   // store_accounts lives outside the drizzle schema — apply its migrations directly.
@@ -71,10 +69,7 @@ async function main(): Promise<number> {
     'drizzle/0027_credential_accounts_source_of_truth.sql',
     'drizzle/0037_store_account_sync_state.sql',
   ]) {
-    for (const stmt of readFileSync(file, 'utf8').split(';')) {
-      const trimmed = stmt.trim();
-      if (trimmed) await pgClient.unsafe(trimmed);
-    }
+    await pgClient.file(file);
   }
 
   // ── seed ──
