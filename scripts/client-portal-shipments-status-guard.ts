@@ -338,6 +338,16 @@ check(
   'CP-042: deployment environment template documents official USPS tracking settings',
 );
 
+const main = read('src/main.ts');
+const envSource = read('src/lib/env.ts');
+check(
+  main.includes('env.RUN_SHIPMENT_TRACKING_SWEEP') &&
+    main.includes('startShipmentTrackingSweep()') &&
+    envSource.includes('RUN_SHIPMENT_TRACKING_SWEEP: booleanFlag(false)') &&
+    envExample.includes('RUN_SHIPMENT_TRACKING_SWEEP=false'),
+  'CP-042: production tracking sweep is explicit, opt-in, and documented',
+);
+
 // 10) package.json exposes this guard and the read-only diagnostic.
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 assert(

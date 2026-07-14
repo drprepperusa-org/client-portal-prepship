@@ -39,6 +39,7 @@ import observabilityRoute from './routes/observability';
 import workflowsRoute from './routes/workflows';
 import workflowRunsRoute from './routes/workflow-runs';
 import workflowStepRunsRoute from './routes/workflow-step-runs';
+import { startShipmentTrackingSweep } from './services/shipment-tracking';
 
 type AppVars = {
   requestId: string;
@@ -249,7 +250,7 @@ serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   // Runtime split: the Web API should serve user traffic, while the Render
   // Worker owns sync/reporting jobs once RUN_SYNC_SCHEDULER is disabled here.
   if (clientPortalOnly) {
-    console.log('[runtime] CLIENT_PORTAL_ONLY_API=true; operational routes and schedulers disabled');
+    console.log('[runtime] CLIENT_PORTAL_ONLY_API=true; operational routes and sync scheduler disabled');
   } else if (env.RUN_SYNC_SCHEDULER) {
     console.log('[runtime] RUN_SYNC_SCHEDULER=true; starting API scheduler');
     void import('./services/sync-scheduler').then(({ startSyncScheduler }) =>
@@ -257,6 +258,12 @@ serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     );
   } else {
     console.log('[runtime] RUN_SYNC_SCHEDULER=false; API scheduler disabled');
+  }
+
+  if (env.RUN_SHIPMENT_TRACKING_SWEEP) {
+    startShipmentTrackingSweep();
+  } else {
+    console.log('[runtime] RUN_SHIPMENT_TRACKING_SWEEP=false; tracking sweep disabled');
   }
 
   const runMaintenance = !clientPortalOnly && env.RUN_ORDERS_PERFORMANCE_MAINTENANCE === true;

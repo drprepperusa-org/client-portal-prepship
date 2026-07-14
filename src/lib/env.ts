@@ -70,6 +70,9 @@ const schema = z.object({
   // Runtime split controls. Default RUN_SYNC_SCHEDULER=true keeps legacy API
   // deploys working until Render envs are explicitly flipped during rollout.
   RUN_SYNC_SCHEDULER: booleanFlag(true),
+  // Carrier-status reconciliation is independent from marketplace/order sync.
+  // Keep it opt-in so local/test API processes never mutate shipment history.
+  RUN_SHIPMENT_TRACKING_SWEEP: booleanFlag(false),
   WORKER_PLACEHOLDER: booleanFlag(false),
   RUN_ORDERS_PERFORMANCE_MAINTENANCE: optionalBooleanFlag,
   USE_PG_BOSS_SCHEDULER: booleanFlag(true),
