@@ -6,6 +6,7 @@
 // CRLF-tolerant: substring checks only.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const route = readFileSync('src/routes/client-portal/integrations.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(route.includes("account.source = 'portal'"), 'portal submit must force source=portal');
@@ -42,7 +43,10 @@ const helpers = readFileSync('src/lib/client-portal/integration-submission.ts', 
 assert(helpers.includes('clientIds.includes(args.bodyClientId)'), 'cross-client injection check must exist');
 assert(helpers.includes('VALIDATION_MAX_ATTEMPTS = 5'), 'validation limiter is 5 attempts/window');
 
-const modal = readFileSync('portal-client/src/components/store/StoreConnectModal.tsx', 'utf8').replace(/\r\n/g, '\n');
+const modal = readSourceTree([
+  'portal-client/src/components/store/StoreConnectModal.tsx',
+  'portal-client/src/components/store/connect',
+]).replace(/\r\n/g, '\n');
 assert(
   modal.includes('read_customers') && modal.includes('read_draft_orders') && modal.includes('write_orders'),
   'Shopify connect modal must list the operational Admin API scopes PrepShip requires',
