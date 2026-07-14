@@ -20,6 +20,7 @@ export const shipmentsApi = {
   refreshShipmentTracking: (token: string, shipmentIds: number[]) =>
     apiPost<{
       checked: number;
+      failed: number;
       updated: Array<{ id: number; trackingStatus: string; deliveredAt: string | null }>;
     }>(token, '/api/client-portal/shipments/refresh-tracking', { shipmentIds }),
 };

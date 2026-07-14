@@ -510,6 +510,7 @@ async function persistReturnShipment(args: {
   selectedRate: Rate | CreatedExternalLabel | null;
   labelFormat: string;
   labelShipmentId: number | null;
+  shipstationLabelId?: string | null;
   labelProviderKey?: string | null;
   source: string;
   reason: string;
@@ -549,6 +550,7 @@ async function persistReturnShipment(args: {
         labelCost: costStr,
         labelShipDate: args.createdAt,
         labelShipmentId: args.labelShipmentId,
+        shipstationLabelId: args.shipstationLabelId ?? null,
         labelProvider: args.providerAccountId,
         providerAccountId: args.providerAccountId,
         labelProviderKey: args.labelProviderKey ?? null,
@@ -814,6 +816,7 @@ export async function createReturnLabel(
       selectedRate,
       labelFormat: created.labelFormat ?? 'pdf',
       labelShipmentId: created.shipmentId || null,
+      shipstationLabelId: created.labelId,
       labelProviderKey: intent.providerReferenceKey,
       source: 'prepship_return_v2',
       reason,

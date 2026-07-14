@@ -22,7 +22,11 @@ function read(rel: string) {
 }
 
 // 1) Backend normalization: provider label statuses -> portal vocabulary.
-const { normalizeTrackingStatus } = await import('../src/services/shipment-tracking');
+const {
+  normalizeTrackingStatus,
+  normalizeShipStationTrackingCode,
+  normalizeShipStationTrackingSnapshot,
+} = await import('../src/services/shipment-tracking');
 const {
   normalizeOfficialTrackingSnapshot,
   chooseTrackingSignal,
@@ -34,6 +38,24 @@ check(normalizeTrackingStatus('in_transit') === 'in_transit', 'normalize: in_tra
 check(normalizeTrackingStatus('error') === 'exception', 'normalize: error -> exception');
 check(normalizeTrackingStatus('unknown') === null, 'normalize: unknown carries no signal (keeps derived label)');
 check(normalizeTrackingStatus(null) === null, 'normalize: null-safe');
+check(normalizeShipStationTrackingCode('DE') === 'delivered', 'ShipStation DE -> delivered');
+check(normalizeShipStationTrackingCode('SP') === 'delivered', 'ShipStation SP -> delivered');
+check(normalizeShipStationTrackingCode('AC') === 'in_transit', 'ShipStation AC -> in_transit');
+check(normalizeShipStationTrackingCode('AT') === 'attempted', 'ShipStation AT -> attempted');
+check(normalizeShipStationTrackingCode('UN') === null, 'ShipStation UN carries no signal');
+const shipStationDelivered = normalizeShipStationTrackingSnapshot({
+  trackingNumber: '9434650106151099370997',
+  statusCode: 'DE',
+  statusDescription: 'Delivered',
+  statusDetailCode: null,
+  statusDetailDescription: null,
+  actualDeliveryDate: '2026-07-08T21:11:00Z',
+});
+check(
+  shipStationDelivered?.trackingStatus === 'delivered' &&
+    shipStationDelivered.deliveredAt?.toISOString() === '2026-07-08T21:11:00.000Z',
+  'targeted ShipStation response preserves delivered status and carrier event time',
+);
 const uspsDelivered = normalizeOfficialTrackingSnapshot('usps', {
   statusCategory: 'Delivered',
   status: 'Delivered, Front Door/Porch',
@@ -137,15 +159,39 @@ check(
 );
 check(
   trackingService.includes('options.forceRefresh') &&
-    trackingService.includes('labelTrackingMap(apiKey ?? undefined, options.forceRefresh)') &&
-    trackingService.includes('requestTrackingMaps') &&
+    trackingService.includes('LOOKUP_CONCURRENCY') &&
+    trackingService.includes('shipstationLabelId') &&
     trackingService.includes('const SWEEP_RECHECK_MS = 60 * 60 * 1000'),
-  'CP-042: forced refresh bypasses cooldowns, dedupes account scans, and background reconciliation rechecks hourly',
+  'CP-042: forced refresh bypasses cooldowns; targeted concurrent reconciliation rechecks hourly',
 );
 check(
   trackingService.indexOf('officialStatus = await lookupOfficialCarrierTracking') <
-    trackingService.indexOf('const map = await trackingMapFor'),
+    trackingService.indexOf('const result = await lookupShipStationTracking'),
   'CP-042: runtime checks official tracking before consulting ShipStation fallback',
+);
+check(
+  trackingService.includes('ssGetLabelTracking') &&
+    trackingService.includes('ssFindLabelByTrackingNumber') &&
+    trackingService.includes('trackingFailedAt: now') &&
+    trackingService.includes('trackingError: message') &&
+    !trackingService.includes('ssListLabelTracking'),
+  'targeted per-label tracking replaces account scan and failed lookups keep explicit retry state',
+);
+
+const shipStationTracking = read('src/lib/shipstation/tracking.ts');
+check(
+  shipStationTracking.includes("tracking_number: normalized") &&
+    shipStationTracking.includes('/track`') &&
+    shipStationTracking.includes('TARGETED_TRACKING_TIMEOUT_MS'),
+  'ShipStation adapter resolves missing label IDs by tracking number and bounds per-label calls',
+);
+
+const trackingMigration = read('drizzle/0042_targeted_shipment_tracking.sql');
+check(
+  trackingMigration.includes('shipstation_label_id') &&
+    trackingMigration.includes('tracking_failed_at') &&
+    trackingMigration.includes('tracking_error'),
+  'additive migration persists ShipStation label identity and retry diagnostics',
 );
 
 const carrierTracking = read('src/services/carrier-tracking.ts');
@@ -246,8 +292,9 @@ check(
     shipmentsPage.includes("value: 'unavailable'") &&
     shipmentsPage.includes('status: statusFilter || undefined') &&
     shipmentsPage.includes('shipmentStatusMeta(s.shipmentStatus)') &&
-    shipmentsPage.includes('s.displayTrackingNumber'),
-  'CP-051: Shipments filter/badge/tracking render the backend-owned enum and display identity',
+    shipmentsPage.includes('s.displayTrackingNumber') &&
+    shipmentsPage.includes('allRows.find((shipment) => shipment.id === current.id)'),
+  'CP-051: Shipments render backend status and refresh an open drawer from the latest DTO',
 );
 check(
   billingDrawer.includes('shipmentStatusMeta(shipment.shipmentStatus)') &&

@@ -947,7 +947,7 @@ Guard: `client-portal-order-detail-guard.ts`.
 | Tracking # | `displayTrackingNumber` | `displayTrackingNumber` | `toPortalShipmentDto`: frozen `shipments.label_tracking`, else legacy `shipments.tracking_number` | label time | backend-owned-truth (CP-051) |
 | Ship date | `shipDate` | `shipDate` | `shipments.ship_date`/`label_ship_date`/`create_date` | ship date | presentation-only |
 | Delivery status | `shipmentStatus` | `shipmentStatus` | `portalShipmentStatusSql`: voided wins; known persisted carrier status passes through; no carrier movement = `label_created`; invalid persisted value = `unavailable` | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042/CP-051) |
-| Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
+| Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier or ShipStation per-label delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
 | Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → live projection from `shipments.cost`/`label_cost` + `other_cost`, `billing_config` markup/override, and `order_overrides` ref rates via `customer-shipping-rate.ts` | billing / label time | derived-from-canonical (backend-owned, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
@@ -955,7 +955,12 @@ Guard: `client-portal-order-detail-guard.ts`.
 Owner: `toPortalShipmentDto` over `shipments`. Route:
 `src/routes/client-portal/shipments.ts` + read-model
 `read-models/shipments.ts`. Tracking writer: `shipment-tracking.ts`; the Client
-Portal only renders its persisted result. Guards: `client-portal-shipments-status-guard.ts`,
+Portal only renders its persisted result. Writer input order is official carrier
+tracking when configured, then ShipStation `/v2/labels/{label_id}/track` using
+persisted `shipments.shipstation_label_id`; tracking-number lookup resolves only
+a missing label ID. Successful lookups advance `tracking_checked_at`; failures
+write `tracking_failed_at`/`tracking_error` without advancing the success clock,
+so retry remains eligible. Delivered is terminal. Guards: `client-portal-shipments-status-guard.ts`,
 `client-portal-shipments-item-identity-guard.ts`.
 
 ### Inventory

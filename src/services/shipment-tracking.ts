@@ -1,8 +1,13 @@
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { shipments } from '../db/schema/shipments';
+import { ShipStationError } from '../lib/shipstation/client';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
-import { ssListLabelTracking } from '../lib/shipstation/tracking';
+import {
+  ssFindLabelByTrackingNumber,
+  ssGetLabelTracking,
+  type ShipStationLabelTracking,
+} from '../lib/shipstation/tracking';
 import {
   chooseTrackingSignal,
   lookupOfficialCarrierTracking,
@@ -12,10 +17,9 @@ import { recordReturnTrackingActivities } from './return-activity';
 
 /**
  * On-demand live tracking refresh. It reads official carrier tracking first,
- * then bulk-reads ShipStation label tracking_status from /v2/labels as the
- * fallback (the per-shipment /v2/tracking endpoint is plan-gated on this
- * account). It persists the snapshot on shipments and never creates labels,
- * buys postage, or notifies anyone.
+ * then reads ShipStation's targeted per-label tracking endpoint as fallback.
+ * Missing label IDs resolve once by tracking number and are persisted for
+ * future checks. It never creates labels, buys postage, or notifies anyone.
  *
  * Delivered is terminal: once a shipment is marked delivered it is never
  * polled again. Non-terminal shipments are re-checked at most once per
@@ -24,6 +28,7 @@ import { recordReturnTrackingActivities } from './return-activity';
 
 const REFRESH_STALE_MS = 30 * 60 * 1000;
 const MAX_PER_REFRESH = 500;
+const LOOKUP_CONCURRENCY = 10;
 
 export type TrackingRefreshOptions = {
   forceRefresh?: boolean;
@@ -54,39 +59,96 @@ export function normalizeTrackingStatus(status: string | null): string | null {
   return map[status.toLowerCase()] ?? null;
 }
 
-// ── Label tracking map (per API key, TTL-cached) ─────────────────────────────
-// One /v2/labels page sweep covers ~2,000 recent labels per account; cache it
-// briefly so a burst of refresh calls (page loads + worker sweep) shares one
-// fetch instead of re-paging ShipStation.
+// ── Targeted ShipStation tracking ────────────────────────────────────────────
+/** ShipStation /track status_code -> portal tracking vocabulary. */
+export function normalizeShipStationTrackingCode(statusCode: string | null): string | null {
+  if (!statusCode) return null;
+  const map: Record<string, string> = {
+    AC: 'in_transit',
+    IT: 'in_transit',
+    DE: 'delivered',
+    SP: 'delivered',
+    EX: 'exception',
+    AT: 'attempted',
+  };
+  return map[statusCode.toUpperCase()] ?? null;
+}
 
-const TRACKING_MAP_TTL_MS = 5 * 60 * 1000;
-const TRACKING_WINDOW_DAYS = 60;
-const trackingMapCache = new Map<string, { at: number; map: Promise<Map<string, string>> }>();
+type NormalizedShipStationTracking = {
+  trackingStatus: string;
+  trackingStatusDetail: string | null;
+  deliveredAt: Date | null;
+};
 
-function labelTrackingMap(apiKey: string | undefined, forceRefresh = false): Promise<Map<string, string>> {
-  const cacheKey = apiKey ?? 'default';
-  const now = Date.now();
-  const cached = trackingMapCache.get(cacheKey);
-  if (!forceRefresh && cached && now - cached.at < TRACKING_MAP_TTL_MS) return cached.map;
-  const map = ssListLabelTracking({ apiKey, pages: 5, windowDays: TRACKING_WINDOW_DAYS })
-    .then((entries) => {
-      const byTracking = new Map<string, string>();
-      for (const entry of entries) {
-        const status = normalizeTrackingStatus(entry.trackingStatus);
-        if (status) byTracking.set(normalizeTrackingNumber(entry.trackingNumber), status);
-      }
-      return byTracking;
-    })
-    .catch((err) => {
-      trackingMapCache.delete(cacheKey);
-      throw err;
-    });
-  trackingMapCache.set(cacheKey, { at: now, map });
-  return map;
+export function normalizeShipStationTrackingSnapshot(
+  details: ShipStationLabelTracking,
+): NormalizedShipStationTracking | null {
+  const trackingStatus = normalizeShipStationTrackingCode(details.statusCode);
+  if (!trackingStatus) return null;
+  const parsedDeliveryDate = details.actualDeliveryDate ? new Date(details.actualDeliveryDate) : null;
+  const deliveredAt =
+    trackingStatus === 'delivered' && parsedDeliveryDate && !Number.isNaN(parsedDeliveryDate.getTime())
+      ? parsedDeliveryDate
+      : null;
+  return {
+    trackingStatus,
+    trackingStatusDetail: details.statusDescription ?? details.statusDetailDescription ?? null,
+    deliveredAt,
+  };
+}
+
+async function forEachWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      if (item !== undefined) await work(item);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+async function lookupShipStationTracking(args: {
+  apiKey?: string;
+  trackingNumber: string;
+  shipstationLabelId: string | null;
+  legacyShipmentId: number | null;
+}): Promise<{ snapshot: NormalizedShipStationTracking | null; resolvedLabelId: string | null }> {
+  const candidates = [
+    args.shipstationLabelId,
+    args.legacyShipmentId ? `se-${args.legacyShipmentId}` : null,
+  ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
+
+  for (const labelId of candidates) {
+    try {
+      const details = await ssGetLabelTracking(labelId, args.apiKey);
+      return { snapshot: normalizeShipStationTrackingSnapshot(details), resolvedLabelId: labelId };
+    } catch (error) {
+      if (!(error instanceof ShipStationError) || error.status !== 404) throw error;
+    }
+  }
+
+  const label = await ssFindLabelByTrackingNumber(args.trackingNumber, args.apiKey);
+  if (!label) return { snapshot: null, resolvedLabelId: null };
+  const details = await ssGetLabelTracking(label.labelId, args.apiKey);
+  const listStatus = normalizeTrackingStatus(label.trackingStatus);
+  return {
+    snapshot:
+      normalizeShipStationTrackingSnapshot(details) ??
+      (listStatus
+        ? { trackingStatus: listStatus, trackingStatusDetail: null, deliveredAt: null }
+        : null),
+    resolvedLabelId: label.labelId,
+  };
 }
 
 export type TrackingRefreshResult = {
   checked: number;
+  failed: number;
   updated: Array<{ id: number; trackingStatus: string; deliveredAt: string | null }>;
 };
 
@@ -130,7 +192,7 @@ export async function refreshShipmentTracking(
   options: TrackingRefreshOptions = {},
 ): Promise<TrackingRefreshResult> {
   const ids = [...new Set(shipmentIds)].filter((id) => Number.isFinite(id) && id > 0).slice(0, MAX_PER_REFRESH);
-  if (!ids.length) return { checked: 0, updated: [] };
+  if (!ids.length) return { checked: 0, failed: 0, updated: [] };
 
   const staleBefore = new Date(Date.now() - REFRESH_STALE_MS);
   const freshnessPredicate = options.forceRefresh
@@ -144,6 +206,8 @@ export async function refreshShipmentTracking(
       labelTracking: shipments.labelTracking,
       carrierCode: shipments.carrierCode,
       labelCarrier: shipments.labelCarrier,
+      labelShipmentId: shipments.labelShipmentId,
+      shipstationLabelId: shipments.shipstationLabelId,
       source: shipments.source,
       trackingStatus: shipments.trackingStatus,
     })
@@ -161,10 +225,9 @@ export async function refreshShipmentTracking(
   const trackable = candidates.filter(
     (row) => (row.trackingNumber ?? row.labelTracking) && row.source !== 'test_offline',
   );
-  if (!trackable.length) return { checked: 0, updated: [] };
+  if (!trackable.length) return { checked: 0, failed: 0, updated: [] };
 
   const credsCache = new Map<number | null, Promise<{ apiKeyV2: string | null }>>();
-  const requestTrackingMaps = new Map<string, Promise<Map<string, string>>>();
   const credsFor = (clientId: number | null) => {
     let p = credsCache.get(clientId);
     if (!p) {
@@ -173,29 +236,27 @@ export async function refreshShipmentTracking(
     }
     return p;
   };
-  const trackingMapFor = (apiKey: string | null) => {
-    const key = apiKey ?? 'default';
-    let map = requestTrackingMaps.get(key);
-    if (!map) {
-      map = labelTrackingMap(apiKey ?? undefined, options.forceRefresh);
-      requestTrackingMaps.set(key, map);
-    }
-    return map;
-  };
 
   const updated: TrackingRefreshResult['updated'] = [];
+  let checked = 0;
+  let failed = 0;
   const now = new Date();
-  for (const row of trackable) {
+  await forEachWithConcurrency(trackable, LOOKUP_CONCURRENCY, async (row) => {
     const trackingNumber = (row.trackingNumber ?? row.labelTracking)!;
-    const trackingKey = normalizeTrackingNumber(trackingNumber);
-    let shipStationStatus: string | null = null;
     let officialStatus = null;
+    let officialError: unknown = null;
+    let shipStationError: unknown = null;
+    let shipStationSnapshot: NormalizedShipStationTracking | null = null;
+    let resolvedLabelId: string | null = null;
+    let lookupSucceeded = false;
     try {
       officialStatus = await lookupOfficialCarrierTracking({
         carrierCode: row.labelCarrier ?? row.carrierCode,
         trackingNumber,
       });
+      lookupSucceeded = Boolean(officialStatus);
     } catch (err) {
+      officialError = err;
       console.warn('[shipment-tracking] official carrier tracking fetch failed', {
         shipmentId: row.id,
         message: err instanceof Error ? err.message : String(err),
@@ -204,18 +265,40 @@ export async function refreshShipmentTracking(
     if (!officialStatus) {
       try {
         const creds = await credsFor(row.clientId);
-        const map = await trackingMapFor(creds.apiKeyV2);
-        shipStationStatus = map.get(trackingKey) ?? null;
+        const result = await lookupShipStationTracking({
+          apiKey: creds.apiKeyV2 ?? undefined,
+          trackingNumber,
+          shipstationLabelId: row.shipstationLabelId,
+          legacyShipmentId: row.labelShipmentId,
+        });
+        shipStationSnapshot = result.snapshot;
+        resolvedLabelId = result.resolvedLabelId;
+        lookupSucceeded = true;
       } catch (err) {
-        console.warn('[shipment-tracking] label map fetch failed', {
+        shipStationError = err;
+        console.warn('[shipment-tracking] targeted ShipStation tracking fetch failed', {
           shipmentId: row.id,
           message: err instanceof Error ? err.message : String(err),
         });
       }
     }
+    if (!lookupSucceeded) {
+      failed += 1;
+      const error = shipStationError ?? officialError;
+      const message = (error instanceof Error ? error.message : 'Tracking lookup failed').slice(0, 500);
+      await db
+        .update(shipments)
+        .set({ trackingFailedAt: now, trackingError: message, updatedAt: now })
+        .where(eq(shipments.id, row.id));
+      return;
+    }
+
+    checked += 1;
     const signal = chooseTrackingSignal({
       official: officialStatus,
-      shipStationStatus,
+      shipStationStatus: shipStationSnapshot?.trackingStatus ?? null,
+      shipStationStatusDetail: shipStationSnapshot?.trackingStatusDetail ?? null,
+      shipStationDeliveredAt: shipStationSnapshot?.deliveredAt ?? null,
       previousStatus: row.trackingStatus,
     });
     const status = signal?.trackingStatus ?? null;
@@ -225,7 +308,7 @@ export async function refreshShipmentTracking(
         clientId: row.clientId,
         tracking: maskTrackingNumber(trackingNumber),
         previousStatus: row.trackingStatus,
-        shipStationStatus,
+        shipStationStatus: shipStationSnapshot?.trackingStatus ?? null,
         officialStatus: officialStatus?.trackingStatus ?? null,
         chosenSource: signal?.source ?? null,
         chosenStatus: status,
@@ -234,8 +317,17 @@ export async function refreshShipmentTracking(
     }
     if (!status || status === row.trackingStatus) {
       // No signal, or unchanged — record the check so we back off.
-      await db.update(shipments).set({ trackingCheckedAt: now }).where(eq(shipments.id, row.id));
-      continue;
+      await db
+        .update(shipments)
+        .set({
+          trackingCheckedAt: now,
+          trackingFailedAt: null,
+          trackingError: null,
+          ...(resolvedLabelId ? { shipstationLabelId: resolvedLabelId } : {}),
+          ...(signal?.trackingStatusDetail ? { trackingStatusDetail: signal.trackingStatusDetail } : {}),
+        })
+        .where(eq(shipments.id, row.id));
+      return;
     }
     const deliveredAt = status === 'delivered' ? signal?.deliveredAt ?? now : null;
     await db
@@ -244,12 +336,15 @@ export async function refreshShipmentTracking(
         trackingStatus: status,
         trackingStatusDetail: signal?.trackingStatusDetail ?? null,
         trackingCheckedAt: now,
+        trackingFailedAt: null,
+        trackingError: null,
+        ...(resolvedLabelId ? { shipstationLabelId: resolvedLabelId } : {}),
         ...(deliveredAt ? { deliveredAt } : {}),
         updatedAt: now,
       })
       .where(eq(shipments.id, row.id));
     updated.push({ id: row.id, trackingStatus: status, deliveredAt: deliveredAt ? deliveredAt.toISOString() : null });
-  }
+  });
 
   // CP-033: advance the canonical return lifecycle for any RETURN shipments in
   // this batch that just moved (label_created → in_transit). Received/inspected
@@ -263,13 +358,13 @@ export async function refreshShipmentTracking(
     })),
   );
 
-  return { checked: trackable.length, updated };
+  return { checked, failed, updated };
 }
 
 // ── Background sweep (worker) ─────────────────────────────────────────────────
 // Walks recent undelivered shipments oldest-check-first so tracking state
-// populates without anyone loading pages. Lookups are bulk map hits, so a
-// batch of 500 costs a handful of ShipStation list calls (TTL-cached).
+// populates without anyone loading pages. Targeted calls run with bounded
+// concurrency and persist label IDs so later checks need one request each.
 
 const SWEEP_INTERVAL_MS = 3 * 60 * 1000;
 const SWEEP_RECHECK_MS = 60 * 60 * 1000;
@@ -304,9 +399,10 @@ async function runSweepOnce(): Promise<void> {
   sweepRunning = true;
   try {
     const result = await sweepShipmentTracking();
-    if (result.checked > 0) {
+    if (result.checked > 0 || result.failed > 0) {
       console.info('[shipment-tracking] sweep', {
         checked: result.checked,
+        failed: result.failed,
         updated: result.updated.length,
         delivered: result.updated.filter((u) => u.trackingStatus === 'delivered').length,
       });

@@ -428,6 +428,7 @@ async function persistCreatedLabel(args: {
       labelCost: created.cost.toFixed(2),
       labelShipDate: shipDate,
       labelShipmentId: created.shipmentId || null,
+      shipstationLabelId: created.labelId,
       labelProvider: created.providerAccountId,
       providerAccountId: created.providerAccountId,
       selectedPackageId: args.selectedPackageId,

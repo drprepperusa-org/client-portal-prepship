@@ -1,71 +1,84 @@
 import { ssRequest } from './client';
 
-/**
- * Label-based tracking state from ShipStation. The dedicated /v2/tracking
- * endpoint is gated behind a higher billing plan (returns 401 on this
- * account), but /v2/labels — which this account already uses for label-URL
- * recovery — carries a `tracking_status` per label ('delivered' /
- * 'in_transit' / 'error' / 'unknown') that ShipStation keeps updated. Paging
- * the recent labels gives us bulk tracking state in a handful of read-only
- * requests instead of one gated call per shipment.
- *
- * Note: the call shape deliberately matches the proven ssListRecentLabels
- * request (no created_at_start filter — that filter makes ShipStation time
- * out). We page newest-first and stop once labels fall outside the window.
- */
-export type LabelTrackingEntry = {
-  trackingNumber: string;
+export type ShipStationLabelMatch = {
+  labelId: string;
   trackingStatus: string | null;
   createdAt: string | null;
 };
 
-const PAGE_SIZE = 500;
+export type ShipStationLabelTracking = {
+  trackingNumber: string | null;
+  statusCode: string | null;
+  statusDescription: string | null;
+  statusDetailCode: string | null;
+  statusDetailDescription: string | null;
+  actualDeliveryDate: string | null;
+};
 
-export async function ssListLabelTracking(args: {
-  apiKey?: string;
-  /** Max pages to fetch (PAGE_SIZE labels each), newest first. */
-  pages?: number;
-  /** Stop paging once labels are older than this many days. */
-  windowDays?: number;
-} = {}): Promise<LabelTrackingEntry[]> {
-  const maxPages = args.pages ?? 5;
-  const cutoff = args.windowDays ? Date.now() - args.windowDays * 86_400_000 : null;
-  const out: LabelTrackingEntry[] = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const qs = new URLSearchParams({
-      page_size: String(PAGE_SIZE),
-      sort_dir: 'desc',
-      page: String(page),
-    });
-    const payload = await ssRequest<{ labels?: Array<Record<string, unknown>>; pages?: unknown }>(
-      `/v2/labels?${qs.toString()}`,
-      {
-        apiKey: args.apiKey,
-        dedupeKey: `labels:tracking:${args.apiKey ? 'client' : 'default'}:${page}`,
-        maxRetries: 2,
-      },
-    );
-    const labels = payload.labels ?? [];
-    let pastWindow = false;
-    for (const label of labels) {
-      const trackingNumber = label.tracking_number ? String(label.tracking_number) : '';
-      const createdAt = label.created_at ? String(label.created_at) : null;
-      if (cutoff && createdAt) {
-        const ts = Date.parse(createdAt);
-        if (Number.isFinite(ts) && ts < cutoff) {
-          pastWindow = true;
-          continue;
-        }
-      }
-      if (!trackingNumber) continue;
-      out.push({
-        trackingNumber,
-        trackingStatus: label.tracking_status ? String(label.tracking_status) : null,
-        createdAt,
-      });
-    }
-    const totalPages = Number(payload.pages);
-    if (pastWindow || labels.length < PAGE_SIZE || (Number.isFinite(totalPages) && page >= totalPages)) break;
+const TARGETED_TRACKING_TIMEOUT_MS = 15_000;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function textAt(record: Record<string, unknown> | null, keys: string[]): string | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
-  return out;
+  return null;
+}
+
+function normalizeTrackingNumber(value: string): string {
+  return value.replace(/[\s-]/g, '').toUpperCase();
+}
+
+/** Resolve a ShipStation label ID only when the shipment does not already store it. */
+export async function ssFindLabelByTrackingNumber(
+  trackingNumber: string,
+  apiKey?: string,
+): Promise<ShipStationLabelMatch | null> {
+  const normalized = normalizeTrackingNumber(trackingNumber);
+  if (!normalized) return null;
+  const query = new URLSearchParams({ tracking_number: normalized, page_size: '1' });
+  const payload = await ssRequest<{ labels?: unknown[] }>(`/v2/labels?${query.toString()}`, {
+    apiKey,
+    maxRetries: 2,
+    timeoutMs: TARGETED_TRACKING_TIMEOUT_MS,
+  });
+  const label = (payload.labels ?? [])
+    .map(asRecord)
+    .find((row) => normalizeTrackingNumber(textAt(row, ['tracking_number']) ?? '') === normalized);
+  const labelId = textAt(label ?? null, ['label_id']);
+  if (!labelId) return null;
+  return {
+    labelId,
+    trackingStatus: textAt(label ?? null, ['tracking_status']),
+    createdAt: textAt(label ?? null, ['created_at']),
+  };
+}
+
+/** Fast per-label tracking lookup. This replaces the former 2,500-label account scan. */
+export async function ssGetLabelTracking(
+  labelId: string,
+  apiKey?: string,
+): Promise<ShipStationLabelTracking> {
+  const normalizedLabelId = labelId.trim();
+  if (!normalizedLabelId) throw new Error('ShipStation label ID is required');
+  const payload = asRecord(
+    await ssRequest<unknown>(`/v2/labels/${encodeURIComponent(normalizedLabelId)}/track`, {
+      apiKey,
+      maxRetries: 2,
+      timeoutMs: TARGETED_TRACKING_TIMEOUT_MS,
+    }),
+  );
+  return {
+    trackingNumber: textAt(payload, ['tracking_number']),
+    statusCode: textAt(payload, ['status_code']),
+    statusDescription: textAt(payload, ['status_description']),
+    statusDetailCode: textAt(payload, ['status_detail_code']),
+    statusDetailDescription: textAt(payload, ['status_detail_description']),
+    actualDeliveryDate: textAt(payload, ['actual_delivery_date']),
+  };
 }

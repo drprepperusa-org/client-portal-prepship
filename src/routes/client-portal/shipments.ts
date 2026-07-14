@@ -47,7 +47,7 @@ app.post('/shipments/refresh-tracking', async (c) => {
   const requested = Array.isArray(body?.shipmentIds)
     ? body.shipmentIds.map(Number).filter((id) => Number.isFinite(id) && id > 0).slice(0, 100)
     : [];
-  if (!requested.length) return c.json({ checked: 0, updated: [] });
+  if (!requested.length) return c.json({ checked: 0, failed: 0, updated: [] });
   const visible = await db
     .select({ id: shipments.id })
     .from(shipments)
@@ -59,6 +59,7 @@ app.post('/shipments/refresh-tracking', async (c) => {
   await recordPortalAudit('portal.shipments.refresh_tracking', scope, {
     requested: requested.length,
     checked: result.checked,
+    failed: result.failed,
     updated: result.updated.length,
     forceRefresh: true,
   });

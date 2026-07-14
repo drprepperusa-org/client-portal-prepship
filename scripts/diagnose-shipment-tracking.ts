@@ -12,7 +12,10 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../src/db/client';
 import { shipments } from '../src/db/schema/shipments';
 import { loadClientCredentials } from '../src/lib/shipstation/credentials';
-import { ssListLabelTracking } from '../src/lib/shipstation/tracking';
+import {
+  ssFindLabelByTrackingNumber,
+  ssGetLabelTracking,
+} from '../src/lib/shipstation/tracking';
 import {
   chooseTrackingSignal,
   lookupOfficialCarrierTracking,
@@ -20,7 +23,7 @@ import {
 } from '../src/services/carrier-tracking';
 import {
   normalizeTrackingNumber,
-  normalizeTrackingStatus,
+  normalizeShipStationTrackingSnapshot,
 } from '../src/services/shipment-tracking';
 
 function argValue(name: string): string | null {
@@ -91,7 +94,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  const labelMapCache = new Map<string, Promise<Map<string, string>>>();
   const diagnostics = [];
   for (const row of rows) {
     const rowTracking = row.trackingNumber ?? row.labelTracking;
@@ -108,28 +110,20 @@ async function main(): Promise<void> {
     }
 
     const creds = await loadClientCredentials(row.clientId);
-    const cacheKey = creds.apiKeyV2 ?? '__default__';
-    let labelMap = labelMapCache.get(cacheKey);
-    if (!labelMap) {
-      labelMap = ssListLabelTracking({
-        apiKey: creds.apiKeyV2 ?? undefined,
-        pages: 5,
-        windowDays: 60,
-      }).then((entries) => {
-        const map = new Map<string, string>();
-        for (const entry of entries) {
-          const status = normalizeTrackingStatus(entry.trackingStatus);
-          if (status) map.set(normalizeTrackingNumber(entry.trackingNumber), status);
-        }
-        return map;
-      });
-      labelMapCache.set(cacheKey, labelMap);
-    }
-
     let shipStationStatus: string | null = null;
+    let shipStationDetail: string | null = null;
+    let shipStationDeliveredAt: Date | null = null;
     let shipStationLookup: 'ok' | 'failed' = 'ok';
     try {
-      shipStationStatus = (await labelMap).get(normalizeTrackingNumber(rowTracking)) ?? null;
+      const label = await ssFindLabelByTrackingNumber(rowTracking, creds.apiKeyV2 ?? undefined);
+      if (label) {
+        const snapshot = normalizeShipStationTrackingSnapshot(
+          await ssGetLabelTracking(label.labelId, creds.apiKeyV2 ?? undefined),
+        );
+        shipStationStatus = snapshot?.trackingStatus ?? null;
+        shipStationDetail = snapshot?.trackingStatusDetail ?? null;
+        shipStationDeliveredAt = snapshot?.deliveredAt ?? null;
+      }
     } catch {
       shipStationLookup = 'failed';
     }
@@ -148,6 +142,8 @@ async function main(): Promise<void> {
     const chosen = chooseTrackingSignal({
       official,
       shipStationStatus,
+      shipStationStatusDetail: shipStationDetail,
+      shipStationDeliveredAt,
       previousStatus: row.trackingStatus,
     });
     diagnostics.push({
@@ -169,6 +165,8 @@ async function main(): Promise<void> {
       external: {
         shipStationLookup,
         shipStationStatus,
+        shipStationDetail,
+        shipStationDeliveredAt: shipStationDeliveredAt?.toISOString() ?? null,
         officialLookup,
         officialStatus: official?.trackingStatus ?? null,
         officialDetail: official?.trackingStatusDetail ?? null,
@@ -196,7 +194,7 @@ async function main(): Promise<void> {
   );
 }
 
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

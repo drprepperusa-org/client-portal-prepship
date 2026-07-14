@@ -72,10 +72,16 @@ export default function Shipments() {
   const rows = allRows;
   const pg = query.data?.pagination;
 
+  // Keep an open drawer on the latest backend DTO after tracking refetches.
+  useEffect(() => {
+    setSelected((current) =>
+      current ? allRows.find((shipment) => shipment.id === current.id) ?? current : current,
+    );
+  }, [allRows]);
+
   // Live tracking: when a page of shipments loads, ask the backend to refresh
-  // carrier tracking for the undelivered ones (the server skips anything it
-  // checked in the last 30 minutes, so this is cheap on reloads). If anything
-  // changed, refetch once to pick up the new statuses.
+  // carrier tracking for undelivered rows. Targeted per-label lookups make the
+  // forced refresh cheap; changed rows trigger one DTO refetch.
   const { accessToken } = useAuth();
   const lastTrackingKey = useRef('');
   useEffect(() => {

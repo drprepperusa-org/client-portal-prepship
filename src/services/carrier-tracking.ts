@@ -123,6 +123,8 @@ export function normalizeOfficialTrackingSnapshot(
 export function chooseTrackingSignal(args: {
   official: OfficialTrackingSnapshot | null;
   shipStationStatus: string | null;
+  shipStationStatusDetail?: string | null;
+  shipStationDeliveredAt?: Date | null;
   previousStatus: string | null;
 }): TrackingSignal | null {
   if (args.previousStatus === 'delivered') return null;
@@ -134,8 +136,8 @@ export function chooseTrackingSignal(args: {
       carrier: 'usps',
       source: 'shipstation',
       trackingStatus: args.shipStationStatus,
-      trackingStatusDetail: null,
-      deliveredAt: null,
+      trackingStatusDetail: args.shipStationStatusDetail ?? null,
+      deliveredAt: args.shipStationDeliveredAt ?? null,
     };
   }
   return null;
