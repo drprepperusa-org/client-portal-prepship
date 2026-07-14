@@ -13,6 +13,7 @@
 //      UI. Returns also flips out of skeletons once a fetch has failed and React
 //      Query is retrying, so the page never looks frozen on a retrying request.
 import fs from 'node:fs';
+import { readSourceTree } from './lib/source-tree.mjs';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -161,7 +162,12 @@ const primaryListPages = [
   'Invoices.tsx',
 ];
 for (const file of primaryListPages) {
-  const source = read(`portal-client/src/pages/${file}`);
+  const source = file === 'Invoices.tsx'
+    ? readSourceTree([
+        'portal-client/src/pages/Invoices.tsx',
+        'portal-client/src/components/billing/invoices',
+      ])
+    : read(`portal-client/src/pages/${file}`);
   assert(
     source.includes('QueryState') && source.includes('isError='),
     `${file} distinguishes primary-query failure from a legitimate empty dataset`,

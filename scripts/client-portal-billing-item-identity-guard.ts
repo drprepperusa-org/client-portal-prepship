@@ -5,6 +5,7 @@ import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const root = process.cwd();
 let failed = false;
@@ -48,11 +49,12 @@ check(api.includes('items?: PortalItemIdentity[];'), 'BillingInvoiceDetailRow ex
 //    SkuLines identity renderer stays in use for the billing shipment view
 //    (s.items). This SKU(s) standard is also pinned by
 //    client-portal-invoice-items-guard.ts + client-portal-billing-column-order-guard.mjs.
-const invoicesPage = [
-  read('portal-client/src/pages/Invoices.tsx'),
-  read('portal-client/src/components/billing/invoiceColumns.tsx'),
-  read('portal-client/src/components/billing/InvoiceShipmentDrawer.tsx'),
-].join('\n');
+const invoicesPage = readSourceTree([
+  'portal-client/src/pages/Invoices.tsx',
+  'portal-client/src/components/billing/invoiceColumns.tsx',
+  'portal-client/src/components/billing/InvoiceShipmentDrawer.tsx',
+  'portal-client/src/components/billing/invoices',
+]);
 check(
   invoicesPage.includes('<SkuLines items={row.items}') && !invoicesPage.includes("header: 'Item Name'"),
   'Billing detail line items render the structured qty-aware SKU(s) column from backend items (no separate Item Name column)',

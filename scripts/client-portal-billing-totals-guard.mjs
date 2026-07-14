@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // CP-011 — Billing summary grand totals must be backend-owned. The Billing
 // footer (Total row) previously reduced the per-period rows in React, which
 // could drift from the printable invoice HTML, the Excel export, Billing, and
@@ -22,10 +23,11 @@ function assert(condition, message) {
 }
 
 const route = flat(read('src/routes/client-portal/invoices.ts'));
-const invoices = [
-  read('portal-client/src/pages/Invoices.tsx'),
-  read('portal-client/src/components/billing/invoiceColumns.tsx'),
-].join('\n');
+const invoices = readSourceTree([
+  'portal-client/src/pages/Invoices.tsx',
+  'portal-client/src/components/billing/invoiceColumns.tsx',
+  'portal-client/src/components/billing/invoices',
+]);
 const invoicesFlat = flat(invoices);
 const api = flat(readActiveClientPortalApiSource());
 const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');

@@ -2,6 +2,7 @@
 // quantity-aware, and rendered with line breaks in active invoice surfaces.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 type InvoiceItemLine = {
   name?: string | null;
@@ -27,11 +28,12 @@ function read(rel: string) {
 }
 
 const invoiceItems = read('src/lib/client-portal/invoice-items.ts');
-const activeInvoices = [
-  read('portal-client/src/pages/Invoices.tsx'),
-  read('portal-client/src/components/billing/invoiceColumns.tsx'),
-  read('portal-client/src/components/billing/InvoiceShipmentDrawer.tsx'),
-].join('\n');
+const activeInvoices = readSourceTree([
+  'portal-client/src/pages/Invoices.tsx',
+  'portal-client/src/components/billing/invoiceColumns.tsx',
+  'portal-client/src/components/billing/InvoiceShipmentDrawer.tsx',
+  'portal-client/src/components/billing/invoices',
+]);
 const legacyInvoices = read('web/src/pages/Invoices.tsx');
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 

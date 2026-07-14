@@ -5,6 +5,7 @@
 // cap), and multi-client exports carry a Client column.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree } from './lib/source-tree.mjs';
 
 const root = process.cwd();
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -18,17 +19,20 @@ function assert(condition, message) {
   console.log(`PASS ${message}`);
 }
 
-const invoices = [
-  read('portal-client/src/pages/Invoices.tsx'),
-  read('portal-client/src/components/billing/invoiceColumns.tsx'),
-].join('\n');
+const invoices = readSourceTree([
+  'portal-client/src/pages/Invoices.tsx',
+  'portal-client/src/components/billing/invoiceColumns.tsx',
+  'portal-client/src/components/billing/invoices',
+]);
 const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
 const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const packageJson = JSON.parse(read('package.json'));
 
 // ── Range export button + handler ──
 assert(
-  invoices.includes('Export all') && invoices.includes('void exportAllPeriods()'),
+  invoices.includes('Export all') &&
+    invoices.includes('onClick={props.onExportAll}') &&
+    invoices.includes('void actions.exportAllPeriods()'),
   'Billing periods header has an "Export all" button wired to exportAllPeriods',
 );
 assert(

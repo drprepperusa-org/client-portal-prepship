@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { readSourceTree } from './lib/source-tree.mjs';
 import type { BillingInvoiceDetailRow } from '../portal-client/src/lib/api';
 import { fetchAllInvoiceRows, INVOICE_EXPORT_MAX_PAGES, INVOICE_EXPORT_PAGE_SIZE } from '../portal-client/src/lib/invoiceRows';
 import { renderPortalInvoiceHtml } from '../src/lib/client-portal/invoice-html';
@@ -25,10 +26,11 @@ function sliceBetween(source: string, start: string, end: string): string {
   return endIndex < 0 ? source.slice(startIndex) : source.slice(startIndex, endIndex);
 }
 
-const invoices = [
-  read('portal-client/src/pages/Invoices.tsx'),
-  read('portal-client/src/components/billing/invoiceColumns.tsx'),
-].join('\n');
+const invoices = readSourceTree([
+  'portal-client/src/pages/Invoices.tsx',
+  'portal-client/src/components/billing/invoiceColumns.tsx',
+  'portal-client/src/components/billing/invoices',
+]);
 const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
 const routes = read('src/routes/client-portal/invoices.ts');
 const readModel = read('src/lib/client-portal/read-models/invoice-details.ts');
@@ -42,7 +44,7 @@ const summaryBlock = sliceBetween(
 );
 const periodSummaryBlock = sliceBetween(readModel, 'export async function portalInvoicePeriodSummary', '// CP-016');
 const detailBlock = sliceBetween(readModel, 'export async function portalInvoiceDetails', 'const dimsFromRaw');
-const totalsBlock = sliceBetween(invoices, 'const totals: BillingTotals', '// Line items load');
+const totalsBlock = sliceBetween(invoices, 'export function toBillingTotals', 'export function toPeriodSummaries');
 
 check('summary read model is SQL aggregated and uncapped for high-volume clients',
   /count\(distinct b\.order_id\)::text as orders/.test(summaryBlock) &&
@@ -55,7 +57,8 @@ check('period summary read model is SQL aggregated and uncapped for >1000 groupe
     !/\blimit\b/i.test(periodSummaryBlock));
 
 check('Billing footer consumes backend summary totals instead of reducing visible rows',
-  /const value = summaryQuery\.data\?\.totals/.test(totalsBlock) &&
+  /value\?: BillingInvoiceTotals/.test(totalsBlock) &&
+    /return value/.test(totalsBlock) &&
     !/summary\.reduce/.test(totalsBlock));
 
 check('detail endpoint returns a paginated slice plus full grouped-row count',

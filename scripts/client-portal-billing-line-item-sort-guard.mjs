@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // CP-016 — Billing line-item header sorting must apply across ALL filtered pages,
 // not just the loaded page. The backend read-model owns a whitelisted sort that
 // runs on the full filtered set BEFORE limit/offset; the frontend owns sort
@@ -26,10 +27,11 @@ const readModel = flat(readModelRaw);
 const route = flat(read('src/routes/client-portal/invoices.ts'));
 const api = flat(readActiveClientPortalApiSource());
 const hooks = flat(read('portal-client/src/lib/hooks.ts'));
-const invoices = flat([
-  read('portal-client/src/pages/Invoices.tsx'),
-  read('portal-client/src/components/billing/invoiceColumns.tsx'),
-].join('\n'));
+const invoices = flat(readSourceTree([
+  'portal-client/src/pages/Invoices.tsx',
+  'portal-client/src/components/billing/invoiceColumns.tsx',
+  'portal-client/src/components/billing/invoices',
+]));
 const dataTable = flat(read('portal-client/src/components/ui/DataTable.tsx'));
 const pkg = JSON.parse(read('package.json'));
 
