@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Check, ChevronLeft, ChevronRight, Columns3, RotateCcw } from 'lucide-react';
 import type { ColumnLayout } from '@/lib/useColumnLayout';
 import { cn } from '@/lib/cn';
-import type { Column } from './DataTable';
+import type { Column } from './data-table/types';
 
 export function DataTableColumnControls<T>({
   layout,

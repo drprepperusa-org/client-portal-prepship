@@ -1,4 +1,5 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
+import { readSourceTree } from './lib/source-tree.mjs';
 // Client Portal: Weight is operator-visible only. Admin/global users may add
 // it to the Orders table through column customization, but client users must
 // never receive or render order/package weight in customer-facing surfaces.
@@ -27,7 +28,10 @@ const orderDetailLoader = read('portal-client/src/components/OrderDetailLoader.t
 const api = readActiveClientPortalApiSource();
 const dto = read('src/lib/client-portal/dto.ts');
 const ordersReadModel = read('src/lib/client-portal/read-models/orders.ts');
-const dataTable = read('portal-client/src/components/ui/DataTable.tsx');
+const dataTable = readSourceTree([
+  'portal-client/src/components/ui/DataTable.tsx',
+  'portal-client/src/components/ui/data-table',
+]);
 const columnLayout = read('portal-client/src/lib/useColumnLayout.ts');
 
 check(

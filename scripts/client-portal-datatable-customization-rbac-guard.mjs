@@ -7,6 +7,7 @@
 // gate, so stale localStorage cannot resurrect hidden/removed customer columns.
 import fs from 'node:fs';
 import path from 'node:path';
+import { readSourceTree, sourceTreeFiles } from './lib/source-tree.mjs';
 
 const root = process.cwd();
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -21,7 +22,10 @@ function assert(cond, msg) {
   }
 }
 
-const dt = read('portal-client/src/components/ui/DataTable.tsx');
+const dt = readSourceTree([
+  'portal-client/src/components/ui/DataTable.tsx',
+  'portal-client/src/components/ui/data-table',
+]);
 const hooks = read('portal-client/src/lib/hooks.ts');
 
 // 1. The gate prop exists and defaults OFF.
@@ -36,11 +40,11 @@ assert(
 
 // 3. Controls, drag, and persisted layout are gated; width resize is universal.
 assert(
-  /\{customizable && <DataTableColumnControls\b/.test(dt),
+  /\{props\.customizable &&\s*\(\s*<DataTableColumnControls\b/.test(dt),
   'the Columns chooser + Reset controls render only when customizable',
 );
 assert(/const canDrag\s*=\s*customizable\s*&&/.test(dt), 'header drag-to-reorder is gated on customizable');
-assert(/const canResize\s*=\s*c\.resizable\s*!==\s*false/.test(dt), 'column resize is available to every desktop/tablet user');
+assert(/const canResize\s*=\s*column\.resizable\s*!==\s*false/.test(dt), 'column resize is available to every desktop/tablet user');
 assert(
   /useColumnLayout\(customizable \? tableId : undefined/.test(dt),
   'client resizing is session-only; stale persisted structural layouts are ignored',
@@ -59,33 +63,37 @@ assert(
   'useCanCustomizeTables is the shared admin/global gate for DataTable customization',
 );
 
-const pagesDir = 'portal-client/src/pages';
-const pageFiles = fs
-  .readdirSync(path.join(root, pagesDir))
-  .filter((f) => f.endsWith('.tsx'));
+for (const file of sourceTreeFiles('portal-client/src/pages')) {
+  const src = fs.readFileSync(file, 'utf8');
+  const label = path.relative(root, file);
+  assert(!/<table\b/.test(src), `${label} does not hand-roll native table markup; page tables use DataTable`);
+}
 
-for (const f of pageFiles) {
-  const src = read(`${pagesDir}/${f}`);
-  assert(!/<table\b/.test(src), `${f} does not hand-roll native table markup; page tables use DataTable`);
+const tableUsers = sourceTreeFiles([
+  'portal-client/src/pages',
+  'portal-client/src/components',
+]).filter((file) => !file.startsWith(path.join(root, 'portal-client/src/components/ui/data-table'))
+  && file !== path.join(root, 'portal-client/src/components/ui/DataTable.tsx'));
+
+for (const file of tableUsers) {
+  const src = fs.readFileSync(file, 'utf8');
+  const label = path.relative(root, file);
 
   const dataTableTags = [...src.matchAll(/<DataTable\b[\s\S]*?\/>/g)].map((m) => m[0]);
   if (dataTableTags.length === 0) continue;
 
-  assert(
-    /import\s+\{[^}]*useCanCustomizeTables[^}]*\}\s+from ['"]@\/lib\/hooks['"]/.test(src),
-    `${f} imports the shared useCanCustomizeTables admin/global gate`,
-  );
-  assert(
-    /const canCustomizeTables = useCanCustomizeTables\(\);/.test(src),
-    `${f} derives table customization from the shared admin/global gate`,
-  );
+  const directGate = /import\s+\{[^}]*useCanCustomizeTables[^}]*\}\s+from ['"]@\/lib\/hooks['"]/.test(src)
+    && /const canCustomizeTables = useCanCustomizeTables\(\);/.test(src);
+  const delegatedGate = /canCustomizeTables:\s*boolean/.test(src)
+    && /allowColumnCustomization=\{props\.canCustomizeTables\}/.test(src);
+  assert(directGate || delegatedGate, `${label} receives the shared admin/global customization gate`);
 
   for (const [i, tag] of dataTableTags.entries()) {
-    const label = dataTableTags.length === 1 ? f : `${f} DataTable #${i + 1}`;
-    assert(/tableId=/.test(tag), `${label} has a stable tableId for persisted admin layout`);
+    const tableLabel = dataTableTags.length === 1 ? label : `${label} DataTable #${i + 1}`;
+    assert(/tableId=/.test(tag), `${tableLabel} has a stable tableId for persisted admin layout`);
     assert(
-      /allowColumnCustomization=\{canCustomizeTables\}/.test(tag),
-      `${label} enables column customization only through canCustomizeTables`,
+      /allowColumnCustomization=\{(?:canCustomizeTables|props\.canCustomizeTables)\}/.test(tag),
+      `${tableLabel} enables column customization only through canCustomizeTables`,
     );
   }
 }

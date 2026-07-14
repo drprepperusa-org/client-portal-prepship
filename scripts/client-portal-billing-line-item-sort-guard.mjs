@@ -32,7 +32,10 @@ const invoices = flat(readSourceTree([
   'portal-client/src/components/billing/invoiceColumns.tsx',
   'portal-client/src/components/billing/invoices',
 ]));
-const dataTable = flat(read('portal-client/src/components/ui/DataTable.tsx'));
+const dataTable = flat(readSourceTree([
+  'portal-client/src/components/ui/DataTable.tsx',
+  'portal-client/src/components/ui/data-table',
+]));
 const pkg = JSON.parse(read('package.json'));
 
 // ── Read-model owns a whitelisted sort applied BEFORE pagination ──
