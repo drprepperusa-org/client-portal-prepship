@@ -264,11 +264,43 @@ export function usePrefetchPortal() {
   useEffect(() => {
     if (!accessToken) return;
     const t = accessToken;
-    qc.prefetchQuery({ queryKey: ['dashboard', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDashboard(t, dateRange) });
-    qc.prefetchQuery({ queryKey: ['daily-counts', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDailyCounts(t, dateRange) });
-    // Match the Orders page's first view exactly (awaiting tab, default pageSize)
-    // so the prefetch actually warms it instead of a key nothing reads.
-    qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.backgroundOrders(t, { status: 'awaiting_shipment' }) });
-    qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.backgroundInventory(t, {}) });
+    let cancelled = false;
+    let pollTimer: number | undefined;
+
+    const waitForForegroundQueries = async () => {
+      while (!cancelled && qc.isFetching() > 0) {
+        await new Promise<void>((resolve) => {
+          pollTimer = window.setTimeout(resolve, 250);
+        });
+      }
+    };
+
+    const prefetch = async () => {
+      // The shell already starts the current page plus its clients, sync, user,
+      // and badge reads. Let those customer-visible requests finish first, then
+      // warm the other pages one at a time so a small backend pool is not
+      // exhausted by speculative work.
+      await new Promise<void>((resolve) => {
+        pollTimer = window.setTimeout(resolve, 500);
+      });
+      await waitForForegroundQueries();
+      if (cancelled) return;
+
+      await qc.prefetchQuery({ queryKey: ['dashboard', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDashboard(t, dateRange) });
+      if (cancelled) return;
+      await qc.prefetchQuery({ queryKey: ['daily-counts', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDailyCounts(t, dateRange) });
+      if (cancelled) return;
+      // Match the Orders page's first view exactly (awaiting tab, default pageSize)
+      // so the prefetch actually warms it instead of a key nothing reads.
+      await qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.backgroundOrders(t, { status: 'awaiting_shipment' }) });
+      if (cancelled) return;
+      await qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.backgroundInventory(t, {}) });
+    };
+
+    void prefetch();
+    return () => {
+      cancelled = true;
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+    };
   }, [accessToken, dateRange, qc]);
 }

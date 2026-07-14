@@ -227,6 +227,14 @@ check(
     !topbar.includes("You're all caught up."),
   'Topbar renders backend-owned aggregate connection status without timestamp health policy',
 );
+const hooks = read('portal-client/src/lib/hooks.ts');
+check(
+  hooks.includes('const waitForForegroundQueries = async () =>') &&
+    hooks.includes('qc.isFetching() > 0') &&
+    hooks.includes('await qc.prefetchQuery') &&
+    !hooks.split('\n').some((line) => line.trimStart().startsWith('qc.prefetchQuery(')),
+  'shell waits for foreground reads and serializes speculative prefetches',
+);
 const matrix = read('docs/source-of-truth-matrix.md');
 check(
   matrix.includes('| Connection status | `connectionStatus` | `connectionStatus` |') &&
