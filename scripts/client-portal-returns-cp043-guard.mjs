@@ -189,8 +189,8 @@ assert(
 );
 assert(
   /resolveReturnPostageRate/.test(service) &&
-    /returnCustomerShippingRate:\s*await resolveReturnCustomerPrice/.test(service),
-  'client return postage remains derived from the backend billing policy',
+    /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service),
+  'client return postage is derived once from backend billing policy and frozen on the workflow',
 );
 assert(
   /Label needs attention[\s\S]*returns\.status = 'label_failed'/.test(sotMatrix) &&

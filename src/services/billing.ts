@@ -800,6 +800,7 @@ export async function generateLineItems(input: GenerateInput) {
       orderId: orders.id,
       orderNumber: orders.orderNumber,
       returnReference: returns.returnReference,
+      returnCustomerShippingRate: returns.returnCustomerShippingRate,
       orderClientId: orders.clientId,
       orderStoreId: orders.storeId,
       orderDate: orders.orderDate,
@@ -844,36 +845,38 @@ export async function generateLineItems(input: GenerateInput) {
     const returnReference = resolveReturnReference(r.returnReference, r.orderNumber, r.orderId);
 
     // ── return_postage ──────────────────────────────────────────────────────
-    // Priced by backend policy from the return label house cost with the
-    // client's return markup + the min-price hook applied. `cost` is the synced
-    // house cost; `labelCost` is a fallback for rows created before cost synced.
+    // Return workflows freeze the customer/billable rate at label time, so the
+    // invoice, PrepShip, and Client Portal all consume one snapshot. The policy
+    // calculation remains only for legacy return shipments that have no linked
+    // workflow row (and therefore cannot carry the snapshot).
     const houseCost = (toNum(r.cost) || toNum(r.labelCost)) + toNum(r.otherCost);
-    if (houseCost > 0) {
-      const triggerBelow = toNum(cfg.returnShippingRateOverrideTriggerBelow);
-      const { returnRate } = resolveReturnPostageRate({
-        houseCost,
-        markupPct: toNum(cfg.returnPostageMarkupPct),
-        markupFlat: toNum(cfg.returnPostageMarkupFlat),
-        triggerBelow,
-        overrideAmount: toNum(cfg.returnShippingRateOverrideAmount),
+    const returnRate = r.returnCustomerShippingRate != null
+      ? toNum(r.returnCustomerShippingRate)
+      : houseCost > 0
+        ? resolveReturnPostageRate({
+            houseCost,
+            markupPct: toNum(cfg.returnPostageMarkupPct),
+            markupFlat: toNum(cfg.returnPostageMarkupFlat),
+            triggerBelow: toNum(cfg.returnShippingRateOverrideTriggerBelow),
+            overrideAmount: toNum(cfg.returnShippingRateOverrideAmount),
+          }).returnRate
+        : 0;
+    if (returnRate > 0) {
+      allRows.push({
+        clientId,
+        orderId: r.orderId,
+        orderNumber: returnReference,
+        shipmentId: r.shipmentId,
+        shipDate: labelDate,
+        lineType: 'return_postage',
+        // shipmentId keeps the description unique per return label, so multiple
+        // returns on one order don't collide on (order_id, line_type, description).
+        description: `${returnReference} · return postage · return #${r.shipmentId}`,
+        qty: '1',
+        unitCost: returnRate.toFixed(2),
+        totalCost: returnRate.toFixed(2),
       });
-      if (returnRate > 0) {
-        allRows.push({
-          clientId,
-          orderId: r.orderId,
-          orderNumber: returnReference,
-          shipmentId: r.shipmentId,
-          shipDate: labelDate,
-          lineType: 'return_postage',
-          // shipmentId keeps the description unique per return label, so multiple
-          // returns on one order don't collide on (order_id, line_type, description).
-          description: `${returnReference} · return postage · return #${r.shipmentId}`,
-          qty: '1',
-          unitCost: returnRate.toFixed(2),
-          totalCost: returnRate.toFixed(2),
-        });
-        total += returnRate;
-      }
+      total += returnRate;
     }
 
     // ── return_processing_fee ───────────────────────────────────────────────

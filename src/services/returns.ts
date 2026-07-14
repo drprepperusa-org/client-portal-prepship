@@ -339,8 +339,8 @@ export async function resolveReturnCustomerPrice(rawCost: number, clientId: numb
     });
     return Number(returnRate.toFixed(2));
   } catch (err) {
-    console.warn('[returns] return price policy load failed; quoting raw house cost:', err);
-    return Number(houseCost.toFixed(2));
+    console.error('[returns] return price policy load failed; refusing to freeze an unpriced snapshot:', err);
+    throw err;
   }
 }
 
@@ -366,11 +366,10 @@ function toClientSafeResult(args: {
 
 async function toClientSafeResultFromShipment(
   shipment: OutboundShipment,
-  clientId: number | null,
+  returnCustomerShippingRate: number,
 ): Promise<ClientSafeReturnResult> {
-  const rawCost = toNum(shipment.cost ?? shipment.labelCost);
   return toClientSafeResult({
-    returnCustomerShippingRate: await resolveReturnCustomerPrice(rawCost, clientId),
+    returnCustomerShippingRate,
     trackingNumber: shipment.trackingNumber ?? shipment.labelTracking,
     trackingStatus: shipment.trackingStatus,
     labelUrl: shipment.labelUrl,
@@ -591,13 +590,20 @@ async function persistReturnShipment(args: {
 async function markReturnLabelCreated(
   returnId: number,
   shipmentId: number,
+  returnCustomerShippingRate: number,
   actorType: 'client' | 'operator' | 'system' = 'system',
   actorEmail?: string,
 ): Promise<void> {
   const now = new Date();
   const [updated] = await db
     .update(returns)
-    .set({ status: 'label_created', returnShipmentId: shipmentId, deliveryError: null, updatedAt: now })
+    .set({
+      status: 'label_created',
+      returnShipmentId: shipmentId,
+      returnCustomerShippingRate: returnCustomerShippingRate.toFixed(2),
+      deliveryError: null,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(returns.id, returnId),
@@ -623,6 +629,35 @@ async function markReturnLabelCreated(
     actorEmail,
     eventAt: now,
   });
+}
+
+async function resolveReturnCustomerRateForShipment(
+  shipment: OutboundShipment,
+  clientId: number | null,
+): Promise<number> {
+  const houseCost = (toNum(shipment.cost) || toNum(shipment.labelCost)) + toNum(shipment.otherCost);
+  return resolveReturnCustomerPrice(houseCost, clientId);
+}
+
+/**
+ * Transitional repair for a label-created row that predates the persisted
+ * snapshot. Migration 0044 backfills these in bulk; this compare-and-set keeps
+ * an interrupted retry deterministic without creating another carrier label.
+ */
+async function ensureReturnCustomerRateSnapshot(
+  returnRow: typeof returns.$inferSelect,
+  shipment: OutboundShipment,
+  clientId: number | null,
+): Promise<number> {
+  if (returnRow.returnCustomerShippingRate != null) {
+    return toNum(returnRow.returnCustomerShippingRate);
+  }
+  const rate = await resolveReturnCustomerRateForShipment(shipment, clientId);
+  await db
+    .update(returns)
+    .set({ returnCustomerShippingRate: rate.toFixed(2), updatedAt: new Date() })
+    .where(and(eq(returns.id, returnRow.id), sql`${returns.returnCustomerShippingRate} is null`));
+  return rate;
 }
 
 /**
@@ -684,7 +719,10 @@ export async function createReturnLabel(
         ),
       )
       .limit(1);
-    if (linked) return toClientSafeResultFromShipment(linked, clientId);
+    if (linked) {
+      const customerRate = await ensureReturnCustomerRateSnapshot(returnRow, linked, clientId);
+      return toClientSafeResultFromShipment(linked, customerRate);
+    }
   }
 
   const existingIntent =
@@ -703,13 +741,15 @@ export async function createReturnLabel(
       existingReturn.labelProviderKey === existingIntent.providerReferenceKey
     ) {
       await completeReturnLabelPurchase(existingIntent.id, existingReturn.id);
+      const customerRate = await resolveReturnCustomerRateForShipment(existingReturn, clientId);
       await markReturnLabelCreated(
         returnRow.id,
         existingReturn.id,
+        customerRate,
         input.actorType,
         input.actorEmail,
       );
-      return toClientSafeResultFromShipment(existingReturn, clientId);
+      return toClientSafeResultFromShipment(existingReturn, customerRate);
     }
     if (!input.adminOverride) {
       const err = new Error(
@@ -823,15 +863,17 @@ export async function createReturnLabel(
       createdAt,
     });
 
+    const returnCustomerShippingRate = await resolveReturnCustomerPrice(rawCost, clientId);
     await completeReturnLabelPurchase(intent.id, returnShipmentId);
     await markReturnLabelCreated(
       returnRow.id,
       returnShipmentId,
+      returnCustomerShippingRate,
       input.actorType,
       input.actorEmail,
     );
     return toClientSafeResult({
-      returnCustomerShippingRate: await resolveReturnCustomerPrice(rawCost, clientId),
+      returnCustomerShippingRate,
       trackingNumber: created.trackingNumber,
       trackingStatus: null,
       labelUrl,
@@ -858,13 +900,15 @@ export async function createReturnLabel(
           ? await loadShipmentById(purchaseAction.intent.returnShipmentId)
           : await findReturnShipmentByProviderKey(purchaseAction.intent.providerReferenceKey);
       if (!completedShipment?.isReturn) throw new ReturnLabelPurchasePendingError();
+      const customerRate = await resolveReturnCustomerRateForShipment(completedShipment, clientId);
       await markReturnLabelCreated(
         returnRow.id,
         completedShipment.id,
+        customerRate,
         input.actorType,
         input.actorEmail,
       );
-      return toClientSafeResultFromShipment(completedShipment, clientId);
+      return toClientSafeResultFromShipment(completedShipment, customerRate);
     }
 
     if (purchaseAction.kind === 'recover') {
@@ -1035,11 +1079,11 @@ export async function createReturnLabel(
     });
 
     if (returnRow) {
-      await markReturnLabelCreated(returnRow.id, returnShipmentId, input.actorType, input.actorEmail);
+      await markReturnLabelCreated(returnRow.id, returnShipmentId, 0, input.actorType, input.actorEmail);
     }
 
     return toClientSafeResult({
-      returnCustomerShippingRate: await resolveReturnCustomerPrice(0, clientId),
+      returnCustomerShippingRate: 0,
       trackingNumber: fakeTracking,
       trackingStatus: null,
       labelUrl: mockLabelUrl,

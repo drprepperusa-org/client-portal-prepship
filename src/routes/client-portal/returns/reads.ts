@@ -63,7 +63,6 @@ function registerReturnListRoute(app: Hono): void {
         returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
-        internalReturnLabelCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
       })
       .from(returns)
       .leftJoin(orders, eq(orders.id, returns.orderId))
@@ -126,7 +125,6 @@ function registerReturnDetailRoute(app: Hono): void {
         returnTrackingStatus: shipments.trackingStatus,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
-        internalReturnLabelCost: sql<string | null>`coalesce(${shipments.labelCost}, ${shipments.cost})::text`,
       })
       .from(returns)
       .leftJoin(orders, eq(orders.id, returns.orderId))

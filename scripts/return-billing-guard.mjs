@@ -131,7 +131,7 @@ assert(
   'the min-price hook tests the raw house cost (customer-visible floor), not the marked-up amount',
 );
 assert(
-  returnBlockFlat.includes('const triggerBelow = toNum(cfg.returnShippingRateOverrideTriggerBelow);') &&
+  returnBlockFlat.includes('triggerBelow: toNum(cfg.returnShippingRateOverrideTriggerBelow)') &&
     returnBlockFlat.includes('overrideAmount: toNum(cfg.returnShippingRateOverrideAmount)'),
   'the min-price hook reads the return-specific override trigger + amount from config',
 );

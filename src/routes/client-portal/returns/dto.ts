@@ -1,7 +1,6 @@
 import type { Return } from '../../../db/schema/returns';
 import type { PortalReturnRow } from '../../../lib/client-portal/contracts/returns';
 import { trackingUrlForCarrier } from '../../../lib/tracking-url';
-import { resolveReturnCustomerPrice } from '../../../services/returns';
 import { resolveReturnReference } from '../../../services/return-reference';
 import { iso } from './shared';
 
@@ -12,7 +11,6 @@ type ClientSafeReturnSource = {
   returnTracking: string | null;
   returnCarrier: string | null;
   returnLabelUrl: string | null;
-  internalReturnLabelCost: string | null;
 };
 
 /**
@@ -39,8 +37,8 @@ export async function toClientSafeReturnRow(
     trackingUrl: trackingUrlForCarrier(row.returnCarrier, row.returnTracking) || null,
     pdfAvailable: Boolean(row.returnLabelUrl),
     returnCustomerShippingRate:
-      options.includeFinancials && row.internalReturnLabelCost != null
-        ? await resolveReturnCustomerPrice(Number(row.internalReturnLabelCost), row.ret.clientId)
+      options.includeFinancials && row.ret.returnCustomerShippingRate != null
+        ? Number(row.ret.returnCustomerShippingRate)
         : null,
     createdAt: iso(row.ret.createdAt),
   };

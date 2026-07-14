@@ -21,9 +21,8 @@ import { readSourceTree } from './lib/source-tree.mjs';
 //      selectedRate(Json) / provider(Account) / carrierCode / serviceCode — and
 //      the row + label-result carry the canonical returnCustomerShippingRate.
 //   2. The returns ROUTE client-safe DTO builder returns no bare
-//      price / cost / labelCost / returnCost key; the only house-cost input is
-//      the `internal`-prefixed internalReturnLabelCost fed to
-//      resolveReturnCustomerPrice — never a returned field.
+//      price / cost / labelCost / returnCost key and reads the persisted,
+//      intent-named returnCustomerShippingRate snapshot directly.
 //   3. billing_line_items.description NEVER reaches a client-facing surface: no
 //      src/lib/client-portal read-model and no src/routes/client-portal route
 //      selects a billing-line description column. Client invoices aggregate by
@@ -140,12 +139,12 @@ assert(
   /returnCustomerShippingRate\s*:/.test(builder),
   'the client-safe return DTO returns the canonical returnCustomerShippingRate key',
 );
-// The house cost only enters as the `internal`-prefixed resolver INPUT — never a
-// returned key.
+// The read DTO consumes the frozen intent-named snapshot and never reads raw
+// shipment label/house cost or reruns pricing policy.
 assert(
-  /internalReturnLabelCost/.test(builder) &&
-    /resolveReturnCustomerPrice\(\s*Number\(row\.internalReturnLabelCost\)/.test(builder),
-  'the house cost is the internal-prefixed internalReturnLabelCost fed to resolveReturnCustomerPrice (never a returned field)',
+  /row\.ret\.returnCustomerShippingRate/.test(builder) &&
+    !/internalReturnLabelCost|resolveReturnCustomerPrice/.test(builder),
+  'the DTO reads the frozen customer return rate snapshot without raw-cost repricing',
 );
 for (const key of ['price', 'cost', 'labelCost', 'returnCost']) {
   assert(

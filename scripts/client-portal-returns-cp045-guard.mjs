@@ -174,9 +174,10 @@ for (const forbidden of ['selectedRateJson', 'selectedRate', 'labelCost', 'provi
 }
 assert(
   /returnCustomerShippingRate/.test(api) &&
-    /resolveReturnCustomerPrice/.test(route) &&
-    /resolveReturnPostageRate/.test(service),
-  'client-visible return postage is returnCustomerShippingRate from the billing return-postage policy',
+    /row\.ret\.returnCustomerShippingRate/.test(route) &&
+    /resolveReturnPostageRate/.test(service) &&
+    /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service),
+  'client-visible return postage reads the frozen billing-policy snapshot',
 );
 
 // 8. PDF download + inspection media visibility.

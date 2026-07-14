@@ -252,11 +252,12 @@ assert(
   /does not belong to this order/.test(route),
   'the create endpoint validates a supplied orderItemId belongs to the order + matches the SKU',
 );
-// CP-032: the client-facing returns price is the billing-policy amount, never
-// the raw house/label cost.
+// CP-032: list/detail reads the frozen billing-policy snapshot and never
+// recalculates from raw house/label cost.
 assert(
-  /resolveReturnCustomerPrice/.test(route),
-  'the returns DTO returnCustomerShippingRate uses the billing-policy resolveReturnCustomerPrice (never the raw label/house cost)',
+  /row\.ret\.returnCustomerShippingRate/.test(route) &&
+    !/internalReturnLabelCost|resolveReturnCustomerPrice/.test(route),
+  'the returns DTO reads the frozen returnCustomerShippingRate snapshot (never raw label/house cost)',
 );
 // The label/deliver client methods post to the backend too. Match each method's
 // definition through its apiPost call (non-greedy, across the arrow body).

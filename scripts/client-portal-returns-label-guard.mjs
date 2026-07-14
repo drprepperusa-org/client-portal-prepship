@@ -238,11 +238,13 @@ assert(
   !/function computeCustomerReturnPrice/.test(service),
   'the raw-cost pricer (computeCustomerReturnPrice) is removed in favour of the policy helper',
 );
-// Every client-price call site must pass through the policy helper with the
-// client id, never a bare raw cost.
+// Label creation computes the customer rate once, then freezes that exact value
+// on the return workflow for every downstream reader.
 assert(
-  /returnCustomerShippingRate:\s*await resolveReturnCustomerPrice\(/.test(service),
-  'the client-safe returnCustomerShippingRate is awaited from resolveReturnCustomerPrice at the call sites',
+  /const returnCustomerShippingRate = await resolveReturnCustomerPrice\(rawCost, clientId\)/.test(service) &&
+    /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service) &&
+    /returnCustomerShippingRate,\s*\n\s*trackingNumber: created\.trackingNumber/.test(service),
+  'label creation computes once and persists/returns the same frozen customer rate',
 );
 
 // ── 7. Admin-override audit path ──

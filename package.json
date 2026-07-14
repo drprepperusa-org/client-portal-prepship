@@ -111,6 +111,7 @@
     "test:client-portal-returns-cp057:integration": "tsx scripts/integration/client-portal-returns-cp057.integration.ts",
     "test:client-portal-returns-cp045": "node scripts/client-portal-returns-cp045-guard.mjs",
     "test:client-portal-returns-canonical-fields": "node scripts/client-portal-returns-canonical-fields-guard.mjs",
+    "test:client-portal-return-rate-snapshot": "node scripts/client-portal-return-rate-snapshot-guard.mjs",
     "test:client-portal-order-status": "tsx scripts/client-portal-order-status-guard.ts",
     "test:client-portal-shipping-pending": "node scripts/client-portal-shipping-pending-guard.mjs",
     "test:client-portal-returns-pdf-download": "node scripts/client-portal-returns-pdf-download-guard.mjs",

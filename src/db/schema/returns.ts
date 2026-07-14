@@ -22,13 +22,15 @@ import { locations } from './locations';
 // stays on `shipments` (isReturn = true, returnForShipmentId, labelUrl,
 // labelTracking, labelCost, cost, selectedRateJson). These tables own only the
 // return WORKFLOW/UI state and the item/inspection/media detail that shipments
-// cannot represent. Nothing here duplicates label money or tracking.
+// cannot represent. The one money field below is the frozen CUSTOMER rate at
+// label time; raw label/house cost and tracking remain owned by shipments.
 
 /**
  * Return workflow record. One row per return request for an order. The linked
  * return shipment (`returnShipmentId` → shipments.isReturn) remains the SOT for
- * the label, tracking, and cost — this row never stores those. It owns lifecycle
- * status, who started it, the return-to location, and the admin-override audit.
+ * the label, tracking, and raw cost. This row owns lifecycle status plus the
+ * customer-rate snapshot frozen at label time, who started it, the return-to
+ * location, and the admin-override audit.
  */
 export const returns = pgTable(
   'returns',
@@ -40,6 +42,10 @@ export const returns = pgTable(
     clientId: integer().references(() => clients.id),
     // Nullable until the return label is created (the label lives on shipments).
     returnShipmentId: integer().references(() => shipments.id, { onDelete: 'set null' }),
+    // Customer-visible/billable return postage frozen when the backend buys the
+    // cheapest eligible label. Both PrepShip and Client Portal read this exact
+    // snapshot; neither UI recalculates or re-ranks a rate.
+    returnCustomerShippingRate: numeric('return_customer_shipping_rate', { precision: 12, scale: 2 }),
     // Client-visible return reference, derived once from the order number:
     // 2050-RETURN, then 2050-RETURN-2, etc. Search/display only; label SOT stays
     // on shipments.

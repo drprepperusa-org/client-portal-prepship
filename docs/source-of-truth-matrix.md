@@ -1054,7 +1054,7 @@ client-safe (no carrier/service). Guards:
 | Return reference | `returnReference` | same | persisted `returns.return_reference`; legacy fallback/backfill derives `order_number + '-RETURN'` once | return workflow creation | backend-owned identity |
 | Return label PDF | `pdfUrl` | `returnLabelUrl` | `shipments.labelUrl` (never a new URL) | label time | presentation-only |
 | Label needs attention | `status` / `deliveryError` | same | `returns.status = 'label_failed'` + redaction-safe `returns.deliveryError` | latest label attempt | backend-owned-truth (CP-043) |
-| Return postage | `returnCustomerShippingRate` | same | `resolveReturnCustomerPrice` over canonical return-shipment house cost + return-specific `billing_config` policy | label cost + billing policy read | derived-from-canonical (backend-owned, CP-031/043) |
+| Return postage | `returnCustomerShippingRate` | same | persisted `returns.return_customer_shipping_rate`, frozen from `resolveReturnCustomerPrice` after cheapest eligible label selection; return billing consumes the same snapshot | return label creation | backend-owned-truth (CP-031/043) |
 | Delivery method/status | `deliveryMethod`/`deliveryStatus` | same | `returns` delivery columns (CP-028 resolver) | delivery event | backend-owned-truth (CP-028) |
 | Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
 | Inspection condition | `condition` | `condition` | `return_inspections` (6-value enum) | receiving/inspection | backend-owned-truth (CP-030) |

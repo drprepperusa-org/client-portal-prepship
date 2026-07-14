@@ -3,8 +3,9 @@
 // The return LABEL / tracking / cost SOT stays on `shipments` (isReturn +
 // returnForShipmentId + returnReason + labelUrl/labelTracking/labelCost). The
 // new returns / return_items / return_inspections / return_inspection_media
-// tables own only workflow + item + inspection + media detail and must NEVER
-// re-declare label money or tracking. This guard pins that boundary plus the
+// tables own workflow + item + inspection + media detail plus one frozen,
+// customer-visible rate snapshot. They must NEVER re-declare raw label money
+// or tracking. This guard pins that boundary plus the
 // partial-return, one-active-per-order, audited-override, and inspection/media
 // invariants, and that the additive migration was generated.
 import fs from 'node:fs';
@@ -48,7 +49,11 @@ assert(
   // Match column DECLARATIONS (identifier + colon), not the prose in this file's
   // own SOT-boundary comment that names those shipments columns.
   !/\b(labelUrl|labelTracking|labelCost|selectedRateJson)\s*:/.test(schema),
-  'the new return tables never re-declare label/tracking/cost/rate columns — that truth stays on shipments',
+  'the return tables never re-declare raw label/tracking/cost/rate columns — that truth stays on shipments',
+);
+assert(
+  /returnCustomerShippingRate:\s*numeric\('return_customer_shipping_rate'/.test(schema),
+  'returns owns the intent-named frozen customer return rate snapshot',
 );
 
 // ── The four canonical tables exist ──
@@ -126,6 +131,12 @@ assert(
   migrationSql.includes('ADD COLUMN IF NOT EXISTS "inspector_type"') &&
     migrationSql.includes("DEFAULT 'operator' NOT NULL"),
   'an additive migration records whether an inspection came from a client or operator',
+);
+assert(
+  migrationSql.includes('ADD COLUMN IF NOT EXISTS "return_customer_shipping_rate" numeric(12, 2)') &&
+    migrationSql.includes('UPDATE returns r') &&
+    migrationSql.includes('r.return_customer_shipping_rate IS NULL'),
+  'an additive migration freezes/backfills the shared customer return rate for every linked return',
 );
 
 assert(
