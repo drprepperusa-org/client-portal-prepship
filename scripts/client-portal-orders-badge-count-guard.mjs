@@ -72,8 +72,12 @@ assert(
 );
 assert(
   sidebar.includes('badge={item.to === \'/orders\' ? awaitingCount : undefined}') &&
-    bottomNav.includes("badge={item.to === '/orders' ? awaiting : 0}"),
-  'desktop sidebar and mobile bottom nav render the Orders badge from useAwaitingCount',
+    bottomNav.includes("badge={item.to === '/orders' ? awaiting : undefined}") &&
+    sidebar.includes("badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}") &&
+    bottomNav.includes("badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}") &&
+    !sidebar.includes('useAwaitingCount().data?.count ?? 0') &&
+    !bottomNav.includes('useAwaitingCount().data?.count ?? 0'),
+  'desktop sidebar and mobile bottom nav render the Orders count or an explicit unavailable state',
 );
 assert(
   pkg.scripts?.['test:client-portal-orders-badge-count'] ===
