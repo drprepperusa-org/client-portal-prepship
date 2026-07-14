@@ -96,9 +96,7 @@ for (const filePath of files) {
     if (lineCount > exceptionCeiling) {
       failures.push(`${relativePath}: ${lineCount} lines exceeds frozen baseline ${exceptionCeiling}`);
     }
-    continue;
-  }
-  if (lineCount > FILE_LIMIT) {
+  } else if (lineCount > FILE_LIMIT) {
     failures.push(`${relativePath}: ${lineCount} lines exceeds file limit ${FILE_LIMIT}`);
   }
   for (const size of functionSizes(sourceText, filePath)) {
