@@ -32,6 +32,7 @@ const {
   chooseTrackingSignal,
   lookupOfficialCarrierTracking,
 } = await import('../src/services/carrier-tracking');
+const { CircuitBreaker } = await import('../src/lib/shipstation/circuit-breaker');
 check(normalizeTrackingStatus('delivered') === 'delivered', 'normalize: delivered -> delivered');
 check(normalizeTrackingStatus('DELIVERED') === 'delivered', 'normalize: case-insensitive');
 check(normalizeTrackingStatus('in_transit') === 'in_transit', 'normalize: in_transit -> in_transit');
@@ -43,6 +44,20 @@ check(normalizeShipStationTrackingCode('SP') === 'delivered', 'ShipStation SP ->
 check(normalizeShipStationTrackingCode('AC') === 'in_transit', 'ShipStation AC -> in_transit');
 check(normalizeShipStationTrackingCode('AT') === 'attempted', 'ShipStation AT -> attempted');
 check(normalizeShipStationTrackingCode('UN') === null, 'ShipStation UN carries no signal');
+
+const expectedMissBreaker = new CircuitBreaker(1, 60_000);
+await assert.rejects(
+  expectedMissBreaker.execute(
+    async () => {
+      throw new Error('expected label miss');
+    },
+    () => false,
+  ),
+);
+check(
+  expectedMissBreaker.status.state === 'closed' && expectedMissBreaker.status.failures === 0,
+  'expected label misses do not open the ShipStation circuit breaker',
+);
 const shipStationDelivered = normalizeShipStationTrackingSnapshot({
   trackingNumber: '9434650106151099370997',
   statusCode: 'DE',
@@ -179,11 +194,16 @@ check(
 );
 
 const shipStationTracking = read('src/lib/shipstation/tracking.ts');
+const shipStationClient = read('src/lib/shipstation/client.ts');
 check(
   shipStationTracking.includes("tracking_number: normalized") &&
     shipStationTracking.includes('/track`') &&
     shipStationTracking.includes('TARGETED_TRACKING_TIMEOUT_MS'),
   'ShipStation adapter resolves missing label IDs by tracking number and bounds per-label calls',
+);
+check(
+  shipStationClient.includes('error instanceof ShipStationError && error.status === 404'),
+  'legacy label-ID 404s fall through without opening the shared circuit breaker',
 );
 
 const trackingMigration = read('drizzle/0042_targeted_shipment_tracking.sql');

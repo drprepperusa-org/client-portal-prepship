@@ -114,7 +114,7 @@ export async function ssRequest<T>(path: string, opts: RequestOpts = {}): Promis
         if (res.status === 204) return undefined as T;
         return (await res.json()) as T;
       }
-    });
+    }, (error) => !(error instanceof ShipStationError && error.status === 404));
 
   if (!opts.dedupeKey) return execute();
 
