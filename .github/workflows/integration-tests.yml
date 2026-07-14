@@ -44,6 +44,8 @@ jobs:
         run: npm run test:client-portal-integration:setup
       - name: Run client-portal integration suite
         run: npm run test:client-portal-integration
+      - name: Run CP-043 returns recovery integration suite
+        run: npm run test:client-portal-returns-cp043:integration
       - name: Run CP-048 access security integration suite
         run: npm run test:client-portal-access-security:integration
       - name: Run shopify connect integration suite

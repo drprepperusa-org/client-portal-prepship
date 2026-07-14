@@ -110,7 +110,7 @@ const invoiceTotals = {
   rowTotal: 0,
 };
 
-function responseFor(pathname, admin, capabilities = {}) {
+function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}) {
   if (pathname === '/api/client-portal/me') {
     return {
       id: admin ? 'e2e-admin' : 'e2e-client',
@@ -254,11 +254,15 @@ function responseFor(pathname, admin, capabilities = {}) {
         }],
         activity: [{ id: 1, eventType: 'return_requested', status: 'requested', detail: null, actorLabel: 'Client', eventAt: '2026-07-09T12:00:00.000Z' }],
         orderActivity: [{ id: -1, eventType: 'original_order_placed', status: 'placed', detail: null, actorLabel: 'System', eventAt: '2026-07-01T12:00:00.000Z' }],
+        ...returnOverrides,
       },
     };
   }
   if (pathname === '/api/client-portal/returns') {
-    return { data: [returnRow], pagination: { ...emptyPagination, total: 1 } };
+    return {
+      data: [{ ...returnRow, ...returnOverrides }],
+      pagination: { ...emptyPagination, total: 1 },
+    };
   }
   if (pathname === '/api/client-portal/invoice-summary') {
     return { data: [], totals: invoiceTotals, billingVisible: true };
@@ -284,7 +288,7 @@ function responseFor(pathname, admin, capabilities = {}) {
   return { data: [], pagination: emptyPagination };
 }
 
-async function setupPortal(page, { admin = true, capabilities = {} } = {}) {
+async function setupPortal(page, { admin = true, capabilities = {}, returnOverrides = {} } = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
@@ -301,7 +305,7 @@ async function setupPortal(page, { admin = true, capabilities = {} } = {}) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(responseFor(url.pathname, admin, capabilities)),
+        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides)),
       });
       return;
     }
@@ -457,6 +461,25 @@ test('charts expose summaries, data tables, day selection, and reduced motion', 
   await chart.getByLabel('View day details').selectOption(day);
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('failed return label exposes safe recovery copy and retry action', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page, {
+    returnOverrides: {
+      status: 'label_failed',
+      deliveryError: 'No return rates were returned for this shipment',
+    },
+  });
+  await page.goto(`${baseUrl}/returns`);
+  await expect(page.getByRole('table').getByText('Needs retry')).toBeVisible();
+  await page.getByRole('button', { name: 'View return E2E-RET-1' }).click();
+
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByText('Label needs attention.')).toBeVisible();
+  await expect(drawer.getByText('No return rates were returned for this shipment')).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Retry return label' })).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

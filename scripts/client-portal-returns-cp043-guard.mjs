@@ -54,6 +54,8 @@ const page = [
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
 const api = read('portal-client/src/lib/api.ts');
 const sotMatrix = read('docs/source-of-truth-matrix.md');
+const integration = read('scripts/integration/client-portal-returns-cp043.integration.ts');
+const integrationWorkflow = read('.github/workflows/integration-tests.yml');
 const pkg = JSON.parse(read('package.json'));
 
 assert(service.length > 0, 'return-label service exists');
@@ -212,6 +214,18 @@ assert(
   pkg.scripts?.['test:client-portal-returns-cp043'] ===
     'node scripts/client-portal-returns-cp043-guard.mjs',
   'package.json exposes test:client-portal-returns-cp043',
+);
+assert(
+  pkg.scripts?.['test:client-portal-returns-cp043:integration'] ===
+    'tsx scripts/integration/client-portal-returns-cp043.integration.ts' &&
+    /ReturnLabelRateUnavailableError/.test(integration) &&
+    /selectedRateJson/.test(integration) &&
+    /providerCalls/.test(integration),
+  'CP-043 has DB-backed failure, persistence, quote, and provider-call proof',
+);
+assert(
+  /npm run test:client-portal-returns-cp043:integration/.test(integrationWorkflow),
+  'hosted Postgres runs the CP-043 behavioral suite',
 );
 
 if (failed) process.exit(1);
