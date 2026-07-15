@@ -33,6 +33,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const canCustomizeTables = useCanCustomizeTables();
   const [selected, setSelected] = useState<InvoiceSelection | null>(null);
   const [detailPage, setDetailPage] = useState(1);
+  const [detailPageSize, setDetailPageSize] = useState(100);
   // CP-016: line-item sorting remains server-owned across the full filtered set.
   const [detailSort, setDetailSort] = useState<InvoiceSort>({ key: 'date', dir: 'desc' });
   // CP-008: billed shipping comes from the selected billing row, never label cost.
@@ -61,7 +62,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
     selected?.to ?? to,
     selected?.clientId ?? null,
     detailPage,
-    100,
+    detailPageSize,
     detailSort?.key,
     detailSort?.dir,
   );
@@ -127,6 +128,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           onRetry={() => { void detailQuery.refetch(); }}
           onBack={() => setSelected(null)}
           onPage={setDetailPage}
+          onPageSize={(size) => { setDetailPageSize(size); setDetailPage(1); }}
           onSortChange={(sort) => { setDetailSort(sort); setDetailPage(1); }}
           onShipmentSelect={handleShipmentSelect}
           onExport={() => {

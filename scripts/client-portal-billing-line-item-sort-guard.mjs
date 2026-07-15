@@ -88,7 +88,7 @@ assert(
 // ── Invoices owns sort state, drives the query, resets page on change ──
 assert(invoices.includes('const [detailSort, setDetailSort]'), 'Invoices owns the Billing detail sort state');
 assert(
-  invoices.includes('detailPage, 100, detailSort?.key, detailSort?.dir'),
+  invoices.includes('detailPage, detailPageSize, detailSort?.key, detailSort?.dir'),
   'Invoices passes the active sort into the paginated query',
 );
 assert(

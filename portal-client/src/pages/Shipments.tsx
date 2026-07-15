@@ -54,6 +54,7 @@ export default function Shipments() {
   const clients = useClients().data?.data ?? [];
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   // Per-page client filter (like Orders' client switcher) for fast scoping.
   // undefined = follow the global "All clients" topbar filter.
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
@@ -66,7 +67,7 @@ export default function Shipments() {
 
   useEffect(() => setPage(1), [debouncedQ, effectiveClientId, statusFilter]);
 
-  const query = useShipments({ search: debouncedQ, page, clientId: effectiveClientId, status: statusFilter || undefined });
+  const query = useShipments({ search: debouncedQ, page, pageSize, clientId: effectiveClientId, status: statusFilter || undefined });
   const canCustomizeTables = useCanCustomizeTables();
   const allRows = query.data?.data ?? [];
   const rows = allRows;
@@ -98,14 +99,17 @@ export default function Shipments() {
     const key = ids.join(',');
     if (lastTrackingKey.current === key) return;
     lastTrackingKey.current = key;
-    portalApi
-      .refreshShipmentTracking(accessToken, ids)
-      .then((res) => {
-        if (res.updated.length) query.refetch();
-      })
-      .catch(() => {
-        // Non-fatal: the table still shows the last persisted status.
-      });
+    const refreshPageTracking = async () => {
+      let changed = false;
+      for (let index = 0; index < ids.length; index += 100) {
+        const result = await portalApi.refreshShipmentTracking(accessToken, ids.slice(index, index + 100));
+        changed ||= result.updated.length > 0;
+      }
+      if (changed) await query.refetch();
+    };
+    void refreshPageTracking().catch(() => {
+      // Non-fatal: the table still shows the last persisted status.
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRows, accessToken]);
 
@@ -258,7 +262,16 @@ export default function Shipments() {
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
           />
-          {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
+          {pg && (
+            <Pagination
+              page={pg.page}
+              totalPages={pg.totalPages}
+              total={pg.total}
+              pageSize={pg.pageSize}
+              onPage={setPage}
+              onPageSize={(size) => { setPageSize(size); setPage(1); }}
+            />
+          )}
         </QueryState>
       </GlassPanel>
 

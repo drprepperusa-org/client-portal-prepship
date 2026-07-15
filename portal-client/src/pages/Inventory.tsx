@@ -88,13 +88,14 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
   const [q, setQ] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
   useEffect(() => setPage(1), [debouncedQ, lowOnly]);
 
   // Low/Out-only is filtered SERVER-side so it spans every page (not just the
   // current one) and the pager totals stay accurate.
-  const query = useInventory({ search: debouncedQ, page, lowStock: lowOnly });
+  const query = useInventory({ search: debouncedQ, page, pageSize, lowStock: lowOnly });
   const pg = query.data?.pagination;
   const rows = query.data?.data ?? [];
 
@@ -195,7 +196,16 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           emptyMessage="No inventory matches this view."
         >
           <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} />
-          {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
+          {pg && (
+            <Pagination
+              page={pg.page}
+              totalPages={pg.totalPages}
+              total={pg.total}
+              pageSize={pg.pageSize}
+              onPage={setPage}
+              onPageSize={(size) => { setPageSize(size); setPage(1); }}
+            />
+          )}
         </QueryState>
       </GlassPanel>
     </>
@@ -207,13 +217,14 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
   const [q, setQ] = useState(initialSku);
   const [type, setType] = useState<string | string[]>('all');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
   useEffect(() => setPage(1), [debouncedQ, type]);
   // Sync when an Actions→History click changes the requested SKU.
   useEffect(() => setQ(initialSku), [initialSku]);
 
-  const query = useInventoryHistory({ sku: debouncedQ || undefined, type: type === 'all' ? undefined : (type as string), page });
+  const query = useInventoryHistory({ sku: debouncedQ || undefined, type: type === 'all' ? undefined : (type as string), page, pageSize });
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
 
@@ -265,7 +276,16 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
           emptyMessage="No inventory movements for the selected filters and date range."
         >
           <DataTable tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} />
-          {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
+          {pg && (
+            <Pagination
+              page={pg.page}
+              totalPages={pg.totalPages}
+              total={pg.total}
+              pageSize={pg.pageSize}
+              onPage={setPage}
+              onPageSize={(size) => { setPageSize(size); setPage(1); }}
+            />
+          )}
         </QueryState>
       </GlassPanel>
 

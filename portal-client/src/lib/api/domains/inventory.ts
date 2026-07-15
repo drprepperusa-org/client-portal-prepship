@@ -20,6 +20,7 @@ export const inventoryApi = {
     token: string,
     opts: {
       page?: number;
+      pageSize?: number;
       sku?: string;
       type?: string;
       days?: number;
@@ -34,7 +35,7 @@ export const inventoryApi = {
       '/api/client-portal/inventory-history',
       {
         page: opts.page ?? 1,
-        pageSize: 50,
+        pageSize: opts.pageSize ?? 50,
         sku: opts.sku,
         type: opts.type,
         from: `${range.from}T00:00:00.000Z`,

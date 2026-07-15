@@ -1,8 +1,8 @@
 // Shared query-string / scope helpers for the client-portal route modules.
 // Extracted verbatim from the former single-file client-portal.ts so every
 // per-domain sub-router (src/routes/client-portal/*) parses pagination, dates,
-// ids, and scope the exact same way. Bodies are unchanged — the max=200
-// pageSize clamp, the >0 integer checks, and scopeOrResponse's return contract
+// ids, and scope the exact same way. The max=500 pageSize clamp, the >0
+// integer checks, and scopeOrResponse's return contract
 // (ClientPortalScope | Response) are load-bearing; do not "simplify" them.
 import { type Context } from 'hono';
 import { assertClientPortalScope, isClientPortalScope } from './scope';
@@ -12,7 +12,7 @@ export function parsePage(value: string | undefined, fallback = 1) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-export function parsePageSize(value: string | undefined, fallback = 25, max = 200) {
+export function parsePageSize(value: string | undefined, fallback = 25, max = 500) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, max);

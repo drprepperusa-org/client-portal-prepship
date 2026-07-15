@@ -24,6 +24,7 @@ export default function Inbound() {
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<PortalInbound | null>(null);
   const [receiptPage, setReceiptPage] = useState(1);
+  const [receiptPageSize, setReceiptPageSize] = useState(50);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -42,7 +43,7 @@ export default function Inbound() {
 
   const effectiveClientId = clientFilter ?? globalClientId;
   const query = useInbound(effectiveClientId);
-  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage);
+  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize);
   const rows = query.data?.data ?? [];
   const receiptRows = receiptQuery.data?.data ?? [];
   const receiptPagination = receiptQuery.data?.pagination;
@@ -112,6 +113,7 @@ export default function Inbound() {
               total={receiptPagination.total}
               pageSize={receiptPagination.pageSize}
               onPage={setReceiptPage}
+              onPageSize={(size) => { setReceiptPageSize(size); setReceiptPage(1); }}
             />
           )}
         </QueryState>

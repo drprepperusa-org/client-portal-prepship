@@ -67,6 +67,7 @@
     "test:rbac-permissions": "node scripts/rbac-permissions-guard.mjs",
     "test:client-store-scope": "node scripts/client-store-scope-guard.mjs",
     "test:client-portal-shipments-status": "tsx scripts/client-portal-shipments-status-guard.ts",
+    "test:client-portal-page-sizes": "node scripts/client-portal-page-sizes-guard.mjs",
     "test:client-portal-billing-item-identity": "tsx scripts/client-portal-billing-item-identity-guard.ts",
     "test:client-portal-billing-shipment-modal": "tsx scripts/client-portal-billing-shipment-modal-guard.ts",
     "test:billing-shipping-override": "tsx scripts/billing-shipping-override-guard.ts",

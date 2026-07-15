@@ -179,7 +179,7 @@ export function useShipments(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['shipments', merged.search ?? '', merged.page ?? 1, merged.status ?? 'all', merged.clientId ?? 'scope'],
+    ['shipments', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.status ?? 'all', merged.clientId ?? 'scope'],
     (t) => portalApi.shipments(t, merged),
   );
 }
@@ -194,13 +194,13 @@ export function useOrderShipments(orderId: number | null) {
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(['inventory', merged.search ?? '', merged.page ?? 1, merged.lowStock ? 'low' : 'all', merged.clientId ?? 'scope'], (t) => portalApi.inventory(t, merged));
+  return useTokenQuery(['inventory', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 100, merged.lowStock ? 'low' : 'all', merged.clientId ?? 'scope'], (t) => portalApi.inventory(t, merged));
 }
 
-export function useInventoryHistory(opts: { page?: number; sku?: string; type?: string } = {}) {
+export function useInventoryHistory(opts: { page?: number; pageSize?: number; sku?: string; type?: string } = {}) {
   const { dateRange } = usePortalFilters();
   return useTokenQuery(
-    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, dateRange.dateFrom, dateRange.dateTo],
+    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, opts.pageSize ?? 50, dateRange.dateFrom, dateRange.dateTo],
     (t) => portalApi.inventoryHistory(t, { ...opts, dateRange }),
   );
 }
@@ -213,7 +213,7 @@ export function useReturns(opts: ListOpts & { orderId?: number } = {}) {
   const { clientId } = usePortalFilters();
   const merged = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.orderId ?? 0, merged.clientId ?? 'scope'],
+    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.orderId ?? 0, merged.clientId ?? 'scope'],
     (t) => portalApi.returns(t, merged),
   );
 }

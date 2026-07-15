@@ -40,6 +40,7 @@ export default function Returns() {
   const [params] = useSearchParams();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState('');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -62,6 +63,7 @@ export default function Returns() {
   const query = useReturns({
     search: debouncedSearch,
     page,
+    pageSize,
     status: statusFilter || undefined,
     clientId: effectiveClientId,
     orderId: orderFilter,
@@ -286,6 +288,7 @@ export default function Returns() {
               total={pagination.total}
               pageSize={pagination.pageSize}
               onPage={setPage}
+              onPageSize={(size) => { setPageSize(size); setPage(1); }}
             />
           )}
         </QueryState>

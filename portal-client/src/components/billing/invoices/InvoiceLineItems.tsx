@@ -26,6 +26,7 @@ interface InvoiceLineItemsProps {
   onRetry: () => void;
   onBack: () => void;
   onPage: (page: number) => void;
+  onPageSize: (pageSize: number) => void;
   onSortChange: (sort: InvoiceSort) => void;
   onShipmentSelect: (selection: InvoiceShipmentSelection) => void;
   onExport: () => void;
@@ -99,6 +100,7 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
             total={props.pagination.total}
             pageSize={props.pagination.pageSize}
             onPage={props.onPage}
+            onPageSize={props.onPageSize}
           />
         )}
       </QueryState>

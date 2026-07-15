@@ -114,6 +114,7 @@ export default function Orders() {
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
   const [q, setQ] = useState(params.get('q') ?? '');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [selected, setSelected] = useState<PortalOrder | null>(null);
   // CP-029: "Start return" opens the create-return modal for the selected order.
   const [returnOrderId, setReturnOrderId] = useState<number | null>(null);
@@ -135,7 +136,7 @@ export default function Orders() {
 
   useEffect(() => setPage(1), [debouncedQ, tab]);
 
-  const query = useOrders({ status: tab, search: debouncedQ, page });
+  const query = useOrders({ status: tab, search: debouncedQ, page, pageSize });
   const canCustomizeTables = useCanCustomizeTables();
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
@@ -286,7 +287,16 @@ export default function Orders() {
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
           />
-          {pg && <Pagination page={pg.page} totalPages={pg.totalPages} total={pg.total} pageSize={pg.pageSize} onPage={setPage} />}
+          {pg && (
+            <Pagination
+              page={pg.page}
+              totalPages={pg.totalPages}
+              total={pg.total}
+              pageSize={pg.pageSize}
+              onPage={setPage}
+              onPageSize={(size) => { setPageSize(size); setPage(1); }}
+            />
+          )}
         </QueryState>
       </GlassPanel>
 
