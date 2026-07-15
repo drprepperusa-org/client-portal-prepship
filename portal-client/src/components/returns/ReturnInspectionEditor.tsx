@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { type DragEvent, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Camera, PackageCheck, X } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -45,8 +45,10 @@ export function ReturnInspectionEditor({
   const [receivedAt, setReceivedAt] = useState(() => toLocalInput(new Date()));
   const [comments, setComments] = useState('');
   const [media, setMedia] = useState<CapturedMedia[]>([]);
+  const [isDraggingMedia, setIsDraggingMedia] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedInspectionId, setSavedInspectionId] = useState<number | null>(null);
+  const mediaInputDisabled = saving || savedInspectionId != null;
   const canSave = useMemo(
     () => Boolean(accessToken && receivedAt) && !saving,
     [accessToken, receivedAt, saving],
@@ -87,6 +89,26 @@ export function ReturnInspectionEditor({
       );
     }
     setMedia((current) => [...current, ...next]);
+  }
+
+  function allowFileDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    if (mediaInputDisabled) return;
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDraggingMedia(true);
+  }
+
+  function leaveFileDrop(event: DragEvent<HTMLLabelElement>) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+    setIsDraggingMedia(false);
+  }
+
+  function dropFiles(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDraggingMedia(false);
+    if (mediaInputDisabled) return;
+    captureFiles(event.dataTransfer.files);
   }
 
   async function submit() {
@@ -201,20 +223,29 @@ export function ReturnInspectionEditor({
         <span className="mb-1 block text-xs font-medium text-ink-2">Pictures or video (optional)</span>
         <p className="mb-2 text-xs text-ink-3">Images up to 15 MB. Videos up to 25 MB.</p>
         <label
+          onDragEnter={allowFileDrop}
+          onDragOver={allowFileDrop}
+          onDragLeave={leaveFileDrop}
+          onDrop={dropFiles}
+          aria-disabled={mediaInputDisabled}
           className={
             'focus-within:ring-2 focus-within:ring-brand-400 flex min-h-12 cursor-pointer items-center ' +
-            'justify-center gap-2 rounded-glass-sm border border-dashed border-slate-300 bg-white/70 ' +
-            'px-3 py-3 text-sm font-medium text-ink-2 hover:bg-white'
+            'justify-center gap-2 rounded-glass-sm border border-dashed px-3 py-3 text-sm font-medium ' +
+            'transition-colors ' +
+            (isDraggingMedia
+              ? 'border-brand-500 bg-brand-50 text-brand-700 ring-2 ring-brand-200'
+              : 'border-slate-300 bg-white/70 text-ink-2 hover:bg-white')
           }
         >
-          <Camera size={18} /> Add pictures or video
+          <Camera size={18} />
+          {isDraggingMedia ? 'Drop pictures or video here' : 'Drag and drop, or click to add pictures or video'}
           <input
             type="file"
             accept="image/*,video/*"
             capture="environment"
             multiple
             className="sr-only"
-            disabled={saving || savedInspectionId != null}
+            disabled={mediaInputDisabled}
             onChange={(event) => {
               captureFiles(event.target.files);
               event.target.value = '';

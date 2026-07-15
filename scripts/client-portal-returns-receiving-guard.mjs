@@ -273,6 +273,12 @@ assert(
     /VIDEO_MAX_BYTES\s*=\s*25\s*\*\s*1024\s*\*\s*1024/.test(receivingUiCode),
   'the client validates 15 MB photos and 25 MB videos before upload',
 );
+assert(
+  /onDragOver=\{allowFileDrop\}/.test(receivingUiCode) &&
+    /onDrop=\{dropFiles\}/.test(receivingUiCode) &&
+    /captureFiles\(event\.dataTransfer\.files\)/.test(receivingUiCode),
+  'the inspection media picker supports drag-and-drop through the validated captureFiles path',
+);
 // The 6 condition values are offered in the form.
 for (const cond of CONDITIONS) {
   assert(new RegExp(`'${cond}'`).test(receivingUiCode), `the inspection form offers the '${cond}' condition`);
