@@ -16,6 +16,7 @@ import { ReturnHistoryTimeline } from './ReturnHistoryTimeline';
 import { ReturnInspectionEditor } from './ReturnInspectionEditor';
 import { ReturnInspectionHistory } from './ReturnInspectionHistory';
 import { RETURN_DELIVERY_LABEL, returnStatusMeta } from './returnPresentation';
+import { field } from '@/components/inbound/shared';
 
 export function ReturnDetailDrawer({ id, onClose }: {
   id: number | null;
@@ -28,8 +29,38 @@ export function ReturnDetailDrawer({ id, onClose }: {
   const detail = query.data?.data;
   const [tab, setTab] = useState<ReturnDrawerTab>('overview');
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const [returnRecipientName, setReturnRecipientName] = useState('');
+  const [savingRecipientName, setSavingRecipientName] = useState(false);
 
   useEffect(() => setTab('overview'), [id]);
+  useEffect(() => {
+    if (!detail) return;
+    const canEdit = detail.status === 'requested' || detail.status === 'label_failed';
+    setReturnRecipientName(
+      detail.returnRecipientName
+      ?? (canEdit ? detail.clientName : null)
+      ?? 'DR PREPPER LLC',
+    );
+  }, [detail]);
+
+  async function saveRecipientName() {
+    const savedName = returnRecipientName.trim();
+    if (!accessToken || id == null || savingRecipientName || !savedName) return;
+    setSavingRecipientName(true);
+    try {
+      await portalApi.updateReturnRecipientName(accessToken, id, { returnRecipientName: savedName });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['returns'] }),
+        queryClient.invalidateQueries({ queryKey: ['return', id] }),
+      ]);
+      await query.refetch();
+      toast.success('Recipient saved', 'The saved name will be used when the return label is created.');
+    } catch (error) {
+      toast.error('Could not save recipient', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setSavingRecipientName(false);
+    }
+  }
 
   async function createLabel() {
     if (!accessToken || id == null || creatingLabel) return;
@@ -74,7 +105,17 @@ export function ReturnDetailDrawer({ id, onClose }: {
           </div>
           {tab === 'overview' && (
             <section id="return-panel-overview" role="tabpanel" aria-labelledby="return-tab-overview">
-              <ReturnOverview detail={detail} creatingLabel={creatingLabel} accessToken={accessToken} onCreateLabel={createLabel} onClose={onClose} />
+              <ReturnOverview
+                detail={detail}
+                creatingLabel={creatingLabel}
+                accessToken={accessToken}
+                returnRecipientName={returnRecipientName}
+                savingRecipientName={savingRecipientName}
+                onReturnRecipientNameChange={setReturnRecipientName}
+                onSaveRecipientName={saveRecipientName}
+                onCreateLabel={createLabel}
+                onClose={onClose}
+              />
             </section>
           )}
           {tab === 'inspection' && (
@@ -94,16 +135,31 @@ export function ReturnDetailDrawer({ id, onClose }: {
   );
 }
 
-function ReturnOverview({ detail, creatingLabel, accessToken, onCreateLabel, onClose }: {
+function ReturnOverview({
+  detail,
+  creatingLabel,
+  accessToken,
+  returnRecipientName,
+  savingRecipientName,
+  onReturnRecipientNameChange,
+  onSaveRecipientName,
+  onCreateLabel,
+  onClose,
+}: {
   detail: PortalReturnDetail;
   creatingLabel: boolean;
   accessToken: string | null;
+  returnRecipientName: string;
+  savingRecipientName: boolean;
+  onReturnRecipientNameChange: (value: string) => void;
+  onSaveRecipientName: () => void;
   onCreateLabel: () => void;
   onClose: () => void;
 }) {
   const toast = useToast();
   const labelFailed = detail.status === 'label_failed';
   const canCreateLabel = detail.status === 'requested' || labelFailed;
+  const recipientNameDirty = returnRecipientName.trim() !== (detail.returnRecipientName ?? '').trim();
   const pdfHref = detail.pdfUrl ? (detail.pdfUrl.startsWith('http') ? detail.pdfUrl : `${API_BASE}${detail.pdfUrl}`) : null;
   const orderLabel = detail.orderNumber ?? (detail.orderId ? `#${detail.orderId}` : '—');
   const orderHref = `/orders?q=${encodeURIComponent(detail.orderNumber ?? String(detail.orderId ?? ''))}&tab=all`;
@@ -119,6 +175,34 @@ function ReturnOverview({ detail, creatingLabel, accessToken, onCreateLabel, onC
         <DetailField label="Created" value={shortDate(detail.createdAt)} />
         {detail.returnCustomerShippingRate != null && <DetailField label="Return postage" value={money(detail.returnCustomerShippingRate)} />}
       </div>
+
+      {canCreateLabel ? (
+        <div className="space-y-2 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+          <label className="text-xs font-semibold uppercase tracking-wide text-ink-3" htmlFor="return-recipient-name">
+            Return label recipient
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              id="return-recipient-name"
+              className={field}
+              value={returnRecipientName}
+              onChange={(event) => onReturnRecipientNameChange(event.target.value)}
+              maxLength={120}
+              placeholder="Recipient or shipper name"
+            />
+            <Button
+              variant="secondary"
+              onClick={onSaveRecipientName}
+              disabled={savingRecipientName || !returnRecipientName.trim() || !recipientNameDirty}
+            >
+              {savingRecipientName ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+          <p className="text-xs text-ink-3">Save this name before creating or retrying the label.</p>
+        </div>
+      ) : (
+        <DetailField label="Return recipient" value={detail.returnRecipientName ?? 'DR PREPPER LLC'} />
+      )}
 
       <Link
         to={orderHref}
@@ -184,7 +268,7 @@ function ReturnOverview({ detail, creatingLabel, accessToken, onCreateLabel, onC
             <Button
               leadingIcon={<PackageCheck size={16} />}
               onClick={onCreateLabel}
-              disabled={creatingLabel || !accessToken}
+              disabled={creatingLabel || !accessToken || recipientNameDirty}
             >
               {creatingLabel ? 'Creating label...' : labelFailed ? 'Retry return label' : 'Create return label'}
             </Button>

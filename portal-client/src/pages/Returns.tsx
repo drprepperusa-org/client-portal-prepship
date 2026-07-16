@@ -106,6 +106,36 @@ export default function Returns() {
         sortAccessor: (row) => row.clientName ?? '',
       },
       {
+        key: 'recipientName',
+        header: 'Recipient',
+        defaultWidth: 170,
+        render: (row) => (
+          <span className="block truncate text-sm font-medium text-ink" title={row.recipientName ?? ''}>
+            {row.recipientName ?? '—'}
+          </span>
+        ),
+        sortAccessor: (row) => row.recipientName ?? '',
+      },
+      {
+        key: 'returnedSkus',
+        header: 'SKU',
+        defaultWidth: 190,
+        render: (row) => (
+          <span className="block truncate font-mono text-xs text-ink-2" title={row.returnedSkus.join(', ')}>
+            {row.returnedSkus.length ? row.returnedSkus.join(', ') : '—'}
+          </span>
+        ),
+        sortAccessor: (row) => row.returnedSkus.join(', '),
+      },
+      {
+        key: 'returnedQuantity',
+        header: 'Qty',
+        defaultWidth: 80,
+        className: 'text-right',
+        render: (row) => <span className="font-semibold text-ink tnum">{row.returnedQuantity}</span>,
+        sortAccessor: (row) => row.returnedQuantity,
+      },
+      {
         key: 'status',
         header: 'Status',
         defaultWidth: 130,

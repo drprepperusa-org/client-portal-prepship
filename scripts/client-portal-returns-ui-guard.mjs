@@ -221,19 +221,23 @@ assert(
   /quantity/.test(createModal) && /items/.test(createModal),
   'the create-return modal collects per-item return quantities and sends them as items',
 );
-// CP-045 acceptance: the create-return modal shows the fixed DRP destination
-// and must not let a client choose or submit a return-to location.
+// CP-045 acceptance: the create-return modal shows the fixed warehouse destination,
+// saves its editable recipient name, and does not expose a return-to location selector.
 assert(
   !/returnToLocationId|useReturnLocations|<select/.test(createModalCode),
   'the create-return modal does not expose or submit a return-to location selector',
 );
 assert(
-  /DR PREPPER LLC/.test(createModal) && /413 W Walnut St/.test(createModal) && /Gardena, CA 90248/.test(createModal),
-  'the create-return modal displays the fixed DRP return destination',
+  /Return label recipient/.test(createModal) &&
+    /returnRecipientName/.test(createModal) &&
+    /Save & create return label/.test(createModal) &&
+    /413 W Walnut St/.test(createModal) &&
+    /Gardena, CA 90248/.test(createModal),
+  'the create-return modal saves an editable recipient at the fixed warehouse destination',
 );
 assert(
-  !/returnToLocationId\?:/.test(api),
-  'NewReturnInput does not accept returnToLocationId from the client',
+  !/returnToLocationId\?:/.test(api) && /returnRecipientName:\s*string;/.test(api),
+  'NewReturnInput accepts the saved recipient name but no return-to location selection',
 );
 assert(
   /returnReference:\s*string;/.test(api) &&

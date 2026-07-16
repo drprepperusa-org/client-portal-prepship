@@ -11,6 +11,9 @@ type ClientSafeReturnSource = {
   returnTracking: string | null;
   returnCarrier: string | null;
   returnLabelUrl: string | null;
+  returnedSkus: string[];
+  returnedQuantity: number;
+  recipientName: string | null;
 };
 
 /**
@@ -40,6 +43,10 @@ export async function toClientSafeReturnRow(
       options.includeFinancials && row.ret.returnCustomerShippingRate != null
         ? Number(row.ret.returnCustomerShippingRate)
         : null,
+    returnedSkus: row.returnedSkus,
+    returnedQuantity: Number(row.returnedQuantity) || 0,
+    recipientName: row.recipientName,
+    returnRecipientName: row.ret.returnRecipientName,
     createdAt: iso(row.ret.createdAt),
   };
 }

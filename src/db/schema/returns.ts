@@ -50,6 +50,9 @@ export const returns = pgTable(
     // 2050-RETURN, then 2050-RETURN-2, etc. Search/display only; label SOT stays
     // on shipments.
     returnReference: text('return_reference'),
+    // Recipient/attention name printed at the fixed return warehouse address.
+    // Saved before label purchase so retries use the same explicit value.
+    returnRecipientName: text('return_recipient_name'),
     // Legacy workflow metadata. CP-045 labels always ship to the fixed DRP
     // return address; new requests leave this unset.
     returnToLocationId: integer().references(() => locations.id),

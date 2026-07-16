@@ -7,9 +7,10 @@ import type {
   PortalReturnRow,
   ReturnDeliveryResult,
   ReturnLabelResult,
+  UpdateReturnRecipientNameInput,
 } from '@client-portal-contracts/returns';
 import { scopedList } from '../scope';
-import { apiGet, apiPost, apiUpload } from '../transport';
+import { apiGet, apiPatch, apiPost, apiUpload } from '../transport';
 
 export const returnsApi = {
   returns: (token: string, opts: ListOpts & { orderId?: number } = {}) =>
@@ -25,6 +26,12 @@ export const returnsApi = {
     apiGet<{ data: PortalReturnDetail }>(token, `/api/client-portal/returns/${id}`),
   createReturn: (token: string, body: NewReturnInput) =>
     apiPost<{ data: { id: number; status: string } }>(token, '/api/client-portal/returns', body),
+  updateReturnRecipientName: (token: string, id: number, body: UpdateReturnRecipientNameInput) =>
+    apiPatch<{ data: { id: number; returnRecipientName: string } }>(
+      token,
+      `/api/client-portal/returns/${id}/recipient-name`,
+      body,
+    ),
   createReturnLabel: (token: string, id: number) =>
     apiPost<{ data: ReturnLabelResult }>(token, `/api/client-portal/returns/${id}/label`),
   deliverReturn: (token: string, id: number) =>

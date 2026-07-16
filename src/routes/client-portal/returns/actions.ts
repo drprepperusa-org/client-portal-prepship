@@ -20,6 +20,21 @@ import {
 } from '../../../services/returns';
 import { buildReturnReference, returnScopePredicate } from './shared';
 
+const DEFAULT_RETURN_RECIPIENT_NAME = 'DR PREPPER LLC';
+
+function returnRecipientNameFromOrder(raw: unknown, clientName: string | null): string {
+  const record = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {};
+  const shipFrom = record.shipFrom && typeof record.shipFrom === 'object' && !Array.isArray(record.shipFrom)
+    ? record.shipFrom as Record<string, unknown>
+    : {};
+  for (const value of [shipFrom.name, shipFrom.company, clientName]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return DEFAULT_RETURN_RECIPIENT_NAME;
+}
+
 function registerReturnCreateRoute(app: Hono): void {
   app.post('/returns', async (c) => {
     const scope = scopeOrResponse(c);
@@ -28,6 +43,7 @@ function registerReturnCreateRoute(app: Hono): void {
     const body = (await c.req.json().catch(() => ({}))) as {
       orderId?: number;
       reason?: string;
+      returnRecipientName?: string;
       items?: Array<{ sku?: string; name?: string; quantity?: number; orderItemId?: number }>;
     };
     const orderId = typeof body.orderId === 'number' ? body.orderId : null;
@@ -40,21 +56,36 @@ function registerReturnCreateRoute(app: Hono): void {
         storeId: orders.storeId,
         orderStatus: orders.orderStatus,
         orderNumber: orders.orderNumber,
+        raw: orders.raw,
+        clientName: clients.name,
       })
       .from(orders)
+      .leftJoin(clients, eq(clients.id, orders.clientId))
       .where(and(eq(orders.id, orderId), orderScopePredicate(scope) ?? sql`true`))
       .limit(1);
     if (!order) return c.json({ error: 'Order not found or outside your access scope' }, 404);
 
     let clientId = order.clientId ?? null;
+    let clientName = order.clientName ?? null;
     if (clientId == null && order.storeId != null) {
       const [match] = await db
-        .select({ id: clients.id })
+        .select({ id: clients.id, name: clients.name })
         .from(clients)
         .where(sql`${clients.storeIds} @> ${[order.storeId]}::integer[]`)
         .limit(1);
       clientId = match?.id ?? null;
+      clientName = match?.name ?? clientName;
     }
+
+    const requestedRecipientName = body.returnRecipientName?.trim();
+    if (body.returnRecipientName != null && !requestedRecipientName) {
+      return c.json({ error: 'Return recipient name is required' }, 400);
+    }
+    if (requestedRecipientName && requestedRecipientName.length > 120) {
+      return c.json({ error: 'Return recipient name must be 120 characters or fewer' }, 400);
+    }
+    const returnRecipientName = requestedRecipientName
+      ?? returnRecipientNameFromOrder(order.raw, clientName);
 
     const initiatedBy = scope.isGlobal ? 'three_pl' : 'client';
     const returnReference = await buildReturnReference(orderId, order.orderNumber);
@@ -116,6 +147,7 @@ function registerReturnCreateRoute(app: Hono): void {
           initiatedBy,
           initiatedByEmail: scope.email ?? null,
           reason: body.reason?.trim() || null,
+          returnRecipientName,
         })
         .returning();
       created = row!;
@@ -153,6 +185,37 @@ function registerReturnCreateRoute(app: Hono): void {
       initiatedBy,
     });
     return c.json({ data: { id: created.id, status: created.status } }, 201);
+  });
+}
+
+function registerReturnRecipientNameRoute(app: Hono): void {
+  app.patch('/returns/:id{[0-9]+}/recipient-name', async (c) => {
+    const scope = scopeOrResponse(c);
+    if (!isClientPortalScope(scope)) return scope;
+    const id = Number(c.req.param('id'));
+    const body = (await c.req.json().catch(() => ({}))) as { returnRecipientName?: string };
+    const returnRecipientName = body.returnRecipientName?.trim() ?? '';
+    if (!returnRecipientName) return c.json({ error: 'Return recipient name is required' }, 400);
+    if (returnRecipientName.length > 120) {
+      return c.json({ error: 'Return recipient name must be 120 characters or fewer' }, 400);
+    }
+
+    const [ret] = await db
+      .select({ id: returns.id, returnShipmentId: returns.returnShipmentId })
+      .from(returns)
+      .where(and(eq(returns.id, id), returnScopePredicate(scope)))
+      .limit(1);
+    if (!ret) return c.json({ error: 'Return not found' }, 404);
+    if (ret.returnShipmentId != null) {
+      return c.json({ error: 'The return recipient cannot be changed after the label is created.' }, 409);
+    }
+
+    await db
+      .update(returns)
+      .set({ returnRecipientName, updatedAt: new Date() })
+      .where(eq(returns.id, id));
+    await recordPortalAudit('portal.returns.recipient_name.update', scope, { returnId: id });
+    return c.json({ data: { id, returnRecipientName } });
   });
 }
 
@@ -244,6 +307,7 @@ function registerReturnDeliveryRoute(app: Hono): void {
 
 export function registerReturnActionRoutes(app: Hono): void {
   registerReturnCreateRoute(app);
+  registerReturnRecipientNameRoute(app);
   registerReturnLabelRoute(app);
   registerReturnDeliveryRoute(app);
 }

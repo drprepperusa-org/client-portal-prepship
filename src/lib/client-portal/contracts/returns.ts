@@ -14,6 +14,14 @@ export interface PortalReturnRow {
   trackingUrl: string | null;
   pdfAvailable: boolean;
   returnCustomerShippingRate: number | null;
+  /** Canonical return_items SKUs, in return-line order. */
+  returnedSkus: string[];
+  /** Sum of canonical return_items.quantity for this return. */
+  returnedQuantity: number;
+  /** Original order recipient from orders.raw.shipTo.name / ship_to_name. */
+  recipientName: string | null;
+  /** Saved recipient/attention name printed at the fixed return address. */
+  returnRecipientName: string | null;
   createdAt: string | null;
 }
 
@@ -92,7 +100,12 @@ export interface ReturnDeliveryResult {
 export interface NewReturnInput {
   orderId: number;
   reason?: string;
+  returnRecipientName: string;
   items: Array<{ sku: string; name?: string; quantity: number; orderItemId?: number }>;
+}
+
+export interface UpdateReturnRecipientNameInput {
+  returnRecipientName: string;
 }
 
 export interface PortalReturnReceivingRow extends Pick<

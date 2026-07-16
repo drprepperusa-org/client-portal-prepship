@@ -63,6 +63,20 @@ function registerReturnListRoute(app: Hono): void {
         returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
+        returnedSkus: sql<string[]>`coalesce((
+          select array_agg(ri.sku order by ri.id)
+          from return_items ri
+          where ri.return_id = ${returns.id}
+        ), array[]::text[])`,
+        returnedQuantity: sql<number>`coalesce((
+          select sum(ri.quantity)::double precision
+          from return_items ri
+          where ri.return_id = ${returns.id}
+        ), 0)`,
+        recipientName: sql<string | null>`coalesce(
+          nullif(btrim(${orders.raw}->'shipTo'->>'name'), ''),
+          nullif(btrim(${orders.shipToName}), '')
+        )`,
       })
       .from(returns)
       .leftJoin(orders, eq(orders.id, returns.orderId))
@@ -125,6 +139,20 @@ function registerReturnDetailRoute(app: Hono): void {
         returnTrackingStatus: shipments.trackingStatus,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
+        returnedSkus: sql<string[]>`coalesce((
+          select array_agg(ri.sku order by ri.id)
+          from return_items ri
+          where ri.return_id = ${returns.id}
+        ), array[]::text[])`,
+        returnedQuantity: sql<number>`coalesce((
+          select sum(ri.quantity)::double precision
+          from return_items ri
+          where ri.return_id = ${returns.id}
+        ), 0)`,
+        recipientName: sql<string | null>`coalesce(
+          nullif(btrim(${orders.raw}->'shipTo'->>'name'), ''),
+          nullif(btrim(${orders.shipToName}), '')
+        )`,
       })
       .from(returns)
       .leftJoin(orders, eq(orders.id, returns.orderId))

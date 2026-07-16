@@ -1,6 +1,6 @@
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 import { readSourceTree } from './lib/source-tree.mjs';
-// CP-045 - Return labels use PrepShip best rate, fixed DRP return address,
+// CP-045 - Return labels use PrepShip best rate, fixed DRP return address with a saved recipient name,
 // exact outbound physical facts, safe package fallback, persisted return reference, and client-safe
 // inspection/download visibility.
 import fs from 'node:fs';
@@ -60,7 +60,8 @@ const pkg = JSON.parse(read('package.json'));
 assert(service.length > 0, 'src/services/returns.ts exists');
 assert(route.length > 0, 'src/routes/client-portal/returns.ts exists');
 
-// 1. Fixed return-to address: every label ships TO DR PREPPER LLC in Gardena.
+// 1. Fixed return-to address: every label ships to the Gardena warehouse while
+// the saved return recipient/attention name remains editable before purchase.
 assert(
   /DRP_RETURN_TO_ADDRESS/.test(service),
   'return-label service defines one fixed DRP return-to address owner',
@@ -69,8 +70,11 @@ for (const value of ['DR PREPPER LLC', '413 W Walnut St', 'Gardena', 'CA', '9024
   assert(service.includes(value), `fixed DRP return-to address includes ${value}`);
 }
 assert(
-  /const shipTo = DRP_RETURN_TO_ADDRESS/.test(service),
-  'createReturnLabel uses the fixed DRP return-to address as shipTo',
+  /returnRow\?\.returnRecipientName\?\.trim\(\)/.test(service) &&
+    /\.\.\.DRP_RETURN_TO_ADDRESS/.test(service) &&
+    /name:\s*returnRecipientName/.test(service) &&
+    /company:\s*returnRecipientName/.test(service),
+  'createReturnLabel combines the fixed DRP address with the persisted recipient name',
 );
 assert(
   !/locationToAddress\(|getDefaultLocation\(|returnRow\?\.returnToLocationId/.test(service),
@@ -116,9 +120,9 @@ assert(
   'return shipment persists exact outbound weight/dims/package facts',
 );
 assert(
-  /packageCode:\s*outbound\.selectedPackageId \|\| 'package'/.test(service) &&
+  /packageCode:\s*'package'/.test(service) &&
     /selectedPackageId:\s*string \| null/.test(service),
-  'live label purchase uses saved package code or generic package for legacy dimensioned shipments',
+  'live label purchase uses the generic ShipStation package protocol code',
 );
 
 // 4. Best-rate selection remains backend-only and cheapest eligible.
@@ -160,12 +164,39 @@ assert(
   'create-return modal does not expose a return-to location selector',
 );
 assert(
-  /DR PREPPER LLC/.test(createModal) && /413 W Walnut St/.test(createModal),
-  'create-return modal tells users the fixed DRP return destination',
+  /Return label recipient/.test(createModal) &&
+    /returnRecipientName/.test(createModal) &&
+    /Save & create return label/.test(createModal) &&
+    /413 W Walnut St/.test(createModal),
+  'create-return modal saves an editable recipient while showing the fixed warehouse destination',
 );
 assert(
-  !/returnToLocationId\?:/.test(api),
-  'NewReturnInput no longer accepts returnToLocationId from the client',
+  !/returnToLocationId\?:/.test(api) && /returnRecipientName:\s*string;/.test(api),
+  'NewReturnInput accepts the saved recipient name but no selectable return-to location',
+);
+
+assert(
+  /returnRecipientName/.test(schema) && /return_recipient_name/.test(migrations),
+  'returns schema and additive migration persist the return-label recipient name',
+);
+assert(
+  /app\.patch\('\/returns\/:id\{\[0-9\]\+\}\/recipient-name'/.test(route) &&
+    /returnScopePredicate/.test(route) &&
+    /portal\.returns\.recipient_name\.update/.test(route) &&
+    /returnShipmentId/.test(route),
+  'recipient-name save endpoint is scoped, audited, and blocks edits after label purchase',
+);
+assert(
+  /returnedSkus:\s*string\[\]/.test(api) &&
+    /returnedQuantity:\s*number/.test(api) &&
+    /recipientName:\s*string \| null/.test(api) &&
+    /returnedSkus/.test(route) &&
+    /returnedQuantity/.test(route) &&
+    /recipientName/.test(route) &&
+    /header:\s*'Recipient'/.test(returnsPage) &&
+    /header:\s*'SKU'/.test(returnsPage) &&
+    /header:\s*'Qty'/.test(returnsPage),
+  'returns table reads canonical recipient, SKU, and quantity facts from the backend DTO',
 );
 
 // 7. Client-safe redaction and customer-facing postage remain intact.

@@ -18,7 +18,8 @@ import { field, Labeled } from '@/components/inbound/shared';
  * REDACTION / AUTHORITY BOUNDARY: this form renders the backend order DTO only.
  * It does NOT compute rates, choose a carrier/cheapest, price the return, or make
  * duplicate/override decisions — the backend owns all of that (CP-027/028).
- * CP-045 return labels always go to DR PREPPER LLC in Gardena.
+ * CP-045 keeps the Gardena return address fixed. The recipient/attention name
+ * is editable and persisted by the backend before label purchase.
  */
 export function ReturnCreateModal({
   open,
@@ -38,6 +39,7 @@ export function ReturnCreateModal({
   const items = order.data?.data.items ?? [];
 
   const [reason, setReason] = useState('');
+  const [returnRecipientName, setReturnRecipientName] = useState('');
   // Per-item requested return quantity, keyed by the item's index in the order.
   const [qtys, setQtys] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
@@ -47,8 +49,9 @@ export function ReturnCreateModal({
     if (open) {
       setReason('');
       setQtys({});
+      setReturnRecipientName(order.data?.data.clientName?.trim() ?? '');
     }
-  }, [open, orderId]);
+  }, [open, orderId, order.data?.data.clientName]);
 
   const selectedCount = useMemo(
     () => Object.values(qtys).filter((v) => Number(v) > 0).length,
@@ -75,11 +78,17 @@ export function ReturnCreateModal({
       toast.error('Nothing to return', 'Enter a return quantity for at least one item.');
       return;
     }
+    const savedRecipientName = returnRecipientName.trim();
+    if (!savedRecipientName) {
+      toast.error('Recipient name required', 'Enter the name to print at the return destination.');
+      return;
+    }
     setSaving(true);
     try {
       const res = await portalApi.createReturn(accessToken, {
         orderId,
         reason: reason.trim() || undefined,
+        returnRecipientName: savedRecipientName,
         items: chosen,
       });
       const returnId = res.data.id;
@@ -172,10 +181,21 @@ export function ReturnCreateModal({
             </div>
           </div>
 
-          <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Return destination</p>
-            <p className="mt-1 text-sm font-semibold text-ink">DR PREPPER LLC</p>
-            <p className="text-sm text-ink-2">413 W Walnut St, Gardena, CA 90248</p>
+          <div className="space-y-2 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+            <Labeled label="Return label recipient">
+              <input
+                className={field}
+                value={returnRecipientName}
+                onChange={(event) => setReturnRecipientName(event.target.value)}
+                maxLength={120}
+                placeholder="Recipient or shipper name"
+                aria-label="Return label recipient name"
+              />
+            </Labeled>
+            <p className="text-xs text-ink-3">
+              Saved with this return before label purchase. The destination address remains
+              413 W Walnut St, Gardena, CA 90248.
+            </p>
           </div>
           <Labeled label="Reason (optional)">
             <textarea
@@ -190,8 +210,8 @@ export function ReturnCreateModal({
             <span className="text-xs text-ink-3">{selectedCount} item{selectedCount === 1 ? '' : 's'} selected</span>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={onClose}>Cancel</Button>
-              <Button leadingIcon={<Undo2 size={16} />} onClick={submit} disabled={saving || selectedCount === 0}>
-                {saving ? 'Creating label…' : 'Create return & label'}
+              <Button leadingIcon={<Undo2 size={16} />} onClick={submit} disabled={saving || selectedCount === 0 || !returnRecipientName.trim()}>
+                {saving ? 'Saving & creating label…' : 'Save & create return label'}
               </Button>
             </div>
           </div>

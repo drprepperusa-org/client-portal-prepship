@@ -121,6 +121,8 @@ type ReturnLabelFailureDiagnostics = {
   returnLabelRatePolicy: ReturnRatePolicy['returnLabelRatePolicy'];
 };
 
+// The warehouse address is fixed. The recipient/attention name is copied from
+// returns.return_recipient_name below so each label uses its saved client value.
 const DRP_RETURN_TO_ADDRESS: ShipstationAddressInput = {
   name: 'DR PREPPER LLC',
   company: 'DR PREPPER LLC',
@@ -786,7 +788,12 @@ export async function createReturnLabel(
 
   const shipFrom = orderShipToFromRaw(order);
   assertAddressComplete(shipFrom, 'ship-from (customer)');
-  const shipTo = DRP_RETURN_TO_ADDRESS;
+  const returnRecipientName = returnRow?.returnRecipientName?.trim() || DRP_RETURN_TO_ADDRESS.name!;
+  const shipTo: ShipstationAddressInput = {
+    ...DRP_RETURN_TO_ADDRESS,
+    name: returnRecipientName,
+    company: returnRecipientName,
+  };
   assertAddressComplete(shipTo, 'ship-to (DRP return address)');
 
   const createdAt = new Date();
