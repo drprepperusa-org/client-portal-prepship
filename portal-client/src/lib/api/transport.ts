@@ -68,9 +68,15 @@ export async function apiText(
   return response.text();
 }
 
-async function apiSend<T>(method: string, token: string, path: string, body: unknown = {}): Promise<T> {
+async function apiSend<T>(
+  method: string,
+  token: string,
+  path: string,
+  body: unknown = {},
+  timeoutMs = TIMEOUT_MS,
+): Promise<T> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       method,
@@ -89,8 +95,8 @@ async function apiSend<T>(method: string, token: string, path: string, body: unk
   }
 }
 
-export const apiPost = <T>(token: string, path: string, body: unknown = {}) =>
-  apiSend<T>('POST', token, path, body);
+export const apiPost = <T>(token: string, path: string, body: unknown = {}, timeoutMs = TIMEOUT_MS) =>
+  apiSend<T>('POST', token, path, body, timeoutMs);
 export const apiPatch = <T>(token: string, path: string, body: unknown = {}) =>
   apiSend<T>('PATCH', token, path, body);
 export const apiPut = <T>(token: string, path: string, body: unknown = {}) =>

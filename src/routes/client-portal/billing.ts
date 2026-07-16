@@ -9,6 +9,7 @@ import { billingSummary } from '../../services/billing-summaries';
 import { listMarkupCarrierGroups } from '../../services/rates';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
+import { env } from '../../lib/env';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { requestedClientId, scopeOrResponse } from '../../lib/client-portal/query-params';
 import { getBillingLastGenerated } from '../../lib/client-portal/read-models/billing-status';
@@ -95,14 +96,15 @@ app.get('/reports', async (c) => {
   });
 });
 
-// PS-379: Client Portal is read-only for generated billing rows. PrepShip
-// Admin owns billing generation with the full billing SOT, box review, fee
-// waiver, and summary-refresh policy; this route stays as an authenticated
-// conflict response so stale clients get a clear failure instead of a 404.
+// PrepShip Admin owns billing generation with the full billing SOT, box review,
+// fee-waiver, and summary-refresh policy. This endpoint only forwards a global
+// admin's authenticated intent to that canonical owner; it never imports or
+// runs an independent Client Portal billing generator.
 app.post('/billing/generate', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  if (!scope.canViewFinancials || (!scope.isGlobal && !scope.permissions.includes('settings:write'))) {
+  if (!scope.isGlobal || !scope.canViewFinancials) {
+    await recordPortalAudit('portal.billing.generate.denied', scope);
     return c.json({ error: 'Admin access required' }, 403);
   }
   const body = (await c.req.json().catch(() => ({}))) as {
@@ -110,18 +112,114 @@ app.post('/billing/generate', async (c) => {
     dateTo?: string;
     clientId?: number;
   };
-  await recordPortalAudit('portal.billing.generate.blocked', scope, {
-    dateFrom: typeof body.dateFrom === 'string' ? body.dateFrom : null,
-    dateTo: typeof body.dateTo === 'string' ? body.dateTo : null,
-    clientId: typeof body.clientId === 'number' ? body.clientId : null,
-    reason: 'prep_ship_billing_sot',
-  });
-  return c.json({
-    error: 'PrepShip Billing owns billing generation.',
-    code: 'prep_ship_billing_sot',
+  const range = requireBillingDayRange(c, body.dateFrom, body.dateTo);
+  if (range instanceof Response) return range;
+  const clientId = body.clientId === undefined ? undefined : Number(body.clientId);
+  if (clientId !== undefined && (!Number.isInteger(clientId) || clientId <= 0)) {
+    return c.json({ error: 'clientId must be a positive integer' }, 400);
+  }
+
+  const authorization = c.req.header('authorization');
+  if (!authorization) return c.json({ error: 'Missing bearer token' }, 401);
+  if (!env.PREPSHIP_API_URL) {
+    await recordPortalAudit('portal.billing.generate.failed', scope, {
+      dateFrom: range.fromDay,
+      dateTo: range.toDay,
+      clientId: clientId ?? null,
+      reason: 'canonical_api_not_configured',
+    });
+    return c.json({
+      error: 'Billing update is not configured. Set PREPSHIP_API_URL on the Client Portal API.',
+      code: 'prep_ship_billing_unavailable',
+    }, 503);
+  }
+
+  const auditFacts = {
+    dateFrom: range.fromDay,
+    dateTo: range.toDay,
+    clientId: clientId ?? null,
+  };
+  await recordPortalAudit('portal.billing.generate.requested', scope, auditFacts);
+
+  let upstream: Response;
+  try {
+    const baseUrl = env.PREPSHIP_API_URL.replace(/\/+$/, '');
+    upstream = await fetch(`${baseUrl}/billing/generate`, {
+      method: 'POST',
+      headers: {
+        authorization,
+        accept: 'application/json',
+        'content-type': 'application/json',
+        ...(c.req.header('x-request-id') ? { 'x-request-id': c.req.header('x-request-id')! } : {}),
+      },
+      body: JSON.stringify({
+        dateFrom: range.fromDay,
+        dateTo: range.toDay,
+        ...(clientId === undefined ? {} : { clientId }),
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (error) {
+    console.error(
+      '[client-portal] canonical billing update unavailable:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    await recordPortalAudit('portal.billing.generate.failed', scope, {
+      ...auditFacts,
+      reason: 'canonical_api_unavailable',
+    });
+    return c.json({
+      error: 'PrepShip billing update is temporarily unavailable. Please try again.',
+      code: 'prep_ship_billing_unavailable',
+    }, 502);
+  }
+
+  const upstreamBody = (await upstream.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!upstream.ok) {
+    const upstreamError =
+      typeof upstreamBody?.error === 'string' && upstreamBody.error.length <= 300
+        ? upstreamBody.error
+        : 'PrepShip billing update failed.';
+    await recordPortalAudit('portal.billing.generate.failed', scope, {
+      ...auditFacts,
+      upstreamStatus: upstream.status,
+    });
+    if (upstream.status === 401) return c.json({ error: upstreamError }, 401);
+    if (upstream.status === 403) return c.json({ error: upstreamError }, 403);
+    if (upstream.status === 400) return c.json({ error: upstreamError }, 400);
+    return c.json({ error: upstreamError, code: 'prep_ship_billing_failed' }, 502);
+  }
+
+  const generated = Number(upstreamBody?.generated);
+  const total = Number(upstreamBody?.total);
+  const skipped = Number(upstreamBody?.skipped);
+  if (![generated, total, skipped].every(Number.isFinite)) {
+    await recordPortalAudit('portal.billing.generate.failed', scope, {
+      ...auditFacts,
+      reason: 'invalid_canonical_response',
+    });
+    return c.json({
+      error: 'PrepShip returned an invalid billing update response.',
+      code: 'prep_ship_billing_invalid_response',
+    }, 502);
+  }
+
+  const result = {
+    generated,
+    total,
+    skipped,
     message:
-      'Client Portal reads billing_line_items and billing summaries, but generation must run from PrepShip Admin Billing.',
-  }, 409);
+      typeof upstreamBody?.message === 'string' && upstreamBody.message.length <= 500
+        ? upstreamBody.message
+        : `Generated ${generated} billing line items.`,
+  };
+  await recordPortalAudit('portal.billing.generate', scope, {
+    ...auditFacts,
+    generated,
+    total,
+    skipped,
+  });
+  return c.json(result);
 });
 
 app.get('/markups', async (c) => {

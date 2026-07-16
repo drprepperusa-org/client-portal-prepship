@@ -96,7 +96,7 @@ export const billingApi = {
     }>(token, '/api/client-portal/billing/generate', {
       ...billingRangeParams({ from: dateFrom, to: dateTo }),
       clientId,
-    }),
+    }, 120_000),
   billingStatus: (token: string) =>
     apiGet<{ lastGenerated: BillingLastGenerated | null }>(
       token,

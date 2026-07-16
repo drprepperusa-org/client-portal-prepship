@@ -15,6 +15,9 @@ function check(name: string, condition: boolean): void {
 const route = read('src/routes/client-portal/billing.ts');
 const autoGenerate = read('src/services/billing-auto-generate.ts');
 const worker = read('src/worker.ts');
+const billingPage = read('portal-client/src/pages/Billing.tsx');
+const billingApi = read('portal-client/src/lib/api/domains/billing.ts');
+const envSchema = read('src/lib/env.ts');
 const packageJson = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 
 const generateRouteBlock = route.slice(
@@ -28,24 +31,52 @@ check(
 );
 
 check(
-  'POST /billing/generate remains present but returns a PrepShip Billing SOT conflict',
+  'POST /billing/generate delegates to the canonical PrepShip API',
   /app\.post\('\/billing\/generate'/.test(generateRouteBlock) &&
-    /prep_ship_billing_sot/.test(generateRouteBlock) &&
-    /PrepShip Billing owns billing generation/.test(generateRouteBlock) &&
-    /,\s*409\s*\)/.test(generateRouteBlock)
+    /env\.PREPSHIP_API_URL/.test(generateRouteBlock) &&
+    /`\$\{baseUrl\}\/billing\/generate`/.test(generateRouteBlock) &&
+    /method:\s*'POST'/.test(generateRouteBlock)
 );
 
 check(
-  'POST /billing/generate cannot call generateLineItems or persist billing_last_generated',
+  'POST /billing/generate cannot call a local generator or persist billing_last_generated',
   !/generateLineItems\(/.test(generateRouteBlock) &&
     !/BILLING_LAST_GENERATED_KEY/.test(generateRouteBlock) &&
     !/billing_last_generated/.test(generateRouteBlock)
 );
 
 check(
-  'blocked generate attempts are audit-visible without writing billing rows',
-  /portal\.billing\.generate\.blocked/.test(generateRouteBlock) &&
-    !/portal\.billing\.generate['"]/.test(generateRouteBlock.replace(/portal\.billing\.generate\.blocked/g, ''))
+  'only global financial admins can request generation and PrepShip rechecks the bearer token',
+  /!scope\.isGlobal\s*\|\|\s*!scope\.canViewFinancials/.test(generateRouteBlock) &&
+    /const authorization = c\.req\.header\('authorization'\)/.test(generateRouteBlock) &&
+    /headers:\s*\{[\s\S]*authorization/.test(generateRouteBlock)
+);
+
+check(
+  'portal forwards canonical billing days and audits request, success, and failure',
+  /dateFrom:\s*range\.fromDay/.test(generateRouteBlock) &&
+    /dateTo:\s*range\.toDay/.test(generateRouteBlock) &&
+    /portal\.billing\.generate\.requested/.test(generateRouteBlock) &&
+    /portal\.billing\.generate\.failed/.test(generateRouteBlock) &&
+    /portal\.billing\.generate['"]/.test(generateRouteBlock)
+);
+
+check(
+  'Update Billing is visible only to global admins with financial visibility',
+  /const canUpdateBilling = Boolean\(me\.data\?\.isGlobal && me\.data\?\.canViewFinancials\)/.test(billingPage) &&
+    /\{canUpdateBilling && \([\s\S]*Update Billing/.test(billingPage)
+);
+
+check(
+  'Update Billing sends the selected days, waits for PrepShip, then refreshes portal reads',
+  /portalApi\.generateBilling\(accessToken, draftFrom, draftTo\)/.test(billingPage) &&
+    /await invalidateBilling\(\)/.test(billingPage) &&
+    /120_000/.test(billingApi)
+);
+
+check(
+  'canonical PrepShip API URL is an explicit validated environment setting',
+  /PREPSHIP_API_URL:\s*z\.string\(\)\.url\(\)\.optional\(\)/.test(envSchema)
 );
 
 check(
@@ -67,4 +98,4 @@ check(
     'tsx scripts/ps-379-disable-portal-billing-generation-guard.ts'
 );
 
-console.log('\nPASS PS-379 disable portal billing generation guard');
+console.log('\nPASS PS-379 canonical portal billing delegation guard');

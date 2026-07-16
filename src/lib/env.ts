@@ -36,6 +36,9 @@ const schema = z.object({
   // Public base URL of this API. Used when we need to emit an absolute link
   // back to the frontend (e.g. mock label PDFs opened via window.open).
   PUBLIC_API_URL: z.string().url().optional(),
+  // Canonical PrepShip API used for admin-owned mutations that the Client
+  // Portal may request but must never implement as a second source of truth.
+  PREPSHIP_API_URL: z.string().url().optional(),
   CRON_SECRET: z.string().optional(),
   DB_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
   DB_POOL_MAX: z.coerce.number().int().positive().max(20).default(4),
