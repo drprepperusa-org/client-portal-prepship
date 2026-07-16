@@ -1,4 +1,4 @@
-import type { Paginated, PortalDateRange } from '@client-portal-contracts/common';
+import type { Paginated } from '@client-portal-contracts/common';
 import type {
   NewInboundInput,
   PortalInbound,
@@ -13,13 +13,11 @@ export const inboundApi = {
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   inboundReceipts: (
     token: string,
-    options: { page?: number; pageSize?: number; clientId?: number; dateRange: PortalDateRange },
+    options: { page?: number; pageSize?: number; clientId?: number },
   ) => apiGet<Paginated<PortalInboundReceipt>>(token, '/api/client-portal/inbound/receipts', {
     page: options.page ?? 1,
     pageSize: options.pageSize ?? 50,
     clientId: options.clientId,
-    dateFrom: `${options.dateRange.dateFrom}T00:00:00.000Z`,
-    dateTo: `${options.dateRange.dateTo}T23:59:59.999Z`,
   }),
   receiveInventory: (token: string, body: PortalInventoryReceiveInput) =>
     apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),

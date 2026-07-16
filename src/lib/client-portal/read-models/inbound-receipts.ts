@@ -12,8 +12,6 @@ type ReceiptListOptions = {
   pageSize: number;
   clientId?: number | null;
   storeId?: number | null;
-  dateFrom: Date;
-  dateTo: Date;
 };
 
 /**
@@ -27,15 +25,13 @@ export async function listPortalInboundReceipts(
   scope: ClientPortalScope,
   options: ReceiptListOptions,
 ): Promise<Paginated<PortalInboundReceipt>> {
-  const { page, pageSize, clientId, storeId, dateFrom, dateTo } = options;
+  const { page, pageSize, clientId, storeId } = options;
   const receivedAt = sql<Date | string>`coalesce(${inventoryLedger.effectiveAt}, ${inventoryLedger.createdAt})`;
   const where = and(
     eq(inventoryLedger.type, 'receive'),
     inventoryScopePredicate(scope),
     clientId ? eq(inventory.clientId, clientId) : undefined,
     storeId ? sql`${clients.storeIds} && array[${storeId}]::integer[]` : undefined,
-    sql`${receivedAt} >= ${dateFrom.toISOString()}::timestamptz`,
-    sql`${receivedAt} <= ${dateTo.toISOString()}::timestamptz`,
   );
 
   const base = db

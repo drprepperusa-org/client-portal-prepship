@@ -37,10 +37,7 @@ assert.ok(
   readModel.includes('eq(inventory.clientId, clientId)'),
   'global client filter narrows receipt reads explicitly',
 );
-assert.ok(
-  readModel.includes('dateFrom.toISOString()') && readModel.includes('dateTo.toISOString()'),
-  'receipt reads apply encoded timestamp boundaries',
-);
+assert.doesNotMatch(readModel, /dateFrom|dateTo/, 'receipt history is not truncated by the global date range');
 assert.doesNotMatch(
   readModel,
   /inboundShipments|\.insert\(|\.update\(|\.delete\(/,
@@ -51,10 +48,14 @@ assert.ok(route.includes("app.get('/inbound/receipts'"), 'read-only inbound rece
 assert.ok(route.includes("recordPortalAudit('portal.inbound.receipts.list'"), 'receipt reads are audited');
 assert.ok(api.includes("'/api/client-portal/inbound/receipts'"), 'frontend API calls the receipt endpoint');
 assert.ok(
-  hooks.includes("['inbound-receipts'") && hooks.includes('dateRange.dateFrom'),
-  'receipt query is client/date scoped',
+  hooks.includes("['inbound-receipts'") && !hooks.includes('dateRange'),
+  'receipt query is client-scoped and requests the full receipt history',
 );
 assert.ok(page.includes('Received inventory'), 'Inbound renders its received inventory section');
+assert.ok(
+  read('portal-client/src/components/layout/Topbar.tsx').includes("pathname !== '/inbound' && <DateRangeFilter />"),
+  'Inbound hides the global date-range control on mobile and desktop',
+);
 assert.ok(
   columns.includes('receivedUnits') && columns.includes('receivedAt'),
   'Inbound receipt columns render canonical receipt fields',

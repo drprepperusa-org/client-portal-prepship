@@ -17,7 +17,7 @@ import { INBOUND_COLUMNS, INBOUND_RECEIPT_COLUMNS } from '@/components/inbound/c
 import { Pagination } from '@/components/ui/Pagination';
 
 export default function Inbound() {
-  const { clientId: globalClientId, dateRange } = usePortalFilters();
+  const { clientId: globalClientId } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
   const me = useMe().data;
   const isAdmin = me?.isAdmin ?? false;
@@ -53,7 +53,7 @@ export default function Inbound() {
   const receiptPagination = receiptQuery.data?.pagination;
   const showClientFilter = clients.length > 1;
 
-  useEffect(() => setReceiptPage(1), [effectiveClientId, dateRange.dateFrom, dateRange.dateTo]);
+  useEffect(() => setReceiptPage(1), [effectiveClientId]);
 
   return (
     <div className="space-y-4">
@@ -104,7 +104,7 @@ export default function Inbound() {
           isEmpty={receiptRows.length === 0}
           onRetry={() => receiptQuery.refetch()}
           emptyTitle="No received inventory"
-          emptyMessage="No PrepShip receipts were recorded in the selected date range."
+          emptyMessage="No PrepShip receipts have been recorded."
         >
           <DataTable
             tableId="inbound-receipts"

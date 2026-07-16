@@ -54,7 +54,7 @@ for (const [name, source] of [
 }
 
 check(
-  inboundReceipts.includes("page, pageSize, dateRange.dateFrom") && inboundReceipts.includes('{ clientId: effectiveClientId, page, pageSize, dateRange }'),
+  inboundReceipts.includes("effectiveClientId ?? 'scope', page, pageSize") && inboundReceipts.includes('{ clientId: effectiveClientId, page, pageSize }'),
   'Inbound receipt cache key and request include page size',
 );
 for (const key of ["['shipments'", "['inventory'", "['inventory-history'", "['returns'"]) {

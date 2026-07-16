@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Bell, Menu, ChevronDown, Check, AlertTriangle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
@@ -12,6 +12,7 @@ import { AccountMenu } from './AccountMenu';
 
 export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
   const nav = useNavigate();
+  const { pathname } = useLocation();
   const { clientId, setClientId } = usePortalFilters();
   const clientsQuery = useClients();
   const sync = useSyncStatus();
@@ -83,7 +84,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         )}
 
         {/* Date range */}
-        <DateRangeFilter />
+        {pathname !== '/inbound' && <DateRangeFilter />}
 
         {/* Notifications */}
         <div className="relative">

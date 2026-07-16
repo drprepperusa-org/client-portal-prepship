@@ -13,7 +13,6 @@ import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { toPortalInboundDto } from '../../lib/client-portal/dto';
 import { listPortalInboundReceipts } from '../../lib/client-portal/read-models/inbound-receipts';
 import {
-  parseDate,
   parsePage,
   parsePageSize,
   parsePositiveInt,
@@ -32,22 +31,15 @@ app.get('/inbound/receipts', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'), 50);
-  const dateTo = parseDate(c.req.query('dateTo')) ?? new Date();
-  const dateFrom = parseDate(c.req.query('dateFrom')) ?? new Date(dateTo.getTime() - 29 * 86_400_000);
-  if (dateFrom > dateTo) return c.json({ error: 'dateFrom must not be after dateTo' }, 400);
   const result = await listPortalInboundReceipts(scope, {
     page,
     pageSize,
     clientId: requestedClientId(c),
     storeId: requestedStoreId(c),
-    dateFrom,
-    dateTo,
   });
   await recordPortalAudit('portal.inbound.receipts.list', scope, {
     page,
     pageSize,
-    dateFrom: dateFrom.toISOString(),
-    dateTo: dateTo.toISOString(),
     rows: result.data.length,
   });
   return c.json(result);
