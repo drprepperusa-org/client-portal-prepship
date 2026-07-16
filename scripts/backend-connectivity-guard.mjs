@@ -15,6 +15,16 @@ const routeFiles = readdirSync(routeDir)
   .filter((file) => file.endsWith('.ts'))
   .sort();
 
+function listTypeScriptFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => entry.isDirectory()
+      ? listTypeScriptFiles(path.join(dir, entry.name))
+      : entry.name.endsWith('.ts') ? [path.join(dir, entry.name)] : [])
+    .sort();
+}
+
+const routeSourceFiles = listTypeScriptFiles(routeDir);
+
 const helperMethods = new Map([
   ['apiGet', 'GET'],
   ['apiPost', 'POST'],
@@ -70,13 +80,13 @@ function extractBackendRoutes() {
   const routes = [];
   const routePattern = /app\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2/g;
 
-  for (const file of routeFiles) {
-    const source = readFileSync(path.join(routeDir, file), 'utf8');
+  for (const file of routeSourceFiles) {
+    const source = readFileSync(file, 'utf8');
     for (const match of source.matchAll(routePattern)) {
       routes.push({
         method: match[1].toUpperCase(),
         path: normalizePath(match[3]),
-        source: `src/routes/client-portal/${file}`,
+        source: path.relative(root, file).replaceAll('\\', '/'),
       });
     }
   }
