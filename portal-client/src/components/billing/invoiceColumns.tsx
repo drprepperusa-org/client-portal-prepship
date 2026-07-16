@@ -215,10 +215,21 @@ export function buildInvoiceLineColumns(
   return [
     {
       key: 'date',
-      header: 'Ship Date',
-      defaultWidth: 120,
-      render: (row) => <span className="tnum text-ink-3">{shortDate(row.shipDate)}</span>,
-      sortAccessor: (row) => row.shipDate ?? '',
+      header: 'Billing Date',
+      defaultWidth: 150,
+      render: (row) => row.rolledFromWeekend ? (
+        <span className="flex flex-col tnum leading-tight text-ink-3">
+          <span>Billed {shortDate(row.billingEffectiveDate)}</span>
+          <span className="text-[11px] text-ink-4">
+            Fulfilled {shortDate(row.actualActivityDate ?? row.shipDate)}
+          </span>
+        </span>
+      ) : (
+        <span className="tnum text-ink-3">
+          {shortDate(row.billingEffectiveDate ?? row.shipDate)}
+        </span>
+      ),
+      sortAccessor: (row) => row.billingEffectiveDate ?? row.shipDate ?? '',
     },
     {
       key: 'order',

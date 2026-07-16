@@ -1,5 +1,6 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
+import { billingLineEffectiveDaySql } from './billing-effective-day';
 
 const DEFAULT_REFRESH_DAYS = 45;
 const DEFAULT_INVENTORY_LIMIT = 5000;
@@ -473,6 +474,10 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
   await ensureReportingMetricsTables();
   const fromDay = isoDate(from);
   const toDay = isoDate(to);
+  const effectiveDay = billingLineEffectiveDaySql(
+    sql`b.billing_effective_date`,
+    sql`b.ship_date`,
+  );
 
   return withRefreshRun('billing-summary', async () => {
     await db.execute(sql`
@@ -515,8 +520,8 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
       from clients c
       left join billing_line_items b
         on b.client_id = c.id
-        and b.ship_date >= ${from.toISOString()}::timestamptz
-        and b.ship_date < ${to.toISOString()}::timestamptz
+        and ${effectiveDay} >= ${from.toISOString()}::timestamptz
+        and ${effectiveDay} < ${to.toISOString()}::timestamptz
       where c.active = true
         and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       group by c.id
@@ -839,6 +844,10 @@ export async function getFreshBillingSummaryMetrics(options: {
   maxAgeMinutes?: number;
 }): Promise<{ clients: BillingSummaryMetricRow[]; grandTotal: number } | null> {
   const maxAgeMinutes = options.maxAgeMinutes ?? 45;
+  const effectiveDay = billingLineEffectiveDaySql(
+    sql`b.billing_effective_date`,
+    sql`b.ship_date`,
+  );
   const fromDay = isoDate(new Date(options.dateFrom));
   const toDay = isoDate(new Date(options.dateTo));
   const billingMetricsScopePredicate = (() => {
@@ -890,8 +899,8 @@ export async function getFreshBillingSummaryMetrics(options: {
           max(b.created_at) as newest_line_item_created_at
         from billing_line_items b
         join scoped_clients sc on sc.id = b.client_id
-        where b.ship_date >= ${options.dateFrom}::timestamptz
-          and b.ship_date < ${options.dateTo}::timestamptz
+        where ${effectiveDay} >= ${options.dateFrom}::timestamptz
+          and ${effectiveDay} < ${options.dateTo}::timestamptz
         group by b.client_id
       ),
       candidate_metrics as (

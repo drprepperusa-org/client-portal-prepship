@@ -71,7 +71,13 @@ export interface BillingInvoiceDetailRow {
   items?: PortalItemIdentity[];
   skus?: string | null;
   boxSize?: string | null;
+  /** Actual completion/activity day retained for audit lineage. */
   shipDate?: string | null;
+  actualActivityDate?: string | null;
+  /** PrepShip-persisted invoice/range bucket; the portal never derives it. */
+  billingEffectiveDate?: string | null;
+  billingPolicyVersion?: string | null;
+  rolledFromWeekend?: boolean;
   qty?: number | string | null;
   pickpackTotal?: number | string | null;
   additionalTotal?: number | string | null;

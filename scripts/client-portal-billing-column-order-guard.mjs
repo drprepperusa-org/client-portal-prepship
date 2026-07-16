@@ -42,7 +42,7 @@ const invoiceRoute = read('src/routes/client-portal/invoices.ts');
 const pkg = JSON.parse(read('package.json'));
 
 const detailLabels = [
-  'Ship Date',
+  'Billing / Activity Date',
   'Order #',
   'SKU(s)',
   'Qty',
@@ -78,7 +78,7 @@ orderedContains(
 );
 orderedContains(
   invoices.slice(invoices.indexOf('export function buildInvoiceLineColumns')),
-  detailLabels,
+  ['Billing Date', ...detailLabels.slice(1)],
   'Billing line-item website columns follow the requested order',
 );
 assert(

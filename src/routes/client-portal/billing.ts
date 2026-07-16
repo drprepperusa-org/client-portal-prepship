@@ -193,6 +193,20 @@ app.post('/billing/generate', async (c) => {
     if (upstream.status === 401) return c.json({ error: upstreamError }, 401);
     if (upstream.status === 403) return c.json({ error: upstreamError }, 403);
     if (upstream.status === 400) return c.json({ error: upstreamError }, 400);
+    // PS-434: PrepShip owns the California weekday operation policy. Preserve
+    // its structured 409 so the portal displays the canonical rejection
+    // instead of turning it into an unrelated upstream failure.
+    if (upstream.status === 409) {
+      return c.json({
+        error: upstreamError,
+        code: typeof upstreamBody?.code === 'string'
+          ? upstreamBody.code
+          : 'BILLING_WEEKEND_OPERATION_BLOCKED',
+        operationDay: typeof upstreamBody?.operationDay === 'string'
+          ? upstreamBody.operationDay
+          : undefined,
+      }, 409);
+    }
     return c.json({ error: upstreamError, code: 'prep_ship_billing_failed' }, 502);
   }
 

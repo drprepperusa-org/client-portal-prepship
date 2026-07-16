@@ -72,13 +72,15 @@ check('billing reports use exclusive bounds while canonical generation forwards 
 const invoiceReadModel = read('src/lib/client-portal/read-models/invoice-details.ts');
 check('invoice read models use strict upper bound',
   !/b\.ship_date <= \$\{input\.dateTo\}/.test(invoiceReadModel) &&
-    (invoiceReadModel.match(/b\.ship_date < \$\{input\.dateTo\}/g) ?? []).length >= 4);
+    (invoiceReadModel.match(/\$\{invoiceEffectiveDay\} < \$\{input\.dateTo\}/g) ?? []).length >= 4 &&
+    /billingLineEffectiveDaySql/.test(invoiceReadModel));
 
 const summaries = read('src/services/billing-summaries.ts');
 check('billing summaries use strict upper bound',
   !/ship_date <= \$\{input\.dateTo\}/.test(summaries) &&
-    !/lte\(billingLineItems\.shipDate, to\)/.test(summaries) &&
-    /lt\(billingLineItems\.shipDate, to\)/.test(summaries));
+    !/lte\(persistedBillingEffectiveDay, to\)/.test(summaries) &&
+    /lt\(persistedBillingEffectiveDay, to\)/.test(summaries) &&
+    /coalesce\(billing_effective_date, ship_date\) < \$\{input\.dateTo\}/.test(summaries));
 
 const billing = read('src/services/billing.ts');
 check('billing generation treats dateTo as exclusive and dates storage inside the period',

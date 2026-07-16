@@ -25,6 +25,15 @@ import {
   toNum,
   type GenerateInput,
 } from './billing';
+import {
+  BILLING_POLICY_WEEKEND_ROLLFORWARD,
+  billingLineEffectiveDaySql,
+} from './billing-effective-day';
+
+const persistedBillingEffectiveDay = billingLineEffectiveDaySql(
+  billingLineItems.billingEffectiveDate,
+  billingLineItems.shipDate,
+);
 
 function billingSummaryHasValues(summary: { clients: BillingSummaryRow[] }): boolean {
   return summary.clients.some(
@@ -65,8 +74,8 @@ async function hasBillingLineItemsForSummary(input: GenerateInput): Promise<bool
     select exists (
       select 1
       from billing_line_items
-      where ship_date >= ${input.dateFrom}::timestamptz
-        and ship_date < ${input.dateTo}::timestamptz
+      where coalesce(billing_effective_date, ship_date) >= ${input.dateFrom}::timestamptz
+        and coalesce(billing_effective_date, ship_date) < ${input.dateTo}::timestamptz
         ${input.clientId !== undefined ? sql`and client_id = ${input.clientId}` : sql``}
         and ${billingLineItemScopePredicate(input)}
       limit 1
@@ -223,8 +232,8 @@ export async function billingSummary(
     from clients c
     left join billing_line_items b
       on b.client_id = c.id
-      and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date < ${input.dateTo}::timestamptz
+      and coalesce(b.billing_effective_date, b.ship_date) >= ${input.dateFrom}::timestamptz
+      and coalesce(b.billing_effective_date, b.ship_date) < ${input.dateTo}::timestamptz
     where c.active = true
       and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       ${input.clientId !== undefined ? sql`and c.id = ${input.clientId}` : sql``}
@@ -285,6 +294,8 @@ export async function billingDetails(input: GenerateInput & { limit?: number }) 
       orderNumber: billingLineItems.orderNumber,
       shipmentId: billingLineItems.shipmentId,
       shipDate: billingLineItems.shipDate,
+      billingEffectiveDate: billingLineItems.billingEffectiveDate,
+      billingPolicyVersion: billingLineItems.billingPolicyVersion,
       lineType: billingLineItems.lineType,
       description: billingLineItems.description,
       qty: billingLineItems.qty,
@@ -316,15 +327,15 @@ export async function billingDetails(input: GenerateInput & { limit?: number }) 
     .leftJoin(orderOverrides, eq(billingLineItems.orderId, orderOverrides.orderId))
     .where(
       and(
-        gte(billingLineItems.shipDate, from),
-        lt(billingLineItems.shipDate, to),
+        gte(persistedBillingEffectiveDay, from),
+        lt(persistedBillingEffectiveDay, to),
         input.clientId !== undefined
           ? eq(billingLineItems.clientId, input.clientId)
           : undefined,
         billingLineItemScopePredicate(input)
       )
     )
-    .orderBy(billingLineItems.shipDate)
+    .orderBy(persistedBillingEffectiveDay)
     .limit(input.limit ?? 500);
 
   const packageRows = await db
@@ -435,6 +446,13 @@ export async function billingDetails(input: GenerateInput & { limit?: number }) 
       } = row;
       return {
         ...rest,
+        actualActivityDate: row.shipDate,
+        billingEffectiveDate: row.billingEffectiveDate ?? row.shipDate,
+        rolledFromWeekend:
+          row.billingPolicyVersion === BILLING_POLICY_WEEKEND_ROLLFORWARD &&
+          row.shipDate != null &&
+          row.billingEffectiveDate != null &&
+          row.shipDate.getTime() !== row.billingEffectiveDate.getTime(),
         carrierCode,
         providerAccountId,
         providerAccountNickname: carrierNickname,

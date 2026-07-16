@@ -3,7 +3,7 @@ import type { BillingInvoiceDetailRow } from '@/lib/api';
 // Excel (.xlsx) export for the per-client invoice line items. Column set and
 // order mirror the billing line-items table (client-safe fields only — no
 // carrier / selected rate / shipping margin):
-//   Ship Date | Order # | SKU(s) | Qty | Pick & Pack | Addl Units |
+//   Billing / Activity Date | Order # | SKU(s) | Qty | Pick & Pack | Addl Units |
 //   Box Charge | Box Size | Shipping | Storage | Return Processing |
 //   Return Postage | Fulfillment Fee
 // Money cells are written as real numbers (2-decimal format) so Excel can sum
@@ -14,7 +14,7 @@ const num = (v: unknown) => Number(v ?? 0) || 0;
 const MONEY_FORMAT = '#,##0.00';
 
 const HEADERS = [
-  'Ship Date',
+  'Billing / Activity Date',
   'Order #',
   'SKU(s)',
   'Qty',
@@ -54,9 +54,17 @@ export async function exportInvoiceExcel(
   const widths = includeClient ? [22, ...COLUMN_WIDTHS] : COLUMN_WIDTHS;
   const header = headerLabels.map((value) => ({ value: value as string, fontWeight: 'bold' as const }));
 
+  const billingActivityDate = (row: BillingInvoiceDetailRow): string => {
+    const effective = row.billingEffectiveDate ?? row.shipDate ?? '';
+    const actual = row.actualActivityDate ?? row.shipDate ?? '';
+    return row.rolledFromWeekend && actual && effective !== actual
+      ? `Billed ${effective} | Fulfilled ${actual}`
+      : effective;
+  };
+
   const dataRows = rows.map((r) => [
     ...clientCol({ type: String, value: r.clientName ?? '' }),
-    { type: String, value: r.shipDate ?? '' },
+    { type: String, value: billingActivityDate(r) },
     { type: String, value: r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
     { type: String, value: r.skus ?? r.itemNames ?? '', wrap: true },
     { type: Number, value: num(r.qty) },

@@ -12,6 +12,15 @@ import { safeItems } from '../dto';
 import { invoiceItemNameLinesSql } from '../invoice-items';
 import { clientFilterPredicate, invoiceLineScopePredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
+import {
+  BILLING_POLICY_WEEKEND_ROLLFORWARD,
+  billingLineEffectiveDaySql,
+} from '../../../services/billing-effective-day';
+
+const invoiceEffectiveDay = billingLineEffectiveDaySql(
+  sql`b.billing_effective_date`,
+  sql`b.ship_date`,
+);
 
 /** orders.items jsonb (aggregated as text per order group) → structured
  *  item-identity lines (name/sku/quantity/imageUrl) via the shared shaper. */
@@ -76,8 +85,8 @@ export async function portalInvoiceSummary(
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
-      and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date < ${input.dateTo}::timestamptz
+      and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
+      and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name
@@ -120,8 +129,8 @@ export async function portalInvoiceDetailCount(
       from billing_line_items b
       left join ${clients} c on c.id = b.client_id
       where coalesce(c.active, true) = true
-        and b.ship_date >= ${input.dateFrom}::timestamptz
-        and b.ship_date < ${input.dateTo}::timestamptz
+        and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
+        and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
         ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
         ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
       group by b.client_id, c.name, b.order_id, b.order_number
@@ -149,7 +158,7 @@ type PortalInvoicePeriodSummaryRow = {
 /**
  * Per-client billing-period rollup: one row per client per period. Default
  * granularity is SEMI-MONTHLY (1st–15th and 16th–end of month); 'month'
- * combines both halves into one full-month row (1st–EOM). UTC ship-date
+ * combines both halves into one full-month row (1st–EOM). UTC effective-day
  * boundaries — the same boundaries the range filters use. SQL-aggregated,
  * no row cap.
  */
@@ -160,12 +169,12 @@ export async function portalInvoicePeriodSummary(
   const halfExpr =
     input.granularity === 'month'
       ? sql`'0'`
-      : sql`(case when extract(day from b.ship_date at time zone 'UTC') <= 15 then 1 else 2 end)::text`;
+      : sql`(case when extract(day from ${invoiceEffectiveDay} at time zone 'UTC') <= 15 then 1 else 2 end)::text`;
   const rows = await db.execute<PortalInvoicePeriodSummaryRow>(sql`
     select
       b.client_id,
       c.name as client_name,
-      to_char(date_trunc('month', b.ship_date at time zone 'UTC'), 'YYYY-MM-DD') as month_start,
+      to_char(date_trunc('month', ${invoiceEffectiveDay} at time zone 'UTC'), 'YYYY-MM-DD') as month_start,
       ${halfExpr} as half,
       count(distinct b.order_id)::text as orders,
       coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
@@ -179,8 +188,8 @@ export async function portalInvoicePeriodSummary(
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
-      and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date < ${input.dateTo}::timestamptz
+      and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
+      and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, 3, 4
@@ -218,7 +227,7 @@ export async function portalInvoicePeriodSummary(
 // per group, so it is the deterministic tie-breaker for stable pagination.
 const INVOICE_DETAIL_SORT_EXPR: Record<string, SQL> = {
   order: sql`case when b.order_number ~ '^[0-9]+$' then lpad(b.order_number, 20, '0') else lower(coalesce(b.order_number, '')) end`,
-  date: sql`min(b.ship_date)`,
+  date: sql`min(${invoiceEffectiveDay})`,
   item: sql`lower(coalesce(${invoiceItemNameLinesSql(sql`b.order_id`)}, ''))`,
   sku: sql`(select min(lower(oi.sku)) from ${orderItems} oi where oi.order_id = b.order_id and oi.sku is not null and oi.sku <> '')`,
   qty: sql`coalesce((select sum(greatest(0, coalesce(oi.quantity, 0))) from ${orderItems} oi where oi.order_id = b.order_id and oi.quantity > 0 and coalesce(oi.unit_price, 0) >= 0), 0)`,
@@ -234,10 +243,10 @@ export const INVOICE_DETAIL_SORT_KEYS = Object.keys(INVOICE_DETAIL_SORT_EXPR);
 
 /** ORDER BY for the Billing detail query: the whitelisted column (asc/desc)
  *  first, then a unique per-group tie-breaker. Unknown/absent key → default
- *  ship-date order (the same order the printable invoice/export use). */
+ *  effective billing-day order (the same order the printable invoice/export use). */
 function invoiceDetailOrderBy(sortBy?: string | null, sortDir?: string | null): SQL {
   const expr = sortBy ? INVOICE_DETAIL_SORT_EXPR[sortBy] : undefined;
-  if (!expr) return sql`order by min(b.ship_date) desc, b.order_id desc`;
+  if (!expr) return sql`order by min(${invoiceEffectiveDay}) desc, b.order_id desc`;
   const dir = String(sortDir).toLowerCase() === 'asc' ? sql`asc` : sql`desc`;
   return sql`order by ${expr} ${dir} nulls last, b.order_id desc`;
 }
@@ -296,6 +305,9 @@ type PortalInvoiceDetailRow = {
   dim_w: string | null;
   dim_h: string | null;
   ship_date: string | null;
+  billing_effective_date: string | null;
+  billing_policy_version: string | null;
+  rolled_from_weekend: boolean;
   qty: string;
   pickpack_total: string;
   additional_total: string;
@@ -351,6 +363,10 @@ export async function portalInvoiceDetails(
           carrierCode: null,
           boxSize: null,
           shipDate: row.shipDate,
+          actualActivityDate: row.shipDate,
+          billingEffectiveDate: row.shipDate,
+          billingPolicyVersion: null,
+          rolledFromWeekend: false,
           qty: row.qty.toFixed(3),
           pickpackTotal: row.pickpackTotal.toFixed(2),
           additionalTotal: '0.00',
@@ -386,7 +402,13 @@ export async function portalInvoiceDetails(
       max(o.raw->'dimensions'->>'length') as dim_l,
       max(o.raw->'dimensions'->>'width') as dim_w,
       max(o.raw->'dimensions'->>'height') as dim_h,
-      to_char(min(b.ship_date)::date, 'YYYY-MM-DD') as ship_date,
+      to_char(min(b.ship_date) at time zone 'UTC', 'YYYY-MM-DD') as ship_date,
+      to_char(min(${invoiceEffectiveDay}) at time zone 'UTC', 'YYYY-MM-DD') as billing_effective_date,
+      max(b.billing_policy_version) as billing_policy_version,
+      bool_or(
+        b.billing_policy_version = ${BILLING_POLICY_WEEKEND_ROLLFORWARD}
+        and b.ship_date is distinct from ${invoiceEffectiveDay}
+      ) as rolled_from_weekend,
       coalesce((
         select sum(greatest(0, coalesce(oi.quantity, 0)))
         from ${orderItems} oi
@@ -407,8 +429,8 @@ export async function portalInvoiceDetails(
     left join ${orders} o on o.id = b.order_id
     left join ${orderOverrides} oo on oo.order_id = b.order_id
     where coalesce(c.active, true) = true
-      and b.ship_date >= ${input.dateFrom}::timestamptz
-      and b.ship_date < ${input.dateTo}::timestamptz
+      and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
+      and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
       ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
     group by b.client_id, c.name, b.order_id, b.order_number
@@ -439,6 +461,10 @@ export async function portalInvoiceDetails(
     carrierCode: null,
     boxSize: row.best_rate_dims ?? dimsFromRaw(row.dim_l, row.dim_w, row.dim_h),
     shipDate: row.ship_date,
+    actualActivityDate: row.ship_date,
+    billingEffectiveDate: row.billing_effective_date ?? row.ship_date,
+    billingPolicyVersion: row.billing_policy_version,
+    rolledFromWeekend: row.rolled_from_weekend === true,
     qty: row.qty,
     pickpackTotal: row.pickpack_total,
     additionalTotal: row.additional_total,

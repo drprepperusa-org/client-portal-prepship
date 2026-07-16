@@ -133,6 +133,14 @@ function shortDate(ymd: string | null): string {
   return `${m}/${d}/${y}`;
 }
 
+function billingActivityDate(detail: InvoiceDetailRows[number]): string {
+  const effective = shortDate(detail.billingEffectiveDate ?? detail.shipDate ?? null);
+  const actual = shortDate(detail.actualActivityDate ?? detail.shipDate ?? null);
+  return detail.rolledFromWeekend && actual && effective !== actual
+    ? `Billed ${effective}<br><small>Fulfilled ${actual}</small>`
+    : effective;
+}
+
 export function renderPortalInvoiceHtml(input: {
   clientName: string | null;
   dateFrom: string;
@@ -162,7 +170,7 @@ export function renderPortalInvoiceHtml(input: {
       const skus = detail.skus ?? detail.itemNames ?? '';
       return `
       <tr>
-        <td>${escHtml(shortDate(detail.shipDate))}</td>
+        <td>${billingActivityDate(detail)}</td>
         <td class="order-link">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
         <td class="mono item-name">${escHtml(skus)}</td>
         <td class="num">${Number(detail.qty ?? 0)}</td>
@@ -209,7 +217,7 @@ export function renderPortalInvoiceHtml(input: {
   ${truncNote}
   <table>
     <thead><tr>
-      <th>Ship Date</th><th>Order #</th><th>SKU(s)</th><th class="num">Qty</th>
+      <th>Billing / Activity Date</th><th>Order #</th><th>SKU(s)</th><th class="num">Qty</th>
       <th class="num">Pick &amp; Pack</th><th class="num">Addl Units</th>
       <th class="num">Box Charge</th><th>Box Size</th><th class="num">Shipping</th>
       <th class="num">Storage</th><th class="num">Return Processing</th><th class="num">Return Postage</th>

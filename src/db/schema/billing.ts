@@ -9,6 +9,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { clients } from './clients';
 import { orders } from './orders';
 import { shipments } from './shipments';
@@ -88,6 +89,10 @@ export const billingLineItems = pgTable(
     orderNumber: text(),
     shipmentId: integer().references(() => shipments.id),
     shipDate: timestamp({ withTimezone: true }),
+    // PS-434: PrepShip persists this backend-owned range/invoice bucket. The
+    // portal is a shadow renderer and never calculates weekend roll-forward.
+    billingEffectiveDate: timestamp('billing_effective_date', { withTimezone: true }),
+    billingPolicyVersion: text('billing_policy_version'),
     lineType: text().notNull(),
     description: text().notNull(),
     qty: numeric({ precision: 10, scale: 2 }).default('1').notNull(),
@@ -99,6 +104,9 @@ export const billingLineItems = pgTable(
   (t) => [
     index('billing_li_client_idx').on(t.clientId),
     index('billing_li_date_idx').on(t.shipDate),
+    index('billing_li_effective_date_idx').on(
+      sql`coalesce(${t.billingEffectiveDate}, ${t.shipDate})`,
+    ),
     // Billed-shipping lookups by shipment (Shipments page parity with Billing).
     index('billing_li_shipment_idx').on(t.shipmentId),
     unique('billing_li_unique').on(t.orderId, t.lineType, t.description),

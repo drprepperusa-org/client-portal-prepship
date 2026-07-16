@@ -46,8 +46,8 @@ assert(
 );
 assert(
   readModel.includes('function invoiceDetailOrderBy(') &&
-    readModel.includes('order by min(b.ship_date) desc, b.order_id desc'),
-  'invoiceDetailOrderBy falls back to the default ship-date order for unknown/absent keys',
+    readModel.includes('order by min(${invoiceEffectiveDay}) desc, b.order_id desc'),
+  'invoiceDetailOrderBy falls back to the backend effective billing-day order for unknown/absent keys',
 );
 assert(
   /order by \$\{expr\} \$\{dir\} nulls last, b\.order_id desc/.test(readModelRaw),
