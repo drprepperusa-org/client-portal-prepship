@@ -36,15 +36,6 @@ export function Layout() {
     setDrawer(false);
   }, [pathname]);
 
-  useEffect(() => {
-    if (!drawer) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [drawer]);
-
   return (
     <div className="relative min-h-screen">
       <a

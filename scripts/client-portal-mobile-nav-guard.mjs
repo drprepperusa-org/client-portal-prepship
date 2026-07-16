@@ -19,6 +19,7 @@ function assert(condition, message) {
 }
 
 const layout = read('portal-client/src/components/layout/Layout.tsx');
+const dialogFocus = read('portal-client/src/components/ui/useDialogFocus.ts');
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
 const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
 const bottomNav = read('portal-client/src/components/layout/BottomNav.tsx');
@@ -44,8 +45,14 @@ assert(
 
 // ── Background scroll lock while open ──
 assert(
-  layout.includes('document.body.style.overflow'),
-  'background scroll is locked while the drawer is open',
+  layout.includes('useDialogFocus(drawer') &&
+    dialogFocus.includes("document.body.style.overflow = 'hidden'") &&
+    dialogFocus.includes('document.body.style.overflow = previousOverflow'),
+  'the shared dialog hook locks background scroll while the drawer is open and restores it on close',
+);
+assert(
+  !layout.includes('document.body.style.overflow'),
+  'Layout does not add a second body scroll lock that can restore overflow:hidden after navigation',
 );
 
 // ── The drawer is mobile-only; the desktop rail is lg+ ──
