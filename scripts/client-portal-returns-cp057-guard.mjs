@@ -12,6 +12,7 @@ const assert = (condition, message) => {
 };
 
 const migration = read('drizzle/0041_return_label_purchase_intents.sql');
+const rlsMigration = read('drizzle/0045_return_label_purchase_intents_rls.sql');
 const intentSchema = read('src/db/schema/return-label-purchase-intents.ts');
 const intents = read('src/services/return-label-purchase-intents.ts');
 const returnsService = read('src/services/returns.ts');
@@ -31,6 +32,14 @@ assert(
     /shipments_return_provider_key_idx/.test(migration) &&
     /unknown_outcome/.test(migration),
   'migration enforces one intent per return and one return shipment per provider key',
+);
+assert(
+  /ALTER TABLE public\.return_label_purchase_intents ENABLE ROW LEVEL SECURITY/i.test(rlsMigration) &&
+    /REVOKE ALL PRIVILEGES ON TABLE public\.return_label_purchase_intents[\s\S]*anon[\s\S]*authenticated/i.test(
+      rlsMigration,
+    ) &&
+    !/CREATE POLICY/i.test(rlsMigration),
+  'purchase intents are backend-only: RLS deny-all plus revoked public API grants',
 );
 assert(
   /recovery-only[\s\S]{0,50}snapshots/.test(intentSchema) &&
