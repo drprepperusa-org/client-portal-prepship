@@ -2,14 +2,15 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
-import { and, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { inventory, inventoryLedger } from '../../db/schema/inventory';
-import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { recordCriticalPortalAudit, recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { inventoryScopePredicate } from '../../lib/client-portal/predicates';
 import { listPortalInventory } from '../../lib/client-portal/read-models/inventory';
+import { applyMovements } from '../../services/inventory';
 import { parsePage, parsePageSize, parseDate, requestedClientId, requestedStoreId, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
@@ -82,6 +83,83 @@ app.get('/inventory-history', async (c) => {
     data: rows.map((r) => ({ ...r, createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
   });
+});
+
+app.post('/inventory/receive', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+    return c.json({ error: 'Inventory receiving access required' }, 403);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    clientId?: number;
+    reference?: string;
+    receivedAt?: string;
+    items?: Array<{ inventoryId?: number; qty?: number }>;
+  };
+  const clientId = Number(body.clientId);
+  const receivedAt = new Date(body.receivedAt ?? '');
+  if (!Number.isInteger(clientId) || clientId <= 0) {
+    return c.json({ error: 'A valid client is required' }, 400);
+  }
+  if (Number.isNaN(receivedAt.getTime())) {
+    return c.json({ error: 'A valid received date is required' }, 400);
+  }
+  if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 200) {
+    return c.json({ error: 'Add between 1 and 200 inventory items' }, 400);
+  }
+
+  const items = body.items.map((item) => ({
+    inventoryId: Number(item.inventoryId),
+    qty: Number(item.qty),
+  }));
+  if (items.some((item) => !Number.isInteger(item.inventoryId) || item.inventoryId <= 0 || !Number.isInteger(item.qty) || item.qty <= 0 || item.qty > 1_000_000)) {
+    return c.json({ error: 'Every item needs a valid SKU and a whole-number quantity from 1 to 1,000,000' }, 400);
+  }
+  const inventoryIds = items.map((item) => item.inventoryId);
+  if (new Set(inventoryIds).size !== inventoryIds.length) {
+    return c.json({ error: 'Each SKU may appear only once per receive batch' }, 400);
+  }
+
+  const visibleItems = await db
+    .select({ id: inventory.id })
+    .from(inventory)
+    .where(and(
+      inArray(inventory.id, inventoryIds),
+      eq(inventory.clientId, clientId),
+      eq(inventory.active, true),
+      inventoryScopePredicate(scope, { clientId }),
+    ));
+  if (visibleItems.length !== inventoryIds.length) {
+    return c.json({ error: 'One or more inventory items are outside your client scope' }, 403);
+  }
+
+  const reference = body.reference?.trim().slice(0, 200) || undefined;
+  const totalUnits = items.reduce((sum, item) => sum + item.qty, 0);
+  await recordCriticalPortalAudit('portal.inventory.receive.requested', scope, {
+    clientId,
+    inventoryIds,
+    itemCount: items.length,
+    totalUnits,
+    receivedAt: receivedAt.toISOString(),
+    reference: reference ?? null,
+  });
+  const results = await applyMovements(items.map((item) => ({
+    inventoryId: item.inventoryId,
+    type: 'receive',
+    qty: item.qty,
+    note: reference,
+    createdBy: scope.email ?? scope.userId,
+    createdAt: receivedAt,
+  })));
+  await recordPortalAudit('portal.inventory.receive.completed', scope, {
+    clientId,
+    ledgerIds: results.map((result) => result.ledger?.id).filter(Boolean),
+    itemCount: results.length,
+    totalUnits,
+  });
+  return c.json({ data: { received: results.length, totalUnits } });
 });
 
 export default app;

@@ -6,10 +6,15 @@ const schema = read('src/db/schema/inventory.ts');
 const contract = read('src/lib/client-portal/contracts/inbound.ts');
 const readModel = read('src/lib/client-portal/read-models/inbound-receipts.ts');
 const route = read('src/routes/client-portal/inbound.ts');
+const inventoryRoute = read('src/routes/client-portal/inventory.ts');
+const inventoryService = read('src/services/inventory.ts');
+const capabilities = read('src/lib/client-portal/capabilities.ts');
+const accessContract = read('src/lib/client-portal/contracts/access.ts');
 const api = read('portal-client/src/lib/api/domains/inbound.ts');
 const hooks = read('portal-client/src/components/inbound/useInboundReceipts.ts');
 const columns = read('portal-client/src/components/inbound/columns.tsx');
 const page = read('portal-client/src/pages/Inbound.tsx');
+const receiveModal = read('portal-client/src/components/inbound/ReceiveInventoryModal.tsx');
 const matrix = read('docs/source-of-truth-matrix.md');
 const scripts = JSON.parse(read('package.json')).scripts ?? {};
 
@@ -53,6 +58,39 @@ assert.ok(page.includes('Received inventory'), 'Inbound renders its received inv
 assert.ok(
   columns.includes('receivedUnits') && columns.includes('receivedAt'),
   'Inbound receipt columns render canonical receipt fields',
+);
+assert.ok(
+  capabilities.includes("canReceiveInventory: scope.isGlobal || scope.permissions.includes('settings:write')") &&
+    accessContract.includes('canReceiveInventory: boolean'),
+  'the backend owns the receive-inventory capability for global admins and scoped operators',
+);
+assert.ok(inventoryRoute.includes("app.post('/inventory/receive'"), 'the scoped receive-inventory endpoint exists');
+assert.ok(
+  inventoryRoute.includes('inventoryScopePredicate(scope, { clientId })') &&
+    inventoryRoute.includes('eq(inventory.clientId, clientId)'),
+  'receive inventory is bounded to both caller scope and the selected client',
+);
+assert.ok(
+  inventoryRoute.indexOf("recordCriticalPortalAudit('portal.inventory.receive.requested'") <
+    inventoryRoute.indexOf('await applyMovements('),
+  'critical audit persists before the canonical inventory mutation',
+);
+assert.ok(
+  inventoryService.includes('export async function applyMovements') &&
+    inventoryService.includes('return db.transaction(async (tx) =>') &&
+    inventoryService.includes('stockQty: sql`${inventory.stockQty} + ${move.qty}`'),
+  'receive worksheets use one atomic canonical inventory ledger transaction',
+);
+assert.ok(
+  api.includes("'/api/client-portal/inventory/receive'") &&
+    page.includes('ReceiveInventoryModal') &&
+    receiveModal.includes('portalApi.receiveInventory'),
+  'the Inbound worksheet submits through the scoped Client Portal receive API',
+);
+assert.ok(
+  receiveModal.includes("queryClient.invalidateQueries({ queryKey: ['inventory'] })") &&
+    receiveModal.includes("queryClient.invalidateQueries({ queryKey: ['inbound-receipts'] })"),
+  'successful receiving refreshes canonical stock and receipt history',
 );
 assert.ok(
   matrix.includes('inventory_ledger.qty') && matrix.includes('inventory_ledger.effective_at'),

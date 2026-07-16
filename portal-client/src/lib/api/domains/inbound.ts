@@ -1,5 +1,11 @@
 import type { Paginated, PortalDateRange } from '@client-portal-contracts/common';
-import type { NewInboundInput, PortalInbound, PortalInboundReceipt } from '@client-portal-contracts/inbound';
+import type {
+  NewInboundInput,
+  PortalInbound,
+  PortalInboundReceipt,
+  PortalInventoryReceiveInput,
+  PortalInventoryReceiveResult,
+} from '@client-portal-contracts/inbound';
 import { apiGet, apiPatch, apiPost } from '../transport';
 
 export const inboundApi = {
@@ -15,6 +21,8 @@ export const inboundApi = {
     dateFrom: `${options.dateRange.dateFrom}T00:00:00.000Z`,
     dateTo: `${options.dateRange.dateTo}T23:59:59.999Z`,
   }),
+  receiveInventory: (token: string, body: PortalInventoryReceiveInput) =>
+    apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),
   createInbound: (token: string, body: NewInboundInput) =>
     apiPost<{ data: { id: number } }>(token, '/api/client-portal/inbound', body),
   receiveInbound: (

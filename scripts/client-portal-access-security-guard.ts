@@ -10,6 +10,7 @@ assert.deepEqual(globalCapabilities, {
   canManageUsers: true,
   canManageAdmins: true,
   canViewAudit: true,
+  canReceiveInventory: true,
 });
 
 const scopedCapabilities = clientPortalCapabilities({ isGlobal: false, permissions: ['users:manage'] });
@@ -17,12 +18,18 @@ assert.deepEqual(scopedCapabilities, {
   canManageUsers: true,
   canManageAdmins: false,
   canViewAudit: false,
+  canReceiveInventory: false,
 });
 assert.deepEqual(clientPortalCapabilities({ isGlobal: false, permissions: [] }), {
   canManageUsers: false,
   canManageAdmins: false,
   canViewAudit: false,
+  canReceiveInventory: false,
 });
+assert.equal(
+  clientPortalCapabilities({ isGlobal: false, permissions: ['settings:write'] }).canReceiveInventory,
+  true,
+);
 
 const boundary = { clientIds: [10, 11], storeIds: [100, 101] };
 assert.equal(isAccessAssignmentWithinBoundary({ clientIds: [10], storeIds: [101] }, boundary), true);

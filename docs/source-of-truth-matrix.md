@@ -1115,6 +1115,12 @@ Owner: `toPortalInboundDto` over `inbound_shipments` + `inbound_items`. Route:
 `listPortalInboundReceipts` over the canonical inventory ledger; CP does not
 copy receipts into inbound tables or infer multi-SKU batches.
 
+The Client Portal Receive Inventory worksheet is available only to global admins
+and scoped operators with `settings:write`. It requires an explicit client and
+existing in-scope inventory IDs, records a critical portal audit before mutation,
+then writes the entire batch atomically through the canonical `applyMovements`
+stock-and-ledger owner. The browser never computes the resulting stock balance.
+
 ### Connections
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |

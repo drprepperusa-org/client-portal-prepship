@@ -11,6 +11,7 @@ import { type PortalInbound } from '@/lib/api';
 import { InboundCreateModal } from '@/components/inbound/InboundCreateModal';
 import { InboundImportModal } from '@/components/inbound/InboundImportModal';
 import { InboundDetailDrawer } from '@/components/inbound/InboundDetailDrawer';
+import { ReceiveInventoryModal } from '@/components/inbound/ReceiveInventoryModal';
 import { useInboundReceipts } from '@/components/inbound/useInboundReceipts';
 import { INBOUND_COLUMNS, INBOUND_RECEIPT_COLUMNS } from '@/components/inbound/columns';
 import { Pagination } from '@/components/ui/Pagination';
@@ -18,7 +19,9 @@ import { Pagination } from '@/components/ui/Pagination';
 export default function Inbound() {
   const { clientId: globalClientId, dateRange } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
-  const isAdmin = useMe().data?.isAdmin ?? false;
+  const me = useMe().data;
+  const isAdmin = me?.isAdmin ?? false;
+  const canReceiveInventory = me?.canReceiveInventory ?? false;
   const canCustomizeTables = useCanCustomizeTables();
 
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
@@ -27,6 +30,7 @@ export default function Inbound() {
   const [receiptPageSize, setReceiptPageSize] = useState(50);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
 
   // The mobile bottom-bar "+" lands here with ?new=1. Auto-open the create
   // modal for users who can create (admins; inbound is operator-recorded), then
@@ -76,6 +80,9 @@ export default function Inbound() {
               </select>
               <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
             </label>
+          )}
+          {canReceiveInventory && (
+            <Button leadingIcon={<PackageCheck size={16} />} onClick={() => setReceiveOpen(true)}>Receive inventory</Button>
           )}
           {isAdmin && <Button variant="secondary" leadingIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Import</Button>}
           {isAdmin && <Button leadingIcon={<Plus size={16} />} onClick={() => setModalOpen(true)}>New inbound</Button>}
@@ -148,9 +155,10 @@ export default function Inbound() {
         </QueryState>
       </GlassPanel>
 
-      <InboundDetailDrawer selected={selected} onClose={() => setSelected(null)} isAdmin={isAdmin} />
+      <InboundDetailDrawer selected={selected} onClose={() => setSelected(null)} canReceiveInventory={canReceiveInventory} />
       <InboundCreateModal open={modalOpen} onClose={() => setModalOpen(false)} clients={clients} />
       <InboundImportModal open={importOpen} onClose={() => setImportOpen(false)} clients={clients} />
+      <ReceiveInventoryModal open={receiveOpen} onClose={() => setReceiveOpen(false)} clients={clients} />
     </div>
   );
 }

@@ -52,6 +52,35 @@ export async function applyMovement(move: StockMovement) {
   });
 }
 
+/** Apply one receive worksheet as a single canonical ledger transaction. */
+export async function applyMovements(moves: StockMovement[]) {
+  return db.transaction(async (tx) => {
+    const results = [];
+    for (const move of moves) {
+      const [updated] = await tx
+        .update(inventory)
+        .set({ stockQty: sql`${inventory.stockQty} + ${move.qty}`, updatedAt: new Date() })
+        .where(eq(inventory.id, move.inventoryId))
+        .returning();
+      if (!updated) throw new Error('Inventory item not found');
+      const [ledger] = await tx
+        .insert(inventoryLedger)
+        .values({
+          inventoryId: move.inventoryId,
+          type: move.type,
+          qty: move.qty,
+          orderId: move.orderId ?? null,
+          note: move.note ?? null,
+          createdBy: move.createdBy ?? null,
+          createdAt: move.createdAt ?? new Date(),
+        })
+        .returning();
+      results.push({ inventory: updated, ledger });
+    }
+    return results;
+  });
+}
+
 export async function inventoryStats(clientId?: number, scopePredicate: SQL = sql`true`) {
   const where = clientId !== undefined ? sql`client_id = ${clientId}` : sql`true`;
   const rows = await db.execute<{

@@ -16,11 +16,11 @@ import { STATUS_META, field, Cell } from './shared';
 export function InboundDetailDrawer({
   selected,
   onClose,
-  isAdmin,
+  canReceiveInventory,
 }: {
   selected: PortalInbound | null;
   onClose: () => void;
-  isAdmin: boolean;
+  canReceiveInventory: boolean;
 }) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -121,7 +121,7 @@ export function InboundDetailDrawer({
           )}
 
           {/* Receive controls (admin, not already received) */}
-          {isAdmin && selected.status !== 'received' && selected.status !== 'cancelled' && (
+          {canReceiveInventory && selected.status !== 'received' && selected.status !== 'cancelled' && (
             receiving ? (
               <div className="flex justify-end gap-2">
                 <Button variant="secondary" onClick={() => setReceiving(false)} disabled={recvSaving}>Cancel</Button>

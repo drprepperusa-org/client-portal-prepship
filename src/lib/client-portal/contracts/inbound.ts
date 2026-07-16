@@ -48,3 +48,15 @@ export interface NewInboundInput {
   notes?: string;
   items?: Array<{ sku?: string; name?: string; expectedQty?: number }>;
 }
+
+export interface PortalInventoryReceiveInput {
+  clientId: number;
+  reference?: string;
+  receivedAt: string;
+  items: Array<{ inventoryId: number; qty: number }>;
+}
+
+export interface PortalInventoryReceiveResult {
+  received: number;
+  totalUnits: number;
+}

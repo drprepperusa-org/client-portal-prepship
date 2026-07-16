@@ -13,6 +13,7 @@ export interface PortalMe {
   canManageUsers: boolean;
   canManageAdmins: boolean;
   canViewAudit: boolean;
+  canReceiveInventory: boolean;
 }
 
 export interface PortalAuditLogRow {
