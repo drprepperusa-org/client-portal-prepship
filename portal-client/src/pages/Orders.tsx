@@ -149,7 +149,7 @@ export default function Orders() {
       render: (o) => {
         const d = fmtDateTime(o.orderDate);
         return (
-          <div className="leading-tight">
+          <div className="text-left leading-tight">
             <p className="tnum text-ink-2">{d.date}</p>
             <p className="text-xs text-ink-3">{d.time}</p>
           </div>

@@ -34,30 +34,31 @@ export function DataTableMobile<T>({
           variants={staggerItem}
           onClick={() => onRowClick?.(row)}
           className={cn(
-            'glass rounded-glass-sm p-4',
+            'glass relative rounded-glass-sm p-4',
             onRowClick && 'cursor-pointer',
             rowClassName?.(row),
           )}
         >
           {onRowClick && rowActionLabel && (
-            <div className="flex justify-end pb-1">
-              <button
-                type="button"
-                aria-label={rowActionLabel(row)}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRowClick(row);
-                }}
-                className="focus-ring grid h-11 w-11 place-items-center rounded-lg text-ink-3 hover:bg-brand-50 hover:text-brand-700"
-              >
-                <ChevronRight size={17} aria-hidden="true" />
-              </button>
-            </div>
+            <button
+              type="button"
+              aria-label={rowActionLabel(row)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRowClick(row);
+              }}
+              className="focus-ring absolute right-2 top-2 grid h-11 w-11 place-items-center rounded-lg text-ink-3 hover:bg-brand-50 hover:text-brand-700"
+            >
+              <ChevronRight size={17} aria-hidden="true" />
+            </button>
           )}
-          {ordered.map((column) => (
+          {ordered.map((column, columnIndex) => (
             <div
               key={column.key}
-              className="flex items-start justify-between gap-3 py-1.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-slate-100"
+              className={cn(
+                'flex items-start justify-between gap-3 py-1.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-slate-100',
+                onRowClick && rowActionLabel && columnIndex === 0 && 'pr-12',
+              )}
             >
               {!column.mobileHidden && (
                 <span className="shrink-0 pt-0.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
