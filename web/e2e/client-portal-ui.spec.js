@@ -97,6 +97,41 @@ const returnRow = {
   createdAt: '2026-07-09T12:00:00.000Z',
 };
 
+const orderRow = {
+  id: 101,
+  clientId: 1,
+  clientName: 'Walmart - DJC',
+  storeId: 1,
+  storeName: 'Walmart',
+  orderNumber: '200014902407643',
+  externalOrderId: 'E2E-ORDER-101',
+  sourceProvider: 'walmart',
+  sourceStoreId: 'e2e-store',
+  orderStatus: 'shipped',
+  fulfillmentStatus: 'in_transit',
+  orderDate: '2026-07-16T11:59:00.000Z',
+  shipToName: 'E2E Customer',
+  shipToLine1: null,
+  shipToLine2: null,
+  shipToCity: null,
+  shipToState: null,
+  shipToPostalCode: null,
+  shipToCountry: null,
+  displayTrackingNumber: null,
+  trackingUrl: null,
+  items: [{
+    sku: 'SOON VEGGIE 4P',
+    name: 'Nongshim Soon Veggie Soup',
+    quantity: 1,
+    imageUrl: null,
+  }],
+  orderedUnits: 1,
+  weightOz: 16,
+  orderTotal: '14.99',
+  customerShippingRate: '5.00',
+  customerShippingRatePending: false,
+};
+
 const emptyPagination = { page: 1, pageSize: 50, total: 0, totalPages: 1 };
 const invoiceTotals = {
   orders: 0,
@@ -294,9 +329,11 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}) {
   if (pathname === '/api/client-portal/inventory-history') {
     return { data: [], pagination: emptyPagination };
   }
+  if (pathname === '/api/client-portal/orders') {
+    return { data: [orderRow], pagination: { ...emptyPagination, total: 1 } };
+  }
   if (
-    pathname === '/api/client-portal/orders'
-    || pathname === '/api/client-portal/shipments'
+    pathname === '/api/client-portal/shipments'
     || pathname === '/api/client-portal/inventory'
   ) {
     return { data: [], pagination: emptyPagination };
@@ -492,6 +529,33 @@ test('charts expose summaries, data tables, day selection, and reduced motion', 
   await chart.getByLabel('View day details').selectOption(day);
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('mobile order card has no blank action row and keeps the date beside its label', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/orders?tab=shipped`);
+
+  const action = page.getByRole('button', { name: 'View order 200014902407643' });
+  await expect(action).toBeVisible();
+  const card = action.locator('xpath=..');
+  const dateLabel = card.getByText('Order Date', { exact: true });
+  const dateValue = card.getByText('07/16/26', { exact: true });
+  const [cardBox, actionBox, labelBox, dateBox] = await Promise.all([
+    card.boundingBox(),
+    action.boundingBox(),
+    dateLabel.boundingBox(),
+    dateValue.boundingBox(),
+  ]);
+
+  expect(cardBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(labelBox).not.toBeNull();
+  expect(dateBox).not.toBeNull();
+  expect(actionBox.y - cardBox.y).toBeLessThan(16);
+  expect(labelBox.y - cardBox.y).toBeLessThan(40);
+  expect(dateBox.x).toBeLessThan(cardBox.x + cardBox.width / 2);
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
