@@ -1113,10 +1113,10 @@ export async function createReturnLabel(
       apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
       carrierId: chosen.carrier_id,
       serviceCode: chosen.service_code,
-      // Older canonical shipment rows may have dimensions but no saved package
-      // selection. ShipStation's generic package code preserves those exact
-      // dimensions without inventing a customer-visible package or rate fact.
-      packageCode: outbound.selectedPackageId || 'package',
+      // selectedPackageId is PrepShip's internal packaging-inventory row id,
+      // not a ShipStation package_code. Send the generic carrier package while
+      // preserving the canonical outbound dimensions below.
+      packageCode: 'package',
       weightOz,
       length: outbound.dimsL,
       width: outbound.dimsW,

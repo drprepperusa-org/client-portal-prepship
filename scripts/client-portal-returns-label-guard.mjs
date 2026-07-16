@@ -164,6 +164,11 @@ assert(
   /selectedRateJson/.test(service),
   'persistence writes selectedRateJson (the full rate envelope)',
 );
+assert(
+  /packageCode:\s*'package'/.test(service) &&
+    !/packageCode:\s*outbound\.selectedPackageId/.test(service),
+  'live return labels use a carrier package code, never PrepShip internal package inventory ids',
+);
 
 // ── 5. labelUrl normalization ──
 assert(
