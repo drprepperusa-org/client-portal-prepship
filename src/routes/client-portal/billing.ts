@@ -96,16 +96,16 @@ app.get('/reports', async (c) => {
   });
 });
 
-// PrepShip Admin owns billing generation with the full billing SOT, box review,
-// fee-waiver, and summary-refresh policy. This endpoint only forwards a global
-// admin's authenticated intent to that canonical owner; it never imports or
-// runs an independent Client Portal billing generator.
+// PrepShip owns billing generation with the full billing SOT, box review,
+// fee-waiver, and summary-refresh policy. This endpoint only forwards an
+// authenticated billing viewer's intent to that canonical owner; PrepShip
+// rechecks the narrow capability and applies the caller's client/store scope.
 app.post('/billing/generate', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  if (!scope.isGlobal || !scope.canViewFinancials) {
+  if (!scope.canViewFinancials) {
     await recordPortalAudit('portal.billing.generate.denied', scope);
-    return c.json({ error: 'Admin access required' }, 403);
+    return c.json({ error: 'Billing access required' }, 403);
   }
   const body = (await c.req.json().catch(() => ({}))) as {
     dateFrom?: string;
@@ -114,7 +114,13 @@ app.post('/billing/generate', async (c) => {
   };
   const range = requireBillingDayRange(c, body.dateFrom, body.dateTo);
   if (range instanceof Response) return range;
-  const clientId = body.clientId === undefined ? undefined : Number(body.clientId);
+  if (!scope.isGlobal && body.clientId !== undefined) {
+    await recordPortalAudit('portal.billing.generate.denied', scope, {
+      reason: 'client_override_forbidden',
+    });
+    return c.json({ error: 'Client-scoped billing updates cannot override clientId' }, 403);
+  }
+  const clientId = scope.isGlobal && body.clientId !== undefined ? Number(body.clientId) : undefined;
   if (clientId !== undefined && (!Number.isInteger(clientId) || clientId <= 0)) {
     return c.json({ error: 'clientId must be a positive integer' }, 400);
   }

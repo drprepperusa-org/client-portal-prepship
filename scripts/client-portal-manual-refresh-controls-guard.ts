@@ -19,6 +19,7 @@ function reject(source: string, pattern: RegExp, message: string): void {
 
 const packageJson = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 const orders = read('portal-client/src/pages/Orders.tsx');
+const billing = read('portal-client/src/pages/Billing.tsx');
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
 const portalContext = read('portal-client/src/lib/portalContext.tsx');
 
@@ -37,6 +38,12 @@ reject(
   orders,
   /\bhandleSync\b|Syncing all pages|>\s*Sync\s*</,
   'Orders must not expose the manual Sync control.',
+);
+
+reject(
+  billing,
+  /const \[refreshing, setRefreshing\]|async function refresh\(\)|>\s*Refresh\s*<\/Button>/,
+  'Billing must not expose a separate manual Refresh control; Update Billing owns regeneration and read invalidation.',
 );
 
 reject(

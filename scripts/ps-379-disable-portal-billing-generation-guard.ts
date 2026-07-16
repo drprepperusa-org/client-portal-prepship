@@ -46,10 +46,17 @@ check(
 );
 
 check(
-  'only global financial admins can request generation and PrepShip rechecks the bearer token',
-  /!scope\.isGlobal\s*\|\|\s*!scope\.canViewFinancials/.test(generateRouteBlock) &&
+  'billing viewers can request generation and PrepShip rechecks the bearer token',
+  /if \(!scope\.canViewFinancials\)/.test(generateRouteBlock) &&
     /const authorization = c\.req\.header\('authorization'\)/.test(generateRouteBlock) &&
     /headers:\s*\{[\s\S]*authorization/.test(generateRouteBlock)
+);
+
+check(
+  'restricted portal callers cannot override the canonical tenant scope',
+  /!scope\.isGlobal && body\.clientId !== undefined/.test(generateRouteBlock) &&
+    /client_override_forbidden/.test(generateRouteBlock) &&
+    /scope\.isGlobal && body\.clientId !== undefined/.test(generateRouteBlock)
 );
 
 check(
@@ -62,9 +69,16 @@ check(
 );
 
 check(
-  'Update Billing is visible only to global admins with financial visibility',
-  /const canUpdateBilling = Boolean\(me\.data\?\.isGlobal && me\.data\?\.canViewFinancials\)/.test(billingPage) &&
+  'Update Billing is visible to every user with financial visibility',
+  /const canUpdateBilling = Boolean\(me\.data\?\.canViewFinancials\)/.test(billingPage) &&
     /\{canUpdateBilling && \([\s\S]*Update Billing/.test(billingPage)
+);
+
+check(
+  'Billing has no separate manual Refresh control or refresh-only state',
+  !/const \[refreshing, setRefreshing\]/.test(billingPage) &&
+    !/async function refresh\(\)/.test(billingPage) &&
+    !/>\s*Refresh\s*<\/Button>/.test(billingPage)
 );
 
 check(
