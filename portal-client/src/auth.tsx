@@ -6,6 +6,7 @@ import { supabase } from './lib/supabase';
 interface AuthApi {
   loading: boolean;
   isAuthed: boolean;
+  passwordRecovery: boolean;
   accessToken: string | null;
   email: string | null;
   userId: string | null;
@@ -15,13 +16,28 @@ interface AuthApi {
   signOut: () => Promise<void>;
   signOutAllDevices: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  finishPasswordRecovery: (newPassword: string) => Promise<void>;
 }
 
 const AuthCtx = createContext<AuthApi | null>(null);
+const RECOVERY_MARKER = 'prepship.passwordRecovery';
+
+function recoveryRedirect(): string {
+  return `${window.location.origin}/reset-password`;
+}
+
+function setRecoveryMarker(active: boolean): void {
+  if (active) window.sessionStorage.setItem(RECOVERY_MARKER, '1');
+  else window.sessionStorage.removeItem(RECOVERY_MARKER);
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    () => window.sessionStorage.getItem(RECOVERY_MARKER) === '1',
+  );
   const queryClient = useQueryClient();
   // Tracks the currently-cached user so we can wipe React Query whenever the
   // signed-in identity changes.
@@ -58,7 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setLoading(false);
       });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMarker(true);
+        setPasswordRecovery(true);
+      } else if (event === 'SIGNED_OUT') {
+        setRecoveryMarker(false);
+        setPasswordRecovery(false);
+      }
       syncCacheForUser(next);
       setSession(next);
     });
@@ -74,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       loading,
       isAuthed: Boolean(session?.access_token),
+      passwordRecovery,
       accessToken: session?.access_token ?? null,
       email: session?.user?.email ?? null,
       userId: session?.user?.id ?? null,
@@ -118,9 +142,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.updateUser({ password: newPassword });
         if (error) throw new Error(error.message);
       },
+      requestPasswordReset: async (email) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: recoveryRedirect(),
+        });
+        if (error) throw new Error(error.message);
+      },
+      finishPasswordRecovery: async (newPassword) => {
+        if (!session?.access_token || !passwordRecovery) {
+          throw new Error('Open the latest password recovery email to continue.');
+        }
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw new Error(error.message);
+        setRecoveryMarker(false);
+        setPasswordRecovery(false);
+        await supabase.auth.signOut();
+        queryClient.clear();
+        cachedUserId.current = null;
+        setSession(null);
+      },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loading, session],
+    [loading, passwordRecovery, session],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

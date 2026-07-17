@@ -1,6 +1,37 @@
 import { expect, test } from '@playwright/test';
 
 const baseUrl = 'http://127.0.0.1:5177';
+const storageKey = 'sb-portal-e2e-auth-token';
+
+function recoverySession() {
+  const payload = Buffer.from(JSON.stringify({
+    aud: 'authenticated',
+    exp: 4_102_444_800,
+    sub: 'recovery-user',
+    email: 'client@example.com',
+    role: 'authenticated',
+  })).toString('base64url');
+  const accessToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.e2e-signature`;
+  const user = {
+    id: 'recovery-user',
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'client@example.com',
+    app_metadata: { provider: 'email', providers: ['email'], role: 'client_user', clientIds: [1] },
+    user_metadata: {},
+    identities: [],
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-07-18T00:00:00.000Z',
+  };
+  return {
+    access_token: accessToken,
+    refresh_token: 'recovery-refresh-token',
+    expires_in: 2_147_483_647,
+    expires_at: 4_102_444_800,
+    token_type: 'bearer',
+    user,
+  };
+}
 
 // Browser smoke for the ACTIVE client portal (portal-client/, served by the
 // playwright webServer on 5177). The portal has no demo mode, so a browser
@@ -58,4 +89,59 @@ test('login form exposes sign-in affordances and no self-signup', async ({ page 
   await expect(page.getByText(/create one|sign up/i)).toHaveCount(0);
   await expect(page.getByText('Contact your account manager')).toBeVisible();
   await expect(page.getByText('Secure client access')).toBeVisible();
+});
+
+test('forgot password requests a production-compatible Supabase recovery link', async ({ page }) => {
+  let recoveryRequest;
+  await page.route('**/auth/v1/recover?**', async (route) => {
+    recoveryRequest = route.request();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.goto(`${baseUrl}/login`);
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await expect(page).toHaveURL(/\/forgot-password$/);
+  await page.getByPlaceholder('you@company.com').fill('client@example.com');
+  await page.getByRole('button', { name: 'Send recovery email' }).click();
+
+  await expect(page.getByText(/password recovery email has been sent/i)).toBeVisible();
+  expect(recoveryRequest).toBeTruthy();
+  expect(recoveryRequest.url()).toContain(encodeURIComponent(`${baseUrl}/reset-password`));
+});
+
+test('reset-password without a Supabase recovery session fails closed', async ({ page }) => {
+  await page.goto(`${baseUrl}/reset-password`);
+  await expect(page.getByRole('heading', { name: 'Recovery link required' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send a new recovery email' })).toBeVisible();
+});
+
+test('Supabase recovery session updates the password and returns to sign in', async ({ page }) => {
+  const session = recoverySession();
+  await page.addInitScript(
+    ({ key, value }) => {
+      localStorage.setItem(key, JSON.stringify(value));
+      sessionStorage.setItem('prepship.passwordRecovery', '1');
+    },
+    { key: storageKey, value: session },
+  );
+  await page.route('**/auth/v1/user', async (route) => {
+    expect(route.request().method()).toBe('PUT');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ user: session.user }),
+    });
+  });
+  await page.route('**/auth/v1/logout*', async (route) => {
+    await route.fulfill({ status: 204, body: '' });
+  });
+
+  await page.goto(`${baseUrl}/reset-password`);
+  await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
+  await page.getByRole('textbox', { name: /^New password/ }).fill('NewSecurePassword123!');
+  await page.getByRole('textbox', { name: /^Confirm password/ }).fill('NewSecurePassword123!');
+  await page.getByRole('button', { name: 'Update password' }).click();
+
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByText('Sign in with your new password.')).toBeVisible();
 });

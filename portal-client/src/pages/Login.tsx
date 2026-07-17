@@ -73,7 +73,11 @@ export default function Login() {
 
             <div className="flex items-center justify-between">
               <Checkbox label="Remember me" checked={remember} onChange={setRemember} />
-              <button type="button" className="focus-ring cursor-pointer rounded text-sm font-medium text-brand-600 transition-colors hover:text-brand-700">
+              <button
+                type="button"
+                onClick={() => nav('/forgot-password')}
+                className="focus-ring cursor-pointer rounded text-sm font-medium text-brand-600 transition-colors hover:text-brand-700"
+              >
                 Forgot password?
               </button>
             </div>
