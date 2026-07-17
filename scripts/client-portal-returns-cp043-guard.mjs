@@ -154,7 +154,7 @@ assert(
   'rate-unavailable attempts write sanitized operator audit metadata',
 );
 assert(
-  /isRateUnavailable\s*\?\s*422/.test(route) &&
+  /isRateUnavailable \|\| isCustomerRateUnavailable[\s\S]{0,80}\?\s*422/.test(route) &&
     /Could not create return label\. Please try again or contact PrepShip support\./.test(route),
   'the API returns retryable 422 rate errors and a generic unknown 500 message',
 );

@@ -13,6 +13,10 @@ const action = read('src/routes/client-portal/returns/actions.ts');
 const billing = read('src/services/billing.ts');
 const sqlProjection = read('src/lib/client-portal/customer-shipping-rate.ts');
 const matrix = read('docs/source-of-truth-matrix.md');
+const safeResponseType = adapter.slice(
+  adapter.indexOf('export type CustomerSafeShippingMoney'),
+  adapter.indexOf('export type CustomerSafeShippingMoney') + 360,
+);
 
 const valid = readFrozenCustomerShippingMoney({
   selectedRateCost: 5.7,
@@ -45,7 +49,7 @@ assert.match(adapter, /customerShippingMoneyPolicyVersion/,
   'safe response retains policy provenance');
 assert.match(adapter, /policyVersion !== 'ps-437-v1'/,
   'the cross-app boundary rejects unknown policy versions');
-assert.doesNotMatch(adapter, /selectedRateCost|shippingMargin/,
+assert.doesNotMatch(safeResponseType, /selectedRateCost|shippingMargin/,
   'cross-app response excludes internal cost and margin');
 assert.match(billing, /canonical customer snapshot missing/,
   'missing return truth is reconciled instead of recalculated');

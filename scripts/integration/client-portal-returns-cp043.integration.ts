@@ -15,8 +15,10 @@ process.env.PREPSHIP_API_URL = 'https://prepship.example.test';
 type RateMode = 'empty' | 'success';
 
 let rateMode: RateMode = 'empty';
+let customerRateMode: 'ready' | 'unavailable' = 'ready';
 let estimateCalls = 0;
 let providerCalls = 0;
+let customerRatePreviewCalls = 0;
 const originalFetch = globalThis.fetch;
 
 function jsonResponse(value: unknown): Response {
@@ -26,13 +28,31 @@ function jsonResponse(value: unknown): Response {
   });
 }
 
-globalThis.fetch = (async (input: RequestInfo | URL) => {
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
+  if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/return-preview') {
+    customerRatePreviewCalls += 1;
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    equal(body.selectedRateCost, 6.4, 'preflight sends the selected provider total server-to-server');
+    if (customerRateMode === 'unavailable') {
+      return new Response(JSON.stringify({ error: 'Customer return shipping rate is not configured' }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return jsonResponse({
+      data: {
+        cShippingRateAmount: 7.73,
+        customerRateSource: 'hugrab_shipping_rate_override',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      },
+    });
+  }
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/freeze') {
     return jsonResponse({
       data: {
-        cShippingRateAmount: 6.4,
-        customerRateSource: 'realized_customer_shipping_rate',
+        cShippingRateAmount: 7.73,
+        customerRateSource: 'hugrab_shipping_rate_override',
         customerShippingMoneyPolicyVersion: 'ps-437-v1',
       },
     });
@@ -241,8 +261,35 @@ async function main(): Promise<void> {
     );
   equal(returnRowsAfterFailure.length, 0, 'no-rate path creates no return shipment');
 
-  console.log('\nCP-043 Group 2 - retry and canonical success persistence');
+  console.log('\nCP-043 Group 2 - customer pricing fails closed before postage');
   rateMode = 'success';
+  customerRateMode = 'unavailable';
+  let customerRateError: unknown;
+  try {
+    await returnsService.createReturnLabel({
+      returnId: fixture.returnId,
+      orderId: fixture.orderId,
+      actorType: 'client',
+      actorEmail: 'cp043@example.test',
+      authorization: 'Bearer cp043-fixture',
+    });
+  } catch (error) {
+    customerRateError = error;
+  }
+  check(
+    customerRateError instanceof returnsService.ReturnCustomerRateUnavailableError,
+    'missing customer pricing returns a safe retryable error',
+  );
+  equal(providerCalls, 0, 'missing customer pricing blocks the provider mutation');
+
+  const failedPricingShipments = await db
+    .select()
+    .from(schema.shipments)
+    .where(and(eq(schema.shipments.orderId, fixture.orderId), eq(schema.shipments.isReturn, true)));
+  equal(failedPricingShipments.length, 0, 'missing customer pricing persists no return shipment');
+
+  console.log('\nCP-043 Group 3 - retry and canonical success persistence');
+  customerRateMode = 'ready';
   const result = await returnsService.createReturnLabel({
     returnId: fixture.returnId,
     orderId: fixture.orderId,
@@ -250,7 +297,8 @@ async function main(): Promise<void> {
     actorEmail: 'cp043@example.test',
     authorization: 'Bearer cp043-fixture',
   });
-  equal(estimateCalls, 2, 'retry forces a fresh live quote instead of using the empty cache');
+  equal(estimateCalls, 3, 'each retry forces a fresh live quote instead of stale cache data');
+  equal(customerRatePreviewCalls, 2, 'customer pricing is checked before each purchase-capable attempt');
   equal(providerCalls, 1, 'successful retry purchases exactly once through the provider fixture');
 
   const [completedReturn] = await db
@@ -280,7 +328,7 @@ async function main(): Promise<void> {
     'canonical shipment freezes the backend-selected quote',
   );
   equal(Number(returnShipment?.cost), 6.4, 'canonical shipment persists the provider cost');
-  equal(result.returnCustomerShippingRate, 6.4, 'client price comes from backend return billing policy');
+  equal(result.returnCustomerShippingRate, 7.73, 'client price comes from backend return billing policy');
   check(!('carrierCode' in result), 'client result omits carrier identity');
   check(!('serviceCode' in result), 'client result omits service identity');
   check(!('selectedRateJson' in result), 'client result omits the selected quote');

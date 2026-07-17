@@ -9,13 +9,17 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 const adapter = read('src/services/prepship-customer-shipping-money.ts');
 const returnsService = read('src/services/returns.ts');
 const billing = read('src/services/billing.ts');
+const safeResponseType = adapter.slice(
+  adapter.indexOf('export type CustomerSafeShippingMoney'),
+  adapter.indexOf('export type CustomerSafeShippingMoney') + 360,
+);
 
 assert.match(adapter, /\/client-portal\/customer-shipping-money\/freeze/,
   'return workflow calls the scoped PrepShip freeze boundary');
 assert.match(adapter, /cShippingRateAmount/,
   'adapter accepts the customer-safe amount');
-assert.doesNotMatch(adapter, /selectedRateCost|shippingMarginAmount|shippingMarginPct/,
-  'adapter cannot receive internal cost or margin');
+assert.doesNotMatch(safeResponseType, /selectedRateCost|shippingMarginAmount|shippingMarginPct/,
+  'adapter response cannot receive internal cost or margin');
 assert.match(returnsService, /freezePrepShipCustomerShippingMoney\(/,
   'return label creation delegates pricing to PrepShip');
 assert.doesNotMatch(returnsService, /resolveReturnPostageRate|resolveReturnCustomerPrice|computeCustomerReturnPrice/,

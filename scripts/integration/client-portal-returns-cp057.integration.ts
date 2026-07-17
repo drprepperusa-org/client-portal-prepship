@@ -27,6 +27,15 @@ function response(value: unknown, status = 200): Response {
 
 globalThis.fetch = (async (input: RequestInfo | URL) => {
   const url = String(input);
+  if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/return-preview') {
+    return response({
+      data: {
+        cShippingRateAmount: 7.57,
+        customerRateSource: 'realized_customer_shipping_rate',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      },
+    });
+  }
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/freeze') {
     return response({
       data: {

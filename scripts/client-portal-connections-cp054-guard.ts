@@ -244,7 +244,7 @@ const matrix = read('docs/source-of-truth-matrix.md');
 check(
   matrix.includes('| Connection status | `connectionStatus` | `connectionStatus` |') &&
     matrix.includes('| Account identifier | `displayAccountIdentifier` | `displayAccountIdentifier` |') &&
-    matrix.includes('global\nworker/order/shipment diagnostics are backend-only'),
+    /global\r?\nworker\/order\/shipment diagnostics are backend-only/.test(matrix),
   'SOT matrix documents the CP-054 owner, masking, freshness, and diagnostics boundary',
 );
 

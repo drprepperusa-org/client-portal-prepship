@@ -14,7 +14,10 @@ import {
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
 import { ShipStationError } from '../lib/shipstation/client';
-import { freezePrepShipCustomerShippingMoney } from './prepship-customer-shipping-money';
+import {
+  freezePrepShipCustomerShippingMoney,
+  previewPrepShipReturnCustomerShippingMoney,
+} from './prepship-customer-shipping-money';
 import {
   generateFakeShipmentId,
   generateFakeTrackingNumber,
@@ -153,11 +156,35 @@ export class ReturnLabelStateError extends Error {
   }
 }
 
+export class ReturnCustomerRateUnavailableError extends Error {
+  constructor() {
+    super('Customer return shipping rate is not configured. Contact PrepShip support.');
+    this.name = 'ReturnCustomerRateUnavailableError';
+  }
+}
+
 export class ReturnLabelPurchasePendingError extends Error {
   constructor() {
     super('Return label purchase is being reconciled. Please retry shortly.');
     this.name = 'ReturnLabelPurchasePendingError';
   }
+}
+
+function selectedRateProviderCost(rate: Rate): number {
+  return (
+    Number(rate.shipping_amount?.amount ?? 0) +
+    Number(rate.confirmation_amount?.amount ?? 0) +
+    Number(rate.other_amount?.amount ?? 0)
+  );
+}
+
+function providerAccountIdFromRate(rate: Rate): number | null {
+  const match = /^se-(\d+)$/i.exec(rate.carrier_id);
+  if (!match) return null;
+  const providerAccountId = Number(match[1]);
+  return Number.isSafeInteger(providerAccountId) && providerAccountId > 0
+    ? providerAccountId
+    : null;
 }
 
 function orderShipToFromRaw(order: {
@@ -798,10 +825,7 @@ export async function createReturnLabel(
   ): Promise<ClientSafeReturnResult> => {
     if (!returnRow) throw new ReturnLabelStateError('Live return labels require a return workflow');
     const labelUrl = extractShipstationLabelUrl(created.labelUrl);
-    const quotedCost =
-      Number(selectedRate.shipping_amount?.amount ?? 0) +
-      Number(selectedRate.confirmation_amount?.amount ?? 0) +
-      Number(selectedRate.other_amount?.amount ?? 0);
+    const quotedCost = selectedRateProviderCost(selectedRate);
     const rawCost = created.cost || quotedCost;
     const returnShipmentId = await persistReturnShipment({
       outbound,
@@ -1070,6 +1094,26 @@ export async function createReturnLabel(
   }
   if (!purchaseAction || purchaseAction.kind !== 'purchase') {
     throw new ReturnLabelPurchasePendingError();
+  }
+  if (!returnRow) {
+    throw new ReturnLabelStateError('Live return labels require a return workflow');
+  }
+
+  // PS-435 money-path guard: PrepShip's canonical owner must approve a
+  // customer-safe return rate before any provider mutation is attempted.
+  try {
+    await previewPrepShipReturnCustomerShippingMoney({
+      sourceShipmentId: outbound.id,
+      candidateSelectedRateCost: selectedRateProviderCost(chosen),
+      carrierCode: chosen.carrier_code,
+      providerAccountId: providerAccountIdFromRate(chosen),
+      authorization: input.authorization,
+    });
+  } catch {
+    const safeError = 'Customer return shipping rate is not configured';
+    await markReturnLabelPurchaseFailed(purchaseAction.lease, safeError);
+    await markReturnLabelFailed(returnRow.id, safeError, input.actorType, input.actorEmail);
+    throw new ReturnCustomerRateUnavailableError();
   }
 
   await saveReturnLabelSelectedRate(purchaseAction.lease, chosen);
