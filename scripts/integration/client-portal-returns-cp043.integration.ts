@@ -28,7 +28,7 @@ function jsonResponse(value: unknown): Response {
 
 globalThis.fetch = (async (input: RequestInfo | URL) => {
   const url = String(input);
-  if (url === 'https://prepship.example.test/billing/customer-shipping-money/freeze') {
+  if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/freeze') {
     return jsonResponse({
       data: {
         cShippingRateAmount: 6.4,
