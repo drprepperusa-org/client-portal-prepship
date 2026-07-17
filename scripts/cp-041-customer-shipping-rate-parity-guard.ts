@@ -24,8 +24,8 @@ assert.doesNotMatch(projection, /billingConfig|orderOverrides|shippingMarkup|ove
   'portal SQL has no pricing-policy mirror');
 assert.match(snapshot, /customerShippingMoneyPolicyVersion/,
   'snapshot reader requires explicit policy provenance');
-assert.doesNotMatch(snapshot, /cost|labelCost|otherCost/,
-  'snapshot reader never promotes raw shipment cost');
+assert.doesNotMatch(snapshot, /\b(?:labelCost|otherCost|shipmentCost|houseCost|rawCost)\b/,
+  'snapshot reader never promotes raw or legacy shipment-cost aliases');
 
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 assert.equal(
