@@ -949,7 +949,7 @@ Guard: `client-portal-order-detail-guard.ts`.
 | Delivery status | `shipmentStatus` | `shipmentStatus` | `portalShipmentStatusSql`: voided wins; known persisted carrier status passes through; no carrier movement = `label_created`; invalid persisted value = `unavailable` | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042/CP-051) |
 | Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier or ShipStation per-label delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
-| Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → live projection from `shipments.cost`/`label_cost` + `other_cost`, `billing_config` markup/override, and `order_overrides` ref rates via `customer-shipping-rate.ts` | billing / label time | derived-from-canonical (backend-owned, gated) |
+| Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot (`customerShippingMoneyPolicyVersion='ps-437-v1'`); never raw cost or a Client Portal formula | PrepShip label/billing freeze | backend-owned-truth (PS-437, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
 
 Owner: `toPortalShipmentDto` over `shipments`. Route:
@@ -1054,7 +1054,7 @@ client-safe (no carrier/service). Guards:
 | Return reference | `returnReference` | same | persisted `returns.return_reference`; legacy fallback/backfill derives `order_number + '-RETURN'` once | return workflow creation | backend-owned identity |
 | Return label PDF | `pdfUrl` | `returnLabelUrl` | `shipments.labelUrl` (never a new URL) | label time | presentation-only |
 | Label needs attention | `status` / `deliveryError` | same | `returns.status = 'label_failed'` + redaction-safe `returns.deliveryError` | latest label attempt | backend-owned-truth (CP-043) |
-| Return postage | `returnCustomerShippingRate` | same | persisted `returns.return_customer_shipping_rate`, frozen from `resolveReturnCustomerPrice` after cheapest eligible label selection; return billing consumes the same snapshot | return label creation | backend-owned-truth (CP-031/043) |
+| Return postage | `returnCustomerShippingRate` | same | PrepShip freezes the full policy-versioned money tuple on `shipments.selected_rate_json` from exact `selected_rate_cost`; Client Portal copies only the safe amount to `returns.return_customer_shipping_rate` and return billing consumes that alias without repricing | return label creation | backend-owned-truth (CP-031/043, PS-437) |
 | Delivery method/status | `deliveryMethod`/`deliveryStatus` | same | `returns` delivery columns (CP-028 resolver) | delivery event | backend-owned-truth (CP-028) |
 | Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
 | Inspection condition | `condition` | `condition` | `return_inspections` (6-value enum) | receiving/inspection | backend-owned-truth (CP-030) |

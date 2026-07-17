@@ -239,6 +239,7 @@ function registerReturnLabelRoute(app: Hono): void {
         reason: ret.reason ?? undefined,
         actorEmail: scope.email,
         actorType: scope.isGlobal ? 'operator' : 'client',
+        authorization: c.req.header('authorization'),
       });
       await recordPortalAudit('portal.returns.label.create', scope, { returnId: id });
       return c.json({ data: result });

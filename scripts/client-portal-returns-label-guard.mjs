@@ -226,18 +226,14 @@ assert(
   'ClientSafeReturnResult exposes label/PDF availability (boolean, not a URL/provider)',
 );
 
-// ── 6b. CP-027 acceptance: customer price is BILLING-POLICY derived ──
-// The client-facing return price must come from the SAME policy that generates
-// the return_postage billing line (billing.ts resolveReturnPostageRate), so the
-// quoted price equals the billed amount — one definition, no drift. The raw
-// house/label cost must never be the client-facing price.
+// ── 6b. PS-437: PrepShip owns customer shipping money ──
 assert(
-  /resolveReturnCustomerPrice/.test(service),
-  'the client price is produced by resolveReturnCustomerPrice (policy-derived), not raw cost',
+  /freezePrepShipCustomerShippingMoney/.test(service),
+  'the client price is frozen by the PrepShip source-of-truth boundary',
 );
 assert(
-  /resolveReturnPostageRate/.test(service) && /from '\.\/billing'/.test(service),
-  'resolveReturnCustomerPrice reuses billing.ts resolveReturnPostageRate (one shared definition, no drift)',
+  !/resolveReturnPostageRate|resolveReturnCustomerPrice|computeCustomerReturnPrice/.test(service),
+  'the Client Portal return service contains no customer pricing formula',
 );
 assert(
   !/function computeCustomerReturnPrice/.test(service),
@@ -246,10 +242,10 @@ assert(
 // Label creation computes the customer rate once, then freezes that exact value
 // on the return workflow for every downstream reader.
 assert(
-  /const returnCustomerShippingRate = await resolveReturnCustomerPrice\(rawCost, clientId\)/.test(service) &&
+  /const returnCustomerShippingRate = await resolveReturnCustomerRateForShipment\(/.test(service) &&
     /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service) &&
     /returnCustomerShippingRate,\s*\n\s*trackingNumber: created\.trackingNumber/.test(service),
-  'label creation computes once and persists/returns the same frozen customer rate',
+  'label creation delegates once and persists/returns the same frozen customer rate',
 );
 
 // ── 7. Admin-override audit path ──

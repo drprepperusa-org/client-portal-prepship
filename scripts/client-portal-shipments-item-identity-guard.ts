@@ -88,11 +88,16 @@ assert(
     shippingRate.includes('export function shipmentCustomerShippingRateSql') &&
     shippingRate.includes('from billing_line_items bli') &&
     shippingRate.includes('export function projectedCustomerShippingRateSql') &&
-    shippingRate.includes('billingConfig.shippingRateOverrideTriggerBelow') &&
+    shippingRate.includes('shipments.selectedRateJson') &&
+    shippingRate.includes('customerShippingMoneyPolicyVersion') &&
+    !shippingRate.includes('billingConfig') &&
+    !shippingRate.includes('orderOverrides') &&
     shippingRate.includes("bli.line_type = 'shipping'") &&
+    !shipmentsReadModel.includes('leftJoin(billingConfig') &&
+    !shipmentsReadModel.includes('leftJoin(orderOverrides') &&
     !shipmentsReadModel.includes('coalesce(${shipments.labelCost}') &&
     shipmentsReadModel.includes('{ includeFinancials: scope.canViewFinancials }'),
-  'shipments read model selects order items and backend-owned customer shipping rate (frozen billing first, projected fallback), and passes financial visibility to the DTO',
+  'shipments read model selects order items and backend-owned customer shipping rate (frozen billing first, PrepShip snapshot fallback), and passes financial visibility to the DTO',
 );
 
 assert(

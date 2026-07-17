@@ -206,9 +206,9 @@ for (const forbidden of ['selectedRateJson', 'selectedRate', 'labelCost', 'provi
 assert(
   /returnCustomerShippingRate/.test(api) &&
     /row\.ret\.returnCustomerShippingRate/.test(route) &&
-    /resolveReturnPostageRate/.test(service) &&
+    /freezePrepShipCustomerShippingMoney/.test(service) &&
     /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service),
-  'client-visible return postage reads the frozen billing-policy snapshot',
+  'client-visible return postage reads the PrepShip-frozen snapshot',
 );
 
 // 8. PDF download + inspection media visibility.

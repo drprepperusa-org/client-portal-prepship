@@ -14,7 +14,7 @@ import {
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
 import { ShipStationError } from '../lib/shipstation/client';
-import { resolveReturnPostageRate } from './billing';
+import { freezePrepShipCustomerShippingMoney } from './prepship-customer-shipping-money';
 import {
   generateFakeShipmentId,
   generateFakeTrackingNumber,
@@ -63,6 +63,8 @@ export type CreateReturnLabelInput = {
   adminOverrideReason?: string;
   actorEmail?: string;
   actorType?: 'client' | 'operator';
+  /** Forwarded bearer context for the scoped PrepShip money-freeze boundary. */
+  authorization?: string;
 };
 
 /**
@@ -289,63 +291,6 @@ const toNum = (v: string | number | null | undefined): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/**
- * CP-027 client-facing returnCustomerShippingRate — derived from the SAME backend billing
- * policy that generates the `return_postage` billing line (CP-031's
- * `resolveReturnPostageRate` in billing.ts), so the price a customer is quoted
- * equals the amount that will actually be billed. ONE definition, no drift.
- *
- * Parity with billing generation (see billing.ts generateLineItems):
- *  - house cost 0 (offline-mock / no synced cost) → 0. Billing generates NO
- *    `return_postage` line for a 0 house cost, so the quote is likewise 0.
- *  - house cost > 0 → the client's return markup + min-price override applied.
- *    With all-zero / absent config this reduces to the raw house cost (no
- *    regression from the prior raw-cost behaviour).
- *
- * PARITY INVARIANT: this service persists return shipments with cost = rawCost
- * and NO otherCost, so billing's houseCost = (cost || labelCost) + otherCost
- * equals the rawCost passed here. Keep it that way — if a future sync ever
- * backfills shipments.otherCost on a return row, add it into rawCost at the call
- * sites too, or the quote (single rawCost) would drift from the billed line.
- *
- * The raw house/label cost is NEVER surfaced to the client — only this
- * policy-derived amount ever reaches ClientSafeReturnResult.returnCustomerShippingRate.
- */
-export async function resolveReturnCustomerPrice(rawCost: number, clientId: number | null): Promise<number> {
-  const houseCost = toNum(rawCost);
-  if (houseCost <= 0) return 0;
-  if (clientId == null) return Number(houseCost.toFixed(2));
-  try {
-    const cfgRows = await db.execute<{
-      returnPostageMarkupPct: string;
-      returnPostageMarkupFlat: string;
-      returnShippingRateOverrideTriggerBelow: string;
-      returnShippingRateOverrideAmount: string;
-    }>(sql`
-      select
-        coalesce(return_postage_markup_pct, '0'::numeric)::text as "returnPostageMarkupPct",
-        coalesce(return_postage_markup_flat, '0'::numeric)::text as "returnPostageMarkupFlat",
-        coalesce(return_shipping_rate_override_trigger_below, '0'::numeric)::text as "returnShippingRateOverrideTriggerBelow",
-        coalesce(return_shipping_rate_override_amount, '0'::numeric)::text as "returnShippingRateOverrideAmount"
-      from billing_config
-      where client_id = ${clientId}
-      limit 1
-    `);
-    const cfg = cfgRows[0];
-    const { returnRate } = resolveReturnPostageRate({
-      houseCost,
-      markupPct: toNum(cfg?.returnPostageMarkupPct),
-      markupFlat: toNum(cfg?.returnPostageMarkupFlat),
-      triggerBelow: toNum(cfg?.returnShippingRateOverrideTriggerBelow),
-      overrideAmount: toNum(cfg?.returnShippingRateOverrideAmount),
-    });
-    return Number(returnRate.toFixed(2));
-  } catch (err) {
-    console.error('[returns] return price policy load failed; refusing to freeze an unpriced snapshot:', err);
-    throw err;
-  }
-}
-
 function toClientSafeResult(args: {
   returnCustomerShippingRate: number;
   trackingNumber: string | null;
@@ -542,6 +487,9 @@ async function persistReturnShipment(args: {
         dimsH: args.outbound.dimsH,
         selectedPackageId: args.outbound.selectedPackageId,
         cost: costStr,
+        // PS-437: exact provider total only. PrepShip owns every customer-rate,
+        // margin, override, and provenance decision frozen after this insert.
+        selectedRateCost: costStr,
         labelUrl: args.labelUrl,
         labelCreatedAt: args.createdAt,
         labelFormat: args.labelFormat,
@@ -635,26 +583,31 @@ async function markReturnLabelCreated(
 
 async function resolveReturnCustomerRateForShipment(
   shipment: OutboundShipment,
-  clientId: number | null,
+  authorization?: string,
 ): Promise<number> {
   const houseCost = (toNum(shipment.cost) || toNum(shipment.labelCost)) + toNum(shipment.otherCost);
-  return resolveReturnCustomerPrice(houseCost, clientId);
+  if (houseCost <= 0 && shipment.source === 'test_offline') return 0;
+  const frozen = await freezePrepShipCustomerShippingMoney({
+    shipmentId: shipment.id,
+    authorization,
+  });
+  return frozen.cShippingRateAmount;
 }
 
 /**
- * Transitional repair for a label-created row that predates the persisted
- * snapshot. Migration 0044 backfills these in bulk; this compare-and-set keeps
- * an interrupted retry deterministic without creating another carrier label.
+ * Reconcile an interrupted PS-437 freeze without purchasing another label.
+ * A populated compatibility alias is reused verbatim; historical repricing is
+ * handled only by the separate read-only audit + operator-approved repair.
  */
 async function ensureReturnCustomerRateSnapshot(
   returnRow: typeof returns.$inferSelect,
   shipment: OutboundShipment,
-  clientId: number | null,
+  authorization?: string,
 ): Promise<number> {
   if (returnRow.returnCustomerShippingRate != null) {
     return toNum(returnRow.returnCustomerShippingRate);
   }
-  const rate = await resolveReturnCustomerRateForShipment(shipment, clientId);
+  const rate = await resolveReturnCustomerRateForShipment(shipment, authorization);
   await db
     .update(returns)
     .set({ returnCustomerShippingRate: rate.toFixed(2), updatedAt: new Date() })
@@ -722,7 +675,7 @@ export async function createReturnLabel(
       )
       .limit(1);
     if (linked) {
-      const customerRate = await ensureReturnCustomerRateSnapshot(returnRow, linked, clientId);
+      const customerRate = await ensureReturnCustomerRateSnapshot(returnRow, linked, input.authorization);
       return toClientSafeResultFromShipment(linked, customerRate);
     }
   }
@@ -743,7 +696,7 @@ export async function createReturnLabel(
       existingReturn.labelProviderKey === existingIntent.providerReferenceKey
     ) {
       await completeReturnLabelPurchase(existingIntent.id, existingReturn.id);
-      const customerRate = await resolveReturnCustomerRateForShipment(existingReturn, clientId);
+      const customerRate = await resolveReturnCustomerRateForShipment(existingReturn, input.authorization);
       await markReturnLabelCreated(
         returnRow.id,
         existingReturn.id,
@@ -870,7 +823,14 @@ export async function createReturnLabel(
       createdAt,
     });
 
-    const returnCustomerShippingRate = await resolveReturnCustomerPrice(rawCost, clientId);
+    // PrepShip freezes selected cost, customer amount, margin, and provenance
+    // on the shared shipment row. Client Portal receives only the safe amount.
+    const persistedReturnShipment = await loadShipmentById(returnShipmentId);
+    if (!persistedReturnShipment) throw new Error('Return shipment not found after persistence');
+    const returnCustomerShippingRate = await resolveReturnCustomerRateForShipment(
+      persistedReturnShipment,
+      input.authorization,
+    );
     await completeReturnLabelPurchase(intent.id, returnShipmentId);
     await markReturnLabelCreated(
       returnRow.id,
@@ -907,7 +867,7 @@ export async function createReturnLabel(
           ? await loadShipmentById(purchaseAction.intent.returnShipmentId)
           : await findReturnShipmentByProviderKey(purchaseAction.intent.providerReferenceKey);
       if (!completedShipment?.isReturn) throw new ReturnLabelPurchasePendingError();
-      const customerRate = await resolveReturnCustomerRateForShipment(completedShipment, clientId);
+      const customerRate = await resolveReturnCustomerRateForShipment(completedShipment, input.authorization);
       await markReturnLabelCreated(
         returnRow.id,
         completedShipment.id,

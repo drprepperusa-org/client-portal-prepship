@@ -25,15 +25,16 @@ check(
     /r\.return_customer_shipping_rate IS NULL/.test(migration),
 );
 check(
-  'cheapest-label finalize computes once and freezes the exact returned rate',
-  /const returnCustomerShippingRate = await resolveReturnCustomerPrice\(rawCost, clientId\)/.test(service) &&
+  'cheapest-label finalize delegates once and freezes the exact returned rate',
+  /const returnCustomerShippingRate = await resolveReturnCustomerRateForShipment\(/.test(service) &&
+    /freezePrepShipCustomerShippingMoney\(/.test(service) &&
     /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service) &&
     /returnCustomerShippingRate,\s*\n\s*trackingNumber: created\.trackingNumber/.test(service),
 );
 check(
   'snapshot pricing fails closed instead of freezing raw house cost on a policy read error',
-  /refusing to freeze an unpriced snapshot/.test(service) &&
-    !/quoting raw house cost/.test(service),
+  /PrepShip customer shipping money API/.test(read('src/services/prepship-customer-shipping-money.ts')) &&
+    !/quoting raw house cost|resolveReturnCustomerPrice/.test(service),
 );
 check(
   'Client Portal reads the snapshot directly and never projects raw shipment cost',
@@ -42,9 +43,11 @@ check(
     !/internalReturnLabelCost/.test(reads),
 );
 check(
-  'return billing consumes the same snapshot before its legacy-orphan fallback',
+  'return billing consumes the compatibility alias and never reprices an orphan',
   /returnCustomerShippingRate:\s*returns\.returnCustomerShippingRate/.test(billing) &&
-    /r\.returnCustomerShippingRate != null[\s\S]{0,120}toNum\(r\.returnCustomerShippingRate\)/.test(billing),
+    /r\.returnCustomerShippingRate != null[\s\S]{0,120}toNum\(r\.returnCustomerShippingRate\)/.test(billing) &&
+    /canonical customer snapshot missing/.test(billing) &&
+    !/resolveReturnPostageRate/.test(billing),
 );
 
 if (failed) process.exit(1);

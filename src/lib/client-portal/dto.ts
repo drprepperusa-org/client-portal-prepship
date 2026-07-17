@@ -311,7 +311,7 @@ export function toPortalOrderDto(
       ? (() => {
           // CP-018 / CP-040: the ONE customer-facing shipping value is the backend
           // resolver's C. Shipping Rate — a frozen billing_line_items shipping line
-          // per shipment, else the live billing-config projection (resolved in
+          // per shipment, else PrepShip's policy-versioned shipment snapshot (read in
           // lib/client-portal/customer-shipping-rate.ts and surfaced here as
           // shippingCharged by read-models/orders.ts + the shipment read-models).
           // Buyer-paid store shipping (orders.shippingAmount) is UNRELATED to the

@@ -36,6 +36,9 @@ export const shipments = pgTable(
     dimsH: real(),
     cost: numeric({ precision: 10, scale: 2 }),
     otherCost: numeric({ precision: 10, scale: 2 }).default('0').notNull(),
+    // Existing shared PrepShip column. PS-437 writes the exact provider total
+    // for return labels so PrepShip can freeze customer money without guessing.
+    selectedRateCost: numeric({ precision: 10, scale: 2 }),
     labelUrl: text(),
     labelCreatedAt: timestamp({ withTimezone: true }),
     labelFormat: text(),

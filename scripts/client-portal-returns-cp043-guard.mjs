@@ -188,9 +188,9 @@ assert(
   'successful creation persists the canonical return shipment, link, and chosen quote',
 );
 assert(
-  /resolveReturnPostageRate/.test(service) &&
+  /freezePrepShipCustomerShippingMoney/.test(service) &&
     /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service),
-  'client return postage is derived once from backend billing policy and frozen on the workflow',
+  'client return postage is frozen once by PrepShip and copied onto the workflow',
 );
 assert(
   /Label needs attention[\s\S]*returns\.status = 'label_failed'/.test(sotMatrix) &&

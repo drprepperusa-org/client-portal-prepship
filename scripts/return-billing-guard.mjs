@@ -106,34 +106,25 @@ assert(
   'return_processing_fee line only emitted when the client config returnProcessingFee > 0',
 );
 
-// ── 5) return_postage priced by backend policy w/ a minimum/customer-visible
-//       price hook (house cost + return markup, then the min-price override). ──
+// ── 5) return_postage consumes PrepShip's frozen customer-safe amount. ──
 assert(
-  billing.includes('export function resolveReturnPostageRate('),
-  'a dedicated return-postage pricing policy (resolveReturnPostageRate) exists',
+  returnBlockFlat.includes('returnCustomerShippingRate: returns.returnCustomerShippingRate'),
+  'return query loads the compatibility alias copied from PrepShip',
 );
 assert(
-  returnBlockFlat.includes('const houseCost = (toNum(r.cost) || toNum(r.labelCost)) + toNum(r.otherCost);'),
-  'return_postage is priced from the return label HOUSE cost (cost || labelCost, + otherCost)',
+  returnBlockFlat.includes('const returnRate = r.returnCustomerShippingRate != null') &&
+    returnBlockFlat.includes('canonical customer snapshot missing'),
+  'missing frozen return money is skipped for reconciliation',
 );
 assert(
-  returnBlockFlat.includes('resolveReturnPostageRate({') &&
-    returnBlockFlat.includes('markupPct: toNum(cfg.returnPostageMarkupPct)') &&
-    returnBlockFlat.includes('markupFlat: toNum(cfg.returnPostageMarkupFlat)'),
-  'return_postage applies the RETURN-specific markup (not the outbound shipping markup)',
-);
-// The min-price hook tests the raw house cost (not the marked-up amount) and
-// substitutes the configured override amount below the trigger.
-const policyStart = billing.indexOf('export function resolveReturnPostageRate(');
-const policyBlock = policyStart >= 0 ? flat(billing.slice(policyStart, policyStart + 1400)) : '';
-assert(
-  policyBlock.includes('selectedCost: houseCost') && policyBlock.includes('markedUpCost: markedUp'),
-  'the min-price hook tests the raw house cost (customer-visible floor), not the marked-up amount',
+  !returnBlockFlat.includes('const houseCost =') &&
+    !returnBlockFlat.includes('resolveReturnPostageRate(') &&
+    !returnBlockFlat.includes('returnPostageMarkup'),
+  'Client Portal never derives customer postage from raw cost or local config',
 );
 assert(
-  returnBlockFlat.includes('triggerBelow: toNum(cfg.returnShippingRateOverrideTriggerBelow)') &&
-    returnBlockFlat.includes('overrideAmount: toNum(cfg.returnShippingRateOverrideAmount)'),
-  'the min-price hook reads the return-specific override trigger + amount from config',
+  !billing.includes('export function resolveReturnPostageRate('),
+  'the duplicate return-postage pricing owner stays deleted',
 );
 
 // ── 6) Idempotency: return lines are collected into `allRows` (the SAME batched

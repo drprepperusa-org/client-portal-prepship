@@ -26,7 +26,6 @@ const analysis = await import('../../src/routes/analysis');
 const dtoMod = await import('../../src/lib/client-portal/dto');
 const invoice = await import('../../src/lib/client-portal/read-models/invoice-details');
 const ordersReadModel = await import('../../src/lib/client-portal/read-models/orders');
-const shippingRateOwner = await import('../../src/services/customer-shipping-rate');
 const shippingRateSql = await import('../../src/lib/client-portal/customer-shipping-rate');
 
 // ── tiny assertion runner ──
@@ -67,27 +66,6 @@ function moneyOrNull(value: number | string | null | undefined): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
 }
-
-function numeric(value: string | null | undefined): number {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-type CustomerShippingParityCase = {
-  name: string;
-  cost?: string | null;
-  labelCost?: string | null;
-  otherCost?: string;
-  carrierCode?: string;
-  billingMode?: string;
-  refUspsRate?: string | null;
-  refUpsRate?: string | null;
-  shippingMarkupPct?: string;
-  shippingMarkupFlat?: string;
-  overrideTriggerBelow?: string;
-  overrideAmount?: string;
-  active?: boolean;
-};
 
 async function reset(): Promise<void> {
   await db.execute(
@@ -238,36 +216,23 @@ async function insertCp046PendingFixture(clientId: number): Promise<void> {
   });
 }
 
-async function insertCustomerShippingParityCase(row: CustomerShippingParityCase) {
+async function insertCustomerShippingSnapshotCase(
+  name: string,
+  selectedRateJson: Record<string, unknown> | null,
+) {
   const [client] = await db
     .insert(schema.clients)
-    .values({ name: `CP041 ${row.name}` })
+    .values({ name: `PS437 ${name}` })
     .returning();
   const [order] = await db
     .insert(schema.orders)
     .values({
-      orderNumber: `CP041-${row.name}`,
+      orderNumber: `PS437-${name}`,
       orderStatus: 'shipped',
       clientId: client!.id,
       orderDate: ORDER_DATE,
     })
     .returning();
-  await db.insert(schema.billingConfig).values({
-    clientId: client!.id,
-    billingMode: row.billingMode ?? 'per_shipment',
-    shippingMarkupPct: row.shippingMarkupPct ?? '0',
-    shippingMarkupFlat: row.shippingMarkupFlat ?? '0',
-    shippingRateOverrideTriggerBelow: row.overrideTriggerBelow ?? '0',
-    shippingRateOverrideAmount: row.overrideAmount ?? '0',
-    active: row.active ?? true,
-  });
-  if (row.refUspsRate != null || row.refUpsRate != null) {
-    await db.insert(schema.orderOverrides).values({
-      orderId: order!.id,
-      refUspsRate: row.refUspsRate ?? null,
-      refUpsRate: row.refUpsRate ?? null,
-    });
-  }
   const [shipment] = await db
     .insert(schema.shipments)
     .values({
@@ -275,29 +240,15 @@ async function insertCustomerShippingParityCase(row: CustomerShippingParityCase)
       clientId: client!.id,
       orderNumber: order!.orderNumber,
       shipDate: ORDER_DATE,
-      cost: row.cost ?? null,
-      labelCost: row.labelCost ?? null,
-      otherCost: row.otherCost ?? '0',
-      carrierCode: row.carrierCode ?? 'fedex',
+      cost: '5.70',
+      labelCost: '5.70',
+      otherCost: '0',
+      carrierCode: 'stamps_com',
+      selectedRateJson,
       voided: false,
     })
     .returning();
-
-  const houseCost = (numeric(row.cost) || numeric(row.labelCost)) + numeric(row.otherCost);
-  const expected = shippingRateOwner.computeCustomerShippingRate({
-    houseCost,
-    refUspsRate: numeric(row.refUspsRate),
-    refUpsRate: numeric(row.refUpsRate),
-    billingMode: row.billingMode ?? 'per_shipment',
-    carrierCode: row.carrierCode ?? 'fedex',
-    markupPct: numeric(row.shippingMarkupPct),
-    markupFlat: numeric(row.shippingMarkupFlat),
-    overrideTriggerBelow: numeric(row.overrideTriggerBelow),
-    overrideAmount: numeric(row.overrideAmount),
-    active: row.active ?? true,
-  });
-
-  return { client: client!, order: order!, shipment: shipment!, expected };
+  return { client: client!, order: order!, shipment: shipment! };
 }
 
 async function main(): Promise<number> {
@@ -368,38 +319,34 @@ async function main(): Promise<number> {
   const period = await invoice.portalInvoicePeriodSummary(s, { clientId: hugrab.id, dateFrom: FROM, dateTo: TO, granularity: 'month' });
   eq(period.reduce((n, r) => n + Number(r.rowTotal), 0), detailTotal, 'billing period-summary total == Σ invoice detail rows (no footer drift)');
 
-  // CP-041: TS owner / SQL projection parity.
-  console.log('\nGroup 5 - Customer Shipping Rate TS owner / SQL projection parity (CP-041)');
-  const parityCases: CustomerShippingParityCase[] = [
-    { name: 'house-cost', cost: '10.00' },
-    { name: 'label-fallback-plus-other', cost: null, labelCost: '4.25', otherCost: '1.00' },
-    { name: 'reference-rate', cost: '6.50', refUspsRate: '8.00', refUpsRate: '9.00', billingMode: 'reference_rate' },
-    { name: 'baseline-reference-skip', cost: '10.00', refUspsRate: '20.00', refUpsRate: '30.00', billingMode: 'reference_rate', carrierCode: 'stamps_com' },
-    { name: 'markup-pct-flat', cost: '10.00', shippingMarkupPct: '10.00', shippingMarkupFlat: '1.00' },
-    { name: 'below-trigger-override', cost: '5.99', shippingMarkupPct: '10.00', shippingMarkupFlat: '1.00', overrideTriggerBelow: '6.00', overrideAmount: '7.73' },
-    { name: 'null-no-cost', cost: null, labelCost: null },
-  ];
-  for (const c of parityCases) {
-    const { shipment, expected } = await insertCustomerShippingParityCase(c);
-    const [row] = await db
-      .select({ projected: shippingRateSql.projectedCustomerShippingRateSql() })
-      .from(schema.shipments)
-      .leftJoin(schema.billingConfig, drizzleEq(schema.billingConfig.clientId, schema.shipments.clientId))
-      .leftJoin(schema.orderOverrides, drizzleEq(schema.orderOverrides.orderId, schema.shipments.orderId))
-      .where(drizzleEq(schema.shipments.id, shipment.id));
-    eq(
-      moneyOrNull(row?.projected),
-      moneyOrNull(expected.cShippingRate),
-      `${c.name}: projectedCustomerShippingRateSql matches computeCustomerShippingRate`,
-    );
-  }
+  // PS-437: Client Portal reads only PrepShip's frozen tuple.
+  console.log('\nGroup 5 - Frozen customer shipping snapshot projection (PS-437)');
+  const frozenTuple = {
+    selectedRateCost: 5.7,
+    cShippingRateAmount: 6.77,
+    shippingMarginAmount: 1.07,
+    shippingMarginPct: 15.8,
+    customerRateSource: 'hugrab_shipping_rate_override',
+    rateCostSource: 'label_final_cost',
+    customerShippingMoneyPolicyVersion: 'ps-437-v1',
+  };
+  const snapshotCase = await insertCustomerShippingSnapshotCase('snapshot', frozenTuple);
+  const [snapshotRow] = await db
+    .select({ projected: shippingRateSql.projectedCustomerShippingRateSql() })
+    .from(schema.shipments)
+    .where(drizzleEq(schema.shipments.id, snapshotCase.shipment.id));
+  eq(moneyOrNull(snapshotRow?.projected), 6.77,
+    'projectedCustomerShippingRateSql reads the frozen customer amount');
 
-  const frozen = await insertCustomerShippingParityCase({
-    name: 'frozen-line-wins',
-    cost: '10.00',
-    shippingMarkupPct: '10.00',
-    shippingMarkupFlat: '1.00',
-  });
+  const missingCase = await insertCustomerShippingSnapshotCase('missing', null);
+  const [missingRow] = await db
+    .select({ projected: shippingRateSql.projectedCustomerShippingRateSql() })
+    .from(schema.shipments)
+    .where(drizzleEq(schema.shipments.id, missingCase.shipment.id));
+  eq(moneyOrNull(missingRow?.projected), null,
+    'raw shipment cost is never promoted when the frozen tuple is missing');
+
+  const frozen = await insertCustomerShippingSnapshotCase('frozen-line-wins', frozenTuple);
   await db.insert(schema.billingLineItems).values({
     clientId: frozen.client.id,
     orderId: frozen.order.id,
@@ -414,8 +361,6 @@ async function main(): Promise<number> {
   const [frozenRow] = await db
     .select({ resolved: shippingRateSql.shipmentCustomerShippingRateSql() })
     .from(schema.shipments)
-    .leftJoin(schema.billingConfig, drizzleEq(schema.billingConfig.clientId, schema.shipments.clientId))
-    .leftJoin(schema.orderOverrides, drizzleEq(schema.orderOverrides.orderId, schema.shipments.orderId))
     .where(drizzleEq(schema.shipments.id, frozen.shipment.id));
   eq(
     moneyOrNull(frozenRow?.resolved),

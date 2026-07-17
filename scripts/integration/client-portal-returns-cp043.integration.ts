@@ -10,6 +10,7 @@ import { setupTestEnv } from './guard';
 setupTestEnv();
 process.env.RETURNS_LIVE_LABELS = 'true';
 process.env.SHIPSTATION_API_KEY_V2 = 'cp043-test-key';
+process.env.PREPSHIP_API_URL = 'https://prepship.example.test';
 
 type RateMode = 'empty' | 'success';
 
@@ -27,6 +28,15 @@ function jsonResponse(value: unknown): Response {
 
 globalThis.fetch = (async (input: RequestInfo | URL) => {
   const url = String(input);
+  if (url === 'https://prepship.example.test/billing/customer-shipping-money/freeze') {
+    return jsonResponse({
+      data: {
+        cShippingRateAmount: 6.4,
+        customerRateSource: 'realized_customer_shipping_rate',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      },
+    });
+  }
   if (url === 'https://api.shipstation.com/v2/carriers') {
     return jsonResponse({
       carriers: [
@@ -194,6 +204,7 @@ async function main(): Promise<void> {
       orderId: fixture.orderId,
       actorType: 'client',
       actorEmail: 'cp043@example.test',
+      authorization: 'Bearer cp043-fixture',
     });
   } catch (error) {
     rateError = error;
@@ -237,6 +248,7 @@ async function main(): Promise<void> {
     orderId: fixture.orderId,
     actorType: 'client',
     actorEmail: 'cp043@example.test',
+    authorization: 'Bearer cp043-fixture',
   });
   equal(estimateCalls, 2, 'retry forces a fresh live quote instead of using the empty cache');
   equal(providerCalls, 1, 'successful retry purchases exactly once through the provider fixture');

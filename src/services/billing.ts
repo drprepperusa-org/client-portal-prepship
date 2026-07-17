@@ -7,11 +7,9 @@ import { packages } from '../db/schema/packages';
 import { clients } from '../db/schema/clients';
 import { inventory } from '../db/schema/inventory';
 import { returns } from '../db/schema/returns';
-import { computeCustomerShippingRate, resolveCustomerShippingRate } from './customer-shipping-rate';
+import { readFrozenCustomerShippingMoney } from '../lib/customer-shipping-money-snapshot';
 import { resolveReturnReference } from './return-reference';
 import { refreshBillingSummaryMetrics } from './reporting-metrics';
-
-export { computeCustomerShippingRate, resolveCustomerShippingRate } from './customer-shipping-rate';
 
 export type GenerateInput = {
   clientId?: number;
@@ -211,48 +209,6 @@ function totalUnitsFromItems(items: unknown[] | null | undefined): number {
   return n;
 }
 
-/**
- * CP-031: return-postage billing policy. Prices a `return_postage` line from the
- * return label's HOUSE cost (`cost`, falling back to `labelCost`, + otherCost),
- * applies the client's RETURN-specific markup (percent + flat — separate from
- * the outbound shipping markup so returns can carry a different or zero markup),
- * then runs the minimum/customer-visible price hook.
- *
- * MIN-PRICE HOOK RULE (customer-visible floor, mirrors PS-366 outbound but with
- * return config): when a return-specific trigger + amount are configured and the
- * return label's HOUSE cost is below the trigger, the billable return postage
- * becomes the configured amount. It is NOT a floor on the marked-up value — the
- * trigger tests the raw house cost, never the marked-up amount. Rates at/above
- * the trigger keep their normal markup-derived amount.
- *   e.g. trigger $6.00 / amount $7.73 → a $5.99 house cost bills $7.73; a $6.82
- *   house cost stays at its marked-up amount.
- * When no return override is configured (config null / 0), the sane default is
- * simply the marked-up house cost with no floor applied.
- */
-export function resolveReturnPostageRate(input: {
-  /** Return label house cost (cost || labelCost, + otherCost) — pre-markup SOT. */
-  houseCost: number;
-  /** Return postage markup percent. */
-  markupPct: number;
-  /** Return postage flat markup. */
-  markupFlat: number;
-  /** Return-specific below-trigger threshold; 0/negative disables the hook. */
-  triggerBelow: number;
-  /** Return-specific override amount when triggered; 0/negative disables. */
-  overrideAmount: number;
-}): { returnRate: number; overrideApplied: boolean } {
-  const { houseCost, markupPct, markupFlat, triggerBelow, overrideAmount } = input;
-  const markedUp = houseCost * (1 + markupPct / 100) + markupFlat;
-  // The customer-visible min-price hook tests the raw house cost, not markedUp.
-  const { cShippingRate, overrideApplied } = resolveCustomerShippingRate({
-    selectedCost: houseCost,
-    markedUpCost: markedUp,
-    triggerBelow,
-    overrideAmount,
-  });
-  return { returnRate: cShippingRate, overrideApplied };
-}
-
 export async function generateLineItems(input: GenerateInput) {
   const from = new Date(input.dateFrom);
   const to = new Date(input.dateTo);
@@ -268,18 +224,9 @@ export async function generateLineItems(input: GenerateInput) {
     pickPackMaxUnits: number;
     additionalUnitFee: string;
     packageCostMarkup: string;
-    shippingMarkupPct: string;
-    shippingMarkupFlat: string;
-    shippingRateOverrideTriggerBelow: string;
-    shippingRateOverrideAmount: string;
-    // CP-031 return billing config (all default to '0' → return lines disabled).
+    // Processing fee remains independent; all postage pricing fields are retired.
     returnProcessingFee: string;
-    returnPostageMarkupPct: string;
-    returnPostageMarkupFlat: string;
-    returnShippingRateOverrideTriggerBelow: string;
-    returnShippingRateOverrideAmount: string;
     storageFeePerCuFt: string;
-    billingMode: string;
     active: boolean;
   }>(sql`
     select
@@ -288,17 +235,8 @@ export async function generateLineItems(input: GenerateInput) {
       coalesce(b.pick_pack_max_units, 1)::int as "pickPackMaxUnits",
       coalesce(b.additional_unit_fee, '0'::numeric)::text as "additionalUnitFee",
       coalesce(b.package_cost_markup, '0'::numeric)::text as "packageCostMarkup",
-      coalesce(b.shipping_markup_pct, '0'::numeric)::text as "shippingMarkupPct",
-      coalesce(b.shipping_markup_flat, '0'::numeric)::text as "shippingMarkupFlat",
-      coalesce(b.shipping_rate_override_trigger_below, '0'::numeric)::text as "shippingRateOverrideTriggerBelow",
-      coalesce(b.shipping_rate_override_amount, '0'::numeric)::text as "shippingRateOverrideAmount",
       coalesce(b.return_processing_fee, '0'::numeric)::text as "returnProcessingFee",
-      coalesce(b.return_postage_markup_pct, '0'::numeric)::text as "returnPostageMarkupPct",
-      coalesce(b.return_postage_markup_flat, '0'::numeric)::text as "returnPostageMarkupFlat",
-      coalesce(b.return_shipping_rate_override_trigger_below, '0'::numeric)::text as "returnShippingRateOverrideTriggerBelow",
-      coalesce(b.return_shipping_rate_override_amount, '0'::numeric)::text as "returnShippingRateOverrideAmount",
       coalesce(b.storage_fee_per_cu_ft, '0'::numeric)::text as "storageFeePerCuFt",
-      coalesce(b.billing_mode, 'per_shipment') as "billingMode",
       coalesce(b.active, true) as active
     from clients c
     left join billing_config b on b.client_id = c.id
@@ -339,14 +277,12 @@ export async function generateLineItems(input: GenerateInput) {
       labelCost: shipments.labelCost,
       cost: shipments.cost,
       otherCost: shipments.otherCost,
-      carrierCode: shipments.carrierCode,
+      selectedRateJson: shipments.selectedRateJson,
       selectedPid: shipments.selectedPid,
       selectedPackageId: shipments.selectedPackageId,
       dimsL: shipments.dimsL,
       dimsW: shipments.dimsW,
       dimsH: shipments.dimsH,
-      refUspsRate: orderOverrides.refUspsRate,
-      refUpsRate: orderOverrides.refUpsRate,
       rateDimsL: orderOverrides.rateDimsL,
       rateDimsW: orderOverrides.rateDimsW,
       rateDimsH: orderOverrides.rateDimsH,
@@ -399,7 +335,7 @@ export async function generateLineItems(input: GenerateInput) {
     labelCost: string | null;
     cost: string | null;
     otherCost: string | null;
-    carrierCode: string | null;
+    selectedRateJson: unknown;
     selectedPid: number | null;
     selectedPackageId: string | null;
     dimsL: number | null;
@@ -408,8 +344,6 @@ export async function generateLineItems(input: GenerateInput) {
     rateDimsL: number | null;
     rateDimsW: number | null;
     rateDimsH: number | null;
-    refUspsRate: string | null;
-    refUpsRate: string | null;
     items: unknown[];
   };
 
@@ -430,14 +364,12 @@ export async function generateLineItems(input: GenerateInput) {
         labelCost: row.labelCost,
         cost: row.cost,
         otherCost: row.otherCost,
-        carrierCode: row.carrierCode,
+        selectedRateJson: row.selectedRateJson,
         selectedPid: row.selectedPid,
         selectedPackageId: row.selectedPackageId,
         dimsL: row.dimsL,
         dimsW: row.dimsW,
         dimsH: row.dimsH,
-        refUspsRate: row.refUspsRate,
-        refUpsRate: row.refUpsRate,
         rateDimsL: row.rateDimsL,
         rateDimsW: row.rateDimsW,
         rateDimsH: row.rateDimsH,
@@ -700,24 +632,11 @@ export async function generateLineItems(input: GenerateInput) {
       });
     }
 
-    // v2 bills shipmentCost + otherCost from the synced shipment row. In v4
-    // that source column is `cost`; `labelCost` is only a fallback for rows
-    // created before the synced cost was available.
-    const labelCost = (toNum(s.cost) || toNum(s.labelCost)) + toNum(s.otherCost);
-    if (labelCost > 0) {
-      const { cShippingRate } = computeCustomerShippingRate({
-        houseCost: labelCost,
-        refUspsRate: toNum(s.refUspsRate),
-        refUpsRate: toNum(s.refUpsRate),
-        billingMode: cfg.billingMode,
-        carrierCode: s.carrierCode,
-        markupPct: toNum(cfg.shippingMarkupPct),
-        markupFlat: toNum(cfg.shippingMarkupFlat),
-        overrideTriggerBelow: toNum(cfg.shippingRateOverrideTriggerBelow),
-        overrideAmount: toNum(cfg.shippingRateOverrideAmount),
-        active: cfg.active,
-      });
-      if (cShippingRate !== null) {
+    // PS-437: Client Portal does not calculate outbound or return postage.
+    // This legacy generator may consume only PrepShip's frozen shipment tuple.
+    const frozenShippingMoney = readFrozenCustomerShippingMoney(s.selectedRateJson);
+    if (frozenShippingMoney) {
+      const cShippingRate = frozenShippingMoney.cShippingRateAmount;
         rows.push({
           clientId,
           orderId: s.orderId,
@@ -736,7 +655,6 @@ export async function generateLineItems(input: GenerateInput) {
           unitCost: cShippingRate.toFixed(2),
           totalCost: cShippingRate.toFixed(2),
         });
-      }
     }
 
     // ─── Package cost (gap B2) ──────────────────────────────────────────────
@@ -845,22 +763,18 @@ export async function generateLineItems(input: GenerateInput) {
     const returnReference = resolveReturnReference(r.returnReference, r.orderNumber, r.orderId);
 
     // ── return_postage ──────────────────────────────────────────────────────
-    // Return workflows freeze the customer/billable rate at label time, so the
-    // invoice, PrepShip, and Client Portal all consume one snapshot. The policy
-    // calculation remains only for legacy return shipments that have no linked
-    // workflow row (and therefore cannot carry the snapshot).
-    const houseCost = (toNum(r.cost) || toNum(r.labelCost)) + toNum(r.otherCost);
+    // PS-437: this field is a compatibility alias copied from PrepShip's frozen
+    // shipment tuple. Missing truth is reconciliation work, never raw-cost math.
     const returnRate = r.returnCustomerShippingRate != null
       ? toNum(r.returnCustomerShippingRate)
-      : houseCost > 0
-        ? resolveReturnPostageRate({
-            houseCost,
-            markupPct: toNum(cfg.returnPostageMarkupPct),
-            markupFlat: toNum(cfg.returnPostageMarkupFlat),
-            triggerBelow: toNum(cfg.returnShippingRateOverrideTriggerBelow),
-            overrideAmount: toNum(cfg.returnShippingRateOverrideAmount),
-          }).returnRate
-        : 0;
+      : 0;
+    if (r.returnCustomerShippingRate == null) {
+      skipped += 1;
+      console.warn('[billing] return postage skipped: canonical customer snapshot missing', {
+        returnShipmentId: r.shipmentId,
+        orderId: r.orderId,
+      });
+    }
     if (returnRate > 0) {
       allRows.push({
         clientId,

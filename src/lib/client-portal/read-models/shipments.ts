@@ -1,8 +1,7 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
-import { billingConfig } from '../../../db/schema/billing';
 import { clients } from '../../../db/schema/clients';
-import { orderOverrides, orders } from '../../../db/schema/orders';
+import { orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
 import { shipmentCustomerShippingRateSql } from '../customer-shipping-rate';
 import { toPortalShipmentDto } from '../dto';
@@ -53,16 +52,13 @@ export async function listPortalShipments(
       storeId: orders.storeId,
       orderItems: orders.items,
       shipmentStatus: portalShipmentStatusSql(),
-      // Customer Shipping Rate: frozen billing line first; if this shipment has
-      // not been billed yet, project the same backend-owned billing formula from
-      // canonical shipment/config inputs. Never expose carrier/service identity.
+      // Customer Shipping Rate: frozen billing line first, then PrepShip's
+      // policy-versioned shipment snapshot. No local pricing/config joins.
       shippingCost: shipmentCustomerShippingRateSql(),
     })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
     .leftJoin(orders, eq(orders.id, shipments.orderId))
-    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
-    .leftJoin(billingConfig, eq(billingConfig.clientId, shipments.clientId))
     .where(where)
     .orderBy(desc(shipments.shipDate), desc(shipments.id))
     .limit(pageSize)

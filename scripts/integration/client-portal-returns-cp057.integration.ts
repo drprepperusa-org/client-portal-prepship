@@ -9,6 +9,7 @@ import { setupTestEnv } from './guard';
 setupTestEnv();
 process.env.RETURNS_LIVE_LABELS = 'true';
 process.env.SHIPSTATION_API_KEY_V2 = 'cp057-test-key';
+process.env.PREPSHIP_API_URL = 'https://prepship.example.test';
 
 const remoteLabels = new Map<string, Record<string, unknown>>();
 const originalFetch = globalThis.fetch;
@@ -26,6 +27,15 @@ function response(value: unknown, status = 200): Response {
 
 globalThis.fetch = (async (input: RequestInfo | URL) => {
   const url = String(input);
+  if (url === 'https://prepship.example.test/billing/customer-shipping-money/freeze') {
+    return response({
+      data: {
+        cShippingRateAmount: 7.57,
+        customerRateSource: 'realized_customer_shipping_rate',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      },
+    });
+  }
   if (url === 'https://api.shipstation.com/v2/carriers') {
     return response({
       carriers: [{
@@ -218,6 +228,7 @@ const create = (fixture: Awaited<ReturnType<typeof seed>>) =>
     orderId: fixture.orderId,
     actorType: 'client',
     actorEmail: 'cp057@example.test',
+    authorization: 'Bearer cp057-fixture',
   });
 
 async function returnShipments(orderId: number) {
