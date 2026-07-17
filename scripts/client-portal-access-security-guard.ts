@@ -11,6 +11,7 @@ assert.deepEqual(globalCapabilities, {
   canManageAdmins: true,
   canViewAudit: true,
   canReceiveInventory: true,
+  canInspectReturns: true,
 });
 
 const scopedCapabilities = clientPortalCapabilities({ isGlobal: false, permissions: ['users:manage'] });
@@ -19,15 +20,21 @@ assert.deepEqual(scopedCapabilities, {
   canManageAdmins: false,
   canViewAudit: false,
   canReceiveInventory: false,
+  canInspectReturns: false,
 });
 assert.deepEqual(clientPortalCapabilities({ isGlobal: false, permissions: [] }), {
   canManageUsers: false,
   canManageAdmins: false,
   canViewAudit: false,
   canReceiveInventory: false,
+  canInspectReturns: false,
 });
 assert.equal(
   clientPortalCapabilities({ isGlobal: false, permissions: ['settings:write'] }).canReceiveInventory,
+  true,
+);
+assert.equal(
+  clientPortalCapabilities({ isGlobal: false, permissions: ['settings:write'] }).canInspectReturns,
   true,
 );
 

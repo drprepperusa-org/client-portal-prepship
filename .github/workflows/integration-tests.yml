@@ -46,6 +46,8 @@ jobs:
         run: npm run test:client-portal-integration
       - name: Run CP-043 returns recovery integration suite
         run: npm run test:client-portal-returns-cp043:integration
+      - name: Run CP-045 return-inspection authority integration suite
+        run: npm run test:client-portal-returns-cp045:integration
       - name: Run CP-057 duplicate-postage integration suite
         run: npm run test:client-portal-returns-cp057:integration
       - name: Run CP-048 access security integration suite

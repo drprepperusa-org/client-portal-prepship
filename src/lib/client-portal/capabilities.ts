@@ -5,6 +5,7 @@ export type ClientPortalCapabilities = {
   canManageAdmins: boolean;
   canViewAudit: boolean;
   canReceiveInventory: boolean;
+  canInspectReturns: boolean;
 };
 
 export function clientPortalCapabilities(
@@ -15,5 +16,6 @@ export function clientPortalCapabilities(
     canManageAdmins: scope.isGlobal,
     canViewAudit: scope.isGlobal,
     canReceiveInventory: scope.isGlobal || scope.permissions.includes('settings:write'),
+    canInspectReturns: scope.isGlobal || scope.permissions.includes('settings:write'),
   };
 }

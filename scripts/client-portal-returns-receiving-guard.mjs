@@ -39,6 +39,9 @@ const page = [
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
 const inspectionEditor = read('portal-client/src/components/returns/ReturnInspectionEditor.tsx');
 const receivingUi = `${receiving}\n${inspectionEditor}`;
+const capabilities = read('src/lib/client-portal/capabilities.ts');
+const accessContract = read('src/lib/client-portal/contracts/access.ts');
+const authorityIntegration = read('scripts/integration/client-portal-returns-cp045.integration.ts');
 const envFile = read('src/lib/env.ts');
 const supa = read('src/lib/supabase.ts');
 const pkg = JSON.parse(read('package.json'));
@@ -58,10 +61,11 @@ assert(
   'POST /returns/:id/inspection/:iid/media (attach media) is declared',
 );
 
-// ── 1. Receiving queue is operator-only; scoped clients may write inspections ──
+// ── 1. Receiving + authoritative inspection are operator-only; clients submit evidence ──
 assert(
-  /!scope\.isGlobal\s*&&\s*!scope\.permissions\.includes\('settings:write'\)/.test(routeCode),
-  "the operator gate (!scope.isGlobal && !scope.permissions.includes('settings:write')) is present",
+  /canInspectReturns:\s*scope\.isGlobal\s*\|\|\s*scope\.permissions\.includes\('settings:write'\)/.test(capabilities) &&
+    /canInspectReturns:\s*boolean/.test(accessContract),
+  'the backend capability DTO owns return-inspection operator authority',
 );
 assert(
   /function operatorGateOrResponse\(/.test(routeCode),
@@ -79,12 +83,25 @@ assert(
   'the warehouse receiving queue remains operator-gated',
 );
 assert(
-  /operatorGateOrResponse[\s\S]{0,220}?return\s+c\.json\(\s*\{\s*error:[^}]*\}\s*,\s*403\s*\)/.test(routeCode),
+  /if\s*\(!canRecordAuthoritativeReturnInspection\(scope\)\)/.test(routeCode) &&
+    /Admin access required/.test(routeCode),
   'the receiving-queue operator gate returns a 403',
 );
 assert(
-  !/operatorGateOrResponse\(/.test(inspectionBlock) && !/operatorGateOrResponse\(/.test(mediaBlock),
-  'authenticated clients may create inspections and media without an operator role',
+  /const isOperator\s*=\s*canRecordAuthoritativeReturnInspection\(scope\)/.test(inspectionBlock) &&
+    /attemptedAuthoritativeWrite/.test(inspectionBlock) &&
+    /inspection\.authority_denied/.test(inspectionBlock),
+  'client receipt/condition/status attempts fail closed at the backend write boundary',
+);
+assert(
+  /const nextReturnStatus\s*=\s*isOperator/.test(inspectionBlock) &&
+    /if\s*\(isOperator\)\s*\{[\s\S]*?\.update\(returns\)/.test(inspectionBlock),
+  'only an operator inspection may advance canonical returns.status',
+);
+assert(
+  /match\.inspectorType\s*!==\s*'client'/.test(mediaBlock) &&
+    /media\.authority_denied/.test(mediaBlock),
+  'clients may attach media only to client evidence submissions',
 );
 
 // ── 2. Scope-gated + scope-revalidated like the siblings ──
@@ -143,7 +160,7 @@ assert(
   'the inspection stamps inspectorEmail from the caller scope (not client-supplied)',
 );
 assert(
-  /const inspectorType\s*=\s*scope\.isGlobal\s*\|\|\s*scope\.permissions\.includes\('settings:write'\)/.test(routeCode) &&
+  /const inspectorType\s*=\s*isOperator\s*\?\s*'operator'\s*:\s*'client'/.test(routeCode) &&
     /inspectorEmail:\s*scope\.email[\s\S]{0,100}?inspectorType,/.test(routeCode) &&
     /actorLabel:\s*inspection\.inspectorType\s*===\s*'client'/.test(routeCode),
   'inspection history distinguishes client submissions from PrepShip operators',
@@ -244,19 +261,19 @@ assert(
 // ── 7. Frontend: the mobile receiving UI exists + is operator-gated ──
 assert(receiving.length > 0, 'the ReturnReceivingModal component exists');
 const pageCode = stripLineComments(page);
-// The page must import + mount the receiving modal AND gate it on the operator
-// role (isAdmin || isGlobal from useMe).
+// The page must import + mount the receiving modal AND gate it on the backend
+// canInspectReturns capability returned by /me.
 assert(
   /ReturnReceivingModal/.test(pageCode),
   'the Returns page uses the ReturnReceivingModal',
 );
 assert(
-  /useMe\(\)/.test(pageCode) && /(isAdmin|isGlobal)/.test(pageCode),
-  'the Returns page reads the operator role from useMe (isAdmin / isGlobal)',
+  /useMe\(\)/.test(pageCode) && /me\?\.canInspectReturns/.test(pageCode),
+  'the Returns page reads canInspectReturns from the backend /me capability DTO',
 );
 assert(
-  /isOperator\s*&&/.test(pageCode),
-  'the receiving entry point + modal are gated on the operator role (isOperator &&)',
+  /canInspectReturns\s*&&/.test(pageCode),
+  'the receiving entry point + modal are gated on canInspectReturns',
 );
 
 // ── 8. Mobile-capture inspection form (photo/video), phone-first ──
@@ -302,8 +319,14 @@ assert(
   'the same inspection editor is available from the receiving flow and clicked return drawer',
 );
 assert(
-  /<ReturnInspectionEditor\s+returnId=\{detail\.id\}\s*\/>/.test(pageCode) && !/canInspect/.test(pageCode),
-  'the clicked return drawer exposes inspection notes and attachments to scoped client users',
+  /mode=\{canInspectReturns\s*\?\s*'operator'\s*:\s*'client'\}/.test(pageCode) &&
+    /mode="operator"/.test(receivingCode),
+  'the shared editor exposes client evidence mode in the drawer and operator mode in receiving',
+);
+assert(
+  /mode === 'operator'\s*\?\s*\{[\s\S]*?receivedAt:[\s\S]*?condition:[\s\S]*?:\s*\{[\s\S]*?comments:/.test(inspectionEditor) &&
+    /Only a warehouse operator can[\s\S]*?receipt, condition, or inspection status/.test(inspectionEditor),
+  'client editor sends notes/media only and explains the warehouse authority boundary',
 );
 assert(
   /ReturnDrawerTabs/.test(page) && /ReturnHistoryTimeline/.test(page) && /ReturnInspectionHistory/.test(page),
@@ -327,6 +350,14 @@ assert(
   pkg.scripts?.['test:client-portal-returns-receiving'] ===
     'node scripts/client-portal-returns-receiving-guard.mjs',
   'package.json exposes test:client-portal-returns-receiving',
+);
+assert(
+  pkg.scripts?.['test:client-portal-returns-cp045:integration'] ===
+    'tsx scripts/integration/client-portal-returns-cp045.integration.ts' &&
+    /client cannot submit receipt, condition, or status/.test(authorityIntegration) &&
+    /client evidence does not advance returns\.status/.test(authorityIntegration) &&
+    /only operator workflow advances returns\.status/.test(authorityIntegration),
+  'CP-045 behavioral role matrix covers client denial/evidence and operator lifecycle authority',
 );
 
 if (failed) process.exit(1);

@@ -1057,8 +1057,9 @@ client-safe (no carrier/service). Guards:
 | Return postage | `returnCustomerShippingRate` | same | PrepShip freezes the full policy-versioned money tuple on `shipments.selected_rate_json` from exact `selected_rate_cost`; Client Portal copies only the safe amount to `returns.return_customer_shipping_rate` and return billing consumes that alias without repricing | return label creation | backend-owned-truth (CP-031/043, PS-437) |
 | Delivery method/status | `deliveryMethod`/`deliveryStatus` | same | `returns` delivery columns (CP-028 resolver) | delivery event | backend-owned-truth (CP-028) |
 | Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
-| Inspection condition | `condition` | `condition` | `return_inspections` (6-value enum) | receiving/inspection | backend-owned-truth (CP-030) |
-| Inspection media | `media[]` | `media[]` (`storageRef`) | `return_inspection_media` (metadata only, never the binary) | receiving | backend-owned-truth (CP-030) |
+| Inspection condition | `condition` | `condition` | operator-only receiving route → `return_inspections` (6-value enum) | warehouse inspection | backend-owned-truth (CP-030/045) |
+| Client return evidence | evidence notes/media | pending client inspection DTO + `media[]` | scoped client submission in `return_inspections` / `return_inspection_media`; never advances lifecycle | client evidence submission | backend-owned authority boundary (CP-045) |
+| Inspection media | `media[]` | `media[]` (`storageRef`) | `return_inspection_media` (metadata only, never the binary); clients may attach only to client evidence submissions | evidence/receiving | backend-owned-truth (CP-030/045) |
 | Inspection history | `inspections[]` | append-only inspection DTOs | `return_inspections` | each receiving/inspection save | backend-owned-truth |
 | Return activity | `activity[]` | redaction-safe lifecycle events | `return_activity_events`; tracking status sourced from `shipments` updates | source event time | backend-owned-truth |
 | Original order milestones | `orderActivity[]` | redaction-safe placed/shipment-created/shipped/delivered events | `orders.order_date` + outbound `shipments` event timestamps | canonical source timestamp | backend-owned-truth |
@@ -1084,7 +1085,8 @@ Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
 `client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
 postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
 `client-portal-returns-ui-guard.mjs` (CP-029, carrier/service-free UI+API),
-`client-portal-returns-receiving-guard.mjs` (CP-030, scoped inspection/media writes),
+`client-portal-returns-receiving-guard.mjs` (CP-030/045, scoped evidence/media
+writes plus operator-only inspection/lifecycle authority),
 `client-portal-returns-cp043-guard.mjs` (fresh raw rate attempt, explicit account
 policy, safe diagnostics, and recoverable failure state), and
 `client-portal-returns-cp057-guard.mjs` (durable purchase ownership,
@@ -1094,13 +1096,19 @@ runbook).
 Return billing lines reuse that canonical return reference as their displayed
 `orderNumber` (for example `2050-RETURN`) while retaining `shipmentId` for
 per-label uniqueness. Inspection writes are available from both the receiving
-queue and the clicked return drawer through one shared editor; API permissions
-allow each authenticated client to write only against returns inside its resolved
-scope, while the receiving queue remains operator-gated. Media stays in the
-private returns storage bucket. Images are limited to 15 MB and videos to 25 MB.
-Inspection saves append rows rather than overwriting prior evidence. The return
-drawer merges canonical lifecycle activity, inspection rows, and attachment
-metadata for presentation; it never reconstructs carrier, rate, or billing truth.
+queue and the clicked return drawer through one shared editor with explicit
+operator/client modes. `clientPortalCapabilities.canInspectReturns` is the
+backend owner for warehouse inspection authority. A scoped client may append a
+pending notes/media evidence record only; client requests containing
+`receivedAt`, `condition`, or inspection `status` fail closed, and client
+submissions never advance `returns.status`. Operators alone record warehouse
+receipt/condition/status and advance the return lifecycle. Client media may be
+attached only to client evidence submissions; operator inspection media cannot
+be altered through the client path. Media stays in the private returns storage
+bucket. Images are limited to 15 MB and videos to 25 MB. Inspection/evidence
+saves append rows rather than overwriting prior history. The return drawer
+merges canonical lifecycle activity, inspection rows, and attachment metadata
+for presentation; it never reconstructs carrier, rate, or billing truth.
 
 ### Inbound
 

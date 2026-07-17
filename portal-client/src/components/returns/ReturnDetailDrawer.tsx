@@ -18,8 +18,9 @@ import { ReturnInspectionHistory } from './ReturnInspectionHistory';
 import { RETURN_DELIVERY_LABEL, returnStatusMeta } from './returnPresentation';
 import { field } from '@/components/inbound/shared';
 
-export function ReturnDetailDrawer({ id, onClose }: {
+export function ReturnDetailDrawer({ id, canInspectReturns, onClose }: {
   id: number | null;
+  canInspectReturns: boolean;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -120,7 +121,10 @@ export function ReturnDetailDrawer({ id, onClose }: {
           )}
           {tab === 'inspection' && (
             <section id="return-panel-inspection" role="tabpanel" aria-labelledby="return-tab-inspection" className="space-y-5">
-              <ReturnInspectionEditor returnId={detail.id} />
+              <ReturnInspectionEditor
+                returnId={detail.id}
+                mode={canInspectReturns ? 'operator' : 'client'}
+              />
               <ReturnInspectionHistory inspections={detail.inspections} />
             </section>
           )}

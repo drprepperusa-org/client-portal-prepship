@@ -48,6 +48,10 @@ const returnsPage = [
 const receiving = read('portal-client/src/components/returns/ReturnReceivingModal.tsx');
 const inspectionEditor = read('portal-client/src/components/returns/ReturnInspectionEditor.tsx');
 const receivingUi = `${receiving}\n${inspectionEditor}`;
+const capabilities = read('src/lib/client-portal/capabilities.ts');
+const accessContract = read('src/lib/client-portal/contracts/access.ts');
+const authorityIntegration = read('scripts/integration/client-portal-returns-cp045.integration.ts');
+const integrationWorkflow = read('.github/workflows/integration-tests.yml');
 const migrations = fs.existsSync(path.join(root, 'drizzle'))
   ? fs
       .readdirSync(path.join(root, 'drizzle'))
@@ -226,11 +230,36 @@ assert(
     /accept="image\/\*,video\/\*"/.test(receivingUi),
   'inspection capture supports multiple mobile camera photo/video uploads',
 );
+assert(
+  /canInspectReturns:\s*scope\.isGlobal\s*\|\|\s*scope\.permissions\.includes\('settings:write'\)/.test(capabilities) &&
+    /canInspectReturns:\s*boolean/.test(accessContract) &&
+    /attemptedAuthoritativeWrite/.test(route) &&
+    /if\s*\(isOperator\)\s*\{[\s\S]*?\.update\(returns\)/.test(route),
+  'backend capability and receiving route reserve inspection/lifecycle authority for operators',
+);
+assert(
+  /mode=\{canInspectReturns\s*\?\s*'operator'\s*:\s*'client'\}/.test(returnsPage) &&
+    /mode === 'client'/.test(inspectionEditor) &&
+    /Submit evidence/.test(inspectionEditor),
+  'client return drawer provides evidence-only UI while operators receive the inspection UI',
+);
+assert(
+  /client cannot submit receipt, condition, or status/.test(authorityIntegration) &&
+    /client evidence does not advance returns\.status/.test(authorityIntegration) &&
+    /only operator workflow advances returns\.status/.test(authorityIntegration) &&
+    /Run CP-045 return-inspection authority integration suite/.test(integrationWorkflow),
+  'CI runs the CP-045 behavioral client/operator authority matrix',
+);
 
 assert(
   pkg.scripts?.['test:client-portal-returns-cp045'] ===
     'node scripts/client-portal-returns-cp045-guard.mjs',
   'package exposes test:client-portal-returns-cp045',
+);
+assert(
+  pkg.scripts?.['test:client-portal-returns-cp045:integration'] ===
+    'tsx scripts/integration/client-portal-returns-cp045.integration.ts',
+  'package exposes test:client-portal-returns-cp045:integration',
 );
 
 if (failed) process.exit(1);

@@ -4,6 +4,7 @@ import { db } from '../../../db/client';
 import { orders } from '../../../db/schema/orders';
 import { returns } from '../../../db/schema/returns';
 import { shipments } from '../../../db/schema/shipments';
+import { clientPortalCapabilities } from '../../../lib/client-portal/capabilities';
 import { intArrayLiteral } from '../../../lib/client-portal/predicates';
 import type { ClientPortalScope } from '../../../lib/client-portal/scope';
 import { baseReturnReference } from '../../../services/return-reference';
@@ -34,8 +35,12 @@ export const INSPECTION_MEDIA_TYPES = new Set(['photo', 'video']);
 export const PHOTO_MAX_BYTES = 15 * 1024 * 1024;
 export const VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
+export function canRecordAuthoritativeReturnInspection(scope: ClientPortalScope): boolean {
+  return clientPortalCapabilities(scope).canInspectReturns;
+}
+
 export function operatorGateOrResponse(c: Context, scope: ClientPortalScope): Response | null {
-  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
+  if (!canRecordAuthoritativeReturnInspection(scope)) {
     return c.json({ error: 'Admin access required' }, 403);
   }
   return null;

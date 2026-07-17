@@ -17,6 +17,7 @@ import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { uploadReturnInspectionMedia } from '../../../lib/supabase';
 import { resolveReturnReference } from '../../../services/return-reference';
 import {
+  canRecordAuthoritativeReturnInspection,
   INSPECTION_CONDITIONS,
   INSPECTION_MEDIA_TYPES,
   iso,
@@ -84,7 +85,11 @@ function registerInspectionRoute(app: Hono): void {
     const id = Number(c.req.param('id'));
 
     const [ret] = await db
-      .select({ id: returns.id, returnShipmentId: returns.returnShipmentId })
+      .select({
+        id: returns.id,
+        returnShipmentId: returns.returnShipmentId,
+        status: returns.status,
+      })
       .from(returns)
       .where(and(eq(returns.id, id), returnScopePredicate(scope)))
       .limit(1);
@@ -96,12 +101,38 @@ function registerInspectionRoute(app: Hono): void {
       status?: string;
       comments?: string;
     };
+    const isOperator = canRecordAuthoritativeReturnInspection(scope);
+    const attemptedAuthoritativeWrite =
+      body.receivedAt !== undefined ||
+      body.condition !== undefined ||
+      body.status !== undefined;
+    if (!isOperator && attemptedAuthoritativeWrite) {
+      await recordPortalAudit('portal.returns.inspection.authority_denied', scope, {
+        returnId: id,
+        attemptedFields: [
+          body.receivedAt !== undefined ? 'receivedAt' : null,
+          body.condition !== undefined ? 'condition' : null,
+          body.status !== undefined ? 'status' : null,
+        ].filter(Boolean),
+      });
+      return c.json(
+        { error: 'Warehouse receipt, condition, and inspection status require operator access' },
+        403,
+      );
+    }
+
     const condition = typeof body.condition === 'string' && body.condition.trim() ? body.condition.trim() : null;
     if (condition && !INSPECTION_CONDITIONS.has(condition)) {
       return c.json({ error: `Invalid condition. Expected one of: ${[...INSPECTION_CONDITIONS].join(', ')}` }, 400);
     }
-    const receivedAt = body.receivedAt ? new Date(body.receivedAt) : new Date();
-    if (Number.isNaN(receivedAt.getTime())) return c.json({ error: 'Invalid receivedAt' }, 400);
+    const receivedAt = isOperator
+      ? body.receivedAt
+        ? new Date(body.receivedAt)
+        : new Date()
+      : null;
+    if (receivedAt && Number.isNaN(receivedAt.getTime())) {
+      return c.json({ error: 'Invalid receivedAt' }, 400);
+    }
     const comments = typeof body.comments === 'string' && body.comments.trim() ? body.comments.trim().slice(0, 2000) : null;
     const derivedStatus =
       condition === 'sealed_new' || condition === 'opened_good'
@@ -109,10 +140,12 @@ function registerInspectionRoute(app: Hono): void {
         : condition === 'damaged' || condition === 'missing_item' || condition === 'wrong_item'
           ? 'failed'
           : 'pending';
-    const status = ['pending', 'passed', 'failed'].includes(body.status ?? '') ? (body.status as string) : derivedStatus;
-    const inspectorType = scope.isGlobal || scope.permissions.includes('settings:write')
-      ? 'operator'
-      : 'client';
+    const status = isOperator && ['pending', 'passed', 'failed'].includes(body.status ?? '')
+      ? (body.status as string)
+      : isOperator
+        ? derivedStatus
+        : 'pending';
+    const inspectorType = isOperator ? 'operator' : 'client';
 
     const [inserted] = await db
       .insert(returnInspections)
@@ -129,11 +162,17 @@ function registerInspectionRoute(app: Hono): void {
       .returning({ id: returnInspections.id });
     const inspectionId = inserted!.id;
 
-    const nextReturnStatus = condition ? 'inspected' : 'received';
-    await db
-      .update(returns)
-      .set({ status: nextReturnStatus, updatedAt: new Date() })
-      .where(and(eq(returns.id, id), sql`${returns.status} not in ('closed', 'cancelled')`));
+    const nextReturnStatus = isOperator
+      ? condition
+        ? 'inspected'
+        : 'received'
+      : ret.status;
+    if (isOperator) {
+      await db
+        .update(returns)
+        .set({ status: nextReturnStatus, updatedAt: new Date() })
+        .where(and(eq(returns.id, id), sql`${returns.status} not in ('closed', 'cancelled')`));
+    }
 
     await recordPortalAudit('portal.returns.inspection.record', scope, {
       returnId: id,
@@ -141,6 +180,7 @@ function registerInspectionRoute(app: Hono): void {
       condition,
       status,
       inspectorType,
+      authority: isOperator ? 'operator_inspection' : 'client_evidence',
       returnStatus: nextReturnStatus,
     });
     return c.json({ data: { id: inspectionId, returnId: id, status, condition, returnStatus: nextReturnStatus } }, 201);
@@ -155,12 +195,28 @@ function registerInspectionMediaRoute(app: Hono): void {
     const iid = Number(c.req.param('iid'));
 
     const [match] = await db
-      .select({ inspectionId: returnInspections.id })
+      .select({
+        inspectionId: returnInspections.id,
+        inspectorType: returnInspections.inspectorType,
+      })
       .from(returnInspections)
       .innerJoin(returns, eq(returns.id, returnInspections.returnId))
       .where(and(eq(returnInspections.id, iid), eq(returnInspections.returnId, id), returnScopePredicate(scope)))
       .limit(1);
     if (!match) return c.json({ error: 'Inspection not found' }, 404);
+    if (
+      !canRecordAuthoritativeReturnInspection(scope) &&
+      match.inspectorType !== 'client'
+    ) {
+      await recordPortalAudit('portal.returns.inspection.media.authority_denied', scope, {
+        returnId: id,
+        inspectionId: iid,
+      });
+      return c.json(
+        { error: 'Client evidence can only be attached to a client submission' },
+        403,
+      );
+    }
 
     const declaredLen = Number(c.req.header('content-length') ?? 0);
     if (declaredLen > MEDIA_REQUEST_MAX_BYTES) {
