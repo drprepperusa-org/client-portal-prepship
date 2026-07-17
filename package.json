@@ -40,6 +40,7 @@
     "test:tailwind-safelist": "node scripts/tailwind-safelist-guard.mjs",    "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "migrate:ps-423-return-label-fencing": "tsx scripts/apply-ps-423-return-label-fencing-migration.ts",
     "marketplace:reconcile": "tsx scripts/reconcile-marketplace-order-status.ts",
     "marketplace:reconcile:apply": "tsx scripts/reconcile-marketplace-order-status.ts --apply",
     "marketplace:confirm:retry": "tsx scripts/retry-marketplace-confirmation.ts",

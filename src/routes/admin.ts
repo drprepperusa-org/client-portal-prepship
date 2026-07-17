@@ -18,8 +18,42 @@ import { backfillMissingOrderItems, getOrderItemsBackfillStatus, syncOrderItemOr
 import { ssMarkOrderShippedV1, asSSUpstreamOrderId } from '../lib/shipstation/labels';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
 import { printQueue } from '../db/schema/print-queue';
+import {
+  listHeldReturnLabelPurchases,
+  resolveReturnLabelPurchaseNoEffect,
+} from '../services/return-label-purchase-intents';
 
 const app = new Hono();
+
+app.get(
+  '/return-label-purchase-intents',
+  zValidator('query', z.object({
+    limit: z.coerce.number().int().positive().max(200).optional(),
+  })),
+  async (c) => {
+    const intents = await listHeldReturnLabelPurchases(c.req.valid('query').limit);
+    return c.json({ intents, count: intents.length });
+  },
+);
+
+app.post(
+  '/return-label-purchase-intents/:id{[0-9]+}/resolve-no-effect',
+  zValidator('json', z.object({ note: z.string().trim().min(5).max(1000) })),
+  async (c) => {
+    const id = Number(c.req.param('id'));
+    const actor = String(c.get('email' as never) || c.get('userId' as never) || 'admin-operator');
+    try {
+      const intent = await resolveReturnLabelPurchaseNoEffect(id, {
+        actor,
+        note: c.req.valid('json').note,
+      });
+      return c.json(intent);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, 409);
+    }
+  },
+);
 
 app.get('/order-items/backfill-status', async (c) => {
   return c.json(await getOrderItemsBackfillStatus());

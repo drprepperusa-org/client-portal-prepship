@@ -29,6 +29,7 @@ export type CreateExternalLabelInput = {
   ssOrderId: number | null;
   orderNumber: string | null;
   externalShipmentId?: string;
+  signal?: AbortSignal;
   isReturnLabel?: boolean;
   testLabel?: boolean;
 };
@@ -223,6 +224,7 @@ export async function ssCreateLabel(input: CreateExternalLabelInput): Promise<Cr
     method: 'POST',
     body,
     apiKey: input.apiKeyV2,
+    signal: input.signal,
   });
 
   return parseCreatedExternalLabel(payload, {
@@ -235,11 +237,12 @@ export async function ssCreateLabel(input: CreateExternalLabelInput): Promise<Cr
 export async function ssGetLabelByExternalShipmentId(
   externalShipmentId: string,
   apiKeyV2?: string,
+  signal?: AbortSignal,
 ): Promise<CreatedExternalLabel | null> {
   try {
     const payload = await ssRequest<Record<string, unknown>>(
       `/v2/labels/external_shipment_id/${encodeURIComponent(externalShipmentId)}`,
-      { apiKey: apiKeyV2 },
+      { apiKey: apiKeyV2, signal },
     );
     return parseCreatedExternalLabel(payload);
   } catch (error) {

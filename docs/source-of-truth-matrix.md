@@ -1076,7 +1076,10 @@ and persist only a redaction-safe failure summary to the return workflow.
 CP-057 adds `return_label_purchase_intents` solely as a side-effect coordinator:
 one row per return, one stable provider reference, and transient recovery
 snapshots that are cleared after reconciliation. It never replaces the
-canonical `shipments` label/tracking/rate/cost record.
+canonical `shipments` label/tracking/rate/cost record. PS-423 adds renewable,
+generation-fenced ownership: ambiguous outcomes remain held even when a
+provider lookup returns 404, and only receipt reconciliation or an audited
+operator no-effect resolution can advance the operation.
 Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
 `client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
 postage), `client-portal-returns-delivery-guard.mjs` (CP-028),

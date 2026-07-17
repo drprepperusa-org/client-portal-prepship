@@ -65,8 +65,10 @@ or counts differ.
 
 For `unknown_outcome`, look up the stable provider reference first. If a label
 exists, reconcile it forward into the canonical shipment and return workflow.
-Only a confirmed provider 404 permits the same intent to be reclaimed. Never
-blindly retry a timed-out purchase. Do not void a real label or buy a replacement
+A provider 404 is not proof that the earlier request had no effect and must not
+reclaim the intent. Keep it held until an operator verifies no label exists and
+records the audited no-effect resolution. Never blindly retry a timed-out
+purchase. Do not void a real label or buy a replacement
 without the production owner's explicit approval.
 
 Record final evidence: commit, deploy ids, readiness results, return id, intent

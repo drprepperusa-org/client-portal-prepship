@@ -14,7 +14,7 @@ process.env.PREPSHIP_API_URL = 'https://prepship.example.test';
 const remoteLabels = new Map<string, Record<string, unknown>>();
 const originalFetch = globalThis.fetch;
 let providerCalls = 0;
-let providerMode: 'success' | 'timeout_after_submit' = 'success';
+let providerMode: 'success' | 'timeout_after_submit' | 'timeout_before_submit' = 'success';
 let providerStarted: (() => void) | null = null;
 let providerRelease: Promise<void> | null = null;
 
@@ -100,6 +100,9 @@ carrierConnectors.shipstation.createLabel = async (input) => {
   }
   const key = input.externalShipmentId;
   if (!key) throw new Error('CP-057 stable external shipment id was not supplied');
+  if (providerMode === 'timeout_before_submit') {
+    throw new TypeError('fixture timeout before provider receipt');
+  }
   const payload = providerPayload(key);
   remoteLabels.set(key, payload);
   providerStarted?.();
@@ -369,8 +372,60 @@ async function unknownOutcomeScenario(): Promise<void> {
   equal(completedRetry.returnShipmentId, result.returnShipmentId, 'completed retry is idempotent');
 }
 
+async function absentOutcomeHoldScenario(): Promise<void> {
+  console.log('\nCP-057 Group 5 - provider absence remains held');
+  await reset();
+  const fixture = await seed();
+  providerMode = 'timeout_before_submit';
+  await create(fixture).then(
+    () => check(false, 'ambiguous provider attempt returns pending'),
+    (error) => check(error instanceof returnsService.ReturnLabelPurchasePendingError, 'ambiguous provider attempt returns pending'),
+  );
+
+  providerMode = 'success';
+  await create(fixture).then(
+    () => check(false, 'provider absence remains held'),
+    (error) => check(error instanceof returnsService.ReturnLabelPurchasePendingError, 'provider absence remains held'),
+  );
+  equal(providerCalls, 1, 'provider 404 does not authorize a blind repurchase');
+
+  const intentService = await import('../../src/services/return-label-purchase-intents');
+  const [held] = await db.select().from(schema.returnLabelPurchaseIntents);
+  const staleGeneration = held!.generation;
+  await intentService.resolveReturnLabelPurchaseNoEffect(held!.id, {
+    actor: 'lawrence@example.test',
+    note: 'Fixture provider audit verified no label exists',
+  });
+  const result = await create(fixture);
+  equal(providerCalls, 2, 'operator no-effect resolution permits one new attempt');
+  equal((await returnShipments(fixture.orderId)).length, 1, 'operator-authorized retry creates one canonical shipment');
+
+  const staleLease = {
+    intentId: held!.id,
+    generation: staleGeneration,
+    leaseToken: held!.leaseToken ?? 'expired-fixture-token',
+  };
+  await intentService.recordReturnLabelProviderReceipt(staleLease, {
+    labelId: 'stale-label',
+    shipmentId: 999_999,
+    trackingNumber: 'STALE',
+    labelUrl: 'https://labels.example.test/stale.pdf',
+    labelFormat: 'pdf',
+    cost: 1,
+    voided: false,
+    carrierCode: 'ups',
+    serviceCode: 'ups_ground',
+    shipDate: '2026-07-14',
+    providerAccountId: 57,
+  }).then(
+    () => check(false, 'stale generation cannot record a receipt'),
+    () => check(true, 'stale generation cannot record a receipt'),
+  );
+  check(result.returnShipmentId > 0, 'operator-authorized retry returns the canonical shipment');
+}
+
 async function offlineGatesScenario(): Promise<void> {
-  console.log('\nCP-057 Group 5 - live purchase gates and redaction');
+  console.log('\nCP-057 Group 6 - live purchase gates and redaction');
   await reset();
   env.RETURNS_LIVE_LABELS = false;
   const flagOffFixture = await seed();
@@ -394,6 +449,7 @@ async function main(): Promise<void> {
   await shipmentInsertRecoveryScenario();
   await returnUpdateRecoveryScenario();
   await unknownOutcomeScenario();
+  await absentOutcomeHoldScenario();
   await offlineGatesScenario();
 }
 

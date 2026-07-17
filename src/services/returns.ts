@@ -33,8 +33,9 @@ import {
   markReturnLabelPurchaseFailed,
   markReturnLabelPurchaseUnknown,
   providerReceiptFromIntent,
-  reclaimReturnLabelPurchaseAfterAbsence,
+  recordRecoveredReturnLabelProviderReceipt,
   recordReturnLabelProviderReceipt,
+  runReturnLabelPurchaseAttempt,
   saveReturnLabelSelectedRate,
   selectedRateFromIntent,
   type ReturnLabelPurchaseAction,
@@ -888,22 +889,22 @@ export async function createReturnLabel(
           receipt = await ssGetLabelByExternalShipmentId(
             purchaseAction.intent.providerReferenceKey,
             returnRatePolicy.apiKeyV2 ?? undefined,
+            AbortSignal.timeout(15_000),
           );
         } catch {
-          await markReturnLabelPurchaseUnknown(purchaseAction.intent.id);
           throw new ReturnLabelPurchasePendingError();
         }
       }
 
       if (receipt) {
-        await recordReturnLabelProviderReceipt(purchaseAction.intent.id, receipt);
+        await recordRecoveredReturnLabelProviderReceipt(purchaseAction.intent.id, receipt);
         return finalizeLivePurchase(purchaseAction.intent, chosen, receipt);
       }
 
-      const reclaimed = await reclaimReturnLabelPurchaseAfterAbsence(purchaseAction.intent.id);
-      if (!reclaimed) throw new ReturnLabelPurchasePendingError();
-      purchaseAction = { kind: 'purchase', intent: reclaimed };
-      chosen = null;
+      // PS-423: a provider lookup that currently returns no row is not strong
+      // proof that the earlier mutation had no effect. Keep the operation held
+      // until an operator records verified no-effect or a provider receipt.
+      throw new ReturnLabelPurchasePendingError();
     }
   }
 
@@ -933,7 +934,7 @@ export async function createReturnLabel(
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
       const message = returnLabelFailureMessage(diagnostics.failureKind);
-      await markReturnLabelPurchaseFailed(purchaseAction.intent.id, message);
+      await markReturnLabelPurchaseFailed(purchaseAction.lease, message);
       await markReturnLabelFailed(returnRow?.id ?? null, message, input.actorType, input.actorEmail);
       console.warn('[returns] return label rate lookup failed', {
         ...diagnostics,
@@ -973,7 +974,7 @@ export async function createReturnLabel(
         returnLabelRatePolicy: returnRatePolicy.returnLabelRatePolicy,
       });
       const message = returnLabelFailureMessage(diagnostics.failureKind);
-      await markReturnLabelPurchaseFailed(purchaseAction.intent.id, message);
+      await markReturnLabelPurchaseFailed(purchaseAction.lease, message);
       await markReturnLabelFailed(returnRow?.id ?? null, message, input.actorType, input.actorEmail);
       console.warn('[returns] return label rate unavailable', diagnostics);
       throw new ReturnLabelRateUnavailableError(message, diagnostics);
@@ -1071,43 +1072,46 @@ export async function createReturnLabel(
     throw new ReturnLabelPurchasePendingError();
   }
 
-  await saveReturnLabelSelectedRate(purchaseAction.intent.id, chosen);
+  await saveReturnLabelSelectedRate(purchaseAction.lease, chosen);
   let created: CreatedExternalLabel;
   try {
-    created = await carrierConnectors.shipstation.createLabel({
-      // null/undefined delegates to the DR PREPPER environment account, matching
-      // the exact account context used for the fresh rate attempt above.
-      apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
-      carrierId: chosen.carrier_id,
-      serviceCode: chosen.service_code,
-      // selectedPackageId is PrepShip's internal packaging-inventory row id,
-      // not a ShipStation package_code. Send the generic carrier package while
-      // preserving the canonical outbound dimensions below.
-      packageCode: 'package',
-      weightOz,
-      length: outbound.dimsL,
-      width: outbound.dimsW,
-      height: outbound.dimsH,
-      shipTo,
-      shipFrom,
-      confirmation: null,
-      ssOrderId: order.id,
-      orderNumber: order.orderNumber ?? null,
-      externalShipmentId: purchaseAction.intent.providerReferenceKey,
-      isReturnLabel: true,
-      testLabel: false,
-    });
+    created = await runReturnLabelPurchaseAttempt(purchaseAction.lease, (signal) =>
+      carrierConnectors.shipstation.createLabel({
+        // null/undefined delegates to the DR PREPPER environment account, matching
+        // the exact account context used for the fresh rate attempt above.
+        apiKeyV2: returnRatePolicy.apiKeyV2 ?? undefined,
+        carrierId: chosen.carrier_id,
+        serviceCode: chosen.service_code,
+        // selectedPackageId is PrepShip's internal packaging-inventory row id,
+        // not a ShipStation package_code. Send the generic carrier package while
+        // preserving the canonical outbound dimensions below.
+        packageCode: 'package',
+        weightOz,
+        length: outbound.dimsL,
+        width: outbound.dimsW,
+        height: outbound.dimsH,
+        shipTo,
+        shipFrom,
+        confirmation: null,
+        ssOrderId: order.id,
+        orderNumber: order.orderNumber ?? null,
+        externalShipmentId: purchaseAction.intent.providerReferenceKey,
+        signal,
+        isReturnLabel: true,
+        testLabel: false,
+      }),
+    );
   } catch (error) {
     if (providerOutcomeIsAmbiguous(error)) {
-      await markReturnLabelPurchaseUnknown(purchaseAction.intent.id);
+      await markReturnLabelPurchaseUnknown(purchaseAction.lease);
       throw new ReturnLabelPurchasePendingError();
     }
     const safeError = 'Return label purchase was rejected by the provider';
-    await markReturnLabelPurchaseFailed(purchaseAction.intent.id, safeError);
+    await markReturnLabelPurchaseFailed(purchaseAction.lease, safeError);
     await markReturnLabelFailed(returnRow?.id ?? null, safeError, input.actorType, input.actorEmail);
     throw new ReturnLabelStateError(safeError);
   }
 
-  await recordReturnLabelProviderReceipt(purchaseAction.intent.id, created);
+  await recordReturnLabelProviderReceipt(purchaseAction.lease, created);
   return finalizeLivePurchase(purchaseAction.intent, chosen, created);
 }

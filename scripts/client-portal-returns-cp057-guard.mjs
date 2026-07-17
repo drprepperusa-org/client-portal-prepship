@@ -13,10 +13,12 @@ const assert = (condition, message) => {
 
 const migration = read('drizzle/0041_return_label_purchase_intents.sql');
 const rlsMigration = read('drizzle/0045_return_label_purchase_intents_rls.sql');
+const fencingMigration = read('drizzle/0047_return_label_operation_fencing.sql');
 const intentSchema = read('src/db/schema/return-label-purchase-intents.ts');
 const intents = read('src/services/return-label-purchase-intents.ts');
 const returnsService = read('src/services/returns.ts');
 const labels = read('src/lib/shipstation/labels.ts');
+const admin = read('src/routes/admin.ts');
 const route = readSourceTree([
   'src/routes/client-portal/returns.ts',
   'src/routes/client-portal/returns',
@@ -44,19 +46,30 @@ assert(
 assert(
   /recovery-only[\s\S]{0,50}snapshots/.test(intentSchema) &&
     /selectedRateJson/.test(intentSchema) &&
-    /providerReceiptJson/.test(intentSchema),
+    /providerReceiptJson/.test(intentSchema) &&
+    /generation/.test(intentSchema) &&
+    /leaseToken/.test(intentSchema),
   'intent schema documents transient recovery data outside canonical label truth',
+);
+assert(
+  /ADD COLUMN IF NOT EXISTS generation/.test(fencingMigration) &&
+    /lease_token/.test(fencingMigration) &&
+    /state_lease_idx/.test(fencingMigration),
+  'PS-423 adds generation fencing and renewable lease ownership additively',
 );
 assert(
   /onConflictDoNothing\(\{ target: returnLabelPurchaseIntents\.returnId \}\)/.test(intents) &&
     /eq\(returnLabelPurchaseIntents\.state, 'purchasing'\)/.test(intents) &&
-    /attemptCount: sql/.test(intents),
+    /attemptCount: sql/.test(intents) &&
+    /eq\(returnLabelPurchaseIntents\.generation, lease\.generation\)/.test(intents) &&
+    /runReturnLabelPurchaseAttempt/.test(intents),
   'purchase ownership is acquired with a conditional durable state transition',
 );
 assert(
   /external_shipment_id: input\.externalShipmentId/.test(labels) &&
     /ssGetLabelByExternalShipmentId/.test(labels) &&
-    /labels\/external_shipment_id/.test(labels),
+    /labels\/external_shipment_id/.test(labels) &&
+    /signal: input\.signal/.test(labels),
   'ShipStation create and lookup share the stable external shipment id',
 );
 assert(
@@ -77,8 +90,15 @@ assert(
 assert(
   /providerOutcomeIsAmbiguous/.test(returnsService) &&
     /markReturnLabelPurchaseUnknown/.test(returnsService) &&
-    /reclaimReturnLabelPurchaseAfterAbsence/.test(returnsService),
-  'ambiguous outcomes reconcile before a provider-absence retry is reclaimed',
+    /currently returns no row is not strong[\s\S]*Keep the operation held/.test(returnsService) &&
+    !/reclaimReturnLabelPurchaseAfterAbsence/.test(returnsService),
+  'ambiguous outcomes stay held; provider absence never authorizes an automatic repurchase',
+);
+assert(
+  /resolveReturnLabelPurchaseNoEffect/.test(admin) &&
+    /resolutionNote/.test(intents) &&
+    /resolvedBy/.test(intents),
+  'only an authenticated admin resolution can release a verified no-effect hold',
 );
 assert(
   /ReturnLabelPurchasePendingError/.test(route) && /isPurchasePending/.test(route),
@@ -90,6 +110,9 @@ for (const fixture of [
   'provider success then shipment insert failure',
   'shipment success then return-row update failure',
   'timeout after submission',
+  'provider absence remains held',
+  'operator no-effect resolution permits one new attempt',
+  'stale generation cannot record a receipt',
   'completed retry returns the existing label',
   'live flag OFF never calls the provider',
   'clients.is_test=true never calls the provider',
