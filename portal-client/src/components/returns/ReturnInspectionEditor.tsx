@@ -28,13 +28,19 @@ interface CapturedMedia {
 
 interface ReturnInspectionEditorProps {
   returnId: number;
+  mode: 'operator' | 'client';
   onSaved?: () => void;
   onCancel?: () => void;
 }
 
-/** Shared inspection editor. The backend scopes every write to the caller's returns. */
+/**
+ * Shared return evidence editor. Operator mode records authoritative receipt
+ * and condition; client mode submits notes/media for operator review only.
+ * The backend independently enforces this boundary.
+ */
 export function ReturnInspectionEditor({
   returnId,
+  mode,
   onSaved,
   onCancel,
 }: ReturnInspectionEditorProps) {
@@ -50,8 +56,11 @@ export function ReturnInspectionEditor({
   const [savedInspectionId, setSavedInspectionId] = useState<number | null>(null);
   const mediaInputDisabled = saving || savedInspectionId != null;
   const canSave = useMemo(
-    () => Boolean(accessToken && receivedAt) && !saving,
-    [accessToken, receivedAt, saving],
+    () => Boolean(
+      accessToken &&
+      (mode === 'operator' ? receivedAt : comments.trim() || media.length > 0),
+    ) && !saving,
+    [accessToken, comments, media.length, mode, receivedAt, saving],
   );
 
   function captureFiles(files: FileList | null) {
@@ -117,11 +126,19 @@ export function ReturnInspectionEditor({
     try {
       let inspectionId = savedInspectionId;
       if (inspectionId == null) {
-        const result = await portalApi.recordInspection(accessToken, returnId, {
-          receivedAt: fromLocalInput(receivedAt),
-          condition: condition || undefined,
-          comments: comments.trim() || undefined,
-        });
+        const result = await portalApi.recordInspection(
+          accessToken,
+          returnId,
+          mode === 'operator'
+            ? {
+                receivedAt: fromLocalInput(receivedAt),
+                condition: condition || undefined,
+                comments: comments.trim() || undefined,
+              }
+            : {
+                comments: comments.trim() || undefined,
+              },
+        );
         inspectionId = result.data.id;
         setSavedInspectionId(inspectionId);
       }
@@ -149,14 +166,21 @@ export function ReturnInspectionEditor({
       if (failedIds.size > 0) {
         setMedia((current) => current.filter((file) => failedIds.has(file.id)));
         toast.warning(
-          'Notes saved; some files failed',
+          `${mode === 'operator' ? 'Inspection' : 'Evidence'} saved; some files failed`,
           `${failedIds.size} file${failedIds.size === 1 ? '' : 's'} did not upload. Retry below.`,
         );
       } else {
         const uploadSummary = uploads.length
           ? ` ${uploads.length} file${uploads.length === 1 ? '' : 's'} uploaded.`
           : '';
-        toast.success('Inspection saved', uploadSummary || 'The return inspection was recorded.');
+        toast.success(
+          mode === 'operator' ? 'Inspection saved' : 'Evidence submitted',
+          uploadSummary || (
+            mode === 'operator'
+              ? 'The return inspection was recorded.'
+              : 'Your notes were saved for PrepShip review.'
+          ),
+        );
         setCondition('');
         setComments('');
         setMedia([]);
@@ -165,7 +189,10 @@ export function ReturnInspectionEditor({
         onSaved?.();
       }
     } catch (error) {
-      toast.error('Could not save inspection', error instanceof Error ? error.message : 'Please try again.');
+      toast.error(
+        mode === 'operator' ? 'Could not save inspection' : 'Could not submit evidence',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -173,48 +200,63 @@ export function ReturnInspectionEditor({
 
   return (
     <div className="space-y-3 rounded-glass-sm bg-brand-50/50 p-3 ring-1 ring-brand-100">
-      <Labeled label="Received date/time">
-        <input
-          type="datetime-local"
-          className={`${field} h-12 text-base`}
-          value={receivedAt}
-          onChange={(event) => setReceivedAt(event.target.value)}
-          disabled={saving || savedInspectionId != null}
-        />
-      </Labeled>
+      {mode === 'operator' && (
+        <>
+          <Labeled label="Received date/time">
+            <input
+              type="datetime-local"
+              className={`${field} h-12 text-base`}
+              value={receivedAt}
+              onChange={(event) => setReceivedAt(event.target.value)}
+              disabled={saving || savedInspectionId != null}
+            />
+          </Labeled>
 
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-ink-2">Condition</legend>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {CONDITIONS.map((item) => {
-            const active = condition === item.value;
-            return (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setCondition(active ? '' : item.value)}
-                aria-pressed={active}
-                disabled={saving || savedInspectionId != null}
-                className={
-                  'focus-ring min-h-11 rounded-glass-sm px-2 py-2 text-sm font-medium ring-1 transition-colors ' +
-                  (active
-                    ? 'bg-brand-600 text-white ring-brand-600'
-                    : 'bg-white/70 text-ink-2 ring-slate-200/70 hover:bg-white')
-                }
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
+          <fieldset>
+            <legend className="mb-1 text-xs font-medium text-ink-2">Condition</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {CONDITIONS.map((item) => {
+                const active = condition === item.value;
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => setCondition(active ? '' : item.value)}
+                    aria-pressed={active}
+                    disabled={saving || savedInspectionId != null}
+                    className={
+                      'focus-ring min-h-11 rounded-glass-sm px-2 py-2 text-sm font-medium ring-1 transition-colors ' +
+                      (active
+                        ? 'bg-brand-600 text-white ring-brand-600'
+                        : 'bg-white/70 text-ink-2 ring-slate-200/70 hover:bg-white')
+                    }
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        </>
+      )}
 
-      <Labeled label="Inspection notes (optional)">
+      {mode === 'client' && (
+        <p className="text-xs text-ink-3">
+          Add notes, pictures, or video for PrepShip to review. Only a warehouse operator can
+          record receipt, condition, or inspection status.
+        </p>
+      )}
+
+      <Labeled label={mode === 'operator' ? 'Inspection notes (optional)' : 'Evidence notes (optional)'}>
         <textarea
           className={`${field} min-h-24 py-2`}
           value={comments}
           onChange={(event) => setComments(event.target.value)}
-          placeholder="Add notes about the returned goods..."
+          placeholder={
+            mode === 'operator'
+              ? 'Add notes about the returned goods...'
+              : 'Describe the return evidence for PrepShip...'
+          }
           disabled={saving || savedInspectionId != null}
         />
       </Labeled>
@@ -283,7 +325,15 @@ export function ReturnInspectionEditor({
           onClick={submit}
           disabled={!canSave}
         >
-          {saving ? 'Saving...' : savedInspectionId ? 'Retry failed uploads' : condition ? 'Save inspection' : 'Mark received'}
+          {saving
+            ? 'Saving...'
+            : savedInspectionId
+              ? 'Retry failed uploads'
+              : mode === 'client'
+                ? 'Submit evidence'
+                : condition
+                  ? 'Save inspection'
+                  : 'Mark received'}
         </Button>
       </div>
     </div>

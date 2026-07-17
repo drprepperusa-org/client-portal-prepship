@@ -123,8 +123,9 @@ export const returnItems = pgTable(
 );
 
 /**
- * 3PL receiving / inspection of a returned shipment: received date, condition,
- * comments, and the inspector's identity. Media (photos/video) hangs off this.
+ * Append-only return evidence and inspection history. Client rows are pending
+ * notes/media only; operator rows own received date, condition, and status.
+ * Media (photos/video) hangs off this.
  */
 export const returnInspections = pgTable(
   'return_inspections',

@@ -153,7 +153,12 @@ function ReceivingDetail({ id, onBack, onDone }: { id: number; onBack: () => voi
             </ul>
           </div>
 
-          <ReturnInspectionEditor returnId={id} onSaved={onDone} onCancel={onBack} />
+          <ReturnInspectionEditor
+            returnId={id}
+            mode="operator"
+            onSaved={onDone}
+            onCancel={onBack}
+          />
 
           <p className="flex items-center gap-1 text-xs text-ink-3">
             <MapPin size={13} /> {detail.returnToLocationId ? `Location #${detail.returnToLocationId}` : 'Default location'}

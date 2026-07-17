@@ -35,8 +35,8 @@ export default function Returns() {
   const clients = useClients().data?.data ?? [];
   const me = useMe().data;
   const canCustomizeTables = useCanCustomizeTables();
-  // Backend permissions remain authoritative; this only hides operator UI.
-  const isOperator = Boolean(me?.isAdmin || me?.isGlobal);
+  // Backend capability remains authoritative; this only selects the matching UI.
+  const canInspectReturns = me?.canInspectReturns ?? false;
   const [params] = useSearchParams();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -250,7 +250,7 @@ export default function Returns() {
           ariaLabel="Search returns"
         />
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-          {isOperator && (
+          {canInspectReturns && (
             <Button leadingIcon={<PackageCheck size={16} />} onClick={() => setReceivingOpen(true)}>
               Receive returns
             </Button>
@@ -326,6 +326,7 @@ export default function Returns() {
 
       <ReturnDetailDrawer
         id={selectedId}
+        canInspectReturns={canInspectReturns}
         onClose={() => setSelectedId(null)}
       />
       <ReturnCreateModal
@@ -334,7 +335,7 @@ export default function Returns() {
         onClose={() => setCreateOrderId(null)}
         onCreated={setSelectedId}
       />
-      {isOperator && (
+      {canInspectReturns && (
         <ReturnReceivingModal open={receivingOpen} onClose={() => setReceivingOpen(false)} />
       )}
     </div>
