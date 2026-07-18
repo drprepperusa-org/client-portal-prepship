@@ -149,7 +149,7 @@ const invoiceTotals = {
   rowTotal: 0,
 };
 
-function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}) {
+function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, integrationRows = []) {
   if (pathname === '/api/client-portal/me') {
     return {
       id: admin ? 'e2e-admin' : 'e2e-client',
@@ -327,7 +327,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}) {
     };
   }
   if (pathname === '/api/client-portal/inbound') return { data: [] };
-  if (pathname === '/api/client-portal/integrations') return { data: [] };
+  if (pathname === '/api/client-portal/integrations') return { data: integrationRows };
   if (pathname === '/api/client-portal/access-list') return { data: [] };
   if (pathname === '/api/client-portal/audit-log') return { data: [] };
   if (pathname === '/api/client-portal/inventory-history') {
@@ -345,7 +345,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}) {
   return { data: [], pagination: emptyPagination };
 }
 
-async function setupPortal(page, { admin = true, capabilities = {}, returnOverrides = {} } = {}) {
+async function setupPortal(page, { admin = true, capabilities = {}, returnOverrides = {}, integrationRows = [] } = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
@@ -362,7 +362,7 @@ async function setupPortal(page, { admin = true, capabilities = {}, returnOverri
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides)),
+        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides, integrationRows)),
       });
       return;
     }
@@ -602,6 +602,50 @@ test('client users remain denied from admin settings', async ({ page }) => {
   await page.goto(`${baseUrl}/settings`);
   await expect(page).toHaveURL(`${baseUrl}/`);
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+});
+
+test('client can rename a Shopify connection without changing provider identity', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const integrationRows = [{
+    id: 7,
+    clientId: 1,
+    provider: 'shopify',
+    label: 'Shopify',
+    displayAccountIdentifier: 'sh••••••••om',
+    connectionStatus: 'active',
+    reconnectReasonCode: null,
+    createdAt: '2026-07-18T00:00:00.000Z',
+    updatedAt: '2026-07-18T00:00:00.000Z',
+    type: 'store',
+    assignedClientIds: [],
+    clientName: 'Chris',
+    storeName: null,
+    storeIds: [],
+    lastSyncedAt: null,
+  }];
+  const errors = await setupPortal(page, { admin: false, integrationRows });
+  let renameBody;
+  await page.route('**/api/client-portal/integrations/7/label', async (route) => {
+    renameBody = route.request().postDataJSON();
+    integrationRows[0].label = renameBody.label;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: integrationRows[0] }),
+    });
+  });
+
+  await page.goto(`${baseUrl}/connections`);
+  await page.getByRole('button', { name: 'Rename' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Rename store connection' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox', { name: /Store display name/ }).fill('Chris Shopify Store');
+  await dialog.getByRole('button', { name: 'Save name' }).click();
+
+  await expect.poll(() => renameBody).toEqual({ label: 'Chris Shopify Store' });
+  await expect(page.getByText('Chris Shopify Store', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Store · shopify/i).first()).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
 });
 
 test('scoped user managers see client access controls without admin escalation options', async ({ page }) => {

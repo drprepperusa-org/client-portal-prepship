@@ -28,6 +28,7 @@ process.env.SUPABASE_JWT_SECRET ||= 'test';
 
 const dto = await import('../src/lib/client-portal/dto');
 const integrations = await import('../src/lib/client-portal/read-models/integrations');
+const credentialAccounts = await import('../src/lib/credential-accounts');
 
 const rawIdentifier = 'private-shop.myshopify.com';
 const rawError = 'auth';
@@ -96,6 +97,14 @@ check(
   dto.toPortalIntegrationDto({ type: 'store', source: 'admin', active: true, lastSyncError: 'missing_scopes' })
     .reconnectReasonCode === 'permissions_required',
   'missing scopes map to the safe permissions reason',
+);
+check(
+  credentialAccounts.normalizeCredentialAccountPatchBody({ label: '  Chris Shopify  ' }).label === 'Chris Shopify',
+  'canonical connection-label policy trims a customer display name',
+);
+check(
+  credentialAccounts.normalizeCredentialAccountPatchBody({ label: '   ' }).labelGoesNull,
+  'canonical connection-label policy rejects a blank display name',
 );
 
 const scope = {
@@ -169,6 +178,14 @@ check(
   integrationsRoute.includes('displayAccountIdentifier: maskAccountIdentifier(result.myshopifyDomain)'),
   'live validation masks the canonical Shopify domain before responding',
 );
+check(
+  integrationsRoute.includes("app.patch('/integrations/:id/label'") &&
+    integrationsRoute.includes('normalizeCredentialAccountPatchBody(body)') &&
+    integrationsRoute.includes('!scope.clientIds.includes(row.clientId)') &&
+    integrationsRoute.includes('set label = ${patch.label}') &&
+    integrationsRoute.includes("'portal.integrations.rename'"),
+  'rename mutation reuses canonical label policy, enforces tenant scope, persists the label, and audits the change',
+);
 
 const syncRoute = read('src/routes/client-portal/sync.ts');
 check(
@@ -225,6 +242,13 @@ check(
     !card.includes('c.active'),
   'ConnectionCard renders masked identifier and backend freshness/status fields',
 );
+check(
+  api.includes('renameIntegration:') &&
+    api.includes('/integrations/${id}/label') &&
+    page.includes('Store display name') &&
+    card.includes('Rename'),
+  'portal exposes a thin rename action backed by the scoped integration label endpoint',
+);
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
 check(
   topbar.includes('connectionFreshnessMeta(sync.data?.connectionStatus)') &&
@@ -240,7 +264,7 @@ check(
     !hooks.split('\n').some((line) => line.trimStart().startsWith('qc.prefetchQuery(')),
   'shell waits for foreground reads and serializes speculative prefetches',
 );
-const matrix = read('docs/source-of-truth-matrix.md');
+const matrix = read('docs/source-of-truth-matrix.md').replace(/\r\n/g, '\n');
 check(
   matrix.includes('| Connection status | `connectionStatus` | `connectionStatus` |') &&
     matrix.includes('| Account identifier | `displayAccountIdentifier` | `displayAccountIdentifier` |') &&

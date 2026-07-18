@@ -1,6 +1,6 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Loader2, RefreshCw, Settings2, Unplug, Plug } from 'lucide-react';
+import { CheckCircle2, Loader2, Pencil, RefreshCw, Unplug, Plug } from 'lucide-react';
 import { BrandMark } from './StoreLogo';
 import type { PortalIntegration } from '@/lib/api';
 import { connectionStatusMeta } from '@/lib/connection-status';
@@ -119,7 +119,7 @@ export function ConnectionCard({
                   onReconfigure?.(c);
                 }}
               >
-                <Settings2 size={14} /> Reconfigure
+                <Pencil size={14} /> Rename
               </ConnectionActionButton>
               <ConnectionActionButton
                 tone="danger"

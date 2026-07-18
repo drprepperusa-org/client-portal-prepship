@@ -8,7 +8,10 @@ import { toPortalIntegrationDto } from '../../../lib/client-portal/dto';
 import { checkValidationRateLimit } from '../../../lib/client-portal/integration-submission';
 import { scopeOrResponse } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
-import { maskAccountIdentifier } from '../../../lib/credential-accounts';
+import {
+  maskAccountIdentifier,
+  normalizeCredentialAccountPatchBody,
+} from '../../../lib/credential-accounts';
 import {
   syntheticStoreClientName,
   syntheticStoreIdForCredentialAccount,
@@ -151,6 +154,73 @@ function registerReconnectRoute(app: Hono): void {
   });
 }
 
+function registerRenameRoute(app: Hono): void {
+  app.patch('/integrations/:id/label', async (c) => {
+    const scope = scopeOrResponse(c);
+    if (!isClientPortalScope(scope)) return scope;
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const patch = normalizeCredentialAccountPatchBody(body);
+    if (!patch.hasLabel || patch.labelGoesNull || !patch.label) {
+      return c.json({ error: 'store name required' }, 400);
+    }
+
+    const isAdmin = isAdminEmail(scope.email) || scope.role === 'admin';
+    const rows = await db.execute<IntegrationRow>(sql`
+      select id,
+             client_id as "clientId",
+             provider,
+             label,
+             account_identifier as "accountIdentifier",
+             source,
+             active,
+             created_at as "createdAt",
+             updated_at as "updatedAt"
+      from store_accounts
+      where id = ${id}
+    `);
+    const row = rows[0];
+    if (!row) return c.json({ error: 'store not found' }, 404);
+    if (!isAdmin && (row.clientId == null || !scope.clientIds.includes(row.clientId))) {
+      return c.json({ error: 'store not found' }, 404);
+    }
+
+    const updated = await db.execute<IntegrationRow>(sql`
+      update store_accounts
+      set label = ${patch.label},
+          updated_at = now()
+      where id = ${id}
+      returning id,
+                client_id as "clientId",
+                provider,
+                label,
+                account_identifier as "accountIdentifier",
+                source,
+                active,
+                created_at as "createdAt",
+                updated_at as "updatedAt"
+    `);
+    const updatedRow = updated[0];
+    if (!updatedRow) return c.json({ error: 'store not found' }, 404);
+
+    await recordPortalAudit('portal.integrations.rename', scope, {
+      provider: row.provider,
+      clientId: row.clientId,
+      previousLabel: row.label,
+      nextLabel: patch.label,
+      accountIdentifier: maskAccountIdentifier(row.accountIdentifier),
+    });
+    return c.json({ data: toPortalIntegrationDto({ ...updatedRow, type: 'store' }) });
+  });
+}
+
 function registerDisconnectRoute(app: Hono): void {
   app.delete('/integrations/:id', async (c) => {
     const scope = scopeOrResponse(c);
@@ -211,5 +281,6 @@ function registerDisconnectRoute(app: Hono): void {
 export function registerIntegrationMutationRoutes(app: Hono): void {
   registerApprovalRoute(app);
   registerReconnectRoute(app);
+  registerRenameRoute(app);
   registerDisconnectRoute(app);
 }

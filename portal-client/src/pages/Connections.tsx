@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Plus, Clock, Store, Trash2 } from 'lucide-react';
+import { CheckCircle2, Plus, Clock, Store, Trash2, Pencil } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
+import { TextInput } from '@/components/ui/Inputs';
 import { Modal } from '@/components/ui/Modal';
 import { QueryState } from '@/components/ui/QueryState';
 import { useToast } from '@/components/ui/Toast';
@@ -32,6 +33,9 @@ export default function Connections() {
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<number | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<PortalIntegration | null>(null);
+  const [renameTarget, setRenameTarget] = useState<PortalIntegration | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renamingId, setRenamingId] = useState<number | null>(null);
 
   // Server-persisted pending connections: POST /integrations stores the request
   // (source='portal', inactive — no sync path uses it) and it stays visible
@@ -96,6 +100,24 @@ export default function Connections() {
       toast.error('Delete failed', err instanceof Error ? err.message : 'Please try again.');
     } finally {
       setDisconnectingId(null);
+    }
+  }
+
+  async function handleRename() {
+    const integration = renameTarget;
+    const label = renameValue.trim();
+    if (!accessToken || !integration || integration.id == null || !label || renamingId != null) return;
+    setRenamingId(integration.id);
+    try {
+      await portalApi.renameIntegration(accessToken, integration.id, label);
+      await qc.invalidateQueries({ queryKey: ['integrations'] });
+      toast.success('Store renamed', `${label} is now the connection display name.`);
+      setRenameTarget(null);
+      setRenameValue('');
+    } catch (err) {
+      toast.error('Rename failed', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setRenamingId(null);
     }
   }
 
@@ -179,7 +201,10 @@ export default function Connections() {
                     integration={c}
                     index={i + pending.length}
                     disconnecting={disconnectingId === c.id}
-                    onReconfigure={() => toast.info('Reconfigure', `Open the connector to update ${c.label ?? c.provider}.`)}
+                    onReconfigure={() => {
+                      setRenameTarget(c);
+                      setRenameValue(c.label ?? c.provider ?? '');
+                    }}
                     onDisconnect={setDisconnectTarget}
                   />
                   {c.type === 'store' && (
@@ -221,6 +246,68 @@ export default function Connections() {
           }
         }}
       />
+
+      <Modal
+        open={Boolean(renameTarget)}
+        onClose={() => {
+          if (renamingId != null) return;
+          setRenameTarget(null);
+          setRenameValue('');
+        }}
+        title="Rename store connection"
+        maxWidth={460}
+      >
+        <form
+          className="space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleRename();
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+              <Pencil size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink">Choose a recognizable store name</p>
+              <p className="mt-1 text-sm text-ink-3">
+                This changes the display name only. The Shopify connection and synced data stay unchanged.
+              </p>
+            </div>
+          </div>
+          <TextInput
+            label="Store display name"
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            maxLength={200}
+            required
+            autoFocus
+            placeholder="For example: Chris Shopify Store"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={renamingId != null}
+              onClick={() => {
+                setRenameTarget(null);
+                setRenameValue('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              loading={renamingId === renameTarget?.id}
+              disabled={!renameValue.trim()}
+              leadingIcon={<Pencil size={14} />}
+            >
+              Save name
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         open={Boolean(disconnectTarget)}

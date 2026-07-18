@@ -28,6 +28,12 @@ export const connectionsApi = {
       `/api/client-portal/integrations/${id}/credentials`,
       { credentials },
     ),
+  renameIntegration: (token: string, id: number, label: string) =>
+    apiPatch<{ data: PortalIntegration }>(
+      token,
+      `/api/client-portal/integrations/${id}/label`,
+      { label },
+    ),
   approveIntegration: (token: string, id: number) =>
     apiPost<{ data: PortalIntegration }>(
       token,
