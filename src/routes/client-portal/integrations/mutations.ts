@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import { verifyShopifyCredentials } from '../../../connectors/store/shopify';
-import { db } from '../../../db/client';
+import { db, sql as databaseSql } from '../../../db/client';
 import { isAdminEmail } from '../../../lib/admin-emails';
 import { recordPortalAudit } from '../../../lib/client-portal/audit';
 import { toPortalIntegrationDto } from '../../../lib/client-portal/dto';
@@ -13,8 +13,10 @@ import {
   normalizeCredentialAccountPatchBody,
 } from '../../../lib/credential-accounts';
 import {
+  renameStoreCredentialAccount,
   syntheticStoreClientName,
   syntheticStoreIdForCredentialAccount,
+  type SqlLike,
 } from '../../../services/credential-accounts';
 import {
   readShopifyCredentialInput,
@@ -192,22 +194,13 @@ function registerRenameRoute(app: Hono): void {
       return c.json({ error: 'store not found' }, 404);
     }
 
-    const updated = await db.execute<IntegrationRow>(sql`
-      update store_accounts
-      set label = ${patch.label},
-          updated_at = now()
-      where id = ${id}
-      returning id,
-                client_id as "clientId",
-                provider,
-                label,
-                account_identifier as "accountIdentifier",
-                source,
-                active,
-                created_at as "createdAt",
-                updated_at as "updatedAt"
-    `);
-    const updatedRow = updated[0];
+    const updatedRow = await renameStoreCredentialAccount(
+      databaseSql as unknown as SqlLike,
+      id,
+      patch.label,
+    ) as
+      | IntegrationRow
+      | null;
     if (!updatedRow) return c.json({ error: 'store not found' }, 404);
 
     await recordPortalAudit('portal.integrations.rename', scope, {

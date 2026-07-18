@@ -84,6 +84,44 @@ export function syntheticStoreClientName(account: { provider: string; label: str
     : account.label || baseName;
 }
 
+export async function renameStoreCredentialAccount(
+  sql: SqlLike,
+  id: number,
+  label: string,
+): Promise<CredentialAccountRow | null> {
+  let updated: CredentialAccountRow | null = null;
+  await sql.begin(async (trx) => {
+    const rows = (await trx`
+      UPDATE store_accounts
+      SET label = ${label},
+          updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, client_id AS "clientId", provider, label,
+                account_identifier AS "accountIdentifier",
+                source, active, created_at AS "createdAt", updated_at AS "updatedAt"
+    `) as CredentialAccountRow[];
+    updated = rows[0] ?? null;
+    if (!updated) return;
+
+    const provider = String(updated.provider ?? '');
+    const accountId = Number(updated.id);
+    if (!provider || !Number.isFinite(accountId)) return;
+
+    const syntheticStoreId = syntheticStoreIdForCredentialAccount(provider, accountId);
+    await ensureSyntheticStoreClient(trx, {
+      provider,
+      accountId,
+      label,
+    });
+    await trx`
+      UPDATE clients
+      SET name = ${label}
+      WHERE store_ids @> ARRAY[${syntheticStoreId}]::integer[]
+    `;
+  });
+  return updated;
+}
+
 export async function listCredentialAccounts(
   sql: SqlLike,
   table: CredentialAccountTable,

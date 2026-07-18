@@ -182,9 +182,11 @@ check(
   integrationsRoute.includes("app.patch('/integrations/:id/label'") &&
     integrationsRoute.includes('normalizeCredentialAccountPatchBody(body)') &&
     integrationsRoute.includes('!scope.clientIds.includes(row.clientId)') &&
-    integrationsRoute.includes('set label = ${patch.label}') &&
+    integrationsRoute.includes('renameStoreCredentialAccount(') &&
+    integrationsRoute.includes('databaseSql as unknown as SqlLike') &&
+    integrationsRoute.includes('patch.label') &&
     integrationsRoute.includes("'portal.integrations.rename'"),
-  'rename mutation reuses canonical label policy, enforces tenant scope, persists the label, and audits the change',
+  'rename mutation reuses the canonical store rename owner, enforces tenant scope, and audits the change',
 );
 
 const syncRoute = read('src/routes/client-portal/sync.ts');
