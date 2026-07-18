@@ -101,6 +101,7 @@ type MockableAuthAdmin = {
   listUsers: (...args: unknown[]) => Promise<unknown>;
   getUserById: (...args: unknown[]) => Promise<unknown>;
   inviteUserByEmail: (...args: unknown[]) => Promise<unknown>;
+  generateLink: (...args: unknown[]) => Promise<unknown>;
   updateUserById: (...args: unknown[]) => Promise<unknown>;
 };
 
@@ -205,6 +206,7 @@ async function main(): Promise<void> {
     listUsers: authAdmin.listUsers,
     getUserById: authAdmin.getUserById,
     inviteUserByEmail: authAdmin.inviteUserByEmail,
+    generateLink: authAdmin.generateLink,
     updateUserById: authAdmin.updateUserById,
   };
   let targetUser = fakeAuthUser(
@@ -213,14 +215,28 @@ async function main(): Promise<void> {
     { role: 'client_user', clientIds: [ownClient!.id] },
   );
   let inviteCalls = 0;
+  let generateLinkCalls = 0;
   let updateCalls = 0;
+  let inviteError: unknown = null;
 
   authAdmin.listUsers = async () => ({ data: { users: [] }, error: null });
   authAdmin.getUserById = async () => ({ data: { user: targetUser }, error: null });
   authAdmin.inviteUserByEmail = async (email) => {
     inviteCalls += 1;
+    if (inviteError) return { data: { user: null }, error: inviteError };
     return {
       data: { user: fakeAuthUser('cp048-invited-admin', String(email), {}) },
+      error: null,
+    };
+  };
+  authAdmin.generateLink = async (input) => {
+    generateLinkCalls += 1;
+    const email = (input as { email?: unknown }).email;
+    return {
+      data: {
+        user: fakeAuthUser('cp048-manual-link-user', String(email), {}),
+        properties: { action_link: 'https://portal.example.test/activate?token=cp048' },
+      },
       error: null,
     };
   };
@@ -291,6 +307,26 @@ async function main(): Promise<void> {
     equal(inviteCalls, 1, 'global admin happy path invokes mocked invite once');
     equal(updateCalls, 2, 'global admin happy path stamps mocked metadata once');
 
+    inviteError = { status: 500, code: 'unexpected_failure', message: {} };
+    const emailFailureFallback = await globalAccess.request(
+      '/access-list/invite',
+      jsonRequest('POST', {
+        email: 'manual-link@example.test',
+        role: 'client_user',
+        clientIds: [],
+      }),
+    );
+    const emailFailurePayload = await emailFailureFallback.json() as Record<string, unknown>;
+    equal(emailFailureFallback.status, 200, 'opaque invite-email failures fall back to a manual link');
+    equal(emailFailurePayload.emailSent, false, 'manual-link fallback reports that email was not sent');
+    equal(
+      emailFailurePayload.activationLink,
+      'https://portal.example.test/activate?token=cp048',
+      'manual-link fallback returns the backend-generated activation link',
+    );
+    equal(generateLinkCalls, 1, 'manual-link fallback invokes the mocked Supabase link generator once');
+    inviteError = null;
+
     const globalAuditRows = await db
       .select()
       .from(schema.clientPortalAuditLogs)
@@ -321,6 +357,7 @@ async function main(): Promise<void> {
     authAdmin.listUsers = originalMethods.listUsers;
     authAdmin.getUserById = originalMethods.getUserById;
     authAdmin.inviteUserByEmail = originalMethods.inviteUserByEmail;
+    authAdmin.generateLink = originalMethods.generateLink;
     authAdmin.updateUserById = originalMethods.updateUserById;
   }
 }

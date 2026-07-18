@@ -2,6 +2,10 @@ import type { Hono } from 'hono';
 import { recordPortalAudit } from '../../../lib/client-portal/audit';
 import { isAccessAssignmentWithinBoundary } from '../../../lib/client-portal/access-policy';
 import { clientPortalCapabilities } from '../../../lib/client-portal/capabilities';
+import {
+  inviteErrorDiagnostic,
+  isExistingInviteAccountError,
+} from '../../../lib/client-portal/invite-errors';
 import { accessAppMeta, normalizeMetadataIds } from '../../../lib/client-portal/read-models/access';
 import { isClientPortalScope, resolveClientPortalScope } from '../../../lib/client-portal/scope';
 import { scopeOrResponse } from '../../../lib/client-portal/query-params';
@@ -11,7 +15,6 @@ import {
   activeClientIdsFor,
   authUserExistsByEmail,
   inviteAccessUserBody,
-  isEmailRateLimitError,
   portalActivationRedirect,
   requireAccessMutationAudit,
   requireUserManagement,
@@ -81,25 +84,34 @@ export function registerAccessInvitationRoutes(app: Hono): void {
     let activationLink: string | null = null;
 
     if (inviteErr || !invitedUser) {
-      console.warn('[client-portal/access-list] invite failed:', inviteErr?.message);
-      if (isEmailRateLimitError(inviteErr)) {
-        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'invite',
-          email,
-          options: { redirectTo, data: userMetadata },
-        });
-        invitedUser = linkData?.user ?? null;
-        activationLink = linkData?.properties?.action_link ?? null;
-        emailSent = false;
-        if (linkErr || !invitedUser || !activationLink) {
-          console.warn('[client-portal/access-list] invite link fallback failed:', linkErr?.message);
-          return c.json({ error: 'Supabase email rate limit was hit, and a manual activation link could not be generated.' }, 500);
-        }
-      } else {
-        const message = inviteErr?.message?.toLowerCase().includes('already')
-          ? 'A login already exists for this email. Edit the existing access record instead.'
-          : 'Failed to send invitation email';
-        return c.json({ error: message }, inviteErr?.message?.toLowerCase().includes('already') ? 409 : 500);
+      console.warn(
+        '[client-portal/access-list] invite email failed:',
+        JSON.stringify(inviteErrorDiagnostic(inviteErr)),
+      );
+      if (isExistingInviteAccountError(inviteErr)) {
+        return c.json(
+          { error: 'A login already exists for this email. Edit the existing access record instead.' },
+          409,
+        );
+      }
+
+      const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: { redirectTo, data: userMetadata },
+      });
+      invitedUser = linkData?.user ?? null;
+      activationLink = linkData?.properties?.action_link ?? null;
+      emailSent = false;
+      if (linkErr || !invitedUser || !activationLink) {
+        console.warn(
+          '[client-portal/access-list] invite link fallback failed:',
+          JSON.stringify(inviteErrorDiagnostic(linkErr)),
+        );
+        return c.json(
+          { error: 'Invitation email could not be sent, and a manual activation link could not be generated.' },
+          500,
+        );
       }
     }
 

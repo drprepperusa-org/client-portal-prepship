@@ -60,20 +60,6 @@ export function portalActivationRedirect(c: Context): string | null {
   return base ? `${base}/activate` : null;
 }
 
-function authErrorStatus(error: unknown): number | undefined {
-  const status = (error as { status?: unknown } | null)?.status;
-  return typeof status === 'number' ? status : undefined;
-}
-
-function authErrorMessage(error: unknown): string {
-  return (error as { message?: unknown } | null)?.message?.toString() ?? '';
-}
-
-export function isEmailRateLimitError(error: unknown): boolean {
-  const message = authErrorMessage(error).toLowerCase();
-  return authErrorStatus(error) === 429 || message.includes('email rate limit');
-}
-
 export async function authUserExistsByEmail(email: string): Promise<boolean> {
   const normalized = email.toLowerCase();
   const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });

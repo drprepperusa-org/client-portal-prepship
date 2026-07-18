@@ -47,7 +47,7 @@ export function AccessInviteModal({
       await onInvited();
       if (result.emailSent === false && result.activationLink) {
         setManualActivationLink(result.activationLink);
-        toast.warning('Invite link created', 'Supabase email is rate-limited. Copy the activation link below.');
+        toast.warning('Invite link created', 'Email delivery is unavailable. Copy the activation link below.');
       } else {
         toast.success('Invitation sent', email.trim());
         onClose();
@@ -130,7 +130,7 @@ export function AccessInviteModal({
 
         {manualActivationLink && (
           <div className="space-y-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <p className="font-semibold">Email rate limit hit. Send this activation link manually.</p>
+            <p className="font-semibold">Email was not delivered. Send this activation link manually.</p>
             <div className="flex gap-2">
               <input
                 readOnly

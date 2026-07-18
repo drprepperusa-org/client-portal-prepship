@@ -4,6 +4,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { canManageAccessTarget, isAccessAssignmentWithinBoundary } from '../src/lib/client-portal/access-policy';
 import { clientPortalCapabilities } from '../src/lib/client-portal/capabilities';
+import {
+  inviteErrorDiagnostic,
+  isExistingInviteAccountError,
+} from '../src/lib/client-portal/invite-errors';
+
+assert.equal(isExistingInviteAccountError({ code: 'user_already_exists' }), true);
+assert.equal(isExistingInviteAccountError({ message: 'User already registered' }), true);
+assert.equal(isExistingInviteAccountError({ status: 500, message: {} }), false);
+assert.deepEqual(inviteErrorDiagnostic({ status: 500, code: 'unexpected_failure', message: {} }), {
+  status: 500,
+  code: 'unexpected_failure',
+  message: '{}',
+});
 
 const globalCapabilities = clientPortalCapabilities({ isGlobal: true, permissions: [] });
 assert.deepEqual(globalCapabilities, {
@@ -115,11 +128,14 @@ function assertBefore(first: string, second: string): void {
 }
 
 assertBefore('portal.access_list.invite.requested', 'inviteUserByEmail');
+assertBefore('inviteUserByEmail', 'generateLink');
 assertBefore('portal.access_list.update.requested', 'updateUserById(id, updates)');
 assertBefore('portal.access_list.delete.requested', 'deleteUser(id)');
 assert.match(accessRoute, /canManageAccessTarget/);
 assert.match(accessRoute, /isAccessAssignmentWithinBoundary/);
 assert.match(accessRoute, /role === 'admin' && !capabilities\.canManageAdmins/);
+assert.match(accessRoute, /isExistingInviteAccountError/);
+assert.match(accessRoute, /Invitation email could not be sent, and a manual activation link could not be generated/);
 assert.match(audit, /recordCriticalPortalAudit/);
 assert.match(audit, /critical persist failed/);
 
