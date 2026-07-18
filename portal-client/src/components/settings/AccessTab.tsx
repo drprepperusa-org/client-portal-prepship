@@ -13,7 +13,7 @@ import { useClients, useAccessList, useMe } from '@/lib/hooks';
 import { portalApi, type PortalAccessUser, type PortalClientRow } from '@/lib/api';
 import { ACCENTS, type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
-import { AccessUserCard, type ConfirmKind } from './AccessUserCard';
+import { AccessUserDetails, AccessUserListItem, type ConfirmKind } from './AccessUserCard';
 import { AccessEditModal } from './AccessEditModal';
 import { AccessInviteModal } from './AccessInviteModal';
 
@@ -29,6 +29,7 @@ export function AccessTab() {
   const canManageAdmins = useMe().data?.canManageAdmins ?? false;
   const [accessSearch, setAccessSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const accessUsers = accessList.data?.data ?? [];
 
   // Roster roll-ups, computed once from the full (unfiltered) list.
@@ -74,6 +75,9 @@ export function AccessTab() {
       user.clients.some((client) => (client.name ?? '').toLowerCase().includes(needle))
     );
   });
+  const selectedUser = filteredAccessUsers.find((user) => user.id === selectedUserId)
+    ?? filteredAccessUsers[0]
+    ?? null;
 
   // Admin actions on a login: a confirmation modal for deactivate/activate/delete,
   // and a richer edit modal for role/stores/name.
@@ -122,7 +126,7 @@ export function AccessTab() {
     <div className="space-y-5">
       <SectionTitle
         title="Account access"
-        subtitle="Emails and the client stores each login handles"
+        subtitle="Manage who can sign in and which stores they can access"
         right={
           <Button size="sm" leadingIcon={<UserPlus size={16} />} onClick={() => setInviteOpen(true)}>
             Invite User
@@ -130,86 +134,110 @@ export function AccessTab() {
         }
       />
 
-      {/* Roster roll-up tiles */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 overflow-hidden rounded-glass-sm bg-white/50 ring-1 ring-slate-200/70 md:grid-cols-4">
         {accessStats.map((s) => {
           const a = ACCENTS[s.accent];
           return (
-            <div key={s.label} className="flex items-center gap-3 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-              <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', a.bg, a.text)}>
+            <div key={s.label} className="flex items-center gap-3 border-b border-r border-slate-200/70 p-3 last:border-r-0 md:border-b-0">
+              <span className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-lg', a.bg, a.text)}>
                 <s.icon size={16} />
               </span>
               <div className="min-w-0">
-                <p className="text-xl font-semibold leading-none tabular-nums text-ink">{s.value}</p>
-                <p className="mt-1 truncate text-xs text-ink-3">{s.label}</p>
+                <p className="text-lg font-semibold leading-none tabular-nums text-ink">{s.value}</p>
+                <p className="mt-1 truncate text-[11px] text-ink-3">{s.label}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Search + role segmented filter */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="w-full sm:max-w-xs">
-          <TextInput
-            value={accessSearch}
-            onChange={(e) => setAccessSearch(e.target.value)}
-            placeholder="Search email, role, or store"
-            icon={<Search size={16} />}
-            aria-label="Search access roster"
-          />
-        </div>
-        <div className="flex items-center gap-1 self-start overflow-x-auto rounded-glass-sm bg-white/60 p-1 ring-1 ring-slate-200/70 sm:self-auto">
-          {roleFilters.map((f) => {
-            const active = roleFilter === f.id;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setRoleFilter(f.id)}
-                aria-pressed={active}
-                className={cn(
-                  'focus-ring relative cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-                  active ? 'text-ink' : 'text-ink-3 hover:text-ink',
-                )}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="access-filter-pill"
-                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                    className="absolute inset-0 rounded-md bg-white shadow-glass ring-1 ring-slate-200/70"
-                  />
-                )}
-                <span className="relative z-10">{f.label}</span>
-                <span className={cn('relative z-10 ml-1.5 tabular-nums', active ? 'text-brand-600' : 'text-ink-3')}>{f.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <div className="grid overflow-hidden rounded-glass-sm bg-white/45 ring-1 ring-slate-200/70 xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
+        <section
+          aria-label="Login accounts"
+          className="border-b border-slate-200/70 bg-slate-50/45 xl:border-b-0 xl:border-r"
+        >
+          <div className="space-y-3 border-b border-slate-200/70 p-3">
+            <TextInput
+              value={accessSearch}
+              onChange={(e) => setAccessSearch(e.target.value)}
+              placeholder="Search logins or stores"
+              icon={<Search size={16} />}
+              aria-label="Search access roster"
+            />
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {roleFilters.map((f) => {
+                const active = roleFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setRoleFilter(f.id)}
+                    aria-pressed={active}
+                    className={cn(
+                      'focus-ring relative cursor-pointer whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+                      active ? 'text-ink' : 'text-ink-3 hover:bg-white/70 hover:text-ink',
+                    )}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="access-filter-pill"
+                        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                        className="absolute inset-0 rounded-lg bg-white shadow-glass ring-1 ring-slate-200/70"
+                      />
+                    )}
+                    <span className="relative z-10">{f.label}</span>
+                    <span className={cn('relative z-10 ml-1.5 tabular-nums', active ? 'text-brand-600' : 'text-ink-3')}>
+                      {f.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      {accessList.isLoading && (
-        <SkeletonRows rows={4} className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70" />
-      )}
-      {!accessList.isLoading && filteredAccessUsers.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-glass-sm bg-white/60 px-6 py-10 text-center ring-1 ring-slate-200/70">
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-ink-3"><Users size={20} /></span>
-          <p className="text-sm font-semibold text-ink">No matching logins</p>
-          <p className="text-xs text-ink-3">Try a different search term or role filter.</p>
-        </div>
-      )}
+          <div className="max-h-[600px] space-y-1 overflow-y-auto p-2">
+            {accessList.isLoading && <SkeletonRows rows={6} className="p-2" />}
+            {!accessList.isLoading && filteredAccessUsers.length === 0 && (
+              <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-ink-3">
+                  <Users size={18} />
+                </span>
+                <p className="text-sm font-semibold text-ink">No matching logins</p>
+                <p className="text-xs text-ink-3">Try a different search term or role filter.</p>
+              </div>
+            )}
+            {!accessList.isLoading && filteredAccessUsers.map((user) => (
+              <AccessUserListItem
+                key={user.id}
+                user={user}
+                selected={selectedUser?.id === user.id}
+                onSelect={() => setSelectedUserId(user.id)}
+              />
+            ))}
+          </div>
+        </section>
 
-      <div className="space-y-3">
-        {filteredAccessUsers.map((user) => (
-          <AccessUserCard
-            key={user.id}
-            user={user}
-            isSelf={user.id === userId}
-            canManageAdmins={canManageAdmins}
-            onEdit={() => setEditTarget(user)}
-            onConfirm={(kind) => setConfirm({ kind, user })}
-          />
-        ))}
+        <section aria-label="Selected login details" className="min-w-0 p-4 sm:p-5">
+          {selectedUser ? (
+            <AccessUserDetails
+              user={selectedUser}
+              isSelf={selectedUser.id === userId}
+              canManageAdmins={canManageAdmins}
+              onEdit={() => setEditTarget(selectedUser)}
+              onConfirm={(kind) => setConfirm({ kind, user: selectedUser })}
+            />
+          ) : (
+            <div className="grid min-h-60 place-items-center text-center">
+              <div>
+                <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-ink-3">
+                  <User size={20} />
+                </span>
+                <p className="mt-3 text-sm font-semibold text-ink">Select a login</p>
+                <p className="mt-1 text-xs text-ink-3">Choose a login to review its role and store access.</p>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
       <p className="text-xs text-ink-3">Loaded from Supabase Auth app metadata and real PrepShip client records.</p>
 

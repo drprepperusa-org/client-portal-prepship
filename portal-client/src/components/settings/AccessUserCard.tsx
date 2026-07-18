@@ -1,14 +1,13 @@
-import { type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { Store, Pencil, Trash2, UserX, UserCheck } from 'lucide-react';
+import { Globe2, Pencil, Store, Trash2, UserCheck, UserX } from 'lucide-react';
 import { Avatar, Chip } from '@/components/ui/Display';
+import { Button } from '@/components/ui/Button';
 import { BrandMark, resolveLogoKey } from '@/components/store/StoreLogo';
 import type { PortalAccessUser } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 export type ConfirmKind = 'deactivate' | 'activate' | 'delete';
 
-// Compact "last active" label for the access roster (e.g. "3d ago").
 function relativeTime(iso: string | null): string | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
@@ -21,34 +20,60 @@ function relativeTime(iso: string | null): string | null {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-/* Color-coded icon-only action button used in the access roster. */
-type IconTone = 'brand' | 'amber' | 'emerald' | 'rose';
-const ICON_TONES: Record<IconTone, string> = {
-  brand: 'text-brand-600 hover:bg-brand-50',
-  amber: 'text-amber-600 hover:bg-amber-50',
-  emerald: 'text-emerald-600 hover:bg-emerald-50',
-  rose: 'text-rose-600 hover:bg-rose-50',
-};
-function IconBtn({ tone, label, onClick, disabled, children }: { tone: IconTone; label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+export function AccessUserListItem({
+  user,
+  selected,
+  onSelect,
+}: {
+  user: PortalAccessUser;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const lastSeen = relativeTime(user.lastSignInAt);
+  const storeLabel = user.isGlobal
+    ? 'All stores'
+    : `${user.clients.length} ${user.clients.length === 1 ? 'store' : 'stores'}`;
+
   return (
-    <button
+    <motion.button
+      layout
       type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
+      aria-pressed={selected}
+      aria-label={`View access for ${user.email}`}
+      onClick={onSelect}
       className={cn(
-        'focus-ring grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-40 disabled:hover:bg-transparent',
-        ICON_TONES[tone],
+        'focus-ring group relative flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+        selected ? 'bg-white shadow-glass ring-1 ring-slate-200/80' : 'hover:bg-white/65',
       )}
     >
-      {children}
-    </button>
+      {selected && <span className="absolute inset-y-3 left-0 w-0.5 rounded-full bg-brand-500" />}
+      <Avatar name={user.email} size={38} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-sm font-semibold text-ink">{user.email}</span>
+          <span
+            className={cn(
+              'h-2 w-2 shrink-0 rounded-full',
+              user.active === false ? 'bg-rose-400' : 'bg-emerald-500',
+            )}
+            aria-label={user.active === false ? 'Deactivated' : 'Active'}
+          />
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
+          <span>{user.isAdmin ? 'Admin' : 'Client user'}</span>
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{lastSeen ? `Active ${lastSeen}` : 'Never signed in'}</span>
+        </span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block text-xs font-medium text-ink-2">{storeLabel}</span>
+        {user.isGlobal && <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Global</span>}
+      </span>
+    </motion.button>
   );
 }
 
-/* One roster login: identity header + admin actions + handled-stores footer. */
-export function AccessUserCard({
+export function AccessUserDetails({
   user,
   isSelf,
   canManageAdmins,
@@ -63,7 +88,6 @@ export function AccessUserCard({
 }) {
   const handledClients = user.clients;
   const lastSeen = relativeTime(user.lastSignInAt);
-  // Why an action is blocked, surfaced as a tooltip + disabled state.
   const adminLockReason = user.isAdmin && !canManageAdmins ? 'Global admin access required' : null;
   const destructiveLockReason = adminLockReason ?? (user.isProtected
     ? 'Protected operator account'
@@ -72,96 +96,172 @@ export function AccessUserCard({
       : null);
 
   return (
-    <motion.div layout className="rounded-glass-sm bg-white/65 ring-1 ring-slate-200/70 transition-shadow hover:shadow-glass">
-      {/* Identity header */}
-      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <motion.div
+      key={user.id}
+      initial={{ opacity: 0, x: 8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.18 }}
+      className="space-y-5"
+    >
+      <div className="flex flex-col gap-4 border-b border-slate-200/70 pb-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={user.email} size={42} />
+          <Avatar name={user.email} size={46} />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-ink">{user.email}</p>
-            <p className="truncate text-xs text-ink-3">
-              {user.role ?? 'No role'}
-              {lastSeen ? ` · Active ${lastSeen}` : ' · Never signed in'}
-            </p>
+            <p className="truncate text-base font-semibold text-ink">{user.email}</p>
+            <p className="truncate text-xs text-ink-3">{user.name?.trim() || 'Portal login'}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <Chip accent={user.isAdmin ? 'violet' : 'amber'} dot={false}>
+                {user.isAdmin ? 'Admin' : 'Client user'}
+              </Chip>
+              {user.isGlobal && <Chip accent="emerald" dot={false}>Global access</Chip>}
+              {user.active === false && <Chip accent="rose" dot>Deactivated</Chip>}
+            </div>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-          {user.active === false && <Chip accent="rose" dot>Deactivated</Chip>}
-          <Chip accent={user.isAdmin ? 'violet' : 'amber'} dot={false}>{user.isAdmin ? 'Admin' : 'Client user'}</Chip>
-          {user.isGlobal && <Chip accent="emerald" dot={false}>Global</Chip>}
-          <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200/70 pl-1.5">
-            <IconBtn
-              tone="brand"
-              label={adminLockReason ? `Can't edit · ${adminLockReason}` : 'Edit access'}
-              disabled={Boolean(adminLockReason)}
-              onClick={onEdit}
-            >
-              <Pencil size={15} />
-            </IconBtn>
-            {user.active !== false ? (
-              <IconBtn
-                tone="amber"
-                label={destructiveLockReason ? `Can't deactivate · ${destructiveLockReason}` : 'Deactivate login'}
-                disabled={Boolean(destructiveLockReason)}
-                onClick={() => onConfirm('deactivate')}
-              >
-                <UserX size={15} />
-              </IconBtn>
-            ) : (
-              <IconBtn
-                tone="emerald"
-                label={adminLockReason ? `Can't activate · ${adminLockReason}` : 'Activate login'}
-                disabled={Boolean(adminLockReason)}
-                onClick={() => onConfirm('activate')}
-              >
-                <UserCheck size={15} />
-              </IconBtn>
-            )}
-            <IconBtn
-              tone="rose"
-              label={destructiveLockReason ? `Can't delete · ${destructiveLockReason}` : 'Delete login'}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            leadingIcon={<Pencil size={15} />}
+            disabled={Boolean(adminLockReason)}
+            title={adminLockReason ?? 'Edit role and store access'}
+            onClick={onEdit}
+          >
+            Edit
+          </Button>
+          {user.active !== false ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              leadingIcon={<UserX size={15} />}
               disabled={Boolean(destructiveLockReason)}
-              onClick={() => onConfirm('delete')}
+              title={destructiveLockReason ?? 'Deactivate this login'}
+              className="text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+              onClick={() => onConfirm('deactivate')}
             >
-              <Trash2 size={15} />
-            </IconBtn>
-          </div>
+              Deactivate
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              leadingIcon={<UserCheck size={15} />}
+              disabled={Boolean(adminLockReason)}
+              title={adminLockReason ?? 'Activate this login'}
+              className="text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+              onClick={() => onConfirm('activate')}
+            >
+              Activate
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            leadingIcon={<Trash2 size={15} />}
+            disabled={Boolean(destructiveLockReason)}
+            title={destructiveLockReason ?? 'Delete this login'}
+            className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+            onClick={() => onConfirm('delete')}
+          >
+            Delete
+          </Button>
         </div>
       </div>
 
-      {/* Stores footer */}
-      <div className="rounded-b-glass-sm border-t border-slate-200/70 bg-slate-50/60 px-4 py-3">
-        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
-          <Store size={13} /> {user.isGlobal ? 'All stores · global access' : 'Stores handled'}
-          <span className="rounded-full bg-slate-200/70 px-1.5 py-px text-[10px] tabular-nums text-ink-2">{handledClients.length}</span>
-        </p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <DetailFact
+          label="Status"
+          value={user.active === false ? 'Deactivated' : 'Active'}
+          valueClassName={user.active === false ? 'text-rose-600' : 'text-emerald-700'}
+        />
+        <DetailFact label="Last activity" value={lastSeen ? `Active ${lastSeen}` : 'Never signed in'} />
+        <DetailFact
+          label="Access scope"
+          value={user.isGlobal
+            ? 'All stores'
+            : `${handledClients.length} assigned ${handledClients.length === 1 ? 'store' : 'stores'}`}
+        />
+      </div>
+
+      {user.isGlobal && (
+        <div className="flex items-start gap-3 rounded-xl bg-emerald-50/70 p-3 text-emerald-800 ring-1 ring-emerald-200/80">
+          <Globe2 size={17} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold">Global portal access</p>
+            <p className="mt-0.5 text-xs text-emerald-700">This login can open every client store.</p>
+          </div>
+        </div>
+      )}
+
+      <section aria-labelledby={`stores-heading-${user.id}`}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 id={`stores-heading-${user.id}`} className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <Store size={15} className="text-brand-600" />
+              Store access
+            </h3>
+            <p className="mt-0.5 text-xs text-ink-3">
+              {user.isGlobal ? 'All client stores are included.' : 'Stores explicitly assigned to this login.'}
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold tabular-nums text-ink-2">
+            {handledClients.length}
+          </span>
+        </div>
+
         {handledClients.length === 0 ? (
-          <p className="text-xs text-ink-3">
-            No explicit stores assigned{user.isGlobal ? '; this login has global portal access.' : '.'}
-          </p>
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white/40 px-4 py-8 text-center">
+            <p className="text-sm font-medium text-ink-2">No stores assigned</p>
+            <p className="mt-1 text-xs text-ink-3">
+              {user.isGlobal ? 'Explicit assignments are not required for global access.' : 'Use Edit to add store access.'}
+            </p>
+          </div>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {handledClients.map((client) => {
-              const platform = resolveLogoKey(null, client.name);
-              return (
-                <div key={client.id} className="flex items-center gap-2.5 rounded-lg bg-white px-2.5 py-1.5 ring-1 ring-slate-200/70">
-                  <BrandMark provider={null} label={client.name} name={client.name} size={26} />
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-ink">{client.name ?? `Client ${client.id}`}</p>
-                    <p className="truncate text-[11px] capitalize text-ink-3">
-                      {platform !== 'custom' ? platform : 'Client'} · ID {client.id}
-                    </p>
+          <div className="max-h-[360px] overflow-y-auto rounded-xl bg-slate-50/60 p-2 ring-1 ring-slate-200/70">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {handledClients.map((client) => {
+                const platform = resolveLogoKey(null, client.name);
+                return (
+                  <div key={client.id} className="flex min-w-0 items-center gap-2.5 rounded-lg bg-white px-3 py-2.5 ring-1 ring-slate-200/70">
+                    <BrandMark provider={null} label={client.name} name={client.name} size={30} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-ink">{client.name ?? `Client ${client.id}`}</p>
+                      <p className="truncate text-[11px] capitalize text-ink-3">
+                        {platform !== 'custom' ? platform : 'Client'} · ID {client.id}
+                      </p>
+                    </div>
+                    <span className={cn(
+                      'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                      client.active ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700',
+                    )}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', client.active ? 'bg-emerald-500' : 'bg-amber-500')} />
+                      {client.active ? 'Live' : 'Off'}
+                    </span>
                   </div>
-                  <span className={cn('ml-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold', client.active ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')}>
-                    <span className={cn('h-1.5 w-1.5 rounded-full', client.active ? 'bg-emerald-500' : 'bg-amber-500')} />
-                    {client.active ? 'Live' : 'Off'}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
-      </div>
+      </section>
     </motion.div>
+  );
+}
+
+function DetailFact({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-xl bg-white/55 px-3 py-2.5 ring-1 ring-slate-200/70">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">{label}</p>
+      <p className={cn('mt-1 truncate text-xs font-semibold text-ink', valueClassName)}>{value}</p>
+    </div>
   );
 }

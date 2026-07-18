@@ -24,22 +24,36 @@ export default function Settings() {
   const activeTab = availableTabs.some((item) => item.id === tab) ? tab : 'team';
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
-      {/* Tab rail */}
-      <GlassPanel className="h-max p-2">
-        <div className="flex gap-1 overflow-x-auto lg:flex-col">
+    <div className="space-y-4">
+      <GlassPanel className="p-2">
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          className="grid grid-cols-2 gap-1 sm:flex sm:overflow-x-auto"
+        >
           {availableTabs.map((t) => {
             const active = activeTab === t.id;
             return (
               <button
                 key={t.id}
+                id={`settings-tab-${t.id}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={`settings-panel-${t.id}`}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  'focus-ring relative flex items-center gap-2.5 rounded-glass-sm px-3 py-2.5 text-sm font-medium transition-colors',
+                  'focus-ring relative flex min-h-10 w-full items-center justify-center gap-2 rounded-glass-sm px-3 py-2 text-sm font-medium transition-colors sm:min-w-32 sm:w-auto',
                   active ? 'text-ink' : 'text-ink-2 hover:text-ink',
                 )}
               >
-                {active && <motion.span layoutId="settings-pill" transition={{ type: 'spring', stiffness: 380, damping: 32 }} className="absolute inset-0 rounded-glass-sm bg-white/80 shadow-glass ring-1 ring-white/70" />}
+                {active && (
+                  <motion.span
+                    layoutId="settings-pill"
+                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                    className="absolute inset-0 rounded-glass-sm bg-white/80 shadow-glass ring-1 ring-white/70"
+                  />
+                )}
                 <t.icon size={17} className={cn('relative z-10', active ? 'text-brand-600' : 'text-ink-3')} />
                 <span className="relative z-10 whitespace-nowrap">{t.label}</span>
               </button>
@@ -48,10 +62,18 @@ export default function Settings() {
         </div>
       </GlassPanel>
 
-      {/* Panel */}
-      <GlassPanel className="p-5 sm:p-6">
+      <GlassPanel className="p-4 sm:p-6">
         <AnimatePresence mode="wait">
-          <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+          <motion.div
+            key={activeTab}
+            id={`settings-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`settings-tab-${activeTab}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
             {activeTab === 'profile' && <ProfileTab />}
             {activeTab === 'notifications' && <NotificationsTab />}
             {activeTab === 'team' && <AccessTab />}

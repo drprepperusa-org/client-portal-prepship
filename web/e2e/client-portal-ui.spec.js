@@ -149,7 +149,7 @@ const invoiceTotals = {
   rowTotal: 0,
 };
 
-function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, integrationRows = []) {
+function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, integrationRows = [], accessRows = []) {
   if (pathname === '/api/client-portal/me') {
     return {
       id: admin ? 'e2e-admin' : 'e2e-client',
@@ -328,7 +328,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   }
   if (pathname === '/api/client-portal/inbound') return { data: [] };
   if (pathname === '/api/client-portal/integrations') return { data: integrationRows };
-  if (pathname === '/api/client-portal/access-list') return { data: [] };
+  if (pathname === '/api/client-portal/access-list') return { data: accessRows };
   if (pathname === '/api/client-portal/audit-log') return { data: [] };
   if (pathname === '/api/client-portal/inventory-history') {
     return { data: [], pagination: emptyPagination };
@@ -345,7 +345,13 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   return { data: [], pagination: emptyPagination };
 }
 
-async function setupPortal(page, { admin = true, capabilities = {}, returnOverrides = {}, integrationRows = [] } = {}) {
+async function setupPortal(page, {
+  admin = true,
+  capabilities = {},
+  returnOverrides = {},
+  integrationRows = [],
+  accessRows = [],
+} = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
@@ -362,7 +368,7 @@ async function setupPortal(page, { admin = true, capabilities = {}, returnOverri
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides, integrationRows)),
+        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides, integrationRows, accessRows)),
       });
       return;
     }
@@ -660,4 +666,79 @@ test('scoped user managers see client access controls without admin escalation o
   await page.getByRole('button', { name: 'Invite User' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByText('Admin - global access')).toHaveCount(0);
+});
+
+test('settings access presents a focused master-detail roster', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const adminStore = { id: 1, name: 'Admin Store', email: null, active: true, storeIds: [] };
+  const clientStore = { id: 2, name: 'Client Store', email: null, active: true, storeIds: [] };
+  const additionalStores = Array.from({ length: 10 }, (_, index) => ({
+    id: index + 3,
+    name: `Store ${index + 3}`,
+    email: null,
+    active: index % 4 !== 0,
+    storeIds: [],
+  }));
+  const accessRows = [
+    {
+      id: 'e2e-admin',
+      email: 'admin@portal-e2e.test',
+      name: 'Portal Admin',
+      role: 'admin',
+      permissions: ['scope:global'],
+      isAdmin: true,
+      isGlobal: true,
+      isProtected: true,
+      active: true,
+      clientIds: [1, 2, ...additionalStores.map((store) => store.id)],
+      storeIds: [],
+      clients: [adminStore, clientStore, ...additionalStores],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastSignInAt: '2026-07-10T00:00:00.000Z',
+    },
+    {
+      id: 'e2e-client-2',
+      email: 'client.manager@portal-e2e.test',
+      name: 'Client Manager',
+      role: 'client_user',
+      permissions: [],
+      isAdmin: false,
+      isGlobal: false,
+      isProtected: false,
+      active: true,
+      clientIds: [2],
+      storeIds: [],
+      clients: [clientStore],
+      createdAt: '2026-02-01T00:00:00.000Z',
+      lastSignInAt: null,
+    },
+  ];
+  const errors = await setupPortal(page, { accessRows });
+
+  await page.goto(`${baseUrl}/settings`);
+  await page.getByRole('tab', { name: 'Access' }).click();
+
+  const accounts = page.getByRole('region', { name: 'Login accounts' });
+  const details = page.getByRole('region', { name: 'Selected login details' });
+  await expect(accounts.getByRole('button', { name: 'View access for admin@portal-e2e.test' })).toBeVisible();
+  await expect(details.getByText('Admin Store', { exact: true })).toBeVisible();
+  await expect(details.getByText('Client Store', { exact: true })).toBeVisible();
+
+  await accounts.getByRole('button', { name: 'View access for client.manager@portal-e2e.test' }).click();
+  await expect(details.getByText('client.manager@portal-e2e.test', { exact: true })).toBeVisible();
+  await expect(details.getByText('Client Store', { exact: true })).toBeVisible();
+  await expect(details.getByText('Admin Store', { exact: true })).toHaveCount(0);
+  await expect(details.getByRole('button', { name: 'Edit' })).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('region', { name: 'Selected login details' })).toBeVisible();
+  const hasMobileHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasMobileHorizontalOverflow).toBe(false);
+  expect(errors, errors.join('\n')).toEqual([]);
 });
