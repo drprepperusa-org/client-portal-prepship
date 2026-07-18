@@ -73,6 +73,58 @@ export function rawConnectedStoreAccountOrderScopePredicate(clientIds: number[])
   )`;
 }
 
+function connectedStoreOrderAtOrAfterApprovalSql(fields: {
+  sourceProvider: SQL;
+  sourceAccountId: SQL;
+  storeId: SQL;
+  orderDate: SQL;
+}): SQL {
+  const syntheticStoreMatch = syntheticStoreIdMatchSql(fields.storeId);
+  return sql`not exists (
+    select 1
+    from store_accounts scoped_store_account
+    where scoped_store_account.sync_anchor_at is not null
+      and (
+        (
+          ${fields.sourceProvider} = scoped_store_account.provider
+          and (
+            ${fields.sourceAccountId} = 'store-account:' || scoped_store_account.id::text
+            or ${fields.sourceAccountId} = scoped_store_account.id::text
+          )
+        )
+        or ${syntheticStoreMatch}
+      )
+      and (
+        ${fields.orderDate} is null
+        or ${fields.orderDate} < scoped_store_account.sync_anchor_at
+      )
+  )`;
+}
+
+/**
+ * Client-visible connected-store orders are forward-only from the account's
+ * approval anchor. The importer enforces this at ingestion; this scope-level
+ * guard also rejects legacy rows that entered before that boundary existed.
+ * `store_accounts.sync_anchor_at` remains the single authoritative cutoff.
+ */
+export function portalApprovedStoreOrderPredicate(orderTable: typeof orders = orders): SQL {
+  return connectedStoreOrderAtOrAfterApprovalSql({
+    sourceProvider: sql`${orderTable.sourceProvider}`,
+    sourceAccountId: sql`${orderTable.sourceAccountId}`,
+    storeId: sql`${orderTable.storeId}`,
+    orderDate: sql`${orderTable.orderDate}`,
+  });
+}
+
+export function rawPortalApprovedStoreOrderPredicateForAlias(): SQL {
+  return connectedStoreOrderAtOrAfterApprovalSql({
+    sourceProvider: sql`o.source_provider`,
+    sourceAccountId: sql`o.source_account_id`,
+    storeId: sql`o.store_id`,
+    orderDate: sql`o.order_date`,
+  });
+}
+
 export function clientScopePredicate(scope: ClientPortalScope): SQL | undefined {
   if (!scope.isRestricted) return undefined;
   if (!scope.clientIds.length) return sql`false`;
@@ -251,7 +303,7 @@ export function orderScopePredicate(
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
   // Restricted callers stay bounded by their scope AND any explicit narrowing.
-  return and(scopePredicate, explicit);
+  return and(scopePredicate, explicit, portalApprovedStoreOrderPredicate());
 }
 
 // Raw counterpart of orderScopePredicate, bound to the orders table aliased
@@ -272,7 +324,7 @@ export function rawOrderScopeForAlias(
   if (scope.storeIds.length) predicates.push(sql`o.store_id = any(${intArrayLiteral(scope.storeIds)})`);
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0]! : sql`(${sql.join(predicates, sql` or `)})`;
-  const extra: SQL[] = [scopePredicate];
+  const extra: SQL[] = [scopePredicate, rawPortalApprovedStoreOrderPredicateForAlias()];
   if (filters.clientId) extra.push(sql`o.client_id = ${filters.clientId}`);
   if (filters.storeId) extra.push(sql`o.store_id = ${filters.storeId}`);
   return extra.length === 1 ? extra[0]! : sql`(${sql.join(extra, sql` and `)})`;

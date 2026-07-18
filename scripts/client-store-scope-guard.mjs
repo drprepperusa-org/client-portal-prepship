@@ -78,6 +78,14 @@ assert(
     portalPredicatesSource.includes('rawConnectedStoreAccountOrderScopePredicate(scope.clientIds)'),
   'client portal order and raw order scopes delegate to the connected store-account scope predicate',
 );
+assert(
+  portalPredicatesSource.includes('connectedStoreOrderAtOrAfterApprovalSql') &&
+    portalPredicatesSource.includes('scoped_store_account.sync_anchor_at is not null') &&
+    portalPredicatesSource.includes('orderDate} < scoped_store_account.sync_anchor_at') &&
+    portalPredicatesSource.includes('portalApprovedStoreOrderPredicate()') &&
+    portalPredicatesSource.includes('rawPortalApprovedStoreOrderPredicateForAlias()'),
+  'restricted portal order scopes reject connected-store rows created before the canonical approval anchor',
+);
 
 if (process.exitCode) {
   process.exit(process.exitCode);
