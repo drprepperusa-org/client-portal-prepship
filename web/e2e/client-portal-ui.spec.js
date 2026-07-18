@@ -721,6 +721,8 @@ test('settings access presents a focused master-detail roster', async ({ page })
   const accounts = page.getByRole('region', { name: 'Login accounts' });
   const details = page.getByRole('region', { name: 'Selected login details' });
   await expect(accounts.getByRole('button', { name: 'View access for admin@portal-e2e.test' })).toBeVisible();
+  await expect(accounts.getByText('All stores', { exact: true })).toBeVisible();
+  await expect(accounts.getByText('Client Store', { exact: true })).toBeVisible();
   await expect(details.getByText('Admin Store', { exact: true })).toBeVisible();
   await expect(details.getByText('Client Store', { exact: true })).toBeVisible();
 

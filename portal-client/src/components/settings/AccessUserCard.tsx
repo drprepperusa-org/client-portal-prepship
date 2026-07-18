@@ -30,9 +30,12 @@ export function AccessUserListItem({
   onSelect: () => void;
 }) {
   const lastSeen = relativeTime(user.lastSignInAt);
+  const storeNames = user.clients.map((client) => client.name?.trim() || `Client ${client.id}`);
   const storeLabel = user.isGlobal
     ? 'All stores'
-    : `${user.clients.length} ${user.clients.length === 1 ? 'store' : 'stores'}`;
+    : storeNames.length === 0
+      ? 'No stores assigned'
+      : `${storeNames.slice(0, 2).join(', ')}${storeNames.length > 2 ? ` +${storeNames.length - 2} more` : ''}`;
 
   return (
     <motion.button
@@ -64,10 +67,23 @@ export function AccessUserListItem({
           <span aria-hidden="true">·</span>
           <span className="truncate">{lastSeen ? `Active ${lastSeen}` : 'Never signed in'}</span>
         </span>
-      </span>
-      <span className="shrink-0 text-right">
-        <span className="block text-xs font-medium text-ink-2">{storeLabel}</span>
-        {user.isGlobal && <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Global</span>}
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs">
+          <Store size={12} className="shrink-0 text-brand-600" />
+          <span
+            className={cn(
+              'truncate font-medium',
+              storeNames.length === 0 && !user.isGlobal ? 'text-amber-700' : 'text-ink-2',
+            )}
+            title={user.isGlobal ? 'All stores · global access' : storeNames.join(', ')}
+          >
+            {storeLabel}
+          </span>
+          {user.isGlobal && (
+            <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-emerald-600">
+              Global
+            </span>
+          )}
+        </span>
       </span>
     </motion.button>
   );
