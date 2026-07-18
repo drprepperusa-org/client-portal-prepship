@@ -95,6 +95,8 @@ assert(
     audit.includes("from '../../db/schema/client-portal-audit-logs'") &&
     audit.includes('db.insert(clientPortalAuditLogs)') &&
     audit.includes('sanitizePortalAuditMetadata') &&
+    audit.includes('value instanceof Date') &&
+    audit.includes('value.toISOString()') &&
     audit.includes("console.warn('[client-portal:audit] persist failed'") &&
     audit.includes('recordCriticalPortalAudit') &&
     audit.includes("console.warn('[client-portal:audit] critical persist failed'"),
@@ -201,15 +203,18 @@ assert(
     page.includes('Filter audit log by store') &&
     page.includes('All stores') &&
     page.includes('storeFilters.map') &&
-    page.includes('Event') &&
+    page.includes("header: 'Activity'") &&
+    page.includes('eventLabel(row.event)') &&
+    page.includes('Not recorded') &&
     page.includes('User') &&
     page.includes('When') &&
     page.includes('Details'),
   'AuditLog page renders searchable operational log columns',
 );
 assert(
-  pkg.scripts?.['test:client-portal-audit-log'] === 'node scripts/client-portal-audit-log-guard.mjs',
-  'package exposes test:client-portal-audit-log',
+  pkg.scripts?.['test:client-portal-audit-log'] ===
+    'node scripts/client-portal-audit-log-guard.mjs && tsx scripts/client-portal-audit-metadata-runtime.ts',
+  'package exposes static and runtime audit-log guards',
 );
 
 if (failed) process.exit(1);

@@ -7,6 +7,9 @@ const SENSITIVE_KEY_PATTERN =
 const SENSITIVE_KEY_EXAMPLES = ['password', 'token', 'credentials'];
 
 export function sanitizePortalAuditMetadata(value: unknown): unknown {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
   if (Array.isArray(value)) return value.slice(0, 20).map(sanitizePortalAuditMetadata);
   if (!value || typeof value !== 'object') return value;
 

@@ -27,6 +27,60 @@ function eventTone(event: string): 'indigo' | 'teal' | 'amber' | 'rose' {
   return 'indigo';
 }
 
+const EVENT_LABELS: Record<string, string> = {
+  'portal.me.view': 'Opened client portal',
+  'portal.ui.click': 'Clicked navigation',
+  'portal.activity.view': 'Viewed recent activity',
+  'portal.dashboard.daily_counts': 'Loaded dashboard daily totals',
+  'portal.orders.awaiting_active_count': 'Checked awaiting shipment count',
+  'portal.analysis.sku_orders': 'Viewed SKU orders',
+  'portal.analysis.daily_shipments': 'Viewed daily shipments',
+  'portal.inventory.history': 'Viewed inventory history',
+  'portal.shipments.refresh_tracking': 'Refreshed shipment tracking',
+  'portal.settings.scoped_empty': 'Opened settings with no assigned stores',
+};
+
+function sentenceWords(value: string): string {
+  return value
+    .replace(/[._-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .trim()
+    .toLowerCase();
+}
+
+function eventLabel(event: string): string {
+  if (EVENT_LABELS[event]) return EVENT_LABELS[event];
+
+  const parts = event.replace(/^portal\./, '').split('.');
+  const action = parts.pop() ?? '';
+  const subject = sentenceWords(parts.join(' ')) || 'activity';
+  const labels: Record<string, string> = {
+    view: `Viewed ${subject}`,
+    list: `Viewed ${subject}`,
+    create: `Created ${subject}`,
+    update: `Updated ${subject}`,
+    set: `Updated ${subject}`,
+    delete: `Deleted ${subject}`,
+    import: `Imported ${subject}`,
+    receive: `Received ${subject}`,
+    deliver: `Delivered ${subject}`,
+    approve: `Approved ${subject}`,
+    reconnect: `Reconnected ${subject}`,
+    rename: `Renamed ${subject}`,
+    disconnect: `Disconnected ${subject}`,
+    validate: `Validated ${subject}`,
+    invite: `Invited ${subject}`,
+    activate: `Activated ${subject}`,
+    requested: `Requested ${subject}`,
+    completed: `Completed ${subject}`,
+    failed: `${subject} failed`,
+    denied: `Access denied: ${subject}`,
+    start: `Started ${subject}`,
+  };
+  const label = labels[action] ?? sentenceWords(event.replace(/^portal\./, ''));
+  return label.replace(/^\w/, (character) => character.toUpperCase());
+}
+
 // ── Human-readable audit details ────────────────────────────────────────────
 // The metadata is a small flat key/value object (page/pageSize/status, click
 // to/from/target, orderId, tracking counts, …). Render it as labeled pills
@@ -83,10 +137,28 @@ function routeLabel(path: string): string {
   return base.replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 
-function formatDetailValue(value: unknown): string {
-  if (typeof value === 'string') return value.startsWith('/') ? routeLabel(value) : value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) return `${value.length}`;
+function formatDetailDate(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDetailValue(key: string, value: unknown): string {
+  if (typeof value === 'string') {
+    if (value.startsWith('/')) return routeLabel(value);
+    const date = formatDetailDate(value);
+    if (date) return date;
+    if (key === 'status' || key === 'type') {
+      const label = sentenceWords(value);
+      return label.replace(/^\w/, (character) => character.toUpperCase());
+    }
+    return value;
+  }
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return `${value.length} ${value.length === 1 ? 'item' : 'items'}`;
+  if (value && typeof value === 'object' && Object.keys(value).length === 0) return 'Not recorded';
   try {
     return JSON.stringify(value);
   } catch {
@@ -97,7 +169,7 @@ function formatDetailValue(value: unknown): string {
 function detailEntries(metadata: Record<string, unknown>): Array<{ label: string; value: string }> {
   return Object.entries(metadata ?? {})
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([key, value]) => ({ label: humanizeKey(key), value: formatDetailValue(value) }));
+    .map(([key, value]) => ({ label: humanizeKey(key), value: formatDetailValue(key, value) }));
 }
 
 // Plain one-line version for hover titles + accessibility.
@@ -154,12 +226,15 @@ export default function AuditLog() {
       },
       {
         key: 'event',
-        header: 'Event',
-        defaultWidth: 240,
+        header: 'Activity',
+        defaultWidth: 280,
         render: (row) => (
-          <Chip accent={eventTone(row.event)} dot={false} className="max-w-full">
-            <span className="truncate">{row.event}</span>
-          </Chip>
+          <div className="min-w-0 space-y-1" title={row.event}>
+            <Chip accent={eventTone(row.event)} dot={false} className="max-w-full">
+              <span className="truncate">{eventLabel(row.event)}</span>
+            </Chip>
+            <p className="truncate font-mono text-[10px] text-ink-3">{row.event}</p>
+          </div>
         ),
       },
       {
@@ -177,8 +252,12 @@ export default function AuditLog() {
         header: 'Session scope',
         defaultWidth: 220,
         render: (row) => (
-          <span className="line-clamp-2 text-xs text-ink-3" title={scopeLabel(row)}>
-            {scopeLabel(row)}
+          <span
+            className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-ink-2 ring-1 ring-slate-200/70"
+            title={scopeLabel(row)}
+          >
+            <Store size={12} className="shrink-0 text-ink-3" />
+            <span className="line-clamp-2">{scopeLabel(row)}</span>
           </span>
         ),
       },
