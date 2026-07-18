@@ -84,12 +84,14 @@ app.get('/analysis', async (c) => {
   const to = parseDate(c.req.query('dateTo')) ?? new Date();
   const from = parseDate(c.req.query('dateFrom')) ?? new Date(to.getTime() - 29 * 86_400_000);
   const limit = parsePageSize(c.req.query('limit'), 200, 2000);
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
   const result = await getSkuBreakdownFromOrderItems({
     dateFrom: asTimestamp(from),
     dateTo: asTimestamp(to),
     limit,
-    clientId: requestedClientId(c) ?? undefined,
-    storeId: requestedStoreId(c) ?? undefined,
+    clientId: clientId ?? undefined,
+    storeId: storeId ?? undefined,
     clientIds: scope.clientIds,
     storeIds: scope.storeIds,
     scopeRestricted: scope.isRestricted,
@@ -100,7 +102,7 @@ app.get('/analysis', async (c) => {
     // CP-038: the client Analysis table reads the canonical billed shipping.
     shippingBasis: 'customer_billed',
   });
-  await recordPortalAudit('portal.analysis.view', scope);
+  await recordPortalAudit('portal.analysis.view', scope, { clientId, storeId });
   // CP-047: this explicit whitelist is the customer Analysis API contract.
   // Shared operator/debug rows may keep internal shipping and fee metrics, but
   // those fields never cross the Client Portal boundary.
@@ -173,7 +175,12 @@ app.get('/analysis/sku-orders', async (c) => {
     shippingBasis: 'customer_billed',
   });
 
-  await recordPortalAudit('portal.analysis.sku_orders', scope, { inventoryId, orders: result.orders.length });
+  await recordPortalAudit('portal.analysis.sku_orders', scope, {
+    inventoryId,
+    clientId,
+    storeId,
+    orders: result.orders.length,
+  });
   // CP-050: explicit top-level and per-order whitelists prevent shared
   // operator/debug fields from crossing the customer boundary.
   return c.json(toClientAnalysisSkuOrdersDto(result));
@@ -184,7 +191,9 @@ app.get('/daily-shipments', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('dateFrom')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('dateTo')) ?? new Date();
-  const scopePredicate = shipmentScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) });
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
+  const scopePredicate = shipmentScopePredicate(scope, { clientId, storeId });
   const rows = await db.execute<{ day: string; shipments: number }>(sql`
     select to_char(ship_date::date, 'YYYY-MM-DD') as day,
            count(*)::int as shipments
@@ -196,7 +205,7 @@ app.get('/daily-shipments', async (c) => {
     group by day
     order by day asc
   `);
-  await recordPortalAudit('portal.analysis.daily_shipments', scope, { from, to });
+  await recordPortalAudit('portal.analysis.daily_shipments', scope, { from, to, clientId, storeId });
   return c.json({ data: rows });
 });
 

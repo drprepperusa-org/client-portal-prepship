@@ -25,15 +25,24 @@ app.get('/shipments', async (c) => {
   const status = isPortalShipmentStatus(statusParam) && SHIPMENT_STATUS_FILTERS.has(statusParam)
     ? statusParam
     : undefined;
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
   const result = await listPortalShipments(scope, {
     page,
     pageSize,
-    clientId: requestedClientId(c),
-    storeId: requestedStoreId(c),
+    clientId,
+    storeId,
     search,
     status,
   });
-  await recordPortalAudit('portal.shipments.list', scope, { page, pageSize, search, status: status ?? null });
+  await recordPortalAudit('portal.shipments.list', scope, {
+    page,
+    pageSize,
+    clientId,
+    storeId,
+    search,
+    status: status ?? null,
+  });
   return c.json(result);
 });
 

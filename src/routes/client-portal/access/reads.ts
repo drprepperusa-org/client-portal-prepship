@@ -16,13 +16,15 @@ export function registerAccessReadRoutes(app: Hono): void {
   app.get('/clients', async (c) => {
     const scope = scopeOrResponse(c);
     if (!isClientPortalScope(scope)) return scope;
+    const clientId = requestedClientId(c);
+    const storeId = requestedStoreId(c);
     const rows = await db
       .select({ id: clients.id, name: clients.name, email: clients.email, active: clients.active, storeIds: clients.storeIds })
       .from(clients)
-      .where(and(eq(clients.active, true), clientFilterPredicate(scope, requestedClientId(c), requestedStoreId(c))))
+      .where(and(eq(clients.active, true), clientFilterPredicate(scope, clientId, storeId)))
       .orderBy(clients.name)
       .limit(200);
-    await recordPortalAudit('portal.clients.list', scope, { rows: rows.length });
+    await recordPortalAudit('portal.clients.list', scope, { clientId, storeId, rows: rows.length });
     return c.json({ data: rows });
   });
 

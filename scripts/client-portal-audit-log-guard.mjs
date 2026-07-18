@@ -26,6 +26,7 @@ const schemaExists = exists('src/db/schema/client-portal-audit-logs.ts');
 const migrationExists = exists('drizzle/0036_client_portal_audit_logs.sql');
 const routeExists = exists('src/routes/client-portal/audit-log.ts');
 const pageExists = exists('portal-client/src/pages/AuditLog.tsx');
+const storeAttributionExists = exists('src/lib/client-portal/read-models/audit-log-store-attribution.ts');
 
 const schema = schemaExists ? read('src/db/schema/client-portal-audit-logs.ts') : '';
 const migration = migrationExists ? read('drizzle/0036_client_portal_audit_logs.sql') : '';
@@ -35,6 +36,9 @@ const drizzleConfig = read('drizzle.config.ts');
 const audit = read('src/lib/client-portal/audit.ts');
 const route = routeExists ? read('src/routes/client-portal/audit-log.ts') : '';
 const routeFlat = flat(route);
+const storeAttribution = storeAttributionExists
+  ? read('src/lib/client-portal/read-models/audit-log-store-attribution.ts')
+  : '';
 const router = read('src/routes/client-portal.ts');
 const main = read('src/main.ts');
 const corsHelper = read('src/lib/http/cors.ts');
@@ -115,6 +119,16 @@ assert(
 );
 assert(routeExists, 'audit-log route file exists');
 assert(
+  storeAttributionExists &&
+    storeAttribution.includes('auditActivityStorePredicate') &&
+    storeAttribution.includes('Canonical Audit Log store attribution') &&
+    storeAttribution.includes('cardinality(${clientPortalAuditLogs.storeIds}) = 1') &&
+    storeAttribution.includes('audit_order.store_id') &&
+    storeAttribution.includes('audit_return_order.store_id') &&
+    storeAttribution.includes('audit_shipment_order.store_id'),
+  'store filter has one backend owner that attributes activity through canonical resources',
+);
+assert(
   routeFlat.includes("app.get('/audit-log'") &&
     routeFlat.includes("app.post('/audit-log/click'") &&
     routeFlat.includes('clientPortalCapabilities(scope).canViewAudit') &&
@@ -122,7 +136,8 @@ assert(
     routeFlat.includes('scopeLabel: buildScopeLabel') &&
     route.includes('loadAuditStoreFilters') &&
     route.includes("c.req.query('storeId')") &&
-    route.includes('clientPortalAuditLogs.storeIds') &&
+    route.includes('auditActivityStorePredicate(storeId)') &&
+    !route.includes('clientPortalAuditLogs.storeIds} @> ${intArrayLiteral([storeId])') &&
     route.includes('stores: storeFilters') &&
     route.includes('loadAuditScopeNames') &&
     routeFlat.includes("portal.ui.click") &&
@@ -213,7 +228,7 @@ assert(
 );
 assert(
   pkg.scripts?.['test:client-portal-audit-log'] ===
-    'node scripts/client-portal-audit-log-guard.mjs && tsx scripts/client-portal-audit-metadata-runtime.ts',
+    'node scripts/client-portal-audit-log-guard.mjs && tsx scripts/client-portal-audit-metadata-runtime.ts && tsx scripts/client-portal-audit-store-filter-runtime.ts',
   'package exposes static and runtime audit-log guards',
 );
 

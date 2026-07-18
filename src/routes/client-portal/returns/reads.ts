@@ -95,7 +95,14 @@ function registerReturnListRoute(app: Hono): void {
       .where(where);
     const count = countRows[0]?.count ?? rows.length;
 
-    await recordPortalAudit('portal.returns.list', scope, { page, pageSize, status: status ?? null, clientId, search });
+    await recordPortalAudit('portal.returns.list', scope, {
+      page,
+      pageSize,
+      status: status ?? null,
+      clientId,
+      storeId,
+      search,
+    });
     return c.json({
       data: await Promise.all(
         rows.map((row) => toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials })),
@@ -190,7 +197,10 @@ function registerReturnDetailRoute(app: Hono): void {
     );
 
     const safeRow = await toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials });
-    await recordPortalAudit('portal.returns.detail.view', scope, { returnId: id });
+    await recordPortalAudit('portal.returns.detail.view', scope, {
+      returnId: id,
+      clientId: row.ret.clientId,
+    });
     return c.json({
       data: {
         ...safeRow,

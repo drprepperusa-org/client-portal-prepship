@@ -22,15 +22,17 @@ app.get('/inventory', async (c) => {
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
   const lowStock = ['1', 'true', 'yes'].includes((c.req.query('lowStock') ?? '').toLowerCase());
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
   const result = await listPortalInventory(scope, {
     page,
     pageSize,
-    clientId: requestedClientId(c),
-    storeId: requestedStoreId(c),
+    clientId,
+    storeId,
     search,
     lowStock,
   });
-  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, search, lowStock });
+  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, clientId, storeId, search, lowStock });
   return c.json(result);
 });
 
@@ -45,8 +47,10 @@ app.get('/inventory-history', async (c) => {
   const type = c.req.query('type')?.trim();
   const from = parseDate(c.req.query('from'));
   const to = parseDate(c.req.query('to'));
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
   const where = and(
-    inventoryScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) }),
+    inventoryScopePredicate(scope, { clientId, storeId }),
     sku ? ilike(inventory.sku, `%${sku}%`) : undefined,
     type ? eq(inventoryLedger.type, type) : undefined,
     from ? gte(inventoryLedger.createdAt, from) : undefined,
@@ -78,7 +82,14 @@ app.get('/inventory-history', async (c) => {
     .innerJoin(inventory, eq(inventory.id, inventoryLedger.inventoryId))
     .where(where);
   const count = countRows[0]?.count ?? rows.length;
-  await recordPortalAudit('portal.inventory.history', scope, { page, pageSize, sku: sku ?? null, type: type ?? null });
+  await recordPortalAudit('portal.inventory.history', scope, {
+    page,
+    pageSize,
+    clientId,
+    storeId,
+    sku: sku ?? null,
+    type: type ?? null,
+  });
   return c.json({
     data: rows.map((r) => ({ ...r, createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt })),
     pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },

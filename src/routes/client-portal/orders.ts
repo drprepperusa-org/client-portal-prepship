@@ -29,18 +29,17 @@ app.get('/orders', async (c) => {
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const search = requestedSearch(c);
   const result = await listPortalOrders(scope, { page, pageSize, status, clientId, storeId, search });
-  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, search });
+  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, storeId, search });
   return c.json(result);
 });
 
 app.get('/orders/awaiting-active-count', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const count = await awaitingActiveOrderCount(scope, {
-    clientId: requestedClientId(c),
-    storeId: requestedStoreId(c),
-  });
-  await recordPortalAudit('portal.orders.awaiting_active_count', scope, { count });
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
+  const count = await awaitingActiveOrderCount(scope, { clientId, storeId });
+  await recordPortalAudit('portal.orders.awaiting_active_count', scope, { count, clientId, storeId });
   return c.json({ count });
 });
 
@@ -50,7 +49,11 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
   const id = Number(c.req.param('id'));
   const data = await getPortalOrder(scope, id);
   if (!data) return c.json({ error: 'Order not found' }, 404);
-  await recordPortalAudit('portal.orders.detail.view', scope, { orderId: id });
+  await recordPortalAudit('portal.orders.detail.view', scope, {
+    orderId: id,
+    clientId: data.clientId,
+    storeId: data.storeId,
+  });
   return c.json({ data });
 });
 
@@ -79,7 +82,11 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
     .where(and(eq(shipments.orderId, orderId), eq(shipments.voided, false), shipmentScopePredicate(scope)))
     .orderBy(desc(shipments.id))
     .limit(20);
-  await recordPortalAudit('portal.billing.order_shipments.view', scope, { orderId, rows: rows.length });
+  await recordPortalAudit('portal.billing.order_shipments.view', scope, {
+    orderId,
+    storeId: rows[0]?.storeId ?? null,
+    rows: rows.length,
+  });
   return c.json({
     data: rows.map((row) =>
       toPortalShipmentDto(

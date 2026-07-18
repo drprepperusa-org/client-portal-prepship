@@ -52,7 +52,7 @@ app.get('/dashboard', async (c) => {
     clientId,
     storeId,
   });
-  await recordPortalAudit('portal.dashboard.view', scope, { from, to });
+  await recordPortalAudit('portal.dashboard.view', scope, { from, to, clientId, storeId });
   return c.json(summary);
 });
 
@@ -61,7 +61,9 @@ app.get('/daily-counts', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const from = parseDate(c.req.query('from')) ?? new Date(Date.now() - 30 * 86_400_000);
   const to = parseDate(c.req.query('to')) ?? new Date();
-  const scopePredicate = orderScopePredicate(scope, { clientId: requestedClientId(c), storeId: requestedStoreId(c) });
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
+  const scopePredicate = orderScopePredicate(scope, { clientId, storeId });
   const rows = await db.execute<{
     day: string;
     order_status: string;
@@ -87,7 +89,7 @@ app.get('/daily-counts', async (c) => {
     if (row.order_status === 'cancelled') current.cancelled += row.count;
     byDay.set(row.day, current);
   }
-  await recordPortalAudit('portal.dashboard.daily_counts', scope, { from, to });
+  await recordPortalAudit('portal.dashboard.daily_counts', scope, { from, to, clientId, storeId });
   return c.json({ data: [...byDay.values()] });
 });
 

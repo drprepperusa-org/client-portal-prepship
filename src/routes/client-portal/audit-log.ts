@@ -7,6 +7,7 @@ import { clients } from '../../db/schema/clients';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
+import { auditActivityStorePredicate } from '../../lib/client-portal/read-models/audit-log-store-attribution';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { parsePositiveInt, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
 
@@ -137,7 +138,7 @@ app.get('/audit-log', async (c) => {
           )
         : undefined,
       storeId
-        ? sql`${clientPortalAuditLogs.storeIds} @> ${intArrayLiteral([storeId])}`
+        ? auditActivityStorePredicate(storeId)
         : undefined,
     ].filter(<T>(value: T | undefined): value is T => value !== undefined),
   );

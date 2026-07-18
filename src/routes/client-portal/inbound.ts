@@ -31,15 +31,19 @@ app.get('/inbound/receipts', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'), 50);
+  const clientId = requestedClientId(c);
+  const storeId = requestedStoreId(c);
   const result = await listPortalInboundReceipts(scope, {
     page,
     pageSize,
-    clientId: requestedClientId(c),
-    storeId: requestedStoreId(c),
+    clientId,
+    storeId,
   });
   await recordPortalAudit('portal.inbound.receipts.list', scope, {
     page,
     pageSize,
+    clientId,
+    storeId,
     rows: result.data.length,
   });
   return c.json(result);
@@ -83,7 +87,7 @@ app.get('/inbound', async (c) => {
     byInbound.set(it.inboundId, list);
   }
 
-  await recordPortalAudit('portal.inbound.list', scope, { rows: heads.length });
+  await recordPortalAudit('portal.inbound.list', scope, { clientId, rows: heads.length });
   return c.json({
     data: heads.map((h) => toPortalInboundDto({ ...h.shipment, clientName: h.clientName }, byInbound.get(h.shipment.id) ?? [])),
   });
