@@ -95,7 +95,21 @@ export function ConnectionCard({
               </span>
             </div>
 
-            <h3 className="mt-3 font-display text-base font-bold capitalize text-ink">{name}</h3>
+            <div className="mt-3 flex items-center gap-1.5">
+              <h3 className="font-display text-base font-bold capitalize text-ink">{name}</h3>
+              <button
+                type="button"
+                aria-label={`Rename ${name}`}
+                title="Edit store name"
+                onClick={(e) => {
+                  stop(e);
+                  onReconfigure?.(c);
+                }}
+                className="focus-ring inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-brand-50 hover:text-brand-600"
+              >
+                <Pencil size={13} />
+              </button>
+            </div>
             <p className="text-sm capitalize text-ink-3">{typeLabel}{c.provider ? ` · ${c.provider}` : ''}</p>
 
             <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
@@ -111,16 +125,7 @@ export function ConnectionCard({
               </div>
             </div>
 
-            <div className="mt-3 flex gap-2">
-              <ConnectionActionButton
-                tone="neutral"
-                onClick={(e) => {
-                  stop(e);
-                  onReconfigure?.(c);
-                }}
-              >
-                <Pencil size={14} /> Rename
-              </ConnectionActionButton>
+            <div className="mt-3 flex">
               <ConnectionActionButton
                 tone="danger"
                 disabled={disconnecting}

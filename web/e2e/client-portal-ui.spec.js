@@ -636,7 +636,7 @@ test('client can rename a Shopify connection without changing provider identity'
   });
 
   await page.goto(`${baseUrl}/connections`);
-  await page.getByRole('button', { name: 'Rename' }).click();
+  await page.getByRole('button', { name: 'Rename Shopify' }).click();
   const dialog = page.getByRole('dialog', { name: 'Rename store connection' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('textbox', { name: /Store display name/ }).fill('Chris Shopify Store');
