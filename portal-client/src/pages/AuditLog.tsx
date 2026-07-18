@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, Inbox, RefreshCw, Search } from 'lucide-react';
+import { ClipboardList, Inbox, RefreshCw, Search, Store } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { Chip, EmptyState, Skeleton } from '@/components/ui/Display';
@@ -132,15 +132,17 @@ function scopeLabel(row: PortalAuditLogRow): string {
 export default function AuditLog() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [storeFilter, setStoreFilter] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const audit = useAuditLog(debouncedSearch, 100);
+  const audit = useAuditLog(debouncedSearch, 100, storeFilter);
   const canCustomizeTables = useCanCustomizeTables();
   const rows = audit.data?.data ?? [];
+  const storeFilters = audit.data?.filters.stores ?? [];
   const visibleRows = useMemo(() => rows, [rows]);
   const columns: Column<PortalAuditLogRow>[] = useMemo(
     () => [
@@ -214,16 +216,34 @@ export default function AuditLog() {
             }
           />
         </div>
-        <label className="relative block max-w-xl">
-          <span className="sr-only">Search event or user</span>
-          <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search event or user"
-            className="focus-ring h-11 w-full rounded-glass-sm border border-slate-200/80 bg-white/75 pl-10 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand-300"
-          />
-        </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="relative block w-full max-w-xl">
+            <span className="sr-only">Search event or user</span>
+            <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search event or user"
+              className="focus-ring h-11 w-full rounded-glass-sm border border-slate-200/80 bg-white/75 pl-10 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand-300"
+            />
+          </label>
+          <label className="relative block w-full sm:w-64">
+            <span className="sr-only">Filter audit log by store</span>
+            <Store size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-ink-3" />
+            <select
+              value={storeFilter ?? ''}
+              onChange={(event) => setStoreFilter(event.target.value ? Number(event.target.value) : null)}
+              aria-label="Filter audit log by store"
+              className="focus-ring h-11 w-full cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/70 pl-10 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
+            >
+              <option value="">All stores</option>
+              {storeFilters.map((store) => (
+                <option key={store.id} value={store.id}>{store.name}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-3">▾</span>
+          </label>
+        </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
           <ClipboardList size={14} />
           <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>
@@ -261,7 +281,11 @@ export default function AuditLog() {
           <EmptyState
             icon={<Inbox size={24} />}
             title="No audit events"
-            message={debouncedSearch ? 'No events match that search.' : 'Portal audit events will appear here as users sign in and navigate.'}
+            message={
+              debouncedSearch || storeFilter
+                ? 'No events match the selected filters.'
+                : 'Portal audit events will appear here as users sign in and navigate.'
+            }
           />
         )}
       </GlassPanel>

@@ -4,7 +4,7 @@ import type {
   AccessUserPatch,
   PortalAccessUser,
   PortalAuditClickInput,
-  PortalAuditLogRow,
+  PortalAuditLogResponse,
   PortalClientRow,
   PortalMe,
 } from '@client-portal-contracts/access';
@@ -12,10 +12,11 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '../transport';
 
 export const accessApi = {
   me: (token: string) => apiGet<PortalMe>(token, '/api/client-portal/me'),
-  auditLog: (token: string, opts: { search?: string; limit?: number } = {}) =>
-    apiGet<{ data: PortalAuditLogRow[] }>(token, '/api/client-portal/audit-log', {
+  auditLog: (token: string, opts: { search?: string; limit?: number; storeId?: number | null } = {}) =>
+    apiGet<PortalAuditLogResponse>(token, '/api/client-portal/audit-log', {
       search: opts.search,
       limit: opts.limit ?? 100,
+      storeId: opts.storeId,
     }),
   auditClick: (token: string, body: PortalAuditClickInput) =>
     apiPost<{ ok: true }>(token, '/api/client-portal/audit-log/click', body),

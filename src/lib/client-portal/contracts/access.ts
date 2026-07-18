@@ -31,6 +31,18 @@ export interface PortalAuditLogRow {
   createdAt: string;
 }
 
+export interface PortalAuditLogStoreFilter {
+  id: number;
+  name: string;
+}
+
+export interface PortalAuditLogResponse {
+  data: PortalAuditLogRow[];
+  filters: {
+    stores: PortalAuditLogStoreFilter[];
+  };
+}
+
 export interface PortalAuditClickInput {
   target: string;
   to?: string;

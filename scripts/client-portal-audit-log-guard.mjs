@@ -118,6 +118,10 @@ assert(
     routeFlat.includes('clientPortalCapabilities(scope).canViewAudit') &&
     routeFlat.includes('clientPortalAuditLogs') &&
     routeFlat.includes('scopeLabel: buildScopeLabel') &&
+    route.includes('loadAuditStoreFilters') &&
+    route.includes("c.req.query('storeId')") &&
+    route.includes('clientPortalAuditLogs.storeIds') &&
+    route.includes('stores: storeFilters') &&
     route.includes('loadAuditScopeNames') &&
     routeFlat.includes("portal.ui.click") &&
     routeFlat.includes('desc(clientPortalAuditLogs.createdAt'),
@@ -136,7 +140,9 @@ assert(
 assert(
   api.includes('export interface PortalAuditLogRow') &&
   api.includes('clientNames: string[]') &&
-    api.includes('storeNames: string[]') &&
+  api.includes('storeNames: string[]') &&
+    api.includes('PortalAuditLogResponse') &&
+    api.includes('PortalAuditLogStoreFilter') &&
     api.includes('scopeLabel: string') &&
     api.includes('canManageUsers: boolean') &&
     api.includes('canManageAdmins: boolean') &&
@@ -144,6 +150,7 @@ assert(
     !api.includes('X-Portal-Audit-Source') &&
     !api.includes('backgroundRequest') &&
     api.includes('auditLog: (token: string') &&
+    api.includes('storeId: opts.storeId') &&
     api.includes("'/api/client-portal/audit-log'") &&
     api.includes('auditClick: (token: string'),
   'portal API exposes audit-log scope fields and backend-owned capabilities without spoofable audit tagging',
@@ -152,6 +159,7 @@ assert(
   hooks.includes('export function useAuditLog') &&
     hooks.includes('portalApi.auditLog') &&
     hooks.includes("['audit-log'") &&
+    hooks.includes("storeId ?? 'all-stores'") &&
     !hooks.includes('backgroundRequest') &&
     hooks.includes('portalApi.backgroundDashboard') &&
     hooks.includes('portalApi.backgroundOrders') &&
@@ -190,6 +198,9 @@ assert(
     page.includes('Session scope') &&
     !page.includes('Client scope') &&
     page.includes('Search event or user') &&
+    page.includes('Filter audit log by store') &&
+    page.includes('All stores') &&
+    page.includes('storeFilters.map') &&
     page.includes('Event') &&
     page.includes('User') &&
     page.includes('When') &&

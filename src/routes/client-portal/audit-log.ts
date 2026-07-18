@@ -51,6 +51,38 @@ function buildScopeLabel(
   return parts.length ? parts.join(' / ') : 'Global';
 }
 
+async function loadAuditStoreFilters(): Promise<Array<{ id: number; name: string }>> {
+  const rows = await db
+    .select({
+      name: clients.name,
+      storeIds: clients.storeIds,
+    })
+    .from(clients)
+    .where(sql`cardinality(${clients.storeIds}) > 0`);
+
+  const baseNames = new Map<number, string>();
+  for (const row of rows) {
+    for (const storeId of row.storeIds ?? []) {
+      const id = Number(storeId);
+      if (Number.isInteger(id) && id > 0 && !baseNames.has(id)) {
+        baseNames.set(id, row.name?.trim() || `Store #${id}`);
+      }
+    }
+  }
+
+  const duplicateCounts = new Map<string, number>();
+  for (const name of baseNames.values()) {
+    duplicateCounts.set(name, (duplicateCounts.get(name) ?? 0) + 1);
+  }
+
+  return [...baseNames.entries()]
+    .map(([id, name]) => ({
+      id,
+      name: (duplicateCounts.get(name) ?? 0) > 1 ? `${name} · Store #${id}` : name,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
+}
+
 async function loadAuditScopeNames(rows: Array<{ clientIds: number[]; storeIds: number[] }>) {
   const clientIds = uniqueIds(rows, 'clientIds');
   const storeIds = uniqueIds(rows, 'storeIds');
@@ -93,6 +125,7 @@ app.get('/audit-log', async (c) => {
 
   const search = requestedSearch(c);
   const limit = Math.min(parsePositiveInt(c.req.query('limit')) ?? 100, 250);
+  const storeId = parsePositiveInt(c.req.query('storeId'));
   const where = and(
     ...[
       ne(clientPortalAuditLogs.event, 'portal.audit_log.view'),
@@ -103,24 +136,30 @@ app.get('/audit-log', async (c) => {
             ilike(clientPortalAuditLogs.actorUserId, `%${search}%`),
           )
         : undefined,
+      storeId
+        ? sql`${clientPortalAuditLogs.storeIds} @> ${intArrayLiteral([storeId])}`
+        : undefined,
     ].filter(<T>(value: T | undefined): value is T => value !== undefined),
   );
 
-  const rows = await db
-    .select({
-      id: clientPortalAuditLogs.id,
-      event: clientPortalAuditLogs.event,
-      actorUserId: clientPortalAuditLogs.actorUserId,
-      actorEmail: clientPortalAuditLogs.actorEmail,
-      clientIds: clientPortalAuditLogs.clientIds,
-      storeIds: clientPortalAuditLogs.storeIds,
-      metadata: clientPortalAuditLogs.metadata,
-      createdAt: clientPortalAuditLogs.createdAt,
-    })
-    .from(clientPortalAuditLogs)
-    .where(where)
-    .orderBy(desc(clientPortalAuditLogs.createdAt), desc(clientPortalAuditLogs.id))
-    .limit(limit);
+  const [rows, storeFilters] = await Promise.all([
+    db
+      .select({
+        id: clientPortalAuditLogs.id,
+        event: clientPortalAuditLogs.event,
+        actorUserId: clientPortalAuditLogs.actorUserId,
+        actorEmail: clientPortalAuditLogs.actorEmail,
+        clientIds: clientPortalAuditLogs.clientIds,
+        storeIds: clientPortalAuditLogs.storeIds,
+        metadata: clientPortalAuditLogs.metadata,
+        createdAt: clientPortalAuditLogs.createdAt,
+      })
+      .from(clientPortalAuditLogs)
+      .where(where)
+      .orderBy(desc(clientPortalAuditLogs.createdAt), desc(clientPortalAuditLogs.id))
+      .limit(limit),
+    loadAuditStoreFilters(),
+  ]);
   const scopeNames = await loadAuditScopeNames(rows);
 
   return c.json({
@@ -131,6 +170,9 @@ app.get('/audit-log', async (c) => {
       scopeLabel: buildScopeLabel(row, scopeNames),
       createdAt: row.createdAt.toISOString(),
     })),
+    filters: {
+      stores: storeFilters,
+    },
   });
 });
 

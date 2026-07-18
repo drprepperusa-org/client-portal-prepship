@@ -36,8 +36,8 @@ export function useCanCustomizeTables(): boolean {
   const me = useMe().data;
   return Boolean(me?.isAdmin || me?.isGlobal);
 }
-export function useAuditLog(search = '', limit = 100) {
-  return useTokenQuery(['audit-log', search, limit], (t) => portalApi.auditLog(t, { search, limit }), true, {
+export function useAuditLog(search = '', limit = 100, storeId?: number | null) {
+  return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores'], (t) => portalApi.auditLog(t, { search, limit, storeId }), true, {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
