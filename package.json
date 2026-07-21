@@ -51,6 +51,7 @@
     "best-rate:dims:dry-run": "tsx scripts/clear-invalid-best-rates.ts",
     "best-rate:dims:apply": "tsx scripts/clear-invalid-best-rates.ts --apply",
     "typecheck": "tsc --noEmit -p tsconfig.json && npm --prefix portal-client run typecheck",
+    "test:ps-439-inventory-sot": "tsx scripts/ps-439-inventory-source-of-truth-guard.ts",
     "typecheck:web:legacy": "tsc --noEmit -p web/tsconfig.json",
     "test:client-redaction": "node scripts/client-redaction-guard.mjs",
     "test:credential-accounts": "node scripts/credential-accounts-guard.mjs",

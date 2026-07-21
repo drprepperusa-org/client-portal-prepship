@@ -5,11 +5,12 @@ import { shipments } from '../db/schema/shipments';
 import { orderOverrides, orders } from '../db/schema/orders';
 import { packages } from '../db/schema/packages';
 import { clients } from '../db/schema/clients';
-import { inventory } from '../db/schema/inventory';
+import { inventory, inventoryLedger } from '../db/schema/inventory';
 import { returns } from '../db/schema/returns';
 import { readFrozenCustomerShippingMoney } from '../lib/customer-shipping-money-snapshot';
 import { resolveReturnReference } from './return-reference';
 import { refreshBillingSummaryMetrics } from './reporting-metrics';
+import { computeClientStorageBilling, type StorageSku } from './billing-storage';
 
 export type GenerateInput = {
   clientId?: number;
@@ -382,19 +383,9 @@ export async function generateLineItems(input: GenerateInput) {
         (input.clientId === undefined || row.clientId === input.clientId)
     );
 
-  if (!billableRows.length) {
-    return {
-      generated: 0,
-      count: 0,
-      total: 0,
-      skipped: 0,
-      message: 'No billable shipped orders or shipments found for this range.',
-    };
-  }
-
-  // Rebuild the requested billing period only after we know the source query
-  // has billable rows. That protects existing summaries if a transient query
-  // problem happens during generation.
+  // Rebuild the complete requested period even when there are no outbound
+  // shipments. Returns and ledger-derived storage are independent billable
+  // sources, so an outbound-only early return would silently omit their lines.
   await db.delete(billingLineItems).where(
     and(
       sql`${billingLineItems.shipDate} >= ${fromIso}::timestamptz`,
@@ -404,6 +395,7 @@ export async function generateLineItems(input: GenerateInput) {
       // rows in the range; a restricted caller with no resolvable scope now
       // deletes nothing (predicate → `false`).
       billingLineItemScopePredicate(input),
+      eq(billingLineItems.invoiced, false),
       input.clientId !== undefined
         ? eq(billingLineItems.clientId, input.clientId)
         : undefined
@@ -854,11 +846,10 @@ export async function generateLineItems(input: GenerateInput) {
     }
   }
 
-  // ─── Storage fees (once per client per billing period) ──────────────────────
-  // v2 charged storage per cuft/month on current inventory on hand. v4
-  // approximates: for each client with storageFeePerCuFt > 0, compute
-  // SUM(stock_qty × cuFt_per_unit) × feeRate, emitted as one line item
-  // dated on the last billed day so it remains inside [dateFrom, dateTo).
+  // Storage integrates ledger balances over the actual days in the requested
+  // month. Raw negative balances remain visible in inventory; only chargeable
+  // quantity is clamped to zero inside the storage calculator.
+  const periodStart = new Date(input.dateFrom);
   const periodEnd = new Date(input.dateTo);
   const STORAGE_LINE_DAY_MS = 24 * 60 * 60 * 1000;
   const storageShipDate = new Date(periodEnd.getTime() - STORAGE_LINE_DAY_MS);
@@ -867,30 +858,63 @@ export async function generateLineItems(input: GenerateInput) {
     if (storageRate <= 0) continue;
     if (cfg.active === false) continue;
 
-    const invRows = await db.execute<{
-      total_cuft: string | number | null;
+    const movementRows = await db.execute<{
+      inventory_id: number;
+      sku: string;
+      cu_ft_per_unit: string | number | null;
+      qty: number | null;
+      movement_at: Date | string | null;
     }>(sql`
       select
-        coalesce(sum(
-          case
-            when coalesce(cu_ft_override, 0) > 0 then stock_qty * cu_ft_override
-            when length > 0 and width > 0 and height > 0
-              then stock_qty * ((length * width * height) / 1728.0)
-            else 0
-          end
-        ), 0)::numeric(14,4) as total_cuft
-      from inventory
-      where client_id = ${clientId}
-        and active = true
-        and stock_qty > 0
+        i.id as inventory_id,
+        i.sku,
+        case
+          when coalesce(i.cu_ft_override, 0) > 0 then i.cu_ft_override
+          when i.length > 0 and i.width > 0 and i.height > 0
+            then (i.length * i.width * i.height) / 1728.0
+          else null
+        end as cu_ft_per_unit,
+        l.qty,
+        coalesce(l.effective_at, l.created_at) as movement_at
+      from ${inventory} i
+      left join ${inventoryLedger} l
+        on l.inventory_id = i.id
+       and coalesce(l.effective_at, l.created_at) < ${periodEnd.toISOString()}::timestamptz
+      where i.client_id = ${clientId}
+        and i.active = true
+      order by i.id, coalesce(l.effective_at, l.created_at), l.id
     `);
-    const totalCuFt = Number(invRows[0]?.total_cuft ?? 0);
-    if (totalCuFt <= 0) continue;
-    const fee = totalCuFt * storageRate;
-    if (fee <= 0) continue;
+    const skuById = new Map<number, StorageSku>();
+    for (const row of movementRows) {
+      const cuFtPerUnit = Number(row.cu_ft_per_unit ?? 0);
+      if (!(cuFtPerUnit > 0)) continue;
+      const sku = skuById.get(Number(row.inventory_id)) ?? {
+        inventoryId: Number(row.inventory_id),
+        sku: row.sku,
+        cuFtPerUnit,
+        movements: [],
+      };
+      if (row.qty != null && row.movement_at != null) {
+        // Legacy rows may predate effective_at; created_at is their only
+        // persisted event clock and is never rewritten by PS-439.
+        sku.movements.push({ qty: row.qty, effectiveAt: row.movement_at });
+      }
+      skuById.set(sku.inventoryId, sku);
+    }
+    const storage = computeClientStorageBilling({
+      skus: [...skuById.values()],
+      monthlyRatePerCuFt: storageRate,
+      periodStart,
+      periodEnd,
+    });
+    if (storage.amount <= 0) continue;
+    const periodKey = `${input.dateFrom.slice(0, 10)}:${input.dateTo.slice(0, 10)}`;
+    const cuFtMonths = storage.daysInPeriod > 0
+      ? storage.totalCuFtDays / storage.daysInPeriod
+      : 0;
 
     try {
-      await db
+      const inserted = await db
         .insert(billingLineItems)
         .values({
           clientId,
@@ -898,21 +922,20 @@ export async function generateLineItems(input: GenerateInput) {
           orderNumber: null,
           shipmentId: null,
           shipDate: storageShipDate,
+          billingEffectiveDate: storageShipDate,
+          billingPolicyVersion: 'ps439-ledger-cuft-days-v1',
           lineType: 'storage',
-          description: `Storage — ${totalCuFt.toFixed(2)} cuft × $${storageRate.toFixed(4)}/cuft`,
-          qty: totalCuFt.toFixed(2),
+          description: `Storage ${periodKey} — ledger cuft-days`,
+          qty: cuFtMonths.toFixed(2),
           unitCost: storageRate.toFixed(4),
-          totalCost: fee.toFixed(2),
+          totalCost: storage.amount.toFixed(2),
         })
-        .onConflictDoNothing({
-          target: [
-            billingLineItems.orderId,
-            billingLineItems.lineType,
-            billingLineItems.description,
-          ],
-        });
-      generated += 1;
-      total += fee;
+        .onConflictDoNothing()
+        .returning({ id: billingLineItems.id });
+      if (inserted.length) {
+        generated += 1;
+        total += storage.amount;
+      }
     } catch {
       skipped += 1;
     }

@@ -105,6 +105,7 @@ app.post('/inventory/receive', async (c) => {
 
   const body = (await c.req.json().catch(() => ({}))) as {
     clientId?: number;
+    idempotencyKey?: string;
     reference?: string;
     receivedAt?: string;
     items?: Array<{ inventoryId?: number; qty?: number }>;
@@ -147,6 +148,10 @@ app.post('/inventory/receive', async (c) => {
   }
 
   const reference = body.reference?.trim().slice(0, 200) || undefined;
+  const requestIdentity = body.idempotencyKey?.trim() || c.req.header('Idempotency-Key')?.trim();
+  if (!requestIdentity || requestIdentity.length > 200) {
+    return c.json({ error: 'A valid idempotency key is required' }, 400);
+  }
   const totalUnits = items.reduce((sum, item) => sum + item.qty, 0);
   await recordCriticalPortalAudit('portal.inventory.receive.requested', scope, {
     clientId,
@@ -156,13 +161,16 @@ app.post('/inventory/receive', async (c) => {
     receivedAt: receivedAt.toISOString(),
     reference: reference ?? null,
   });
-  const results = await applyMovements(items.map((item) => ({
+  const results = await applyMovements(items.map((item, index) => ({
     inventoryId: item.inventoryId,
     type: 'receive',
     qty: item.qty,
     note: reference,
     createdBy: scope.email ?? scope.userId,
-    createdAt: receivedAt,
+    effectiveAt: receivedAt,
+    idempotencyKey: `portal-receive:${requestIdentity}:${index}:${item.inventoryId}`,
+    sourceEntity: 'client_portal_receive',
+    sourceId: `${requestIdentity}:${index}:${item.inventoryId}`,
   })));
   await recordPortalAudit('portal.inventory.receive.completed', scope, {
     clientId,

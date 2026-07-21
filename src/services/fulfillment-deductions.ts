@@ -7,9 +7,10 @@
 // Read freely — modify only with explicit human override.
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client';
-import { inventory, inventoryLedger } from '../db/schema/inventory';
+import { inventory } from '../db/schema/inventory';
 import { packageLedger } from '../db/schema/package-ledger';
 import { packages } from '../db/schema/packages';
+import { applyInventoryMovementInTransaction } from './inventory-movement';
 
 type OrderForDeduction = {
   id: number;
@@ -144,7 +145,7 @@ export async function deductPackageForShipment(input: {
 // What stops:
 //   - Auto-creation of inventory rows on first ship of an unknown SKU
 //   - All `'ship'` type entries in inventory_ledger
-//   - All stockQty mutations triggered by the label/sync paths
+//   - All inventory movements triggered by the label/sync paths
 //
 // Default (unset or any other value) preserves the original behavior so
 // existing deployments aren't surprised. Flip the flag in Vercel/Render
@@ -180,10 +181,10 @@ export async function deductInventoryForOrder(
     let skipped = 0;
     for (const line of lines) {
       const skuMatches = sql`lower(${inventory.sku}) = lower(${line.sku})`;
-      let row: { id: number; stockQty: number } | null = null;
+      let row: { id: number } | null = null;
       if (order.clientId != null) {
         const [exact] = await tx
-          .select({ id: inventory.id, stockQty: inventory.stockQty })
+          .select({ id: inventory.id })
           .from(inventory)
           .where(and(eq(inventory.clientId, order.clientId), skuMatches, eq(inventory.active, true)))
           .limit(1);
@@ -191,7 +192,7 @@ export async function deductInventoryForOrder(
       }
       if (!row) {
         const [global] = await tx
-          .select({ id: inventory.id, stockQty: inventory.stockQty })
+          .select({ id: inventory.id })
           .from(inventory)
           .where(and(isNull(inventory.clientId), skuMatches, eq(inventory.active, true)))
           .limit(1);
@@ -205,55 +206,30 @@ export async function deductInventoryForOrder(
             clientId: order.clientId ?? null,
             sku: line.sku,
             name: line.name,
-            stockQty: 0,
             active: true,
           })
-          .returning({ id: inventory.id, stockQty: inventory.stockQty });
+          .returning({ id: inventory.id });
         if (!created) throw new Error(`Failed to create inventory row for ${line.sku}`);
         row = created;
       }
 
-      const [existingShipLine] = await tx
-        .select({ id: inventoryLedger.id })
-        .from(inventoryLedger)
-        .where(
-          and(
-            eq(inventoryLedger.orderId, order.id),
-            eq(inventoryLedger.type, 'ship'),
-            eq(inventoryLedger.inventoryId, row.id)
-          )
-        )
-        .limit(1);
-
-      if (existingShipLine) {
-        skipped += line.qty;
-        continue;
-      }
-
-      const balanceAfter = row.stockQty - line.qty;
-      const patch: Record<string, unknown> = {
-        stockQty: balanceAfter,
-        updatedAt: new Date(),
-      };
-      if (line.name) {
-        patch.name = sql`coalesce(${inventory.name}, ${line.name})`;
-      }
-
-      await tx
-        .update(inventory)
-        .set(patch)
-        .where(eq(inventory.id, row.id));
-
-      await tx.insert(inventoryLedger).values({
+      // Per user override unlock shipped data on 2026-07-21: PS-439 removes
+      // the legacy balance cache; shipment deductions append only the canonical ledger movement.
+      const movement = await applyInventoryMovementInTransaction(tx, {
         inventoryId: row.id,
         type: 'ship',
         qty: -line.qty,
         orderId: order.id,
         note: `Order ${order.orderNumber ?? order.id}${input.shipmentId ? ` / shipment ${input.shipmentId}` : ''}`,
         createdBy: input.source ?? 'label',
-        createdAt: input.createdAt ?? toMovementDate(order.orderDate) ?? new Date(),
+        effectiveAt: input.createdAt ?? toMovementDate(order.orderDate) ?? new Date(),
+        idempotencyKey: `fulfillment:order:${order.id}:inventory:${row.id}:ship`,
+        sourceEntity: 'order_fulfillment',
+        sourceId: `order:${order.id}:inventory:${row.id}`,
+        nameIfMissing: line.name,
       });
-      deducted += line.qty;
+      if (movement.status === 'already_applied') skipped += line.qty;
+      else deducted += line.qty;
     }
 
     return { deducted, skipped: deducted === 0, skippedUnits: skipped };

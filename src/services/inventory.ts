@@ -1,113 +1,39 @@
-import { eq, sql, type SQL } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
-import { inventory, inventoryLedger } from '../db/schema/inventory';
+import { inventory } from '../db/schema/inventory';
+import {
+  applyInventoryMovement,
+  applyInventoryMovementInTransaction,
+  type InventoryMovementInput,
+} from './inventory-movement';
+import { inventoryQuantitySql } from './inventory-stock-math';
 
-export type StockMovement = {
-  inventoryId: number;
-  qty: number;
-  type: 'receive' | 'adjust' | 'pick' | 'ship' | 'return' | 'damage';
-  orderId?: number;
-  note?: string;
-  createdBy?: string;
-  createdAt?: Date;
-};
+export type StockMovement = InventoryMovementInput;
 
-export async function applyMovement(move: StockMovement) {
-  return db.transaction(async (tx) => {
-    const [current] = await tx
-      .select({ id: inventory.id, stockQty: inventory.stockQty })
-      .from(inventory)
-      .where(eq(inventory.id, move.inventoryId))
-      .limit(1);
-    if (!current) throw new Error('Inventory item not found');
-
-    // No negative-balance blocker. Stock can go arbitrarily negative — the
-    // ledger is the source of truth, not the running balance, and the
-    // shipment_sync path already writes through without a check, so manual
-    // adjusts/picks would be the only writer that ever throws otherwise.
-    // Receives, adjusts, picks, ships, returns, and damage moves all proceed
-    // and persist even when the resulting stockQty < 0.
-    const newQty = current.stockQty + move.qty;
-
-    const [updated] = await tx
-      .update(inventory)
-      .set({ stockQty: newQty, updatedAt: new Date() })
-      .where(eq(inventory.id, move.inventoryId))
-      .returning();
-
-    const [ledger] = await tx
-      .insert(inventoryLedger)
-      .values({
-        inventoryId: move.inventoryId,
-        type: move.type,
-        qty: move.qty,
-        orderId: move.orderId ?? null,
-        note: move.note ?? null,
-        createdBy: move.createdBy ?? null,
-        createdAt: move.createdAt ?? new Date(),
-      })
-      .returning();
-
-    return { inventory: updated, ledger };
-  });
+export function applyMovement(move: StockMovement) {
+  return applyInventoryMovement(move);
 }
 
 /** Apply one receive worksheet as a single canonical ledger transaction. */
 export async function applyMovements(moves: StockMovement[]) {
   return db.transaction(async (tx) => {
     const results = [];
-    for (const move of moves) {
-      const [updated] = await tx
-        .update(inventory)
-        .set({ stockQty: sql`${inventory.stockQty} + ${move.qty}`, updatedAt: new Date() })
-        .where(eq(inventory.id, move.inventoryId))
-        .returning();
-      if (!updated) throw new Error('Inventory item not found');
-      const [ledger] = await tx
-        .insert(inventoryLedger)
-        .values({
-          inventoryId: move.inventoryId,
-          type: move.type,
-          qty: move.qty,
-          orderId: move.orderId ?? null,
-          note: move.note ?? null,
-          createdBy: move.createdBy ?? null,
-          createdAt: move.createdAt ?? new Date(),
-        })
-        .returning();
-      results.push({ inventory: updated, ledger });
-    }
+    for (const move of moves) results.push(await applyInventoryMovementInTransaction(tx, move));
     return results;
   });
 }
 
 export async function inventoryStats(clientId?: number, scopePredicate: SQL = sql`true`) {
-  const where = clientId !== undefined ? sql`client_id = ${clientId}` : sql`true`;
-  const rows = await db.execute<{
-    total: number;
-    low_stock: number;
-    out_of_stock: number;
-    total_units: number;
-  }>(sql`
-    select
-      count(*)::int            as total,
-      count(*) filter (where stock_qty <= reorder_level and stock_qty > 0)::int as low_stock,
-      count(*) filter (where stock_qty <= 0)::int                                as out_of_stock,
-      coalesce(sum(stock_qty), 0)::int                                           as total_units
-    from inventory
-    where ${where}
-      and ${scopePredicate}
-      and active = true
-      and (
-        client_id is null
-        or exists (
-          select 1 from clients visible_client
-          where visible_client.id = inventory.client_id
-            and coalesce(visible_client.active, true) = true
-        )
-      )
-  `);
-  return (
-    rows[0] ?? { total: 0, low_stock: 0, out_of_stock: 0, total_units: 0 }
-  );
+  const where = clientId !== undefined ? sql`${inventory.clientId} = ${clientId}` : sql`true`;
+  const quantity = inventoryQuantitySql(inventory.id);
+  const rows = await db
+    .select({ id: inventory.id, reorderLevel: inventory.reorderLevel, inventoryQuantity: quantity })
+    .from(inventory)
+    .where(sql`${where} and ${scopePredicate} and ${inventory.active} = true`);
+  return {
+    total: rows.length,
+    low_stock: rows.filter((row) => row.inventoryQuantity > 0 && row.inventoryQuantity <= row.reorderLevel).length,
+    out_of_stock: rows.filter((row) => row.inventoryQuantity <= 0).length,
+    total_units: rows.reduce((sum, row) => sum + Number(row.inventoryQuantity), 0),
+  };
 }

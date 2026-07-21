@@ -1,115 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import assert from 'node:assert/strict';
 
 const root = process.cwd();
-
-function read(filePath) {
-  return fs.readFileSync(path.join(root, filePath), 'utf8');
-}
-
-function assert(condition, message) {
-  if (!condition) {
-    console.error(`FAIL ${message}`);
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`PASS ${message}`);
-}
-
-const scriptPath = 'scripts/reconcile-inventory-stock.ts';
-const script = read(scriptPath);
+const read = (filePath) => fs.readFileSync(path.join(root, filePath), 'utf8');
+const script = read('scripts/reconcile-inventory-stock.ts');
+const admin = read('src/routes/admin.ts');
 const packageJson = JSON.parse(read('package.json'));
-const devTasks = read('DEV_TASKS_README.md');
-const sourceAudit = read('SOURCE_OF_TRUTH_AND_DUPLICATION_AUDIT.md');
-const inventoryPlan = read('INVENTORY_SOURCE_OF_TRUTH_PLAN.md');
-const reconciliationPlan = read('RECONCILIATION_REPORTS_PLAN.md');
 
-assert(
-  packageJson.scripts?.['inventory:reconcile:dry-run'] ===
-    'tsx scripts/reconcile-inventory-stock.ts',
-  'package exposes inventory reconciliation dry-run command',
+assert.equal(
+  packageJson.scripts?.['inventory:reconcile:dry-run'],
+  'tsx scripts/reconcile-inventory-stock.ts',
 );
-
-assert(
-  packageJson.scripts?.['test:inventory-reconciliation-dry-run'] ===
-    'node scripts/inventory-reconciliation-dry-run-guard.mjs',
-  'package exposes inventory reconciliation dry-run guard',
+assert.equal(
+  packageJson.scripts?.['test:inventory-reconciliation-dry-run'],
+  'node scripts/inventory-reconciliation-dry-run-guard.mjs',
 );
+assert.match(script, /PS439_RECONCILIATION_RETIRED/);
+assert.match(script, /audit:ps-439-inventory-discrepancies/);
+assert.doesNotMatch(script, /stockQty|effectiveStock|inventory_ledger balance/);
+assert.match(admin, /mode: 'report-only'/);
+assert.match(admin, /inventory_quantity/);
+assert.match(admin, /legacy_identity_gaps/);
+assert.match(admin, /APPLY_REMOVED/);
+assert.doesNotMatch(admin, /current_stock_qty|effective_stock|rowsToAdjust/);
 
-const requiredScriptText = [
-  'read-only and dry-run only',
-  'does not modify inventory, orders, shipped/cancelled rows, or shipments',
-  'intentionally has no apply mode',
-  "mode: 'dry-run'",
-  'No rows changed.',
-  'inventory.stockQty',
-  'inventory_ledger balance',
-  'effectiveStock',
-  '--client-id',
-  '--sku',
-  '--limit',
-  '--json',
-  '--include-matched',
-  '--out-json',
-  '--out-csv',
-  'artifactPaths',
-  'writeTextArtifact',
-  'rowsToCsv',
-  'cacheVsLedgerDelta',
-  'cacheVsEffectiveDelta',
-  'ledgerVsEffectiveDelta',
-  'classification',
-  'classificationCounts',
-  'recommendedAction',
-  'safeToAutoRepair',
-  'missing_receive_ledger',
-  'sold_exceeds_received',
-  'cache_differs_from_ledger',
-  'client_sku_collision_risk',
-  'inactive_or_deactivated_sku',
-  'reporting_effective_stock_review',
-];
-
-for (const text of requiredScriptText) {
-  assert(script.includes(text), `${scriptPath} includes ${text}`);
-}
-
-const forbiddenScriptPatterns = [
-  { pattern: /--apply\b/, label: '--apply flag' },
-  { pattern: /hasFlag\(['"]apply['"]\)/, label: 'apply flag parser' },
-  { pattern: /\b(update|delete|insert|truncate|alter|drop|create)\s+/i, label: 'SQL mutation keyword' },
-  { pattern: /\.(update|delete|insert)\s*\(/, label: 'Drizzle mutation call' },
-  { pattern: /\btx\./, label: 'transaction mutation helper' },
-];
-
-for (const { pattern, label } of forbiddenScriptPatterns) {
-  assert(!pattern.test(script), `${scriptPath} does not include ${label}`);
-}
-
-const docs = [
-  ['DEV_TASKS_README.md', devTasks],
-  ['SOURCE_OF_TRUTH_AND_DUPLICATION_AUDIT.md', sourceAudit],
-  ['INVENTORY_SOURCE_OF_TRUTH_PLAN.md', inventoryPlan],
-  ['RECONCILIATION_REPORTS_PLAN.md', reconciliationPlan],
-];
-
-for (const [name, contents] of docs) {
-  assert(
-    contents.includes('inventory:reconcile:dry-run'),
-    `${name} references inventory reconciliation dry-run command`,
-  );
-  assert(
-    contents.includes('test:inventory-reconciliation-dry-run'),
-    `${name} references inventory reconciliation dry-run guard`,
-  );
-}
-
-assert(
-  inventoryPlan.includes('No stock repair/apply mode is added yet') &&
-    reconciliationPlan.includes('read-only first'),
-  'docs keep inventory reconciliation detection separate from repair',
-);
-
-if (process.exitCode) {
-  process.exit(process.exitCode);
-}
+console.log('PASS PS-439 retired Client Portal stock reconciliation and kept ledger-only diagnostics');

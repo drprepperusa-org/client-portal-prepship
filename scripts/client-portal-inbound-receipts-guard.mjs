@@ -79,8 +79,15 @@ assert.ok(
 assert.ok(
   inventoryService.includes('export async function applyMovements') &&
     inventoryService.includes('return db.transaction(async (tx) =>') &&
-    inventoryService.includes('stockQty: sql`${inventory.stockQty} + ${move.qty}`'),
+    inventoryService.includes('applyInventoryMovementInTransaction(tx, move)') &&
+    !inventoryService.includes('stockQty:'),
   'receive worksheets use one atomic canonical inventory ledger transaction',
+);
+assert.ok(
+  inventoryRoute.includes('A valid idempotency key is required') &&
+    receiveModal.includes('submissionIdentity') &&
+    receiveModal.includes('idempotencyKey: identity.key'),
+  'receive retries reuse a stable request identity and append movements exactly once',
 );
 assert.ok(
   api.includes("'/api/client-portal/inventory/receive'") &&

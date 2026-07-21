@@ -7,7 +7,7 @@ import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { inventory } from '../../db/schema/inventory';
 import { inboundShipments, inboundItems } from '../../db/schema/inbound';
-import { applyMovement } from '../../services/inventory';
+import { applyInventoryMovementInTransaction } from '../../services/inventory-movement';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { toPortalInboundDto } from '../../lib/client-portal/dto';
@@ -153,8 +153,8 @@ app.post('/inbound', async (c) => {
 });
 
 // Receive an inbound shipment: set received quantities, mark received, and
-// (optionally) add the received units to inventory via the canonical
-// applyMovement('receive') ledger writer. Admin-only.
+// (optionally) add the received units through the canonical movement owner.
+// Status, line quantities, and movements commit as one atomic worksheet.
 app.patch('/inbound/:id{[0-9]+}/receive', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -177,22 +177,23 @@ app.patch('/inbound/:id{[0-9]+}/receive', async (c) => {
   const recvById = new Map((body.items ?? []).map((i) => [Number(i.id), Math.max(0, Number(i.receivedQty) || 0)]));
   const receivedFor = (it: (typeof items)[number]) => (recvById.has(it.id) ? recvById.get(it.id)! : it.expectedQty);
 
-  for (const it of items) {
-    await db.update(inboundItems).set({ receivedQty: receivedFor(it) }).where(eq(inboundItems.id, it.id));
-  }
-  await db
-    .update(inboundShipments)
-    .set({ status: 'received', receivedDate: new Date(), updatedAt: new Date() })
-    .where(eq(inboundShipments.id, id));
-
-  // Optional inventory bump — match each received line to inventory by SKU
-  // within the same client; skip (don't fail) when there's no match.
   const bumps: Array<{ sku: string; qty: number; matched: boolean }> = [];
-  if (body.addToInventory) {
+  await db.transaction(async (tx) => {
+    for (const it of items) {
+      await tx.update(inboundItems).set({ receivedQty: receivedFor(it) }).where(eq(inboundItems.id, it.id));
+    }
+    await tx
+      .update(inboundShipments)
+      .set({ status: 'received', receivedDate: new Date(), updatedAt: new Date() })
+      .where(eq(inboundShipments.id, id));
+
+    if (!body.addToInventory) return;
+    // Match each received line to inventory by SKU within the same client;
+    // missing catalog identities remain explicit unmatched results.
     for (const it of items) {
       const qty = receivedFor(it);
       if (!it.sku || qty <= 0) continue;
-      const [inv] = await db
+      const [inv] = await tx
         .select({ id: inventory.id })
         .from(inventory)
         .where(
@@ -206,16 +207,20 @@ app.patch('/inbound/:id{[0-9]+}/receive', async (c) => {
         bumps.push({ sku: it.sku, qty, matched: false });
         continue;
       }
-      await applyMovement({
+      await applyInventoryMovementInTransaction(tx, {
         inventoryId: inv.id,
         type: 'receive',
         qty,
         note: `Inbound ${head.reference ?? `#${head.id}`}`,
         createdBy: scope.email ?? scope.userId,
+        effectiveAt: new Date(),
+        idempotencyKey: `portal-inbound:${head.id}:item:${it.id}:receive`,
+        sourceEntity: 'client_portal_inbound',
+        sourceId: `${head.id}:item:${it.id}`,
       });
       bumps.push({ sku: it.sku, qty, matched: true });
     }
-  }
+  });
 
   await recordPortalAudit('portal.inbound.receive', scope, { id, addToInventory: !!body.addToInventory, bumps: bumps.length });
   return c.json({ data: { id, status: 'received', bumps } });

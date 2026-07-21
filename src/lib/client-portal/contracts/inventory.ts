@@ -6,12 +6,11 @@ export interface PortalInventory {
   storeName: string | null;
   sku: string | null;
   name: string | null;
-  stockQty: number | null;
+  inventoryQuantity: number;
   reorderLevel: number | null;
   active: boolean | null;
   imageUrl: string | null;
   warehouseShipped30d: number;
-  effectiveStock: number;
   stockStatus: 'out' | 'low' | 'in';
   isLow: boolean;
   isOut: boolean;

@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, desc, eq, gte, ilike, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, ilike, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { inventory, inventoryLedger } from '../db/schema/inventory';
 import { inventorySkuParents } from '../db/schema/inventory-sku-parents';
@@ -12,6 +13,12 @@ import { offsetOf, paginated, paginationSchema } from '../lib/pagination';
 import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-scope';
 import { hasAppPermission } from '../middleware/auth';
 import { applyMovement, inventoryStats } from '../services/inventory';
+import {
+  applyInventoryMovementInTransaction,
+  type InventoryMovementTransaction,
+} from '../services/inventory-movement';
+import { inventoryQuantitySql } from '../services/inventory-stock-math';
+import { classifyStockStatus } from '../lib/inventory-stock-status';
 import {
   importSkusFromOrders,
   syncShipStationProducts,
@@ -148,7 +155,7 @@ app.get('/', zValidator('query', listQuery), async (c) => {
             ilike(inventory.name, `%${q.search}%`)
           )
         : undefined,
-      q.lowStock ? lte(inventory.stockQty, inventory.reorderLevel) : undefined,
+      q.lowStock ? lte(inventoryQuantitySql(inventory.id), inventory.reorderLevel) : undefined,
       // Active filter: applied unless the caller explicitly asks
       // for everything via ?includeInactive=true.
       q.active !== undefined
@@ -266,9 +273,7 @@ app.get('/stats', async (c) => {
 });
 
 // v2-parity: GET /inventory/alerts?clientId=N
-// Returns low-stock items (stock_qty <= reorder_level) for the given client.
-// v2 computed stock by summing ledger; v4 stores stock_qty on the row, so
-// the query is a simple compare.
+// Returns low-stock items using the canonical signed ledger quantity.
 app.get(
   '/alerts',
   zValidator('query', z.object({ clientId: z.coerce.number().int().optional() })),
@@ -280,7 +285,7 @@ app.get(
         id: inventory.id,
         sku: inventory.sku,
         name: inventory.name,
-        stock: inventory.stockQty,
+        inventoryQuantity: inventoryQuantitySql(inventory.id),
         minStock: inventory.reorderLevel,
         parentSkuId: inventory.parentSkuId,
         clientId: inventory.clientId,
@@ -293,11 +298,11 @@ app.get(
             eq(inventory.active, true),
             activeInventoryClientPredicate,
             inventoryScopePredicate(alertsScope),
-            lte(inventory.stockQty, inventory.reorderLevel),
+            lte(inventoryQuantitySql(inventory.id), inventory.reorderLevel),
           ].filter(<T>(x: T | undefined): x is T => x !== undefined)
         )
       )
-      .orderBy(inventory.stockQty);
+      .orderBy(inventoryQuantitySql(inventory.id));
     return c.json({ data: rows.map((r) => ({ type: 'sku' as const, ...r })) });
   }
 );
@@ -306,7 +311,10 @@ app.get('/:id{[0-9]+}', async (c) => {
   const id = Number(c.req.param('id'));
   const detailScope = inventoryScopeFromContext(c);
   const [row] = await db
-    .select()
+    .select({
+      ...getTableColumns(inventory),
+      inventoryQuantity: inventoryQuantitySql(inventory.id),
+    })
     .from(inventory)
     .where(and(eq(inventory.id, id), inventoryScopePredicate(detailScope)))
     .limit(1);
@@ -400,7 +408,7 @@ const createBody = z.object({
   sku: z.string().min(1),
   name: z.string().optional(),
   imageUrl: z.string().url().nullable().optional(),
-  stockQty: z.number().int().nonnegative().optional(),
+  inventoryQuantity: z.number().int().optional(),
   reorderLevel: z.number().int().nonnegative().optional(),
   baseUnitQty: z.number().int().positive().optional(),
   unitsPerPack: z.number().int().positive().optional(),
@@ -420,13 +428,31 @@ const createBody = z.object({
 
 app.post('/', zValidator('json', createBody), async (c) => {
   const body = c.req.valid('json');
-  const [row] = await db.insert(inventory).values(body).returning();
-  return c.json(row, 201);
+  const { inventoryQuantity = 0, ...catalog } = body;
+  const email = c.get('email' as never) as string | undefined;
+  const requestIdentity = c.req.header('Idempotency-Key')?.trim() || randomUUID();
+  const result = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(inventory).values(catalog).returning();
+    if (!row || inventoryQuantity === 0) return { ...row, inventoryQuantity: 0 };
+    const movement = await applyInventoryMovementInTransaction(tx, {
+      inventoryId: row.id,
+      type: 'adjust',
+      qty: inventoryQuantity,
+      note: 'Opening inventory quantity',
+      createdBy: email ?? 'manual',
+      effectiveAt: new Date(),
+      idempotencyKey: `inventory-create:${requestIdentity}:${row.id}`,
+      sourceEntity: 'inventory_create',
+      sourceId: `${requestIdentity}:${row.id}`,
+    });
+    return movement.inventory;
+  });
+  return c.json(result, 201);
 });
 
 app.patch(
   '/:id{[0-9]+}',
-  zValidator('json', createBody.omit({ sku: true }).partial().extend({ sku: z.string().min(1).optional() })),
+  zValidator('json', createBody.omit({ sku: true, inventoryQuantity: true }).partial().extend({ sku: z.string().min(1).optional() })),
   async (c) => {
     const id = Number(c.req.param('id'));
     const body = c.req.valid('json');
@@ -455,6 +481,15 @@ function movementDateFrom(value: string | undefined) {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+function movementIdentity(c: Context, source: string) {
+  const requestIdentity = c.req.header('Idempotency-Key')?.trim() || randomUUID();
+  return {
+    idempotencyKey: `${source}:${requestIdentity}`,
+    sourceEntity: source,
+    sourceId: requestIdentity,
+  };
+}
+
 app.post(
   '/:id{[0-9]+}/receive',
   zValidator('json', movementBody.refine((v) => v.qty > 0, 'Receive qty must be > 0')),
@@ -468,7 +503,8 @@ app.post(
       qty: body.qty,
       note: body.note,
       createdBy: email ?? 'manual',
-      createdAt: movementDateFrom(body.receivedAt ?? body.adjustedAt),
+      effectiveAt: movementDateFrom(body.receivedAt ?? body.adjustedAt) ?? new Date(),
+      ...movementIdentity(c, `inventory_receive:${id}`),
     });
     return c.json(result);
   }
@@ -615,7 +651,8 @@ app.post(
       qty: body.qty,
       note: body.note,
       createdBy: email ?? 'manual',
-      createdAt: movementDateFrom(body.adjustedAt ?? body.receivedAt),
+      effectiveAt: movementDateFrom(body.adjustedAt ?? body.receivedAt) ?? new Date(),
+      ...movementIdentity(c, `inventory_adjust:${id}`),
     });
     return c.json(result);
   }
@@ -643,12 +680,13 @@ const bulkReceiveBody = z.object({
 });
 
 async function findOrCreateInventoryForReceive(
+  tx: InventoryMovementTransaction,
   item: z.infer<typeof bulkReceiveBody>['items'][number],
   clientId: number | null | undefined,
 ) {
   const requestedId = item.invSkuId ?? item.inventoryId;
   if (requestedId != null) {
-    const [row] = await db
+    const [row] = await tx
       .select()
       .from(inventory)
       .where(eq(inventory.id, requestedId))
@@ -660,20 +698,19 @@ async function findOrCreateInventoryForReceive(
   const sku = item.sku?.trim();
   if (!sku) throw new Error('SKU is required');
   const clientFilter = clientId == null ? isNull(inventory.clientId) : eq(inventory.clientId, clientId);
-  const [existing] = await db
+  const [existing] = await tx
     .select()
     .from(inventory)
     .where(and(clientFilter, sql`lower(${inventory.sku}) = lower(${sku})`))
     .limit(1);
   if (existing) return existing;
 
-  const [created] = await db
+  const [created] = await tx
     .insert(inventory)
     .values({
       clientId: clientId ?? null,
       sku,
       name: item.name?.trim() || sku,
-      stockQty: 0,
     })
     .returning();
   if (!created) throw new Error(`Could not create inventory item for ${sku}`);
@@ -682,40 +719,40 @@ async function findOrCreateInventoryForReceive(
 
 // v2-parity bulk receive: POST /inventory/receive body
 // {clientId, note, receivedAt, items:[{sku|invSkuId, qty, name?, note?}]}.
-// Calls applyMovement per item so every receipt lands in the ledger. Per-item
-// errors are tallied without aborting the batch.
+// The batch is atomic: every requested movement persists, or none do.
 app.post(
   '/receive',
   zValidator('json', bulkReceiveBody),
   async (c) => {
     const body = c.req.valid('json');
     const email = c.get('email' as never) as string | undefined;
-    const receivedAt = movementDateFrom(body.receivedAt);
-    // v2-parity ReceiveInventoryResultDto adds `newStock` per item so
-    // the receiving UI can display the post-receive on-hand total without a
-    // round-trip fetch. applyMovement returns the updated inventory row,
-    // whose stockQty IS the new on-hand total.
+    const receivedAt = movementDateFrom(body.receivedAt) ?? new Date();
+    const requestIdentity = c.req.header('Idempotency-Key')?.trim() || randomUUID();
     const results: Array<{
       invSkuId: number;
       sku?: string | null;
       name?: string | null;
       qty?: number;
       ok: boolean;
-      newStock?: number;
+      inventoryQuantity?: number;
       ledgerId?: number;
       createdAt?: Date;
       error?: string;
     }> = [];
-    for (const item of body.items) {
-      try {
-        const inv = await findOrCreateInventoryForReceive(item, body.clientId);
-        const res = await applyMovement({
+    try {
+      await db.transaction(async (tx) => {
+        for (const [itemIndex, item] of body.items.entries()) {
+        const inv = await findOrCreateInventoryForReceive(tx, item, body.clientId);
+        const res = await applyInventoryMovementInTransaction(tx, {
           inventoryId: inv.id,
           type: 'receive',
           qty: item.qty,
           note: item.note?.trim() || body.note?.trim() || undefined,
           createdBy: email ?? 'manual',
-          createdAt: receivedAt,
+          effectiveAt: receivedAt,
+          idempotencyKey: `inventory-receive-batch:${requestIdentity}:${itemIndex}:${inv.id}`,
+          sourceEntity: 'inventory_receive_batch',
+          sourceId: `${requestIdentity}:${itemIndex}:${inv.id}`,
         });
         results.push({
           invSkuId: inv.id,
@@ -723,26 +760,28 @@ app.post(
           name: res.inventory?.name ?? inv.name,
           qty: item.qty,
           ok: true,
-          newStock: res.inventory?.stockQty ?? 0,
+          inventoryQuantity: res.inventory.inventoryQuantity,
           ledgerId: res.ledger?.id,
           createdAt: res.ledger?.createdAt,
         });
-      } catch (err) {
-        results.push({
-          invSkuId: item.invSkuId ?? item.inventoryId ?? 0,
-          sku: item.sku ?? null,
-          qty: item.qty,
-          ok: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        });
-      }
+        }
+      });
+    } catch (err) {
+      return c.json({
+        ok: false,
+        atomic: true,
+        received: [],
+        failed: body.items.length,
+        total: body.items.length,
+        results: [],
+        error: err instanceof Error ? err.message : 'Receive batch failed',
+      }, 409);
     }
-    const received = results.filter((r) => r.ok);
-    const failed = results.filter((r) => !r.ok);
     return c.json({
-      ok: failed.length === 0,
-      received,
-      failed: failed.length,
+      ok: true,
+      atomic: true,
+      received: results,
+      failed: 0,
       total: results.length,
       results,
     });
@@ -773,7 +812,8 @@ app.post(
       qty: body.qty,
       note: body.note,
       createdBy: email ?? 'manual',
-      createdAt: movementDateFrom(body.adjustedAt ?? body.receivedAt),
+      effectiveAt: movementDateFrom(body.adjustedAt ?? body.receivedAt) ?? new Date(),
+      ...movementIdentity(c, `inventory_adjust:${body.invSkuId}`),
     });
     return c.json(result);
   }
@@ -886,8 +926,8 @@ app.post('/import-from-orders', async (c) => {
 });
 
 // Pull product catalog from ShipStation v1 /products (every account we
-// know about) and upsert as inventory rows. stockQty stays 0 — the
-// standard SS API doesn't expose stock levels. Matching:
+// know about) and upsert identity/metadata only. No quantity movement is
+// created because the standard SS API doesn't expose stock levels. Matching:
 //   • Main account products → clientId IS NULL (shared catalog)
 //   • Per-client accounts (e.g. KFG) → clientId = account owner
 // so each client's product catalog lands on its own row and pulls its

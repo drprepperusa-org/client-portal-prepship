@@ -121,9 +121,9 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       className: 'text-right',
       render: (s) => {
         const status = inventoryStockStatusMeta(s.stockStatus);
-        return <span className={cn('font-semibold tnum', status.stockTextClass)}>{s.effectiveStock ?? 0}</span>;
+        return <span className={cn('font-semibold tnum', status.stockTextClass)}>{s.inventoryQuantity}</span>;
       },
-      sortAccessor: (s) => Number(s.effectiveStock) || 0,
+      sortAccessor: (s) => Number(s.inventoryQuantity) || 0,
     },
     {
       key: 'whseShipped30',

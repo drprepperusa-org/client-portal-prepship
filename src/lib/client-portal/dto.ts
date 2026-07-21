@@ -11,6 +11,7 @@ import { normalizePortalShipmentStatus } from './shipment-status';
 import type { PortalItemIdentity } from './contracts/common';
 import type { PortalInbound } from './contracts/inbound';
 import type { PortalInventory } from './contracts/inventory';
+import { classifyStockStatus } from '../inventory-stock-status';
 import type { PortalOrder, PortalOrderCostSummaryRow } from './contracts/orders';
 import type { PortalShipment } from './contracts/shipments';
 import {
@@ -416,7 +417,7 @@ export function toPortalInventoryDto(
     // date) — NOT ordered/sold units. The SOT-encoding name prevents confusion
     // with Analysis's "Ordered Units".
     warehouseShipped30d?: number | string | null;
-    effectiveStock?: number | string | null;
+    inventoryQuantity: number | string;
     clientName?: string | null;
     storeName?: string | null;
     storeIds?: number[] | null;
@@ -434,16 +435,11 @@ export function toPortalInventoryDto(
         ? Number(((length * width * height) / 1728).toFixed(3))
         : null;
   const baseUnitQty = row.baseUnitQty ?? 1;
-  // CP-013 / PS-378: stock status is backend-owned so the Low/Out filter and
-  // the status badge share ONE definition. The source input is effectiveStock
-  // from src/services/inventory-stock-math, not raw cached inventory.stockQty:
-  //   out = effectiveStock <= 0
-  //   low = reorderLevel > 0 and effectiveStock <= reorderLevel
-  const stock = Number(row.effectiveStock ?? row.stockQty ?? 0);
+  const stock = Number(row.inventoryQuantity);
   const reorder = Number(row.reorderLevel ?? 0);
-  const isOut = stock <= 0;
-  const isLow = reorder > 0 && stock <= reorder;
-  const stockStatus: 'out' | 'low' | 'in' = isOut ? 'out' : isLow ? 'low' : 'in';
+  const stockStatus = classifyStockStatus(stock, reorder);
+  const isOut = stockStatus === 'out';
+  const isLow = stockStatus === 'low';
   return {
     id: row.id,
     clientId: row.clientId,
@@ -452,12 +448,11 @@ export function toPortalInventoryDto(
     storeName: row.storeName ?? row.clientName ?? null,
     sku: row.sku,
     name: row.name,
-    stockQty: row.stockQty,
+    inventoryQuantity: stock,
     reorderLevel: row.reorderLevel,
     active: row.active,
     imageUrl: row.imageUrl,
     warehouseShipped30d: Number(row.warehouseShipped30d ?? 0),
-    effectiveStock: stock,
     // CP-013 / PS-378: backend-owned stock status (the frontend renders this enum).
     stockStatus,
     isLow,

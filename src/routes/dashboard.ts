@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { clients } from '../db/schema/clients';
-import { inventory, inventoryLedger } from '../db/schema/inventory';
+import { inventory } from '../db/schema/inventory';
+import { computeInventoryQuantityForIds } from '../services/inventory-stock-math';
+import { classifyStockStatus } from '../lib/inventory-stock-status';
 import { orderItems } from '../db/schema/order-items';
 import { orders } from '../db/schema/orders';
 import { analyticsCacheKey, getAnalyticsCache, setAnalyticsCache } from '../services/analytics-cache';
@@ -588,80 +590,27 @@ app.get('/inventory-risk', zValidator('query', dashboardInventoryRiskQuery), asy
     soldRows.map((row) => [row.inventory_id, Number(row.sold_last_30_days) || 0])
   );
 
-  const effectiveRows = ids.length && shouldRunLiveMetrics
-    ? await db.execute<{
-        inventory_id: number;
-        total_received: number;
-        total_sold: number;
-      }>(sql`
-        with ids as (
-          select unnest(array[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::int[]) as id
-        ),
-        receives as (
-          select l.inventory_id as id, coalesce(sum(l.qty), 0)::int as total_received
-          from ${inventoryLedger} l
-          where l.inventory_id in (select id from ids)
-            and l.type = 'receive'
-          group by l.inventory_id
-        ),
-        sells as (
-          select i.id as id, coalesce(sum(oi.quantity), 0)::int as total_sold
-          from ${inventory} i
-          join ${orderItems} oi
-            on lower(oi.sku) = lower(i.sku)
-          join ${orders} o
-            on (
-              o.id = oi.order_id
-              and (
-                (i.client_id is null and o.client_id is null)
-                or i.client_id = o.client_id
-              )
-            )
-          where i.id in (select id from ids)
-            and oi.quantity > 0
-            and o.order_status = 'shipped'
-          group by i.id
-        )
-        select
-          ids.id as inventory_id,
-          coalesce(receives.total_received, 0)::int as total_received,
-          coalesce(sells.total_sold, 0)::int as total_sold
-        from ids
-        left join receives on receives.id = ids.id
-        left join sells on sells.id = ids.id
-      `)
-    : [];
-
-  const effectiveByInventoryId = new Map(
-    effectiveRows.map((row) => [
-      row.inventory_id,
-      {
-        totalReceived: Number(row.total_received) || 0,
-        totalSold: Number(row.total_sold) || 0,
-        effectiveStock: (Number(row.total_received) || 0) - (Number(row.total_sold) || 0),
-      },
-    ])
-  );
+  const quantityByInventoryId = await computeInventoryQuantityForIds(ids);
 
   const payload = {
     items: rows.map((row) => {
-      const stockQty = Number(row.stockQty ?? 0) || 0;
-      const reorderLevel = Number(row.reorderLevel ?? 0) || 0;
-      const eff = effectiveByInventoryId.get(row.id) ?? {
+      const inventoryQuantity = quantityByInventoryId.get(row.id) ?? {
+        inventoryQuantity: 0,
         totalReceived: 0,
-        totalSold: 0,
-        effectiveStock: stockQty,
+        totalShipped: 0,
       };
+      const reorderLevel = Number(row.reorderLevel ?? 0) || 0;
       return {
         ...row,
+        inventoryQuantity: inventoryQuantity.inventoryQuantity,
+        stockStatus: classifyStockStatus(inventoryQuantity.inventoryQuantity, reorderLevel),
         soldLast30Days: soldByInventoryId.get(row.id) ?? 0,
         soldLast7Days: 0,
         velocityPerDay: 0,
         daysSupply: null,
-        restockQty: Math.max(0, reorderLevel - stockQty),
-        totalReceived: eff.totalReceived,
-        totalSoldAllTime: eff.totalSold,
-        effectiveStock: eff.effectiveStock,
+        restockQty: Math.max(0, reorderLevel - inventoryQuantity.inventoryQuantity),
+        totalReceived: inventoryQuantity.totalReceived,
+        totalSoldAllTime: inventoryQuantity.totalShipped,
       };
     }),
     total: rows.length,

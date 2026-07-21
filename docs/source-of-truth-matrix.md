@@ -157,11 +157,11 @@ External source truth:
   warehouse stock once inventory is received or deducted.
 
 Normalized operational truth:
-- `inventory.stockQty` owns current on-hand stock.
+- `inventoryQuantity = SUM(inventory_ledger.qty)` is the only on-hand quantity.
 - Product/SKU defaults live on inventory rows where PrepShip manages them.
 
 Frozen/snapshot truth:
-- `inventory_ledger` owns inventory movement history: receives, deductions,
+- Immutable `inventory_ledger` rows own inventory movement history: receives, deductions,
   returns, corrections, and manual adjustments.
 
 Derived/read-model/cache truth:
@@ -176,7 +176,7 @@ Read/API owner:
 - Dashboard/reporting APIs for stock summaries.
 
 Freshness/staleness rules:
-- Current quantity is immediately updated by inventory actions.
+- Current quantity is derived immediately from committed movement rows; no balance cache exists.
 - Velocity and days-supply metrics may lag until reporting refresh.
 
 Audit/provenance requirements:
@@ -869,7 +869,7 @@ database/PrepShip AND the computation does not become an independent source of
 truth. Any customer-visible or operationally authoritative computation is pushed
 into a **backend DTO / read-model** so PrepShip and the portal share one
 definition and cannot drift. Backend Client Portal APIs expose **intent-named
-DTO fields** (`customerShippingRate`, `effectiveStock`, `warehouseShipped30d`,
+DTO fields** (`customerShippingRate`, `inventoryQuantity`, `warehouseShipped30d`,
 `shippingCharged`, `chargeSummary`, `expectedUnits`, …) that delegate to the
 canonical owner; generic names are used only when the DTO docs already name the
 source + event clock + formula. The Client Portal must never invent source data,
@@ -967,14 +967,14 @@ so retry remains eligible. Delivered is terminal. Guards: `client-portal-shipmen
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
-| On-hand stock | `stockQty` / `effectiveStock` | `stockQty` / `effectiveStock` | `inventory.stockQty` | now | presentation-only |
+| On-hand stock | `inventoryQuantity` | `inventoryQuantity` | signed `SUM(inventory_ledger.qty)` via `inventory-stock-math` | movement effective/posted time | backend-owned-truth (PS-439) |
 | Stock status (In/Low/Out) | required `stockStatus`; malformed runtime data → `UNAVAILABLE` | `stockStatus` | backend enum in `toPortalInventoryDto` (mirrors read-model `lowStock` predicate) | now | backend-owned-truth (CP-013/CP-053) |
 | "Sold" / shipped (30d) | `warehouseShipped30d` | `warehouseShipped30d` | `inventory_ledger` ship rows by ship date — **NOT** ordered/sold units | ship date | backend-owned-truth (CP-023) |
 | Reorder level | `reorderLevel` | `reorderLevel` | `inventory.reorderLevel` | now | presentation-only |
 | Cubic feet / dims | `cuFt`, `length/width/height` | same | `inventory` dims, override else L×W×H/1728 | now | derived-from-canonical (backend-owned) |
 
 Owner: `toPortalInventoryDto` + read-model `listPortalInventory`
-(`inventory` + `inventory_ledger`). Route:
+(`inventory` catalog + immutable `inventory_ledger`). Route:
 `src/routes/client-portal/inventory.ts`. The `warehouseShipped30d` name is
 deliberately SOT-encoded so it can never be confused with Analysis "Ordered
 Units". Guards: `client-portal-inventory-sold-label-guard.mjs` (CP-023, ledger

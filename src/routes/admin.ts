@@ -12,8 +12,6 @@ import { packageLedger } from '../db/schema/package-ledger';
 import { billingLineItems } from '../db/schema/billing';
 import { products } from '../db/schema/products';
 import { settings } from '../db/schema/settings';
-import { syncOrders } from '../services/order-sync';
-import { syncShipments } from '../services/shipment-sync';
 import { backfillMissingOrderItems, getOrderItemsBackfillStatus, syncOrderItemOrderFields } from '../services/order-items';
 import { ssMarkOrderShippedV1, asSSUpstreamOrderId } from '../lib/shipstation/labels';
 import { loadClientCredentials } from '../lib/shipstation/credentials';
@@ -202,6 +200,21 @@ app.post('/purge-test-orders', async (c) => {
     .where(inArray(inventory.clientId, ids));
   const inventoryIds = inventoryRows.map((r) => r.id);
 
+  // Per user override unlock shipped data on 2026-07-21: fail before an admin
+  // purge could cascade through immutable shipped inventory movements.
+  const [orderLedgerCount] = orderIds.length
+    ? await db.select({ count: sql<number>`count(*)::int` }).from(inventoryLedger).where(inArray(inventoryLedger.orderId, orderIds))
+    : [{ count: 0 }];
+  const [inventoryLedgerCount] = inventoryIds.length
+    ? await db.select({ count: sql<number>`count(*)::int` }).from(inventoryLedger).where(inArray(inventoryLedger.inventoryId, inventoryIds))
+    : [{ count: 0 }];
+  if (Number(orderLedgerCount?.count ?? 0) + Number(inventoryLedgerCount?.count ?? 0) > 0) {
+    return c.json({
+      error: 'Test-client purge cannot delete immutable inventory history. Use a fresh isolated test client/database.',
+      code: 'PS439_INVENTORY_LEDGER_IMMUTABLE',
+    }, 409);
+  }
+
   // Wrap all deletes in a single transaction so a mid-run failure
   // rolls everything back. Order respects FK constraints (children first).
   const result = await db.transaction(async (tx) => {
@@ -223,12 +236,6 @@ app.post('/purge-test-orders', async (c) => {
         .where(inArray(billingLineItems.orderId, orderIds))
         .returning({ id: billingLineItems.id });
       billing = billingDel.length;
-
-      const ledgerByOrderDel = await tx
-        .delete(inventoryLedger)
-        .where(inArray(inventoryLedger.orderId, orderIds))
-        .returning({ id: inventoryLedger.id });
-      ledgerByOrder = ledgerByOrderDel.length;
 
       const overridesDel = await tx
         .delete(orderOverrides)
@@ -258,16 +265,6 @@ app.post('/purge-test-orders', async (c) => {
       .where(inArray(printQueue.clientId, ids))
       .returning({ id: printQueue.id });
     queueEntries += queueByClientDel.length;
-
-    // Inventory ledger rows that reference test inventory SKUs (separate
-    // from order-linked ledger rows we already deleted above).
-    if (inventoryIds.length) {
-      const ledgerByInvDel = await tx
-        .delete(inventoryLedger)
-        .where(inArray(inventoryLedger.inventoryId, inventoryIds))
-        .returning({ id: inventoryLedger.id });
-      ledgerByInventory = ledgerByInvDel.length;
-    }
 
     if (orderIds.length) {
       const ordersDel = await tx
@@ -702,19 +699,8 @@ app.get('/test-clients', async (c) => {
   return c.json({ data: rows });
 });
 
-// ── Hard reset + fresh sync ─────────────────────────────────────────────
-//
-// Destructive: deletes every synced row (orders, shipments, their billing
-// line items + inventory ledger entries) AND wipes every order/shipment
-// sync watermark so the next sync pulls from DEFAULT_LOOKBACK_MS (30 days).
-//
-// Preserves: clients (with their credentials + storeIds), packages,
-// locations, billing_config, inventory (just not the ledger), settings
-// other than sync watermarks. Test-client seeded orders are also deleted
-// — re-seed from the Settings view after.
-//
-// Pass { lookbackDays: N } to override the default 30-day backfill, or
-// { sync: false } to just wipe without immediately re-syncing.
+// Retained API shape for callers of the retired destructive reset. PS-439
+// returns a structured 409 before reading or mutating any history.
 const resetSyncBody = z
   .object({
     lookbackDays: z.number().int().positive().max(365).optional(),
@@ -723,75 +709,13 @@ const resetSyncBody = z
   .optional();
 
 app.post('/reset-sync', zValidator('json', resetSyncBody), async (c) => {
-  const body = c.req.valid('json') ?? {};
-  const lookbackDays = body.lookbackDays ?? 30;
-  const runSync = body.sync !== false;
-
-  // Count rows BEFORE the delete so we can report what got wiped, then
-  // TRUNCATE — that bypasses row-by-row protocol serialization entirely.
-  // order_overrides is TRUNCATE-cascaded by the FK on order_id.
-  const preCounts = await db.execute<{
-    billing: number;
-    ledger: number;
-    shipments: number;
-    orders: number;
-    watermarks: number;
-  }>(sql`
-    select
-      (select count(*)::int from billing_line_items) as billing,
-      (select count(*)::int from inventory_ledger) as ledger,
-      (select count(*)::int from shipments) as shipments,
-      (select count(*)::int from orders) as orders,
-      (select count(*)::int from settings where key like 'order_sync.%' or key like 'shipment_sync.%') as watermarks
-  `);
-  const pre = preCounts[0] ?? { billing: 0, ledger: 0, shipments: 0, orders: 0, watermarks: 0 };
-
-  // Order matters — child tables first so FK deletes are clean.
-  // RESTART IDENTITY resets the id sequences so the next sync produces
-  // small integer ids again, matching a fresh DB.
-  await db.execute(sql`truncate table billing_line_items restart identity`);
-  await db.execute(sql`truncate table inventory_ledger restart identity cascade`);
-  await db.execute(sql`truncate table shipments restart identity cascade`);
-  await db.execute(sql`truncate table orders restart identity cascade`);
-  await db.execute(sql`
-    delete from settings where key like 'order_sync.%' or key like 'shipment_sync.%'
-  `);
-
-  const sinceMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
-  const deleted = {
-    billing_line_items: pre.billing,
-    inventory_ledger: pre.ledger,
-    shipments: pre.shipments,
-    orders: pre.orders,
-    sync_watermarks: pre.watermarks,
-  };
-
-  if (!runSync) {
-    return c.json({ deleted, synced: null });
-  }
-
-  // 3. Trigger the fresh sync immediately. Orders first (so shipments can
-  //    match back by externalOrderId), then shipments.
-  const ordersResult = await syncOrders({ sinceMs });
-  const shipmentsResult = await syncShipments({ sinceMs });
-
+  // Per user override unlock shipped data on 2026-07-21: PS-439 makes the
+  // inventory ledger immutable, so destructive resync cannot erase movement,
+  // shipment, order, or finalized billing history.
   return c.json({
-    deleted,
-    synced: {
-      orders: {
-        synced: ordersResult.synced,
-        pages: ordersResult.pages,
-        sinceIso: ordersResult.sinceIso,
-      },
-      shipments: {
-        fetched: shipmentsResult.fetched,
-        inserted: shipmentsResult.inserted,
-        updated: shipmentsResult.updated,
-        matchedOrders: shipmentsResult.matchedOrders,
-        ordersMarkedShipped: shipmentsResult.ordersMarkedShipped,
-      },
-    },
-  });
+    error: 'Destructive sync reset was retired by PS-439; use scoped reconciliation and normal sync recovery.',
+    code: 'PS439_IMMUTABLE_HISTORY',
+  }, 409);
 });
 
 // ─── /admin/retry-marketplace-notify ──────────────────────────────────────
@@ -1058,32 +982,10 @@ app.post('/cleanup-stale-queue-entries', async (c) => {
   });
 });
 
-// One-time reconciliation: walk every active inventory row, compute
-//   effective_stock = total_received − total_sold_shipped_all_time
-// (the same formula the /inventory list route now uses to populate
-// the STOCK column — see the long comment block in inventory.ts for
-// the full semantics and revision history), and write that value
-// into inventory.stockQty
-// so the cached field aligns with what operators see. For each row
-// that actually needed adjustment, insert a single `adjust`-type
-// inventory_ledger entry recording the delta so the History panel
-// shows the correction transparently.
-//
-// Idempotent: a second run after a successful first run finds no
-// deltas and writes nothing.
-//
-// Lockdown compliance: this READS shipped orders (allowed under the
-// analytics carve-out in AGENTS.md) and only WRITES to the
-// `inventory` table and `inventory_ledger` (neither is locked). It
-// does NOT call deductInventoryForOrder and is NOT gated by the
-// INVENTORY_AUTO_DEDUCT kill switch — that switch governs the
-// automatic per-shipment deduction path; reconciliation is an
-// explicit human-triggered correction with a distinct ledger note
-// so auditors can tell the two apart.
-//
-// Query params:
-//   ?dryRun=1   — return the diff without writing anything.
-//   ?clientId=N — limit to a single client's SKUs.
+// PS-439 compatibility report: quantity is the raw signed ledger sum. This
+// reports negative balances and legacy identity gaps; it never derives a
+// competing order-based balance and has no repair mode.
+// Query params: ?dryRun=1 reports; ?clientId=N limits the report.
 app.post('/reconcile-inventory-stock', async (c) => {
   const dryRun = c.req.query('dryRun') === '1' || c.req.query('dryRun') === 'true';
   const clientIdRaw = c.req.query('clientId');
@@ -1095,119 +997,60 @@ app.post('/reconcile-inventory-stock', async (c) => {
   const rows = await db.execute<{
     inventory_id: number;
     sku: string;
-    current_stock_qty: number;
-    total_received: number;
-    total_sold: number;
-    effective_stock: number;
+    inventory_quantity: number;
+    movement_count: number;
+    legacy_identity_gaps: number;
   }>(sql`
-    with receives as (
-      select l.inventory_id as id, coalesce(sum(l.qty), 0)::int as total_received
-      from ${inventoryLedger} l
-      where l.type = 'receive'
-      group by l.inventory_id
-    ),
-    sells as (
-      select i.id as id,
-        coalesce(sum(oi.quantity), 0)::int as total_sold
-      from ${inventory} i
-      join order_items oi
-        on lower(oi.sku) = lower(i.sku)
-      join ${orders} o
-        on (
-          o.id = oi.order_id
-          and (
-          (i.client_id is null and o.client_id is null)
-          or i.client_id = o.client_id
-          )
-        )
-      where oi.quantity > 0
-        and o.order_status = 'shipped'
-      group by i.id
-    )
     select
       i.id as inventory_id,
       i.sku as sku,
-      i.stock_qty as current_stock_qty,
-      coalesce(receives.total_received, 0)::int as total_received,
-      coalesce(sells.total_sold, 0)::int as total_sold,
-      (coalesce(receives.total_received, 0) - coalesce(sells.total_sold, 0))::int as effective_stock
+      coalesce(sum(l.qty), 0)::int as inventory_quantity,
+      count(l.id)::int as movement_count,
+      count(*) filter (
+        where l.id is not null and (
+          nullif(btrim(l.created_by), '') is null
+          or l.effective_at is null
+          or nullif(btrim(l.idempotency_key), '') is null
+          or nullif(btrim(l.source_entity), '') is null
+          or nullif(btrim(l.source_id), '') is null
+        )
+      )::int as legacy_identity_gaps
     from ${inventory} i
-    left join receives on receives.id = i.id
-    left join sells on sells.id = i.id
+    left join ${inventoryLedger} l on l.inventory_id = i.id
     where i.active = true
       ${
         clientIdFilter !== undefined
           ? sql`and i.client_id = ${clientIdFilter}`
           : sql``
       }
+    group by i.id, i.sku
+    order by i.id
   `);
 
-  const adjustments = rows
-    .map((r) => {
-      const currentStockQty = Number(r.current_stock_qty) || 0;
-      const totalReceived = Number(r.total_received) || 0;
-      const totalSold = Number(r.total_sold) || 0;
-      const effectiveStock = Number(r.effective_stock) || 0;
-      return {
-        inventoryId: r.inventory_id,
-        sku: r.sku,
-        currentStockQty,
-        totalReceived,
-        totalSold,
-        effectiveStock,
-        delta: effectiveStock - currentStockQty,
-      };
-    })
-    .filter((a) => a.delta !== 0);
+  const exceptions = rows
+    .map((row) => ({
+      inventoryId: row.inventory_id,
+      sku: row.sku,
+      inventoryQuantity: Number(row.inventory_quantity) || 0,
+      movementCount: Number(row.movement_count) || 0,
+      legacyIdentityGaps: Number(row.legacy_identity_gaps) || 0,
+    }))
+    .filter((row) => row.inventoryQuantity < 0 || row.legacyIdentityGaps > 0);
 
   if (dryRun) {
     return c.json({
-      mode: 'dry-run',
+      mode: 'report-only',
       rowsScanned: rows.length,
-      rowsToAdjust: adjustments.length,
-      totalDelta: adjustments.reduce((sum, a) => sum + a.delta, 0),
-      sampleAdjustments: adjustments.slice(0, 20),
+      negativeBalances: rows.filter((row) => Number(row.inventory_quantity) < 0).length,
+      legacyIdentityGaps: rows.reduce((sum, row) => sum + Number(row.legacy_identity_gaps || 0), 0),
+      sampleExceptions: exceptions.slice(0, 20),
     });
   }
-
-  if (adjustments.length === 0) {
-    return c.json({
-      mode: 'apply',
-      rowsScanned: rows.length,
-      rowsAdjusted: 0,
-      totalDelta: 0,
-      message: 'All inventory rows already match effectiveStock — nothing to do.',
-    });
-  }
-
-  const reconciliationNote = `Reconciliation backfill ${new Date().toISOString().slice(0, 10)}`;
-  await db.transaction(async (tx) => {
-    for (const a of adjustments) {
-      await tx
-        .update(inventory)
-        .set({ stockQty: a.effectiveStock, updatedAt: new Date() })
-        .where(eq(inventory.id, a.inventoryId));
-      await tx.insert(inventoryLedger).values({
-        inventoryId: a.inventoryId,
-        type: 'adjust',
-        qty: a.delta,
-        note: `${reconciliationNote}: stockQty ${a.currentStockQty} → ${a.effectiveStock} (received ${a.totalReceived} − sold-shipped ${a.totalSold})`,
-        createdBy: 'admin/reconcile-inventory-stock',
-      });
-    }
-  });
-
-  console.info(
-    `[admin/reconcile-inventory-stock] adjusted ${adjustments.length} of ${rows.length} active rows`
-  );
 
   return c.json({
-    mode: 'apply',
-    rowsScanned: rows.length,
-    rowsAdjusted: adjustments.length,
-    totalDelta: adjustments.reduce((sum, a) => sum + a.delta, 0),
-    sampleAdjustments: adjustments.slice(0, 20),
-  });
+    error: 'Direct balance repair was removed by PS-439. Run dryRun=1 and submit a separately reviewed append-only movement plan.',
+    code: 'APPLY_REMOVED',
+  }, 409);
 });
 
 export default app;

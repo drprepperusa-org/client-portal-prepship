@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PackageCheck, Plus, Search, Trash2 } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -91,7 +91,7 @@ function ReceiveLineEditor({
                 className="focus-ring block w-full rounded-lg px-3 py-2 text-left hover:bg-brand-50"
               >
                 <span className="block text-sm font-semibold text-ink">{item.sku ?? `Inventory #${item.id}`}</span>
-                <span className="block truncate text-xs text-ink-3">{item.name ?? 'Unnamed item'} · Stock {item.effectiveStock}</span>
+                <span className="block truncate text-xs text-ink-3">{item.name ?? 'Unnamed item'} · Stock {item.inventoryQuantity}</span>
               </button>
             ))}
           </div>
@@ -139,6 +139,7 @@ export function ReceiveInventoryModal({
   const [receivedDate, setReceivedDate] = useState(localDate);
   const [lines, setLines] = useState<ReceiveLine[]>(() => [newLine()]);
   const [saving, setSaving] = useState(false);
+  const submissionIdentity = useRef<{ fingerprint: string; key: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -146,6 +147,7 @@ export function ReceiveInventoryModal({
     setReference('');
     setReceivedDate(localDate());
     setLines([newLine()]);
+    submissionIdentity.current = null;
   }, [open, clients]);
 
   const selectedIds = useMemo(
@@ -171,13 +173,21 @@ export function ReceiveInventoryModal({
 
   async function submit() {
     if (!accessToken || !clientId || !valid || saving) return;
+    const items = lines.map((line) => ({ inventoryId: line.inventoryId as number, qty: Number(line.qty) }));
+    const fingerprint = JSON.stringify({ clientId, reference: reference.trim(), receivedDate, items });
+    let identity = submissionIdentity.current;
+    if (identity?.fingerprint !== fingerprint) {
+      identity = { fingerprint, key: crypto.randomUUID() };
+      submissionIdentity.current = identity;
+    }
     setSaving(true);
     try {
       const result = await portalApi.receiveInventory(accessToken, {
         clientId,
+        idempotencyKey: identity.key,
         reference: reference.trim() || undefined,
         receivedAt: new Date(`${receivedDate}T00:00:00`).toISOString(),
-        items: lines.map((line) => ({ inventoryId: line.inventoryId as number, qty: Number(line.qty) })),
+        items,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['inventory'] }),

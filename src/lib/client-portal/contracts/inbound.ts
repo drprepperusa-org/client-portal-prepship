@@ -51,6 +51,7 @@ export interface NewInboundInput {
 
 export interface PortalInventoryReceiveInput {
   clientId: number;
+  idempotencyKey: string;
   reference?: string;
   receivedAt: string;
   items: Array<{ inventoryId: number; qty: number }>;

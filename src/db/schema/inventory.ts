@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { clients } from './clients';
 import { orders } from './orders';
@@ -20,7 +21,6 @@ export const inventory = pgTable(
     sku: text().notNull(),
     name: text(),
     imageUrl: text(),
-    stockQty: integer().default(0).notNull(),
     reorderLevel: integer().default(0).notNull(),
     weightOz: real().default(0),
     length: real(),
@@ -57,6 +57,10 @@ export const inventoryLedger = pgTable(
     inventoryId: integer()
       .notNull()
       .references(() => inventory.id, { onDelete: 'cascade' }),
+    clientId: integer('client_id').references(() => clients.id),
+    // Legacy movements may predate PS-439 identity fields. The insert guard
+    // requires these fields for every new movement without rewriting history.
+    sku: text(),
     type: text().notNull(),
     qty: integer().notNull(),
     orderId: integer().references(() => orders.id),
@@ -65,12 +69,22 @@ export const inventoryLedger = pgTable(
     // PrepShip's canonical business clock for backdated inventory movements.
     // The production column already exists; CP maps it read-only.
     effectiveAt: timestamp('effective_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key'),
+    sourceEntity: text('source_entity'),
+    sourceId: text('source_id'),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     index('inventory_ledger_inv_idx').on(t.inventoryId),
     index('inventory_ledger_inv_type_idx').on(t.inventoryId, t.type),
     index('inventory_ledger_created_idx').on(t.createdAt),
+    uniqueIndex('inventory_ledger_idempotency_key_unq').on(t.idempotencyKey),
+    uniqueIndex('inventory_ledger_source_identity_unq').on(
+      t.sourceEntity,
+      t.sourceId,
+      t.inventoryId,
+      t.type,
+    ),
   ]
 );
 
