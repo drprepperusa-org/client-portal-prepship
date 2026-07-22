@@ -236,46 +236,6 @@ export function useInvoiceDetailsQuery(token: string | null, range = defaultRang
   });
 }
 
-export function useSaveInvoiceDetailMutation(token: string | null, range = defaultRange()) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: {
-      row: BillingInvoiceDetailRow;
-      pickpackTotal: number;
-      packageTotal: number;
-      shippingTotal: number;
-      rowTotal: number;
-    }) => {
-      if (!token) throw new Error('Missing portal session');
-      if (!input.row.orderId || !input.row.clientId) {
-        throw new Error('This invoice row cannot be saved because it is not linked to a billable order.');
-      }
-
-      const currentBasePickPack = Number(input.row.pickpackTotal ?? 0);
-      const basePickPack =
-        currentBasePickPack > 0 ? Math.min(input.pickpackTotal, currentBasePickPack) : input.pickpackTotal;
-      const additional = Math.max(0, input.pickpackTotal - basePickPack);
-
-      if (demoAllowed(token)) {
-        return { ok: true, orderId: input.row.orderId, clientId: input.row.clientId, updated: 1, inserted: 0 };
-      }
-
-      return portalApi.clientPortal.updateInvoiceDetail(token, input.row.orderId, {
-        clientId: input.row.clientId,
-        pickPack: basePickPack,
-        additional,
-        packageCost: input.packageTotal,
-        shipping: input.shippingTotal,
-        ...localDateTimeRange(range),
-      });
-    },
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: portalQueryKeys.invoiceDetails(token, range) });
-      void client.invalidateQueries({ queryKey: portalQueryKeys.billing(token, range) });
-    },
-  });
-}
-
 export function useClientsQuery(token: string | null) {
   return useQuery({
     queryKey: portalQueryKeys.clients(token),

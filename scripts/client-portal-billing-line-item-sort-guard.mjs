@@ -58,8 +58,8 @@ const orderByIdx = readModel.indexOf('${invoiceDetailOrderBy(input.sortBy, input
 const limitIdx = readModel.indexOf('limit ${input.pageSize');
 assert(orderByIdx > 0 && limitIdx > orderByIdx, 'the main query applies the sort BEFORE limit/offset (sorts the full set, then paginates)');
 assert(
-  readModel.includes('sortHeritageOverrideRows(') && readModel.includes('sort the FULL override set before slicing'),
-  'the Heritage Prep Fee override path sorts the full set before it slices a page',
+  !readModel.includes('sortHeritageOverrideRows(') && !readModel.includes('heritagePrepFeeRowsForRange('),
+  'the billing read-model has no client-specific override path',
 );
 assert(
   readModel.includes('sortBy?: string | null') && readModel.includes('sortDir?: string | null'),

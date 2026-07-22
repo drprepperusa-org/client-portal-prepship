@@ -66,7 +66,7 @@ const LAW_PHRASES = [
   'independent source of truth',
   'event clock',
   'customerShippingRate',
-  'effectiveStock',
+  'inventoryQuantity',
 ];
 
 function hasLaw(rel) {
@@ -175,6 +175,19 @@ for (const g of ENFORCEMENT) {
 const dtoCode = stripComments(readRaw('src/lib/client-portal/dto.ts'));
 for (const fld of ['customerShippingRate', 'inventoryQuantity', 'warehouseShipped30d', 'chargeSummary']) {
   assert(dtoCode.includes(fld), `dto.ts (code, comments stripped) still owns the intent-named field ${fld}`);
+}
+
+const INVENTORY_SHADOW_FILES = [
+  'src/lib/client-portal/contracts/inventory.ts',
+  'src/lib/client-portal/dto.ts',
+  'src/lib/client-portal/read-models/inventory.ts',
+  'portal-client/src/pages/Inventory.tsx',
+];
+for (const rel of INVENTORY_SHADOW_FILES) {
+  const code = stripComments(readRaw(rel));
+  for (const forbidden of ['currentStock', 'effectiveStock', 'stockQty', 'displayStock', 'totalUnits']) {
+    assert(!code.includes(forbidden), `${rel} does not expose competing inventory quantity ${forbidden}`);
+  }
 }
 
 // ── This guard is itself wired into the suite ──

@@ -95,10 +95,10 @@ assert(
 // so a re-introduced capped reduction on the normal path would have to replace
 // those canonical assertions — this is stronger than name-locking a variable.
 assert(
-  route.includes('const isOverrideSourced = client.name === HERITAGE_PREP_FEE_CLIENT_NAME') &&
-    route.includes('heritagePrepFeeRowsForRange(range.fromDay, range.toDay).length > 0') &&
-    route.includes('const invoiceTotals = isOverrideSourced'),
-  'the /invoice handler only detail-sums money totals when the Heritage override actually covers the range; all others (incl. Heritage fall-through) use the canonical summary',
+  !route.includes('heritagePrepFeeRowsForRange') &&
+    !route.includes('HERITAGE_PREP_FEE_CLIENT_NAME') &&
+    !route.includes('const sumDetails ='),
+  'the /invoice handler has no client-specific override or detail-row money reduction',
 );
 assert(
   route.includes('const orderedQty = details.reduce('),
@@ -109,8 +109,7 @@ assert(
 // under-sum it. Grains are aligned — real-order rows vs the canonical distinct-
 // order count — and the always-complete override path never flags truncation.
 assert(
-  route.includes('!isOverrideSourced &&') &&
-    route.includes('details.filter((d) => d.orderId != null).length < invoiceTotals.orderCount') &&
+  route.includes('details.filter((d) => d.orderId != null).length < invoiceTotals.orderCount') &&
     route.includes('details, truncated }'),
   'the /invoice handler flags a genuinely row-capped listing (grain-aligned) and passes it to the renderer',
 );

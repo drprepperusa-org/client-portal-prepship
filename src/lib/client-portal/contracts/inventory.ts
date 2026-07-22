@@ -12,8 +12,6 @@ export interface PortalInventory {
   imageUrl: string | null;
   warehouseShipped30d: number;
   stockStatus: 'out' | 'low' | 'in';
-  isLow: boolean;
-  isOut: boolean;
   updatedAt: string | null;
   length: number | null;
   width: number | null;
@@ -21,7 +19,6 @@ export interface PortalInventory {
   cuFt: number | null;
   unitsPerPack: number;
   baseUnitQty: number;
-  totalUnits: number;
   packageName: string | null;
   packageLength: number | null;
   packageWidth: number | null;

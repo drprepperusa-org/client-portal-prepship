@@ -116,7 +116,9 @@ app.use(
   })
 );
 
-const clientPortalOnly = env.CLIENT_PORTAL_ONLY_API;
+// PS-462: production Client Portal is a shadow renderer. Operational PrepShip
+// routes (including local billing generation/editing) cannot be enabled there.
+const clientPortalOnly = env.NODE_ENV === 'production' || env.CLIENT_PORTAL_ONLY_API;
 
 app.route('/health', health);
 if (!clientPortalOnly) app.route('/cron', cronRoute);

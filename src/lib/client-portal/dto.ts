@@ -438,8 +438,6 @@ export function toPortalInventoryDto(
   const stock = Number(row.inventoryQuantity);
   const reorder = Number(row.reorderLevel ?? 0);
   const stockStatus = classifyStockStatus(stock, reorder);
-  const isOut = stockStatus === 'out';
-  const isLow = stockStatus === 'low';
   return {
     id: row.id,
     clientId: row.clientId,
@@ -455,8 +453,6 @@ export function toPortalInventoryDto(
     warehouseShipped30d: Number(row.warehouseShipped30d ?? 0),
     // CP-013 / PS-378: backend-owned stock status (the frontend renders this enum).
     stockStatus,
-    isLow,
-    isOut,
     updatedAt: iso(row.updatedAt),
     // ── v4 Stock-Levels parity fields ──
     length,
@@ -465,7 +461,6 @@ export function toPortalInventoryDto(
     cuFt,
     unitsPerPack: row.unitsPerPack ?? 1,
     baseUnitQty,
-    totalUnits: stock * baseUnitQty,
     packageName: row.pkg?.name ?? null,
     packageLength: row.pkg?.length ?? null,
     packageWidth: row.pkg?.width ?? null,

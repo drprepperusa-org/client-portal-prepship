@@ -8,7 +8,7 @@ import { clients } from '../../db/schema/clients';
 import { inventory, inventoryLedger } from '../../db/schema/inventory';
 import { recordCriticalPortalAudit, recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
-import { inventoryScopePredicate } from '../../lib/client-portal/predicates';
+import { inventoryLedgerScopePredicate, inventoryScopePredicate } from '../../lib/client-portal/predicates';
 import { listPortalInventory } from '../../lib/client-portal/read-models/inventory';
 import { applyMovements } from '../../services/inventory';
 import { parsePage, parsePageSize, parseDate, requestedClientId, requestedStoreId, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
@@ -49,17 +49,20 @@ app.get('/inventory-history', async (c) => {
   const to = parseDate(c.req.query('to'));
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
+  const movementClientId = sql`coalesce(${inventoryLedger.clientId}, ${inventory.clientId})`;
+  const movementSku = sql`coalesce(${inventoryLedger.sku}, ${inventory.sku})`;
+  const movementClock = sql`coalesce(${inventoryLedger.effectiveAt}, ${inventoryLedger.createdAt})`;
   const where = and(
-    inventoryScopePredicate(scope, { clientId, storeId }),
-    sku ? ilike(inventory.sku, `%${sku}%`) : undefined,
+    inventoryLedgerScopePredicate(scope, { clientId, storeId }),
+    sku ? ilike(movementSku, `%${sku}%`) : undefined,
     type ? eq(inventoryLedger.type, type) : undefined,
-    from ? gte(inventoryLedger.createdAt, from) : undefined,
-    to ? lte(inventoryLedger.createdAt, to) : undefined,
+    from ? gte(movementClock, from) : undefined,
+    to ? lte(movementClock, to) : undefined,
   );
   const rows = await db
     .select({
       id: inventoryLedger.id,
-      sku: inventory.sku,
+      sku: movementSku,
       name: inventory.name,
       clientName: clients.name,
       type: inventoryLedger.type,
@@ -67,13 +70,13 @@ app.get('/inventory-history', async (c) => {
       orderId: inventoryLedger.orderId,
       note: inventoryLedger.note,
       source: inventoryLedger.createdBy,
-      createdAt: inventoryLedger.createdAt,
+      createdAt: movementClock,
     })
     .from(inventoryLedger)
     .innerJoin(inventory, eq(inventory.id, inventoryLedger.inventoryId))
-    .leftJoin(clients, eq(clients.id, inventory.clientId))
+    .leftJoin(clients, eq(clients.id, movementClientId))
     .where(where)
-    .orderBy(desc(inventoryLedger.createdAt), desc(inventoryLedger.id))
+    .orderBy(desc(movementClock), desc(inventoryLedger.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
   const countRows = await db

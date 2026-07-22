@@ -12,7 +12,6 @@ import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
 import { portalInvoiceDetails, portalInvoiceDetailCount, portalInvoicePeriodSummary, portalInvoiceSummary } from '../../lib/client-portal/read-models/invoice-details';
 import { parsePage, parsePageSize, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
-import { HERITAGE_PREP_FEE_CLIENT_NAME, heritagePrepFeeRowsForRange } from '../../lib/heritage-prep-fee-overrides';
 
 const app = new Hono();
 
@@ -140,55 +139,23 @@ app.get('/invoice', async (c) => {
   // CP-024: the printable invoice's MONEY totals (amount due + section totals)
   // come from the canonical, uncapped billing summary — NEVER a reduction over
   // the (row-capped) detail rows, which under-counts a large invoice's amount due.
-  //
-  // EXCEPTION — the Heritage prep-fee client: its itemized rows are served from a
-  // hand-maintained override table (not billing_line_items), and billingSummary
-  // is — correctly — unaware of that override. Deriving its totals from the
-  // canonical summary would print an amount due that does not reconcile with the
-  // override lines shown, with no row cap involved. So for that one client the
-  // totals are summed from the SAME (complete, uncapped) override rows the
-  // invoice lists. billingSummary stays the source of truth for everyone else.
-  const sumDetails = (pick: (d: (typeof details)[number]) => string | number | null | undefined) =>
-    details.reduce((n, d) => n + Number(pick(d) ?? 0), 0);
-  // True only when the detail rows ACTUALLY came from the override table
-  // (Heritage AND the override covers this range) — mirrors the read-model's own
-  // short-circuit. Outside that range Heritage falls through to billing_line_items
-  // and then uses the canonical summary + real truncation like any other client.
-  const isOverrideSourced =
-    client.name === HERITAGE_PREP_FEE_CLIENT_NAME && heritagePrepFeeRowsForRange(range.fromDay, range.toDay).length > 0;
-  const invoiceTotals = isOverrideSourced
-    ? {
-        orderCount: details.length,
-        qty: orderedQty,
-        pickPackTotal: sumDetails((d) => d.pickpackTotal),
-        additionalTotal: sumDetails((d) => d.additionalTotal),
-        packageTotal: sumDetails((d) => d.packageTotal),
-        shippingTotal: sumDetails((d) => d.shippingTotal),
-        storageTotal: sumDetails((d) => d.storageTotal),
-        returnProcessingTotal: sumDetails((d) => d.returnProcessingTotal),
-        returnPostageTotal: sumDetails((d) => d.returnPostageTotal),
-        grandTotal: sumDetails((d) => d.rowTotal),
-      }
-    : {
-        orderCount: Number(row?.orderCount ?? 0),
-        qty: orderedQty,
-        pickPackTotal: Number(row?.pickPackTotal ?? 0),
-        additionalTotal: Number(row?.additionalTotal ?? 0),
-        packageTotal: Number(row?.packageTotal ?? 0),
-        shippingTotal: Number(row?.shippingTotal ?? 0),
-        storageTotal: Number(row?.storageTotal ?? 0),
-        returnProcessingTotal: Number(row?.returnProcessingTotal ?? 0),
-        returnPostageTotal: Number(row?.returnPostageTotal ?? 0),
-        grandTotal: Number(row?.grandTotal ?? 0),
-      };
+  const invoiceTotals = {
+    orderCount: Number(row?.orderCount ?? 0),
+    qty: orderedQty,
+    pickPackTotal: Number(row?.pickPackTotal ?? 0),
+    additionalTotal: Number(row?.additionalTotal ?? 0),
+    packageTotal: Number(row?.packageTotal ?? 0),
+    shippingTotal: Number(row?.shippingTotal ?? 0),
+    storageTotal: Number(row?.storageTotal ?? 0),
+    returnProcessingTotal: Number(row?.returnProcessingTotal ?? 0),
+    returnPostageTotal: Number(row?.returnPostageTotal ?? 0),
+    grandTotal: Number(row?.grandTotal ?? 0),
+  };
   // No silent truncation: the itemized list is row-capped only on the normal
   // (billing_line_items) path. Compare like-for-like grains — count only
   // real-order rows (order_id present; the order-less storage line is excluded
-  // from both sides) against the canonical distinct-order count. The override
-  // path returns the complete set, so it never flags truncation.
-  const truncated =
-    !isOverrideSourced &&
-    details.filter((d) => d.orderId != null).length < invoiceTotals.orderCount;
+  // from both sides) against the canonical distinct-order count.
+  const truncated = details.filter((d) => d.orderId != null).length < invoiceTotals.orderCount;
   return c.html(renderPortalInvoiceHtml({ clientName: client.name, dateFrom: range.fromDay, dateTo: range.toDay, invoiceTotals, details, truncated }));
 });
 

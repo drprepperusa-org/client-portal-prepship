@@ -1,6 +1,6 @@
 import { and, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { clients } from '../../db/schema/clients';
-import { inventory } from '../../db/schema/inventory';
+import { inventory, inventoryLedger } from '../../db/schema/inventory';
 import { orderItems } from '../../db/schema/order-items';
 import { orders } from '../../db/schema/orders';
 import { shipments } from '../../db/schema/shipments';
@@ -357,6 +357,36 @@ export function inventoryScopePredicate(
         )`
       : undefined,
   );
+}
+
+/** Scope immutable movement history by its frozen owner, with a legacy-null fallback only. */
+export function inventoryLedgerScopePredicate(
+  scope: ClientPortalScope,
+  filters: { clientId?: number | null; storeId?: number | null } = {},
+): SQL | undefined {
+  const ownerClientId = sql`coalesce(${inventoryLedger.clientId}, ${inventory.clientId})`;
+  const explicit = and(
+    filters.clientId ? sql`${ownerClientId} = ${filters.clientId}` : undefined,
+    filters.storeId
+      ? sql`exists (
+          select 1 from ${clients} filtered_ledger_client
+          where filtered_ledger_client.id = ${ownerClientId}
+            and filtered_ledger_client.store_ids && ${intArrayLiteral([filters.storeId])}
+        )`
+      : undefined,
+  );
+  if (!scope.isRestricted) return explicit;
+  const predicates: SQL[] = [];
+  if (scope.clientIds.length) predicates.push(sql`${ownerClientId} = any(${intArrayLiteral(scope.clientIds)})`);
+  if (scope.storeIds.length) {
+    predicates.push(sql`exists (
+      select 1 from ${clients} scoped_ledger_client
+      where scoped_ledger_client.id = ${ownerClientId}
+        and scoped_ledger_client.store_ids && ${intArrayLiteral(scope.storeIds)}
+    )`);
+  }
+  if (!predicates.length) return sql`false`;
+  return and(predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`), explicit);
 }
 
 export function shipmentScopePredicate(

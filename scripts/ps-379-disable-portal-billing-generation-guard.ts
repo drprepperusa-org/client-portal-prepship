@@ -18,6 +18,7 @@ const worker = read('src/worker.ts');
 const billingPage = read('portal-client/src/pages/Billing.tsx');
 const billingApi = read('portal-client/src/lib/api/domains/billing.ts');
 const envSchema = read('src/lib/env.ts');
+const main = read('src/main.ts');
 const packageJson = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 
 const generateRouteBlock = route.slice(
@@ -91,6 +92,13 @@ check(
 check(
   'canonical PrepShip API URL is an explicit validated environment setting',
   /PREPSHIP_API_URL:\s*z\.string\(\)\.url\(\)\.optional\(\)/.test(envSchema)
+);
+
+check(
+  'production always mounts only Client Portal routes and defaults fail closed elsewhere',
+  /CLIENT_PORTAL_ONLY_API:\s*booleanFlag\(true\)/.test(envSchema) &&
+    /env\.NODE_ENV === 'production' \|\| env\.CLIENT_PORTAL_ONLY_API/.test(main) &&
+    /if \(!clientPortalOnly\) \{[\s\S]*app\.route\('\/billing', billingRoute\)/.test(main)
 );
 
 check(

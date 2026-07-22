@@ -46,7 +46,7 @@ const schema = z.object({
   DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(8),
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
   STRICT_JWT_CLAIMS: booleanFlag(false),
-  CLIENT_PORTAL_ONLY_API: booleanFlag(false),
+  CLIENT_PORTAL_ONLY_API: booleanFlag(true),
   // CP-027 — return-label live-postage approval flag. OFF by default: the
   // return-label service takes an offline-mock path (fake tracking, cost 0.00,
   // source 'test_offline', no carrier call) unless this is explicitly truthy.

@@ -89,7 +89,7 @@ CP-026→031 returns work) and is enforced by static guards — see
 
 **Backend DTO naming:** Client Portal APIs should expose **intent-named DTO
 fields** that delegate to the canonical owner — e.g. `customerShippingRate`,
-`effectiveStock`, `orderedUnits`, `ledgerShippedUnits`, `billedShippingTotal`,
+`inventoryQuantity`, `orderedUnits`, `ledgerShippedUnits`, `billedShippingTotal`,
 `displayTrackingNumber`. Generic names (`shipping`, `sold`, `stock`, `total`)
 are acceptable **only** when the DTO docs name the source + event clock +
 formula, so two numbers on one page can never silently mean different things.

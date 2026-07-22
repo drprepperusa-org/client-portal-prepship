@@ -168,18 +168,14 @@ assert(
   'client portal invoice details must use canonical order_items.quantity for Qty, not summed billing line quantities',
 );
 assert(
-  billingRoute.includes("app.patch('/details/:orderId{[0-9]+'") ||
-    billingRoute.includes("app.patch('/details/:orderId{[0-9]+}'"),
-  'billing route must expose PATCH /billing/details/:orderId for shared invoice detail edits',
+  !billingRoute.includes("app.patch('/details/:orderId"),
+  'Client Portal backend carries no local invoice-line mutation route',
 );
 assert(
-  /updateInvoiceDetail[\s\S]*apiSend[\s\S]*`\/billing\/details\/\$\{orderId\}`/.test(api),
-  'portalApi.clientPortal must expose updateInvoiceDetail using the shared /billing/details endpoint',
-);
-assert(
-  queries.includes('useSaveInvoiceDetailMutation') &&
-    queries.includes('portalApi.clientPortal.updateInvoiceDetail'),
-  'Invoices page must save row edits through the shared billing endpoint, not browser-only state',
+  !api.includes('updateInvoiceDetail') &&
+    !queries.includes('useSaveInvoiceDetailMutation') &&
+    !queries.includes('portalApi.clientPortal.updateInvoiceDetail'),
+  'Client Portal exposes no local invoice-line mutation; PrepShip owns audited adjustments',
 );
 assert(queries.includes('portalApi.clientPortal.'), 'portal queries must use portalApi.clientPortal reads');
 assert(!queries.includes('portalApi.orders(token!') && !queries.includes('portalApi.inventory(token!'), 'portal queries must not use broad order/inventory reads');

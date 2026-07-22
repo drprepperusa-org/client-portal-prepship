@@ -3,14 +3,9 @@ import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderItems } from '../../../db/schema/order-items';
 import { orderOverrides, orders } from '../../../db/schema/orders';
-import {
-  HERITAGE_PREP_FEE_CLIENT_NAME,
-  heritagePrepFeeRowsForRange,
-} from '../../heritage-prep-fee-overrides';
-import { billingDayBefore } from '../billing-day';
 import { safeItems } from '../dto';
 import { invoiceItemNameLinesSql } from '../invoice-items';
-import { clientFilterPredicate, invoiceLineScopePredicate } from '../predicates';
+import { invoiceLineScopePredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
 import {
   BILLING_POLICY_WEEKEND_ROLLFORWARD,
@@ -112,17 +107,6 @@ export async function portalInvoiceDetailCount(
   scope: ClientPortalScope,
   input: { clientId?: number | null; dateFrom: string; dateTo: string },
 ): Promise<number> {
-  if (input.clientId) {
-    const [client] = await db
-      .select({ id: clients.id, name: clients.name })
-      .from(clients)
-      .where(clientFilterPredicate(scope, input.clientId, null))
-      .limit(1);
-    if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
-      const overrideRows = heritagePrepFeeRowsForRange(input.dateFrom, billingDayBefore(input.dateTo) ?? input.dateTo);
-      if (overrideRows.length > 0) return overrideRows.length;
-    }
-  }
   const rows = await db.execute<{ count: string }>(sql`
     select count(*)::text as count from (
       select 1
@@ -254,43 +238,6 @@ function invoiceDetailOrderBy(sortBy?: string | null, sortDir?: string | null): 
 /** Sort the Heritage Prep Fee override rows the same way the SQL path sorts —
  *  in full, before pagination slices — so that special client's Billing table
  *  also sorts across all pages. Mutates + returns the array. */
-function sortHeritageOverrideRows<T extends {
-  orderNumber: string | null;
-  itemNames: string | null;
-  shipDate: string | null;
-  qty: number;
-  pickpackTotal: number;
-  packageTotal: number;
-  shippingTotal: number;
-  rowTotal: number;
-}>(rows: T[], sortBy?: string | null, sortDir?: string | null): T[] {
-  if (!sortBy || !(sortBy in INVOICE_DETAIL_SORT_EXPR)) return rows;
-  const sign = String(sortDir).toLowerCase() === 'asc' ? 1 : -1;
-  const num = (r: T): number =>
-    sortBy === 'qty' ? r.qty
-    : sortBy === 'pickpack' ? r.pickpackTotal
-    : sortBy === 'boxcost' ? r.packageTotal
-    : sortBy === 'shipping' ? r.shippingTotal
-    : sortBy === 'fee' ? r.rowTotal
-    : sortBy === 'addl' ? 0
-    : NaN;
-  const text = (r: T): string | null =>
-    sortBy === 'order' ? r.orderNumber
-    : sortBy === 'item' ? r.itemNames
-    : sortBy === 'date' ? r.shipDate
-    : null;
-  return rows.sort((a, b) => {
-    const na = num(a);
-    if (Number.isFinite(na)) return (na - num(b)) * sign;
-    const ta = text(a);
-    const tb = text(b);
-    if (ta == null && tb == null) return 0;
-    if (ta == null) return 1;
-    if (tb == null) return -1;
-    return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' }) * sign;
-  });
-}
-
 type PortalInvoiceDetailRow = {
   client_id: number;
   client_name: string | null;
@@ -333,55 +280,6 @@ export async function portalInvoiceDetails(
     sortDir?: string | null;
   },
 ) {
-  if (input.clientId) {
-    const [client] = await db
-      .select({ id: clients.id, name: clients.name })
-      .from(clients)
-      .where(clientFilterPredicate(scope, input.clientId, null))
-      .limit(1);
-    if (client?.name === HERITAGE_PREP_FEE_CLIENT_NAME) {
-      // CP-016: sort the FULL override set before slicing this page.
-      const allOverrideRows = sortHeritageOverrideRows(
-        heritagePrepFeeRowsForRange(input.dateFrom, billingDayBefore(input.dateTo) ?? input.dateTo),
-        input.sortBy,
-        input.sortDir,
-      );
-      const overrideRows =
-        input.page && input.pageSize
-          ? allOverrideRows.slice((input.page - 1) * input.pageSize, input.page * input.pageSize)
-          : allOverrideRows;
-      if (allOverrideRows.length > 0) {
-        return overrideRows.map((row) => ({
-          clientId: client.id,
-          clientName: client.name,
-          orderId: null,
-          orderNumber: row.orderNumber,
-          recipientName: row.recipientName,
-          itemNames: row.itemNames,
-          items: [] as ReturnType<typeof safeItems>,
-          skus: null,
-          carrierCode: null,
-          boxSize: null,
-          shipDate: row.shipDate,
-          actualActivityDate: row.shipDate,
-          billingEffectiveDate: row.shipDate,
-          billingPolicyVersion: null,
-          rolledFromWeekend: false,
-          qty: row.qty.toFixed(3),
-          pickpackTotal: row.pickpackTotal.toFixed(2),
-          additionalTotal: '0.00',
-          packageTotal: row.packageTotal.toFixed(2),
-          shippingTotal: row.shippingTotal.toFixed(2),
-          storageTotal: row.storageTotal.toFixed(2),
-          // Heritage prep-fee override rows carry no return charges.
-          returnPostageTotal: '0.00',
-          returnProcessingTotal: '0.00',
-          rowTotal: row.rowTotal.toFixed(2),
-        }));
-      }
-    }
-  }
-
   const rows = await db.execute<PortalInvoiceDetailRow>(sql`
     select
       b.client_id,

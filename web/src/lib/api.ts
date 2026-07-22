@@ -491,26 +491,6 @@ export const portalApi = {
         params,
       );
     },
-    updateInvoiceDetail(
-      token: string,
-      orderId: number,
-      body: {
-        clientId: number;
-        pickPack?: number;
-        additional?: number;
-        packageCost?: number;
-        shipping?: number;
-        dateFrom?: string;
-        dateTo?: string;
-      },
-    ) {
-      return apiSend<{ ok: boolean; orderId: number; clientId: number; updated: number; inserted: number }>(
-        token,
-        'PATCH',
-        `/billing/details/${orderId}`,
-        body,
-      );
-    },
   },
   dashboard(token: string, range = defaultRange()) {
     return apiGet<DashboardSummary>(token, '/dashboard/summary', range);

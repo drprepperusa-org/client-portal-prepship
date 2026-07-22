@@ -138,7 +138,6 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       sortAccessor: (s) => Number(s.warehouseShipped30d) || 0,
     },
     { key: 'unitsPack', header: 'Units/Pack', defaultWidth: 110, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.unitsPerPack ?? 1}</span>, sortAccessor: (s) => Number(s.unitsPerPack) || 0 },
-    { key: 'totalUnits', header: 'Total Units', defaultWidth: 110, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.totalUnits ?? 0}</span>, sortAccessor: (s) => Number(s.totalUnits) || 0 },
     { key: 'min', header: 'Min', defaultWidth: 80, className: 'text-right', render: (s) => <span className="tnum text-ink-3">{s.reorderLevel ?? 0}</span>, sortAccessor: (s) => Number(s.reorderLevel) || 0 },
     {
       key: 'status',

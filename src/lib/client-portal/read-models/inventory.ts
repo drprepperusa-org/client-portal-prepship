@@ -64,7 +64,7 @@ export async function listPortalInventory(
       from inventory_ledger
       where inventory_id in (${sql.join(pageIds.map((id) => sql`${id}`), sql`, `)})
         and lower(type) like 'ship%'
-        and effective_at >= now() - interval '30 days'
+        and coalesce(effective_at, created_at) >= now() - interval '30 days'
       group by inventory_id
     `);
     for (const row of soldRows) soldById.set(Number(row.inventory_id), Number(row.sold) || 0);
