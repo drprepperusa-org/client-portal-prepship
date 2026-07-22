@@ -66,7 +66,10 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
     assert(body.includes('const explicit = and('), `${fn} computes an explicit narrowing predicate`);
     assert(body.includes('if (!scope.isRestricted) return explicit;'), `${fn} applies the explicit filter for unrestricted (global) callers`);
     assert(!body.includes('if (!scope.isRestricted) return undefined;'), `${fn} no longer drops the explicit filter for global admins`);
-    assert(body.includes('return and(scopePredicate, explicit);'), `${fn} keeps restricted callers bounded by scope AND the explicit filter`);
+    const expectedReturn = fn === 'orderScopePredicate'
+      ? 'return and(scopePredicate, explicit, portalApprovedStoreOrderPredicate());'
+      : 'return and(scopePredicate, explicit);';
+    assert(body.includes(expectedReturn), `${fn} keeps restricted callers bounded by scope AND the explicit filter`);
   }
 }
 
