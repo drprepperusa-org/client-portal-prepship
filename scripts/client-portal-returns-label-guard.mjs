@@ -2,8 +2,8 @@
 //
 // Statically pins the safety + correctness invariants of the backend
 // return-label service (src/services/returns.ts):
-//   1. NO real postage by default — the RETURNS_LIVE_LABELS env gate exists and
-//      the OFFLINE MOCK path is the default (source 'test_offline', cost 0).
+//   1. NO real postage by default — the RETURNS_LIVE_LABELS env gate exists;
+//      real clients fail closed and explicit test clients use an offline mock.
 //   2. The clients.isTest guard is present (a test client never buys postage).
 //   3. Cheapest ELIGIBLE rate selection uses isBlockedRate + pickBestRate/bestRate.
 //   4. Persistence sets isReturn: true + returnForShipmentId + selectedRateJson.
@@ -45,7 +45,7 @@ const pkg = JSON.parse(read('package.json'));
 
 assert(service.length > 0, 'src/services/returns.ts exists');
 
-// ── 1. RETURNS_LIVE_LABELS gate + offline-mock default ──
+// ── 1. RETURNS_LIVE_LABELS gate + fail-closed default ──
 assert(
   /RETURNS_LIVE_LABELS/.test(envFile),
   'env module declares the RETURNS_LIVE_LABELS approval flag',
@@ -60,8 +60,8 @@ assert(
 );
 // The live purchase path must require the flag AND a non-test client.
 assert(
-  /env\.RETURNS_LIVE_LABELS\s*&&\s*!\s*isTest/.test(service),
-  'live purchase is gated on RETURNS_LIVE_LABELS && !isTest (the liveEligible condition)',
+  /resolveReturnLabelExecutionMode/.test(service) && /executionMode === 'live'/.test(service),
+  'live purchase is gated by the centralized return-label execution policy',
 );
 assert(
   /'test_offline'/.test(service),
@@ -71,18 +71,18 @@ assert(
   /generateMockLabelPdf/.test(service) && /saveMockLabel/.test(service),
   'the offline mock path reuses generateMockLabelPdf + saveMockLabel (no carrier call)',
 );
-// The offline branch is the DEFAULT: it runs whenever live purchase is not
-// permitted, i.e. guarded by `if (!liveEligible)` BEFORE any live createLabel.
+// Real clients fail closed when live labels are disabled. Only an explicit
+// test client may enter the offline-mock branch.
 assert(
-  /if\s*\(\s*!\s*liveEligible\s*\)/.test(service),
-  'the offline mock path is the default (runs under `if (!liveEligible)`)',
+  /executionMode === 'disabled'[\s\S]{0,250}Return label creation is unavailable/.test(service),
+  'a real client fails closed when live labels are disabled',
 );
 {
-  const offlineIdx = service.indexOf('if (!liveEligible)');
+  const offlineIdx = service.indexOf("executionMode === 'test_offline'");
   const liveCallIdx = service.search(/carrierConnectors\.shipstation\.createLabel/);
   assert(
     offlineIdx !== -1 && liveCallIdx !== -1 && offlineIdx < liveCallIdx,
-    'the offline branch precedes (and returns before) the live carrier createLabel call',
+    'the test-only offline branch precedes and returns before the live carrier createLabel call',
   );
 }
 

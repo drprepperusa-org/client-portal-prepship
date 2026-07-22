@@ -1,10 +1,17 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { billingLineEffectiveDaySql } from './billing-effective-day';
+import { customerSafeBillingLineSql } from '../lib/client-portal/customer-shipping-rate';
 
 const DEFAULT_REFRESH_DAYS = 45;
 const DEFAULT_INVENTORY_LIMIT = 5000;
 const DEFAULT_REPORTING_READ_TIMEOUT_MS = 1200;
+
+const customerSafeMetricsLine = customerSafeBillingLineSql({
+  lineType: sql`b.line_type`,
+  shipmentId: sql`b.shipment_id`,
+  totalCost: sql`b.total_cost`,
+});
 
 let ensurePromise: Promise<void> | null = null;
 
@@ -533,6 +540,7 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         on b.client_id = c.id
         and ${effectiveDay} >= ${from.toISOString()}::timestamptz
         and ${effectiveDay} < ${to.toISOString()}::timestamptz
+        and ${customerSafeMetricsLine}
       where c.active = true
         and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       group by c.id
@@ -906,7 +914,16 @@ export async function getFreshBillingSummaryMetrics(options: {
         join scoped_clients sc on sc.id = b.client_id
         where ${effectiveDay} >= ${options.dateFrom}::timestamptz
           and ${effectiveDay} < ${options.dateTo}::timestamptz
+          and ${customerSafeMetricsLine}
         group by b.client_id
+      ),
+      unsafe_return_postage as (
+        select distinct b.client_id
+        from billing_line_items b
+        join scoped_clients sc on sc.id = b.client_id
+        where ${effectiveDay} >= ${options.dateFrom}::timestamptz
+          and ${effectiveDay} < ${options.dateTo}::timestamptz
+          and not ${customerSafeMetricsLine}
       ),
       candidate_metrics as (
         select
@@ -926,9 +943,11 @@ export async function getFreshBillingSummaryMetrics(options: {
         from scoped_clients sc
         join billing_summary_metrics m on m.client_id = sc.id
         left join line_item_watermarks w on w.client_id = sc.id
+        left join unsafe_return_postage u on u.client_id = sc.id
         where m.period_from = ${fromDay}::date
           and m.period_to = ${toDay}::date
           and m.updated_at >= now() - (${maxAgeMinutes} * interval '1 minute')
+          and u.client_id is null
       ),
       fresh_metrics as (
         select *

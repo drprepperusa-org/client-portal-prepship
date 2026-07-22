@@ -37,14 +37,15 @@ check(
     !/quoting raw house cost|resolveReturnCustomerPrice/.test(service),
 );
 check(
-  'Client Portal reads the snapshot directly and never projects raw shipment cost',
-  /row\.ret\.returnCustomerShippingRate/.test(dto) &&
+  'Client Portal reads only a tuple-validated snapshot and never projects raw shipment cost',
+  /row\.validatedReturnCustomerShippingRate/.test(dto) &&
+    /validatedReturnCustomerShippingRateSql/.test(reads) &&
     !/resolveReturnCustomerPrice|internalReturnLabelCost/.test(dto) &&
     !/internalReturnLabelCost/.test(reads),
 );
 check(
-  'return billing consumes the compatibility alias and never reprices an orphan',
-  /returnCustomerShippingRate:\s*returns\.returnCustomerShippingRate/.test(billing) &&
+  'return billing consumes only the tuple-validated compatibility alias',
+  /returnCustomerShippingRate:\s*validatedReturnCustomerShippingRateSql\(\)/.test(billing) &&
     /r\.returnCustomerShippingRate != null[\s\S]{0,120}toNum\(r\.returnCustomerShippingRate\)/.test(billing) &&
     /canonical customer snapshot missing/.test(billing) &&
     !/resolveReturnPostageRate/.test(billing),

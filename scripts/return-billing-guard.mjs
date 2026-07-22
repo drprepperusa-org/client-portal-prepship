@@ -108,8 +108,8 @@ assert(
 
 // ── 5) return_postage consumes PrepShip's frozen customer-safe amount. ──
 assert(
-  returnBlockFlat.includes('returnCustomerShippingRate: returns.returnCustomerShippingRate'),
-  'return query loads the compatibility alias copied from PrepShip',
+  returnBlockFlat.includes('returnCustomerShippingRate: validatedReturnCustomerShippingRateSql()'),
+  'return query loads only an alias validated against PrepShip frozen truth',
 );
 assert(
   returnBlockFlat.includes('const returnRate = r.returnCustomerShippingRate != null') &&

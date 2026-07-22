@@ -7,6 +7,7 @@ import { safeItems } from '../dto';
 import { invoiceItemNameLinesSql } from '../invoice-items';
 import { invoiceLineScopePredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
+import { customerSafeBillingLineSql } from '../customer-shipping-rate';
 import {
   BILLING_POLICY_WEEKEND_ROLLFORWARD,
   billingLineEffectiveDaySql,
@@ -16,6 +17,12 @@ const invoiceEffectiveDay = billingLineEffectiveDaySql(
   sql`b.billing_effective_date`,
   sql`b.ship_date`,
 );
+
+const customerSafeInvoiceLine = customerSafeBillingLineSql({
+  lineType: sql`b.line_type`,
+  shipmentId: sql`b.shipment_id`,
+  totalCost: sql`b.total_cost`,
+});
 
 /** orders.items jsonb (aggregated as text per order group) → structured
  *  item-identity lines (name/sku/quantity/imageUrl) via the shared shaper. */
@@ -80,6 +87,7 @@ export async function portalInvoiceSummary(
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
+      and ${customerSafeInvoiceLine}
       and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
       and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
@@ -113,6 +121,7 @@ export async function portalInvoiceDetailCount(
       from billing_line_items b
       left join ${clients} c on c.id = b.client_id
       where coalesce(c.active, true) = true
+        and ${customerSafeInvoiceLine}
         and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
         and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
         ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
@@ -172,6 +181,7 @@ export async function portalInvoicePeriodSummary(
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
+      and ${customerSafeInvoiceLine}
       and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
       and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
@@ -327,6 +337,7 @@ export async function portalInvoiceDetails(
     left join ${orders} o on o.id = b.order_id
     left join ${orderOverrides} oo on oo.order_id = b.order_id
     where coalesce(c.active, true) = true
+      and ${customerSafeInvoiceLine}
       and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
       and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
       ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}

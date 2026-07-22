@@ -1,6 +1,40 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { orders } from '../../db/schema/orders';
+import { returns } from '../../db/schema/returns';
 import { shipments } from '../../db/schema/shipments';
+
+function frozenCustomerShippingTupleIsValidSql(): SQL {
+  return sql`coalesce(${shipments.selectedRateJson}, '{}'::jsonb) ?& array[
+    'selectedRateCost',
+    'cShippingRateAmount',
+    'shippingMarginAmount',
+    'shippingMarginPct',
+    'customerRateSource',
+    'rateCostSource',
+    'customerShippingMoneyPolicyVersion'
+  ]::text[]
+    and jsonb_typeof(${shipments.selectedRateJson}->'selectedRateCost') = 'number'
+    and jsonb_typeof(${shipments.selectedRateJson}->'cShippingRateAmount') = 'number'
+    and jsonb_typeof(${shipments.selectedRateJson}->'shippingMarginAmount') = 'number'
+    and jsonb_typeof(${shipments.selectedRateJson}->'shippingMarginPct') in ('number', 'null')
+    and (${shipments.selectedRateJson}->>'selectedRateCost')::numeric > 0
+    and (${shipments.selectedRateJson}->>'cShippingRateAmount')::numeric > 0
+    and round(
+      (${shipments.selectedRateJson}->>'cShippingRateAmount')::numeric
+        - (${shipments.selectedRateJson}->>'selectedRateCost')::numeric,
+      2
+    ) = round((${shipments.selectedRateJson}->>'shippingMarginAmount')::numeric, 2)
+    and ${shipments.selectedRateJson}->>'customerRateSource' in (
+      'realized_customer_shipping_rate',
+      'hugrab_shipping_rate_override'
+    )
+    and ${shipments.selectedRateJson}->>'rateCostSource' = 'label_final_cost'
+    and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-437-v1'`;
+}
+
+function frozenCustomerShippingAmountSql(): SQL {
+  return sql`(${shipments.selectedRateJson}->>'cShippingRateAmount')::numeric`;
+}
 
 /**
  * Compatibility name retained for callers. PS-437 removed the SQL pricing
@@ -9,35 +43,53 @@ import { shipments } from '../../db/schema/shipments';
  */
 export function projectedCustomerShippingRateSql(): SQL<string | null> {
   return sql`case
-    when coalesce(${shipments.selectedRateJson}, '{}'::jsonb) ?& array[
-      'selectedRateCost',
-      'cShippingRateAmount',
-      'shippingMarginAmount',
-      'shippingMarginPct',
-      'customerRateSource',
-      'rateCostSource',
-      'customerShippingMoneyPolicyVersion'
-    ]::text[]
-      and jsonb_typeof(${shipments.selectedRateJson}->'selectedRateCost') = 'number'
-      and jsonb_typeof(${shipments.selectedRateJson}->'cShippingRateAmount') = 'number'
-      and jsonb_typeof(${shipments.selectedRateJson}->'shippingMarginAmount') = 'number'
-      and jsonb_typeof(${shipments.selectedRateJson}->'shippingMarginPct') in ('number', 'null')
-      and (${shipments.selectedRateJson}->>'selectedRateCost')::numeric > 0
-      and (${shipments.selectedRateJson}->>'cShippingRateAmount')::numeric > 0
-      and round(
-        (${shipments.selectedRateJson}->>'cShippingRateAmount')::numeric
-          - (${shipments.selectedRateJson}->>'selectedRateCost')::numeric,
-        2
-      ) = round((${shipments.selectedRateJson}->>'shippingMarginAmount')::numeric, 2)
-      and ${shipments.selectedRateJson}->>'customerRateSource' in (
-        'realized_customer_shipping_rate',
-        'hugrab_shipping_rate_override'
-      )
-      and ${shipments.selectedRateJson}->>'rateCostSource' = 'label_final_cost'
-      and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-437-v1'
-      then (${shipments.selectedRateJson}->>'cShippingRateAmount')::numeric::text
+    when ${frozenCustomerShippingTupleIsValidSql()}
+      then (${frozenCustomerShippingAmountSql()})::text
     else null
   end`;
+}
+
+/**
+ * Return workflows keep a compatibility amount on `returns`, but it is safe
+ * for customer display only when the linked shipment has PrepShip's complete
+ * policy-versioned tuple and the alias agrees with that tuple to the cent.
+ */
+export function validatedReturnCustomerShippingRateSql(): SQL<string | null> {
+  return sql`case
+    when ${returns.returnCustomerShippingRate} is not null
+      and ${frozenCustomerShippingTupleIsValidSql()}
+      and round(${returns.returnCustomerShippingRate}::numeric, 2)
+        = round(${frozenCustomerShippingAmountSql()}, 2)
+      then (${frozenCustomerShippingAmountSql()})::text
+    else null
+  end`;
+}
+
+/**
+ * Historical `return_postage` lines are customer-safe only when their linked
+ * return alias and shipment tuple both prove the same canonical amount. Other
+ * billing line types pass through unchanged.
+ */
+export function customerSafeBillingLineSql(input: {
+  lineType: SQL;
+  shipmentId: SQL;
+  totalCost: SQL;
+}): SQL {
+  return sql`(
+    coalesce(${input.lineType}, '') <> 'return_postage'
+    or exists (
+      select 1
+      from ${shipments}
+      inner join ${returns} on ${returns.returnShipmentId} = ${shipments.id}
+      where ${shipments.id} = ${input.shipmentId}
+        and ${returns.returnCustomerShippingRate} is not null
+        and ${frozenCustomerShippingTupleIsValidSql()}
+        and round(${returns.returnCustomerShippingRate}::numeric, 2)
+          = round(${frozenCustomerShippingAmountSql()}, 2)
+        and round(${input.totalCost}::numeric, 2)
+          = round(${frozenCustomerShippingAmountSql()}, 2)
+    )
+  )`;
 }
 
 export function shipmentCustomerShippingRateSql(): SQL<string | null> {

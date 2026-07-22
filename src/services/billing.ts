@@ -8,6 +8,7 @@ import { clients } from '../db/schema/clients';
 import { inventory, inventoryLedger } from '../db/schema/inventory';
 import { returns } from '../db/schema/returns';
 import { readFrozenCustomerShippingMoney } from '../lib/customer-shipping-money-snapshot';
+import { validatedReturnCustomerShippingRateSql } from '../lib/client-portal/customer-shipping-rate';
 import { resolveReturnReference } from './return-reference';
 import { refreshBillingSummaryMetrics } from './reporting-metrics';
 import { computeClientStorageBilling, type StorageSku } from './billing-storage';
@@ -704,13 +705,10 @@ export async function generateLineItems(input: GenerateInput) {
       shipmentClientId: shipments.clientId,
       shipDate: shipments.shipDate,
       labelShipDate: shipments.labelShipDate,
-      labelCost: shipments.labelCost,
-      cost: shipments.cost,
-      otherCost: shipments.otherCost,
       orderId: orders.id,
       orderNumber: orders.orderNumber,
       returnReference: returns.returnReference,
-      returnCustomerShippingRate: returns.returnCustomerShippingRate,
+      returnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
       orderClientId: orders.clientId,
       orderStoreId: orders.storeId,
       orderDate: orders.orderDate,
@@ -755,8 +753,9 @@ export async function generateLineItems(input: GenerateInput) {
     const returnReference = resolveReturnReference(r.returnReference, r.orderNumber, r.orderId);
 
     // ── return_postage ──────────────────────────────────────────────────────
-    // PS-437: this field is a compatibility alias copied from PrepShip's frozen
-    // shipment tuple. Missing truth is reconciliation work, never raw-cost math.
+    // PS-435/437: the compatibility alias is billable only when it agrees with
+    // PrepShip's complete policy-versioned shipment tuple. Missing or mismatched
+    // truth is reconciliation work, never raw-cost math.
     const returnRate = r.returnCustomerShippingRate != null
       ? toNum(r.returnCustomerShippingRate)
       : 0;

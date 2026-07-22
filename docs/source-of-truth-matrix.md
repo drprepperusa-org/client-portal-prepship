@@ -1054,7 +1054,7 @@ client-safe (no carrier/service). Guards:
 | Return reference | `returnReference` | same | persisted `returns.return_reference`; legacy fallback/backfill derives `order_number + '-RETURN'` once | return workflow creation | backend-owned identity |
 | Return label PDF | `pdfUrl` | `returnLabelUrl` | `shipments.labelUrl` (never a new URL) | label time | presentation-only |
 | Label needs attention | `status` / `deliveryError` | same | `returns.status = 'label_failed'` + redaction-safe `returns.deliveryError` | latest label attempt | backend-owned-truth (CP-043) |
-| Return postage | `returnCustomerShippingRate` | same | PrepShip freezes the full policy-versioned money tuple on `shipments.selected_rate_json` from exact `selected_rate_cost`; Client Portal copies only the safe amount to `returns.return_customer_shipping_rate` and return billing consumes that alias without repricing | return label creation | backend-owned-truth (CP-031/043, PS-437) |
+| Return postage | `returnCustomerShippingRate` or explicit pending state | same | PrepShip `customer-shipping-money.ts` rejects missing/all-zero return pricing before a provider call, then freezes the full policy-versioned money tuple on `shipments.selected_rate_json` from exact `selected_rate_cost`; Client Portal exposes or bills the compatibility alias only when it agrees to the cent with that complete tuple | pre-purchase policy check + return label finalization | backend-owned-truth (CP-031/043, PS-435/437) |
 | Delivery method/status | `deliveryMethod`/`deliveryStatus` | same | `returns` delivery columns (CP-028 resolver) | delivery event | backend-owned-truth (CP-028) |
 | Item (partial qty) | `items[]` | `items[]` | `return_items` → links `order_items` | return workflow | backend-owned-truth (CP-026) |
 | Inspection condition | `condition` | `condition` | operator-only receiving route → `return_inspections` (6-value enum) | warehouse inspection | backend-owned-truth (CP-030/045) |
@@ -1081,8 +1081,14 @@ canonical `shipments` label/tracking/rate/cost record. PS-423 adds renewable,
 generation-fenced ownership: ambiguous outcomes remain held even when a
 provider lookup returns 404, and only receipt reconciliation or an audited
 operator no-effect resolution can advance the operation.
+PS-435 adds a fail-closed call to PrepShip's canonical customer-shipping-money
+owner before the provider mutation. Candidate provider facts stay server-to-server;
+the adapter, return DTO, Billing, and UI receive only the customer-safe amount and
+policy provenance. Missing policy renders an explicit pending state and creates no
+label. Historical alias/tuple or Billing mismatches fail closed on customer reads
+and remain read-only reconciliation findings.
 Guards: `client-portal-returns-schema-guard.mjs` (CP-026),
-`client-portal-returns-label-guard.mjs` (CP-027, offline mock default, no live
+`client-portal-returns-label-guard.mjs` (CP-027, test-only offline mock, no live
 postage), `client-portal-returns-delivery-guard.mjs` (CP-028),
 `client-portal-returns-ui-guard.mjs` (CP-029, carrier/service-free UI+API),
 `client-portal-returns-receiving-guard.mjs` (CP-030/045, scoped evidence/media
@@ -1091,7 +1097,8 @@ writes plus operator-only inspection/lifecycle authority),
 policy, safe diagnostics, and recoverable failure state), and
 `client-portal-returns-cp057-guard.mjs` (durable purchase ownership,
 external-reference reconciliation, duplicate-postage fixtures, and live
-runbook).
+runbook), and `ps-435-return-customer-rate-guard.ts` (pre-purchase pricing
+fence, customer-safe response shape, and pending-state disclosure).
 
 Return billing lines reuse that canonical return reference as their displayed
 `orderNumber` (for example `2050-RETURN`) while retaining `shipmentId` for
@@ -1200,5 +1207,5 @@ and must still document source inputs, event clock, and formula.
   export stays carrier/service-free.
 - **CP-026 → CP-031** — returns workflow/item/inspection/media tables own only
   workflow detail; label money + tracking stay on `shipments`; no portal-side
-  rate-shopping; offline-mock labels by default; operator-gated receiving.
+  rate-shopping; offline-mock labels only for test clients; operator-gated receiving.
 

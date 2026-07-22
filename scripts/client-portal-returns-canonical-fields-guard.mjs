@@ -142,9 +142,9 @@ assert(
 // The read DTO consumes the frozen intent-named snapshot and never reads raw
 // shipment label/house cost or reruns pricing policy.
 assert(
-  /row\.ret\.returnCustomerShippingRate/.test(builder) &&
+  /row\.validatedReturnCustomerShippingRate/.test(builder) &&
     !/internalReturnLabelCost|resolveReturnCustomerPrice/.test(builder),
-  'the DTO reads the frozen customer return rate snapshot without raw-cost repricing',
+  'the DTO reads the tuple-validated customer return rate without raw-cost repricing',
 );
 for (const key of ['price', 'cost', 'labelCost', 'returnCost']) {
   assert(

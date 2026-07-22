@@ -15,6 +15,7 @@ const remoteLabels = new Map<string, Record<string, unknown>>();
 const originalFetch = globalThis.fetch;
 let providerCalls = 0;
 let providerMode: 'success' | 'timeout_after_submit' | 'timeout_before_submit' = 'success';
+let customerRateMode: 'ready' | 'unavailable' = 'ready';
 let providerStarted: (() => void) | null = null;
 let providerRelease: Promise<void> | null = null;
 
@@ -27,6 +28,18 @@ function response(value: unknown, status = 200): Response {
 
 globalThis.fetch = (async (input: RequestInfo | URL) => {
   const url = String(input);
+  if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/return-preview') {
+    if (customerRateMode === 'unavailable') {
+      return response({ error: 'Customer return shipping rate is not configured' }, 422);
+    }
+    return response({
+      data: {
+        cShippingRateAmount: 7.57,
+        customerRateSource: 'realized_customer_shipping_rate',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      },
+    });
+  }
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/freeze') {
     return response({
       data: {
@@ -156,6 +169,7 @@ async function reset(): Promise<void> {
   `);
   providerCalls = 0;
   providerMode = 'success';
+  customerRateMode = 'ready';
   providerStarted = null;
   providerRelease = null;
   remoteLabels.clear();
@@ -304,6 +318,18 @@ async function shipmentInsertRecoveryScenario(): Promise<void> {
   await db.execute(sql`drop trigger cp057_fail_return_insert on shipments`);
   await db.execute(sql`drop function cp057_fail_return_insert()`);
 
+  customerRateMode = 'unavailable';
+  await create(fixture).then(
+    () => check(false, 'recovery blocks shipment persistence when customer pricing is unavailable'),
+    (error) => check(
+      error instanceof returnsService.ReturnCustomerRateUnavailableError,
+      'recovery blocks shipment persistence when customer pricing is unavailable',
+    ),
+  );
+  equal(providerCalls, 1, 'blocked recovery never repurchases postage');
+  equal((await returnShipments(fixture.orderId)).length, 0, 'blocked recovery writes no shipment');
+
+  customerRateMode = 'ready';
   const result = await create(fixture);
   equal(providerCalls, 1, 'retry reuses the provider receipt without repurchase');
   equal((await returnShipments(fixture.orderId)).length, 1, 'retry persists one canonical shipment');
@@ -429,11 +455,15 @@ async function offlineGatesScenario(): Promise<void> {
   await reset();
   env.RETURNS_LIVE_LABELS = false;
   const flagOffFixture = await seed();
-  const flagOff = await create(flagOffFixture);
+  await create(flagOffFixture).then(
+    () => check(false, 'live flag OFF fails closed for a real client'),
+    (error) => check(
+      error instanceof returnsService.ReturnLabelStateError,
+      'live flag OFF fails closed for a real client',
+    ),
+  );
   equal(providerCalls, 0, 'live flag OFF never calls the provider');
-  const [offlineShipment] = await returnShipments(flagOffFixture.orderId);
-  equal(offlineShipment?.source, 'test_offline', 'live flag OFF uses the offline mock');
-  assertRedacted(flagOff as unknown as Record<string, unknown>);
+  equal((await returnShipments(flagOffFixture.orderId)).length, 0, 'live flag OFF creates no mock shipment');
 
   await reset();
   const testClientFixture = await seed(true);

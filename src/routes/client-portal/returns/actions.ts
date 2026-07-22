@@ -17,6 +17,7 @@ import {
   ReturnLabelPurchasePendingError,
   ReturnLabelRateUnavailableError,
   ReturnLabelStateError,
+  ReturnCustomerRateUnavailableError,
 } from '../../../services/returns';
 import { buildReturnReference, returnScopePredicate } from './shared';
 
@@ -249,6 +250,7 @@ function registerReturnLabelRoute(app: Hono): void {
       const isRateUnavailable = err instanceof ReturnLabelRateUnavailableError;
       const isPurchasePending = err instanceof ReturnLabelPurchasePendingError;
       const isInvalidState = err instanceof ReturnLabelStateError;
+      const isCustomerRateUnavailable = err instanceof ReturnCustomerRateUnavailableError;
       if (isRateUnavailable) {
         const { rawRateCount, returnLabelRatePolicy, ...safeDiagnostics } = err.diagnostics;
         await recordPortalAudit('portal.returns.label.rate_unavailable', scope, {
@@ -257,9 +259,14 @@ function registerReturnLabelRoute(app: Hono): void {
           ratePolicy: returnLabelRatePolicy,
         });
       }
-      const status = isDuplicate || isInvalidState || isPurchasePending ? 409 : isRateUnavailable ? 422 : 500;
+      const status = isDuplicate || isInvalidState || isPurchasePending
+        ? 409
+        : isRateUnavailable || isCustomerRateUnavailable
+          ? 422
+          : 500;
       const clientMessage =
-        isDuplicate || isInvalidState || isPurchasePending || isRateUnavailable
+        isDuplicate || isInvalidState || isPurchasePending || isRateUnavailable ||
+        isCustomerRateUnavailable
           ? message
           : 'Could not create return label. Please try again or contact PrepShip support.';
       return c.json({ error: clientMessage }, status);

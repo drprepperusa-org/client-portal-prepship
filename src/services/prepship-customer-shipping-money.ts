@@ -6,12 +6,10 @@ export type CustomerSafeShippingMoney = {
   customerShippingMoneyPolicyVersion: 'ps-437-v1';
 };
 
-/**
- * Thin Client Portal adapter: PrepShip resolves and freezes the internal money
- * tuple; this caller receives only the customer-visible amount + provenance.
- */
-export async function freezePrepShipCustomerShippingMoney(input: {
-  shipmentId: number;
+async function requestPrepShipCustomerShippingMoney(input: {
+  path: '/client-portal/customer-shipping-money/return-preview' |
+    '/client-portal/customer-shipping-money/freeze';
+  body: Record<string, unknown>;
   authorization?: string;
 }): Promise<CustomerSafeShippingMoney> {
   if (!env.PREPSHIP_API_URL) {
@@ -21,14 +19,14 @@ export async function freezePrepShipCustomerShippingMoney(input: {
     throw new Error('Authenticated PrepShip pricing context is required');
   }
   const baseUrl = env.PREPSHIP_API_URL.replace(/\/+$/, '');
-  const response = await fetch(`${baseUrl}/client-portal/customer-shipping-money/freeze`, {
+  const response = await fetch(`${baseUrl}${input.path}`, {
     method: 'POST',
     headers: {
       authorization: input.authorization,
       accept: 'application/json',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ shipmentId: input.shipmentId }),
+    body: JSON.stringify(input.body),
     signal: AbortSignal.timeout(15_000),
   });
   const payload = await response.json().catch(() => null) as {
@@ -51,4 +49,42 @@ export async function freezePrepShipCustomerShippingMoney(input: {
     customerRateSource: source,
     customerShippingMoneyPolicyVersion: policyVersion,
   };
+}
+
+/**
+ * Read-only, server-to-server preflight. PrepShip receives the candidate
+ * provider facts but returns only its customer-safe policy projection.
+ */
+export function previewPrepShipReturnCustomerShippingMoney(input: {
+  sourceShipmentId: number;
+  candidateSelectedRateCost: number;
+  carrierCode?: string | null;
+  providerAccountId?: number | null;
+  authorization?: string;
+}): Promise<CustomerSafeShippingMoney> {
+  return requestPrepShipCustomerShippingMoney({
+    path: '/client-portal/customer-shipping-money/return-preview',
+    body: {
+      sourceShipmentId: input.sourceShipmentId,
+      selectedRateCost: input.candidateSelectedRateCost,
+      carrierCode: input.carrierCode ?? null,
+      providerAccountId: input.providerAccountId ?? null,
+    },
+    authorization: input.authorization,
+  });
+}
+
+/**
+ * Thin Client Portal adapter: PrepShip resolves and freezes the internal money
+ * tuple; this caller receives only the customer-visible amount + provenance.
+ */
+export async function freezePrepShipCustomerShippingMoney(input: {
+  shipmentId: number;
+  authorization?: string;
+}): Promise<CustomerSafeShippingMoney> {
+  return requestPrepShipCustomerShippingMoney({
+    path: '/client-portal/customer-shipping-money/freeze',
+    body: { shipmentId: input.shipmentId },
+    authorization: input.authorization,
+  });
 }

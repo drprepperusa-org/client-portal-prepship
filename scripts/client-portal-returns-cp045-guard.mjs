@@ -209,7 +209,7 @@ for (const forbidden of ['selectedRateJson', 'selectedRate', 'labelCost', 'provi
 }
 assert(
   /returnCustomerShippingRate/.test(api) &&
-    /row\.ret\.returnCustomerShippingRate/.test(route) &&
+    /row\.validatedReturnCustomerShippingRate/.test(route) &&
     /freezePrepShipCustomerShippingMoney/.test(service) &&
     /returnCustomerShippingRate:\s*returnCustomerShippingRate\.toFixed\(2\)/.test(service),
   'client-visible return postage reads the PrepShip-frozen snapshot',

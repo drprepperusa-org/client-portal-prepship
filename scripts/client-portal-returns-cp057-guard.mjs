@@ -108,6 +108,8 @@ assert(
 for (const fixture of [
   'concurrent purchase ownership',
   'provider success then shipment insert failure',
+  'recovery blocks shipment persistence when customer pricing is unavailable',
+  'blocked recovery never repurchases postage',
   'shipment success then return-row update failure',
   'timeout after submission',
   'provider absence remains held',
@@ -115,6 +117,8 @@ for (const fixture of [
   'stale generation cannot record a receipt',
   'completed retry returns the existing label',
   'live flag OFF never calls the provider',
+  'live flag OFF fails closed for a real client',
+  'live flag OFF creates no mock shipment',
   'clients.is_test=true never calls the provider',
   'client result redacts',
 ]) {

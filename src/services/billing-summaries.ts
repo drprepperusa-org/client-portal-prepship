@@ -29,11 +29,24 @@ import {
   BILLING_POLICY_WEEKEND_ROLLFORWARD,
   billingLineEffectiveDaySql,
 } from './billing-effective-day';
+import { customerSafeBillingLineSql } from '../lib/client-portal/customer-shipping-rate';
 
 const persistedBillingEffectiveDay = billingLineEffectiveDaySql(
   billingLineItems.billingEffectiveDate,
   billingLineItems.shipDate,
 );
+
+const customerSafeSummaryLine = customerSafeBillingLineSql({
+  lineType: sql`b.line_type`,
+  shipmentId: sql`b.shipment_id`,
+  totalCost: sql`b.total_cost`,
+});
+
+const customerSafeUnaliasedSummaryLine = customerSafeBillingLineSql({
+  lineType: sql`line_type`,
+  shipmentId: sql`shipment_id`,
+  totalCost: sql`total_cost`,
+});
 
 function billingSummaryHasValues(summary: { clients: BillingSummaryRow[] }): boolean {
   return summary.clients.some(
@@ -76,6 +89,7 @@ async function hasBillingLineItemsForSummary(input: GenerateInput): Promise<bool
       from billing_line_items
       where coalesce(billing_effective_date, ship_date) >= ${input.dateFrom}::timestamptz
         and coalesce(billing_effective_date, ship_date) < ${input.dateTo}::timestamptz
+        and ${customerSafeUnaliasedSummaryLine}
         ${input.clientId !== undefined ? sql`and client_id = ${input.clientId}` : sql``}
         and ${billingLineItemScopePredicate(input)}
       limit 1
@@ -234,6 +248,7 @@ export async function billingSummary(
       on b.client_id = c.id
       and coalesce(b.billing_effective_date, b.ship_date) >= ${input.dateFrom}::timestamptz
       and coalesce(b.billing_effective_date, b.ship_date) < ${input.dateTo}::timestamptz
+      and ${customerSafeSummaryLine}
     where c.active = true
       and c.name not in ('Manual Orders', 'Rate Browser', 'Api Shipments')
       ${input.clientId !== undefined ? sql`and c.id = ${input.clientId}` : sql``}

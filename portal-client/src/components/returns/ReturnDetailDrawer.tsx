@@ -177,7 +177,12 @@ function ReturnOverview({
         <DetailField label="Delivery" value={detail.deliveryMethod ? RETURN_DELIVERY_LABEL[detail.deliveryMethod] ?? detail.deliveryMethod : '—'} />
         <DetailField label="Delivery status" value={detail.deliveryStatus ?? '—'} />
         <DetailField label="Created" value={shortDate(detail.createdAt)} />
-        {detail.returnCustomerShippingRate != null && <DetailField label="Return postage" value={money(detail.returnCustomerShippingRate)} />}
+        <DetailField
+          label="Return postage"
+          value={detail.returnCustomerShippingRate != null
+            ? money(detail.returnCustomerShippingRate)
+            : 'Customer rate pending'}
+        />
       </div>
 
       {canCreateLabel ? (

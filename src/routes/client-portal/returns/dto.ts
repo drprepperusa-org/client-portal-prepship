@@ -11,6 +11,7 @@ type ClientSafeReturnSource = {
   returnTracking: string | null;
   returnCarrier: string | null;
   returnLabelUrl: string | null;
+  validatedReturnCustomerShippingRate: string | null;
   returnedSkus: string[];
   returnedQuantity: number;
   recipientName: string | null;
@@ -39,10 +40,10 @@ export async function toClientSafeReturnRow(
     trackingNumber: row.returnTracking,
     trackingUrl: trackingUrlForCarrier(row.returnCarrier, row.returnTracking) || null,
     pdfAvailable: Boolean(row.returnLabelUrl),
-    returnCustomerShippingRate:
-      options.includeFinancials && row.ret.returnCustomerShippingRate != null
-        ? Number(row.ret.returnCustomerShippingRate)
-        : null,
+    returnCustomerShippingRate: options.includeFinancials &&
+      row.validatedReturnCustomerShippingRate != null
+      ? Number(row.validatedReturnCustomerShippingRate)
+      : null,
     returnedSkus: row.returnedSkus,
     returnedQuantity: Number(row.returnedQuantity) || 0,
     recipientName: row.recipientName,

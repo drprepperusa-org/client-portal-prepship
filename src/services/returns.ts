@@ -14,7 +14,12 @@ import {
   type ShipstationAddressInput,
 } from '../lib/shipstation/labels';
 import { ShipStationError } from '../lib/shipstation/client';
-import { freezePrepShipCustomerShippingMoney } from './prepship-customer-shipping-money';
+import {
+  freezePrepShipCustomerShippingMoney,
+  previewPrepShipReturnCustomerShippingMoney,
+  type CustomerSafeShippingMoney,
+} from './prepship-customer-shipping-money';
+import { resolveReturnLabelExecutionMode } from './return-label-execution-policy';
 import {
   generateFakeShipmentId,
   generateFakeTrackingNumber,
@@ -24,6 +29,7 @@ import {
 } from './mock-label-generator';
 import { saveMockLabel } from './mock-label-store';
 import { addMockLabelSignature } from '../lib/mock-label-access';
+import { readFrozenCustomerShippingMoney } from '../lib/customer-shipping-money-snapshot';
 import type { Rate } from '../lib/shipstation';
 import { recordReturnActivity } from './return-activity';
 import {
@@ -51,9 +57,9 @@ import {
 //
 // SAFETY: no real postage is purchasable by default. The live ShipStation
 // purchase path may run ONLY when `env.RETURNS_LIVE_LABELS` is truthy AND the
-// resolved client is not an isTest client. Otherwise the service takes the
-// OFFLINE MOCK path (fake tracking, cost '0.00', source 'test_offline', no
-// carrier call) — mirroring labels.ts createLabelV2's testLabel branch.
+// resolved client is not an isTest client. A disabled live flag fails closed
+// for real clients; only explicit test clients receive an offline mock with no
+// carrier call, mirroring labels.ts createLabelV2's testLabel branch.
 
 export type CreateReturnLabelInput = {
   returnId?: number;
@@ -153,10 +159,52 @@ export class ReturnLabelStateError extends Error {
   }
 }
 
+export class ReturnCustomerRateUnavailableError extends Error {
+  constructor() {
+    super('Customer return shipping rate is not configured. Contact PrepShip support.');
+    this.name = 'ReturnCustomerRateUnavailableError';
+  }
+}
+
 export class ReturnLabelPurchasePendingError extends Error {
   constructor() {
     super('Return label purchase is being reconciled. Please retry shortly.');
     this.name = 'ReturnLabelPurchasePendingError';
+  }
+}
+
+function selectedRateProviderCost(rate: Rate): number {
+  return (
+    Number(rate.shipping_amount?.amount ?? 0) +
+    Number(rate.confirmation_amount?.amount ?? 0) +
+    Number(rate.other_amount?.amount ?? 0)
+  );
+}
+
+function providerAccountIdFromRate(rate: Rate): number | null {
+  const match = /^se-(\d+)$/i.exec(rate.carrier_id);
+  if (!match) return null;
+  const providerAccountId = Number(match[1]);
+  return Number.isSafeInteger(providerAccountId) && providerAccountId > 0
+    ? providerAccountId
+    : null;
+}
+
+async function requireApprovedReturnCustomerMoney(input: {
+  outbound: OutboundShipment;
+  selectedRate: Rate;
+  authorization?: string;
+}): Promise<CustomerSafeShippingMoney> {
+  try {
+    return await previewPrepShipReturnCustomerShippingMoney({
+      sourceShipmentId: input.outbound.id,
+      candidateSelectedRateCost: selectedRateProviderCost(input.selectedRate),
+      carrierCode: input.selectedRate.carrier_code,
+      providerAccountId: providerAccountIdFromRate(input.selectedRate),
+      authorization: input.authorization,
+    });
+  } catch {
+    throw new ReturnCustomerRateUnavailableError();
   }
 }
 
@@ -597,7 +645,8 @@ async function resolveReturnCustomerRateForShipment(
 
 /**
  * Reconcile an interrupted PS-437 freeze without purchasing another label.
- * A populated compatibility alias is reused verbatim; historical repricing is
+ * A populated compatibility alias is reused only when the linked shipment's
+ * complete policy tuple proves the same amount. Mismatches fail closed and are
  * handled only by the separate read-only audit + operator-approved repair.
  */
 async function ensureReturnCustomerRateSnapshot(
@@ -606,7 +655,13 @@ async function ensureReturnCustomerRateSnapshot(
   authorization?: string,
 ): Promise<number> {
   if (returnRow.returnCustomerShippingRate != null) {
-    return toNum(returnRow.returnCustomerShippingRate);
+    const aliasAmount = toNum(returnRow.returnCustomerShippingRate);
+    if (shipment.source === 'test_offline' && aliasAmount === 0) return 0;
+    const frozen = readFrozenCustomerShippingMoney(shipment.selectedRateJson);
+    if (frozen && Math.abs(aliasAmount - frozen.cShippingRateAmount) < 0.005) {
+      return frozen.cShippingRateAmount;
+    }
+    throw new ReturnCustomerRateUnavailableError();
   }
   const rate = await resolveReturnCustomerRateForShipment(shipment, authorization);
   await db
@@ -660,7 +715,11 @@ export async function createReturnLabel(
 
   const clientId = await resolveClientId(order);
   const isTest = await clientIsTest(clientId);
-  const liveEligible = env.RETURNS_LIVE_LABELS && !isTest;
+  const executionMode = resolveReturnLabelExecutionMode({
+    liveLabelsEnabled: env.RETURNS_LIVE_LABELS,
+    isTestClient: isTest,
+  });
+  const liveEligible = executionMode === 'live';
 
   // Completed retries are reads, not new side effects. Repair callers receive
   // the canonical shipment already linked to the workflow.
@@ -696,6 +755,13 @@ export async function createReturnLabel(
       existingIntent &&
       existingReturn.labelProviderKey === existingIntent.providerReferenceKey
     ) {
+      const selectedRate = selectedRateFromIntent(existingIntent);
+      if (!selectedRate) throw new ReturnLabelPurchasePendingError();
+      await requireApprovedReturnCustomerMoney({
+        outbound,
+        selectedRate,
+        authorization: input.authorization,
+      });
       await completeReturnLabelPurchase(existingIntent.id, existingReturn.id);
       const customerRate = await resolveReturnCustomerRateForShipment(existingReturn, input.authorization);
       await markReturnLabelCreated(
@@ -756,7 +822,7 @@ export async function createReturnLabel(
   // The old ShipStation-return shortcut (delegate to createReturnLabelV2 when the
   // outbound row had a labelShipmentId) is REMOVED. Return-label creation now
   // ALWAYS rate-shops the cheapest ELIGIBLE rate backend-side and buys (live) or
-  // offline-mocks (default) the label through PrepShip provider code. ShipStation
+  // offline-mocks test-client labels through PrepShip provider code. ShipStation
   // (and any carrier API) is only ever a provider implementation detail behind
   // this single path — never the owner of the workflow, price choice, customer
   // delivery, or billing truth.
@@ -795,13 +861,11 @@ export async function createReturnLabel(
     intent: ReturnLabelPurchaseAction['intent'],
     selectedRate: Rate,
     created: CreatedExternalLabel,
+    approvedCustomerMoney: CustomerSafeShippingMoney,
   ): Promise<ClientSafeReturnResult> => {
     if (!returnRow) throw new ReturnLabelStateError('Live return labels require a return workflow');
     const labelUrl = extractShipstationLabelUrl(created.labelUrl);
-    const quotedCost =
-      Number(selectedRate.shipping_amount?.amount ?? 0) +
-      Number(selectedRate.confirmation_amount?.amount ?? 0) +
-      Number(selectedRate.other_amount?.amount ?? 0);
+    const quotedCost = selectedRateProviderCost(selectedRate);
     const rawCost = created.cost || quotedCost;
     const returnShipmentId = await persistReturnShipment({
       outbound,
@@ -832,6 +896,11 @@ export async function createReturnLabel(
       persistedReturnShipment,
       input.authorization,
     );
+    if (
+      Math.abs(returnCustomerShippingRate - approvedCustomerMoney.cShippingRateAmount) >= 0.005
+    ) {
+      throw new ReturnCustomerRateUnavailableError();
+    }
     await completeReturnLabelPurchase(intent.id, returnShipmentId);
     await markReturnLabelCreated(
       returnRow.id,
@@ -898,7 +967,17 @@ export async function createReturnLabel(
 
       if (receipt) {
         await recordRecoveredReturnLabelProviderReceipt(purchaseAction.intent.id, receipt);
-        return finalizeLivePurchase(purchaseAction.intent, chosen, receipt);
+        const approvedCustomerMoney = await requireApprovedReturnCustomerMoney({
+          outbound,
+          selectedRate: chosen,
+          authorization: input.authorization,
+        });
+        return finalizeLivePurchase(
+          purchaseAction.intent,
+          chosen,
+          receipt,
+          approvedCustomerMoney,
+        );
       }
 
       // PS-423: a provider lookup that currently returns no row is not strong
@@ -909,9 +988,8 @@ export async function createReturnLabel(
   }
 
   // Only quote the carrier when we will actually buy (the live path below).
-  // The offline-mock default never needs a live rate — it persists cost 0.00
-  // with a generic service — so getRates is NOT called when the flag is off or
-  // the client is a test client. That keeps the default path fully carrier-free.
+  // The explicit test-client mock never needs a live rate. A real client with
+  // the live flag disabled fails closed below and receives no fake label.
   if (liveEligible && purchaseAction?.kind === 'purchase') {
     let rateResult: Awaited<ReturnType<typeof getRates>>;
     try {
@@ -981,11 +1059,17 @@ export async function createReturnLabel(
     }
   }
 
-  // ── OFFLINE MOCK path (DEFAULT) ──
-  // Runs whenever live purchase is not permitted (flag off OR test client).
+  // ── OFFLINE MOCK path (TEST CLIENTS ONLY) ──
+  // Runs only for an explicitly marked test client.
   // Generates fake tracking, persists source 'test_offline' + cost '0.00', and
   // NEVER calls the carrier. Mirrors labels.ts createLabelV2's testLabel branch.
-  if (!liveEligible) {
+  if (executionMode === 'disabled') {
+    throw new ReturnLabelStateError(
+      'Return label creation is unavailable while live labels are disabled',
+    );
+  }
+
+  if (executionMode === 'test_offline') {
     const fakeShipmentId = generateFakeShipmentId();
     const fakeTracking = generateFakeTrackingNumber();
     const shipDate = createdAt.toISOString().slice(0, 10);
@@ -1071,6 +1155,25 @@ export async function createReturnLabel(
   if (!purchaseAction || purchaseAction.kind !== 'purchase') {
     throw new ReturnLabelPurchasePendingError();
   }
+  if (!returnRow) {
+    throw new ReturnLabelStateError('Live return labels require a return workflow');
+  }
+
+  // PS-435 money-path guard: PrepShip's canonical owner must approve a
+  // customer-safe return rate before any provider mutation is attempted.
+  let approvedCustomerMoney: CustomerSafeShippingMoney;
+  try {
+    approvedCustomerMoney = await requireApprovedReturnCustomerMoney({
+      outbound,
+      selectedRate: chosen,
+      authorization: input.authorization,
+    });
+  } catch {
+    const safeError = 'Customer return shipping rate is not configured';
+    await markReturnLabelPurchaseFailed(purchaseAction.lease, safeError);
+    await markReturnLabelFailed(returnRow.id, safeError, input.actorType, input.actorEmail);
+    throw new ReturnCustomerRateUnavailableError();
+  }
 
   await saveReturnLabelSelectedRate(purchaseAction.lease, chosen);
   let created: CreatedExternalLabel;
@@ -1113,5 +1216,10 @@ export async function createReturnLabel(
   }
 
   await recordReturnLabelProviderReceipt(purchaseAction.lease, created);
-  return finalizeLivePurchase(purchaseAction.intent, chosen, created);
+  return finalizeLivePurchase(
+    purchaseAction.intent,
+    chosen,
+    created,
+    approvedCustomerMoney,
+  );
 }

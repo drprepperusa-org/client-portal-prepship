@@ -259,9 +259,9 @@ assert(
 // CP-032: list/detail reads the frozen billing-policy snapshot and never
 // recalculates from raw house/label cost.
 assert(
-  /row\.ret\.returnCustomerShippingRate/.test(route) &&
+  /row\.validatedReturnCustomerShippingRate/.test(route) &&
     !/internalReturnLabelCost|resolveReturnCustomerPrice/.test(route),
-  'the returns DTO reads the frozen returnCustomerShippingRate snapshot (never raw label/house cost)',
+  'the returns DTO reads the tuple-validated returnCustomerShippingRate snapshot',
 );
 // The label/deliver client methods post to the backend too. Match each method's
 // definition through its apiPost call (non-greedy, across the arrow body).

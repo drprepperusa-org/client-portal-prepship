@@ -5,6 +5,10 @@ postage is a money-moving production action. Keep `RETURNS_LIVE_LABELS=false`
 unless every gate below passes and DJ gives explicit approval immediately
 before the canary.
 
+With the flag off, real clients fail closed and no tracking number, PDF, return
+shipment, or `label_created` state is manufactured. The offline mock path is
+reserved for records explicitly marked as test clients.
+
 ## Safety model
 
 - `shipments` is the canonical label, tracking, selected-rate, and cost owner.

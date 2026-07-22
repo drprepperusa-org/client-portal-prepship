@@ -24,6 +24,7 @@ import {
 } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { refreshMockLabelSignature } from '../../../lib/mock-label-access';
+import { validatedReturnCustomerShippingRateSql } from '../../../lib/client-portal/customer-shipping-rate';
 import { getReturnMediaSignedUrl } from '../../../lib/supabase';
 import { listOriginalOrderActivity, listReturnActivity } from '../../../services/return-activity';
 import { resolveReturnReference } from '../../../services/return-reference';
@@ -63,6 +64,7 @@ function registerReturnListRoute(app: Hono): void {
         returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
+        validatedReturnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
         returnedSkus: sql<string[]>`coalesce((
           select array_agg(ri.sku order by ri.id)
           from return_items ri
@@ -146,6 +148,7 @@ function registerReturnDetailRoute(app: Hono): void {
         returnTrackingStatus: shipments.trackingStatus,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
+        validatedReturnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
         returnedSkus: sql<string[]>`coalesce((
           select array_agg(ri.sku order by ri.id)
           from return_items ri
