@@ -755,15 +755,15 @@ export async function createReturnLabel(
       existingIntent &&
       existingReturn.labelProviderKey === existingIntent.providerReferenceKey
     ) {
-      const selectedRate = selectedRateFromIntent(existingIntent);
-      if (!selectedRate) throw new ReturnLabelPurchasePendingError();
-      await requireApprovedReturnCustomerMoney({
-        outbound,
-        selectedRate,
-        authorization: input.authorization,
-      });
+      // The completed shipment is canonical here; completion deliberately
+      // clears transient intent rate/receipt data. Validate or recover the
+      // frozen customer-money tuple without quoting or purchasing again.
       await completeReturnLabelPurchase(existingIntent.id, existingReturn.id);
-      const customerRate = await resolveReturnCustomerRateForShipment(existingReturn, input.authorization);
+      const customerRate = await ensureReturnCustomerRateSnapshot(
+        returnRow,
+        existingReturn,
+        input.authorization,
+      );
       await markReturnLabelCreated(
         returnRow.id,
         existingReturn.id,

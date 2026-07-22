@@ -18,6 +18,7 @@ let providerMode: 'success' | 'timeout_after_submit' | 'timeout_before_submit' =
 let customerRateMode: 'ready' | 'unavailable' = 'ready';
 let providerStarted: (() => void) | null = null;
 let providerRelease: Promise<void> | null = null;
+let freezeCustomerMoneyForShipment: ((shipmentId: number) => Promise<void>) | null = null;
 
 function response(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -26,7 +27,7 @@ function response(value: unknown, status = 200): Response {
   });
 }
 
-globalThis.fetch = (async (input: RequestInfo | URL) => {
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/return-preview') {
     if (customerRateMode === 'unavailable') {
@@ -34,16 +35,22 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
     }
     return response({
       data: {
-        cShippingRateAmount: 7.57,
+        cShippingRateAmount: 9.09,
         customerRateSource: 'realized_customer_shipping_rate',
         customerShippingMoneyPolicyVersion: 'ps-437-v1',
       },
     });
   }
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/freeze') {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { shipmentId?: unknown };
+    const shipmentId = Number(body.shipmentId);
+    if (!Number.isInteger(shipmentId) || shipmentId <= 0 || !freezeCustomerMoneyForShipment) {
+      throw new Error('CP-057 freeze fixture received an invalid shipment');
+    }
+    await freezeCustomerMoneyForShipment(shipmentId);
     return response({
       data: {
-        cShippingRateAmount: 7.57,
+        cShippingRateAmount: 9.09,
         customerRateSource: 'realized_customer_shipping_rate',
         customerShippingMoneyPolicyVersion: 'ps-437-v1',
       },
@@ -89,6 +96,35 @@ const returnsService = await import('../../src/services/returns');
 const { env } = await import('../../src/lib/env');
 const { carrierConnectors } = await import('../../src/connectors/registry');
 const originalCreateLabel = carrierConnectors.shipstation.createLabel;
+
+freezeCustomerMoneyForShipment = async (shipmentId) => {
+  const [shipment] = await db
+    .select({ selectedRateJson: schema.shipments.selectedRateJson })
+    .from(schema.shipments)
+    .where(eq(schema.shipments.id, shipmentId))
+    .limit(1);
+  if (!shipment) throw new Error('CP-057 freeze fixture shipment was not found');
+  const selectedRateJson = shipment.selectedRateJson &&
+    typeof shipment.selectedRateJson === 'object' &&
+    !Array.isArray(shipment.selectedRateJson)
+    ? shipment.selectedRateJson
+    : {};
+  await db
+    .update(schema.shipments)
+    .set({
+      selectedRateJson: {
+        ...selectedRateJson,
+        selectedRateCost: 7.57,
+        cShippingRateAmount: 9.09,
+        shippingMarginAmount: 1.52,
+        shippingMarginPct: 16.7,
+        customerRateSource: 'realized_customer_shipping_rate',
+        rateCostSource: 'label_final_cost',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      },
+    })
+    .where(eq(schema.shipments.id, shipmentId));
+};
 
 function providerPayload(key: string) {
   return {
@@ -286,6 +322,12 @@ async function concurrencyScenario(): Promise<void> {
   equal(providerCalls, 1, 'two concurrent requests make one provider purchase');
   equal((await returnShipments(fixture.orderId)).length, 1, 'one canonical return shipment exists');
   check(outcomes.some((result) => result.status === 'fulfilled'), 'one request completes successfully');
+  const completed = outcomes.find((result) => result.status === 'fulfilled');
+  equal(
+    completed?.status === 'fulfilled' ? completed.value.returnCustomerShippingRate : null,
+    9.09,
+    'client result preserves the customer rate separately from provider cost',
+  );
   check(
     outcomes.every((result) =>
       result.status === 'fulfilled' ||
