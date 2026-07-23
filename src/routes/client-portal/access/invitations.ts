@@ -154,7 +154,9 @@ export function registerAccessInvitationRoutes(app: Hono): void {
 
     const meta = { ...accessAppMeta(target.user) };
     if (meta.portalInvitePending !== true) return c.json({ ok: true });
-    delete meta.portalInvitePending;
+    // Supabase merges app_metadata updates, so omitting this key would leave
+    // the stored `true` value in place and redirect the user back to /activate.
+    meta.portalInvitePending = false;
 
     const auditDenied = await requireAccessMutationAudit(c, 'portal.access_list.activate.requested', scope, {
       targetId: scope.userId,
