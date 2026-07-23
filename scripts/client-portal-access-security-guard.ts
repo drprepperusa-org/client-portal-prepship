@@ -136,6 +136,8 @@ assert.match(accessRoute, /isAccessAssignmentWithinBoundary/);
 assert.match(accessRoute, /role === 'admin' && !capabilities\.canManageAdmins/);
 assert.match(accessRoute, /isExistingInviteAccountError/);
 assert.match(accessRoute, /Invitation email could not be sent, and a manual activation link could not be generated/);
+assert.match(accessRoute, /meta\.portalInvitePending = false/);
+assert.doesNotMatch(accessRoute, /delete meta\.portalInvitePending/);
 assert.match(audit, /recordCriticalPortalAudit/);
 assert.match(audit, /critical persist failed/);
 
