@@ -76,9 +76,20 @@ for (const value of ['DR PREPPER LLC', '413 W Walnut St', 'Gardena', 'CA', '9024
 assert(
   /returnRow\?\.returnRecipientName\?\.trim\(\)/.test(service) &&
     /\.\.\.DRP_RETURN_TO_ADDRESS/.test(service) &&
-    /name:\s*returnRecipientName/.test(service) &&
-    /company:\s*returnRecipientName/.test(service),
+    /name:\s*returnRecipientName/.test(service),
   'createReturnLabel combines the fixed DRP address with the persisted recipient name',
+);
+// This check previously REQUIRED `company: returnRecipientName`, i.e. it pinned
+// the defect: a saved client value replacing DR PREPPER LLC as the label's
+// company. That contradicted this section's own heading -- "the saved return
+// recipient/ATTENTION NAME remains editable" -- and it is why the regression
+// shipped and survived review. A guard written to match what the code does
+// cannot notice that the code is wrong.
+//
+// The attention line is editable. The company identity is not.
+assert(
+  !/company:\s*returnRecipientName/.test(service),
+  'the fixed DR PREPPER LLC company identity is never overwritten by client-editable data',
 );
 assert(
   !/locationToAddress\(|getDefaultLocation\(|returnRow\?\.returnToLocationId/.test(service),

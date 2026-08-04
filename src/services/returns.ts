@@ -809,10 +809,19 @@ export async function createReturnLabel(
   const shipFrom = orderShipToFromRaw(order);
   assertAddressComplete(shipFrom, 'ship-from (customer)');
   const returnRecipientName = returnRow?.returnRecipientName?.trim() || DRP_RETURN_TO_ADDRESS.name!;
+  // CP-045: `name` is the attention line and is per-client editable. `company`
+  // is NOT -- it is the fixed return-to identity this ticket exists to guarantee,
+  // and it stays DR PREPPER LLC from the constant above.
+  //
+  // Both were overridden together in b7ac141 ("save recipient and show item
+  // facts"), whose scope was the attention name; company was swept along with it
+  // and silently undid the fixed destination that 301f0d7 established. Street,
+  // city, state and postal code were never affected, so parcels still arrived --
+  // only the company line on the label was wrong, which is exactly the kind of
+  // defect that survives because nothing visibly breaks.
   const shipTo: ShipstationAddressInput = {
     ...DRP_RETURN_TO_ADDRESS,
     name: returnRecipientName,
-    company: returnRecipientName,
   };
   assertAddressComplete(shipTo, 'ship-to (DRP return address)');
 
