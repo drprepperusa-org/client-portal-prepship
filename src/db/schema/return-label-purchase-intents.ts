@@ -56,7 +56,7 @@ export const returnLabelPurchaseIntents = pgTable(
     check('return_label_purchase_intents_generation_check', sql`${t.generation} >= 0`),
     check(
       'return_label_purchase_intents_state_check',
-      sql`${t.state} in ('reserved', 'purchasing', 'purchased', 'unknown_outcome', 'failed', 'completed')`,
+      sql`${t.state} in ('reserved', 'purchasing', 'purchased', 'unknown_outcome', 'failed', 'completed', 'voided')`,
     ),
   ],
 );
