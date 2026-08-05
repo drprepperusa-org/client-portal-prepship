@@ -75,6 +75,10 @@ async function tryClaim(returnId: number): Promise<ReturnLabelPurchaseIntent | n
         or(
           eq(returnLabelPurchaseIntents.state, 'reserved'),
           eq(returnLabelPurchaseIntents.state, 'failed'),
+          // A voided label released this return, so the intent is claimable
+          // again. Its provider reference key was rotated when it was voided,
+          // so this attempt is a genuinely new purchase, not a replay.
+          eq(returnLabelPurchaseIntents.state, 'voided'),
         ),
       ),
     )
@@ -363,6 +367,55 @@ export async function completeReturnLabelPurchase(
     .where(eq(returnLabelPurchaseIntents.id, intentId))
     .returning({ id: returnLabelPurchaseIntents.id });
   if (!updated) throw new Error('Return label purchase intent could not be completed');
+}
+
+/**
+ * Record that this intent's purchased label was voided, releasing the return.
+ *
+ * This does NOT decide or store whether postage was voided — `shipments.voided`
+ * remains canonical for that, per the CP-057 ownership split. This is the
+ * intent's derived lifecycle marker, written from that event, and it exists so
+ * a replacement label can be bought: a completed intent is not claimable, and
+ * UNIQUE (return_id) forbids a second one, so without this transition a voided
+ * return could never buy postage again.
+ *
+ * The provider reference key is ROTATED rather than reused. It is the provider's
+ * idempotency key, so replaying it for the replacement risks the provider
+ * handing back the voided label instead of selling a new one.
+ *
+ * `returnShipmentId` is deliberately left pointing at the voided shipment. It is
+ * accurate history until a replacement completes and overwrites it, and the
+ * shipment row itself carries the authoritative voided flag.
+ */
+export async function markReturnLabelPurchaseVoided(
+  intentId: number,
+  resolution: { note: string; actor: string },
+): Promise<void> {
+  const now = new Date();
+  const [updated] = await db
+    .update(returnLabelPurchaseIntents)
+    .set({
+      state: 'voided',
+      providerReferenceKey: `cp-return-${randomUUID()}`,
+      generation: sql`${returnLabelPurchaseIntents.generation} + 1`,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      resolutionNote: resolution.note,
+      resolvedBy: resolution.actor,
+      resolvedAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(returnLabelPurchaseIntents.id, intentId),
+        // Only a live purchased label can be voided. Anything mid-flight must
+        // resolve through the existing unknown-outcome path first, so voiding
+        // can never race an in-progress provider call.
+        eq(returnLabelPurchaseIntents.state, 'completed'),
+      ),
+    )
+    .returning({ id: returnLabelPurchaseIntents.id });
+  if (!updated) throw new Error('Only a completed return label purchase intent can be voided');
 }
 
 export function selectedRateFromIntent(intent: ReturnLabelPurchaseIntent): Rate | null {

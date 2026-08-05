@@ -14,6 +14,7 @@ const assert = (condition, message) => {
 const migration = read('drizzle/0041_return_label_purchase_intents.sql');
 const rlsMigration = read('drizzle/0045_return_label_purchase_intents_rls.sql');
 const fencingMigration = read('drizzle/0047_return_label_operation_fencing.sql');
+const voidMigration = read('drizzle/0049_return_label_purchase_intent_voided.sql');
 const intentSchema = read('src/db/schema/return-label-purchase-intents.ts');
 const intents = read('src/services/return-label-purchase-intents.ts');
 const returnsService = read('src/services/returns.ts');
@@ -143,6 +144,35 @@ assert(
     /never replaces[\s\S]*shipments/.test(matrix),
   'source-of-truth matrix keeps purchased label truth on shipments',
 );
+
+// ── A voided label must leave the return able to buy postage again ──
+assert(
+  /'voided'/.test(voidMigration) && /state_check/.test(voidMigration),
+  'migration admits the voided state on the intent check constraint',
+);
+assert(
+  /'voided'/.test(intentSchema),
+  'drizzle check constraint matches the migration state model',
+);
+assert(
+  /export async function markReturnLabelPurchaseVoided/.test(intents) &&
+    /eq\(returnLabelPurchaseIntents\.state, 'completed'\)/.test(intents),
+  'only a completed intent can be voided, so voiding cannot race a live attempt',
+);
+assert(
+  /eq\(returnLabelPurchaseIntents\.state, 'voided'\)/.test(intents),
+  'a voided intent is claimable again so a replacement label can be purchased',
+);
+// The idempotency key must not survive the void. Replaying it would let the
+// provider hand back the voided label instead of selling a replacement.
+{
+  const start = intents.indexOf('export async function markReturnLabelPurchaseVoided');
+  const body = start === -1 ? '' : intents.slice(start, start + 1200);
+  assert(
+    /providerReferenceKey:\s*`cp-return-\$\{randomUUID\(\)\}`/.test(body),
+    'voiding rotates the provider idempotency key so the replacement is a new purchase',
+  );
+}
 
 if (failed) process.exit(1);
 console.log('PASS CP-057 static guard passed.');
