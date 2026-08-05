@@ -31,12 +31,29 @@ const route = readSourceTree([
 const schema = read('src/db/schema/returns.ts');
 const shipmentSchema = read('src/db/schema/shipments.ts');
 const api = readActiveClientPortalApiSource();
-const returnApi = stripComments(
-  api.slice(
-    api.indexOf('export interface PortalReturnRow'),
-    api.indexOf('// CP-030', api.indexOf('export interface PortalReturnRow')),
-  ),
-);
+// The end anchor used to be the comment `// CP-030`, which no longer exists anywhere in
+// the active API source. indexOf returned -1, so slice(start, -1) silently swallowed the
+// ENTIRE rest of the file instead of the returns DTO block — the same missing-anchor
+// truncation that was found in the ps-303 guard. It stayed green only because no banned
+// field happened to appear later in the file, so the redaction checks below were scanning
+// far more than they claimed and would have mislabelled any match as a DTO leak.
+//
+// Anchored on declarations that actually exist, and a missing anchor is now fatal rather
+// than silently reinterpreted.
+const RETURN_DTO_START = 'export interface PortalReturnRow';
+const RETURN_DTO_END = ['export const returnsApi', 'export type ReturnInspectionCondition'];
+const returnDtoStart = api.indexOf(RETURN_DTO_START);
+const returnDtoEnd = RETURN_DTO_END
+  .map((anchor) => api.indexOf(anchor, returnDtoStart))
+  .filter((i) => i > returnDtoStart)
+  .sort((a, b) => a - b)[0];
+if (returnDtoStart < 0 || returnDtoEnd === undefined) {
+  console.error(
+    `FAIL SETUP: return DTO block not found (start=${returnDtoStart}) — this guard would prove nothing`,
+  );
+  process.exit(1);
+}
+const returnApi = stripComments(api.slice(returnDtoStart, returnDtoEnd));
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
 const returnsPage = [
   read('portal-client/src/pages/Returns.tsx'),

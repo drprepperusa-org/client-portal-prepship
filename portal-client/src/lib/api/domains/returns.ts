@@ -36,6 +36,41 @@ export const returnsApi = {
     apiPost<{ data: ReturnLabelResult }>(token, `/api/client-portal/returns/${id}/label`),
   deliverReturn: (token: string, id: number) =>
     apiPost<{ data: ReturnDeliveryResult }>(token, `/api/client-portal/returns/${id}/deliver`),
+  // CP-058 AC-3: the SECOND later path — a label bought outside PrepShip. No carrier or
+  // service is sent: those are server-internal, and letting the form choose one would make
+  // the portal a second source of truth for label identity.
+  assignReturnExternalTracking: (
+    token: string,
+    id: number,
+    body: { trackingNumber: string; labelCost: string },
+  ) =>
+    apiPost<{ data: { id: number; returnShipmentId: number; status: string } }>(
+      token,
+      `/api/client-portal/returns/${id}/external-tracking`,
+      body,
+    ),
+  // CP-058 AC-4: optional PDF for that external label. Private bucket, path only.
+  uploadReturnExternalLabelPdf: (token: string, id: number, file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return apiUpload<{ data: { id: number; pdfAttached: boolean } }>(
+      token,
+      `/api/client-portal/returns/${id}/external-label-pdf`,
+      form,
+    );
+  },
+  // CP-058 AC-6: staff-only. The portal sends intent; PrepShip (PS-487) owns the rule and
+  // may answer 409 when the affected period is finalized and needs DJ approval.
+  updateReturnBillingDate: (
+    token: string,
+    id: number,
+    body: { newBillingDay: string; reason: string; djApprovalReference?: string | null },
+  ) =>
+    apiPatch<{ data: { returnId: number; outcome: string; adjustmentPending?: boolean } }>(
+      token,
+      `/api/client-portal/returns/${id}/billing-date`,
+      body,
+    ),
   returnsReceiving: (token: string, search?: string) =>
     apiGet<{ data: PortalReturnReceivingRow[] }>(token, '/api/client-portal/returns/receiving', {
       search,

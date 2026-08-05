@@ -364,6 +364,66 @@ check('the create UI does not advertise the reason as optional', () => {
     'submit must be disabled on a blank reason rather than collecting a 400');
 });
 
+// ── The UI surfaces the card assigns to the Client Portal ────────────────────
+const ui = (path) => stripComments(
+  readFileSync(`portal-client/src/${path}`, 'utf8').replace(/\r\n/g, '\n'),
+);
+
+check('AC-1: Start Return Only exists and does NOT buy a label', () => {
+  const modal = ui('components/returns/ReturnCreateModal.tsx');
+  assert.match(modal, /submit\('start_only'\)/, 'the third action must be wired to a button');
+  // The whole point is returning BEFORE the label call. If the early return were removed
+  // the button would silently buy postage, which is the exact failure AC-1 forbids.
+  const early = modal.indexOf("mode === 'start_only'");
+  const labelCall = modal.indexOf('createReturnLabel');
+  assert.ok(early >= 0 && labelCall > early,
+    'the start-only branch must return before createReturnLabel');
+  assert.match(modal.slice(early, labelCall), /return;/,
+    'the start-only path must actually return, not fall through to the label call');
+});
+
+check('AC-3/AC-4: the external-tracking form sends no provider identity', () => {
+  const panel = ui('components/returns/ReturnExternalTrackingPanel.tsx');
+  assert.match(panel, /assignReturnExternalTracking/);
+  // Carrier/service/provider are server-internal. A form field for any of them would make
+  // the portal a second source of truth for label identity (same rule as the route).
+  for (const forbidden of ['carrierCode', 'serviceCode', 'providerAccount', 'shipstation']) {
+    assert.ok(!panel.includes(forbidden), `the form must not collect ${forbidden}`);
+  }
+  assert.ok(!/returnCustomerShippingRate/.test(panel),
+    'the portal must never set the customer-billed rate from this form');
+});
+
+check('AC-4: a failed PDF upload does not read as a failed assignment', () => {
+  const panel = ui('components/returns/ReturnExternalTrackingPanel.tsx');
+  const assign = panel.indexOf('assignReturnExternalTracking');
+  const upload = panel.indexOf('uploadReturnExternalLabelPdf');
+  assert.ok(assign >= 0 && upload > assign,
+    'tracking must be recorded before the optional PDF is attempted');
+  assert.match(panel.slice(upload), /toast\.warning/,
+    'a PDF failure must warn, not claim the assignment failed');
+});
+
+check('AC-6: the date panel is staff-only and decides nothing', () => {
+  const panel = ui('components/returns/ReturnBillingDatePanel.tsx');
+  assert.match(panel, /if \(!me\?\.isAdmin && !me\?\.isGlobal\) return null/,
+    'client users must not see the date-edit surface at all');
+  assert.match(panel, /updateReturnBillingDate/);
+  // The rule lives in PS-487. Any of this vocabulary here would be a second owner of
+  // finalized-period money.
+  for (const forbidden of ['finalizationId', 'creditNote', 'adjustmentKind', 'billingPeriodId']) {
+    assert.ok(!panel.includes(forbidden), `the panel must not reason about ${forbidden}`);
+  }
+});
+
+check('both panels are actually mounted in the return detail', () => {
+  // A component nobody renders is the same as no UI at all — which is precisely the gap
+  // this batch closed, so it gets pinned.
+  const drawer = ui('components/returns/ReturnDetailDrawer.tsx');
+  assert.match(drawer, /<ReturnExternalTrackingPanel returnId=/);
+  assert.match(drawer, /<ReturnBillingDatePanel returnId=/);
+});
+
 if (failures > 0) {
   console.error(`\nFAIL CP-058 external tracking guard (${failures} failing)`);
   process.exit(1);

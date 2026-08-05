@@ -11,7 +11,9 @@ import { API_BASE, portalApi, type PortalReturnDetail } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useReturnDetail } from '@/lib/hooks';
 import { money, shortDate } from '@/lib/status';
+import { ReturnBillingDatePanel } from './ReturnBillingDatePanel';
 import { ReturnDrawerTabs, type ReturnDrawerTab } from './ReturnDrawerTabs';
+import { ReturnExternalTrackingPanel } from './ReturnExternalTrackingPanel';
 import { ReturnHistoryTimeline } from './ReturnHistoryTimeline';
 import { ReturnInspectionEditor } from './ReturnInspectionEditor';
 import { ReturnInspectionHistory } from './ReturnInspectionHistory';
@@ -212,6 +214,16 @@ function ReturnOverview({
       ) : (
         <DetailField label="Return recipient" value={detail.returnRecipientName ?? 'DR PREPPER LLC'} />
       )}
+
+      {/* CP-058 AC-3: the two later paths for a label-pending return. Create/Print the
+          PrepShip label (the existing button below) or assign a label bought elsewhere.
+          Offered on the same states as label creation, so the operator always sees both
+          options together rather than having to guess which one this return supports. */}
+      {canCreateLabel ? <ReturnExternalTrackingPanel returnId={detail.id} /> : null}
+
+      {/* AC-6: staff only — the component renders nothing for client users. Not gated on
+          label state: a return's billing period can need correcting long after it ships. */}
+      <ReturnBillingDatePanel returnId={detail.id} />
 
       <Link
         to={orderHref}

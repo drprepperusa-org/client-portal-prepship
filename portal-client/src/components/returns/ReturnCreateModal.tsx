@@ -62,7 +62,15 @@ export function ReturnCreateModal({
     setQtys((q) => ({ ...q, [index]: value }));
   }
 
-  async function submit() {
+  /**
+   * CP-058 AC-1 — 'start_only' records the return and STOPS. No carrier or provider
+   * call, no label purchase, no postage. Both client users and staff can use it; the
+   * only required inputs are the order, the item quantities and the reason.
+   *
+   * The label path is unchanged and still the default, so this adds a third action
+   * rather than altering the existing production-safe one.
+   */
+  async function submit(mode: 'with_label' | 'start_only' = 'with_label') {
     if (!accessToken || saving || orderId == null) return;
     // Build the return items from the ordered lines with a positive requested qty.
     // Quantities are validated (≤ ordered) on the backend — we do not price them.
@@ -97,6 +105,21 @@ export function ReturnCreateModal({
         items: chosen,
       });
       const returnId = res.data.id;
+
+      // AC-1: stop here. Returning BEFORE the label call is the whole point — the
+      // return is now real and billable, and the operator can create a PrepShip label
+      // or assign external tracking later from its detail.
+      if (mode === 'start_only') {
+        await qc.invalidateQueries({ queryKey: ['returns'] });
+        await qc.invalidateQueries({ queryKey: ['return', returnId] });
+        toast.success(
+          'Return started — label pending',
+          'No postage was purchased. Open the return to print a PrepShip label or assign tracking bought elsewhere.',
+        );
+        onCreated?.(returnId);
+        onClose();
+        return;
+      }
 
       // CP-032: PrepShip creates the label IMMEDIATELY (PDF-only) — the modal no
       // longer stops at "request recorded". Rate-shopping + cheapest-eligible
@@ -220,7 +243,16 @@ export function ReturnCreateModal({
             <span className="text-xs text-ink-3">{selectedCount} item{selectedCount === 1 ? '' : 's'} selected</span>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={onClose}>Cancel</Button>
-              <Button leadingIcon={<Undo2 size={16} />} onClick={submit} disabled={saving || selectedCount === 0 || !returnRecipientName.trim() || !reason.trim()}>
+              {/* AC-1: the third action. Deliberately a secondary button — buying a
+                  label stays the default, so no existing habit silently changes. */}
+              <Button
+                variant="secondary"
+                onClick={() => submit('start_only')}
+                disabled={saving || selectedCount === 0 || !returnRecipientName.trim() || !reason.trim()}
+              >
+                {saving ? 'Saving…' : 'Start return only'}
+              </Button>
+              <Button leadingIcon={<Undo2 size={16} />} onClick={() => submit('with_label')} disabled={saving || selectedCount === 0 || !returnRecipientName.trim() || !reason.trim()}>
                 {saving ? 'Saving & creating label…' : 'Save & create return label'}
               </Button>
             </div>
