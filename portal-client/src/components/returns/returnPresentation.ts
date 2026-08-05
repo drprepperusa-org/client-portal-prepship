@@ -21,7 +21,11 @@ export function clientAccent(name: string | null): Accent {
 
 // Backend owns the CP-026 lifecycle enum. The client only maps presentation.
 const STATUS_META: Record<string, { label: string; accent: Accent }> = {
-  requested: { label: 'Requested', accent: 'amber' },
+  // CP-058 AC-2: a start-only return has to read as a real, deliberate state rather than
+  // an unfinished one. "Requested" invited "requested from whom?"; the return exists and
+  // is waiting on a label, which is what the operator actually needs to know. The backend
+  // enum is untouched — this is presentation only.
+  requested: { label: 'Return Started — Label Pending', accent: 'amber' },
   label_created: { label: 'Label created', accent: 'sky' },
   label_failed: { label: 'Label needs attention', accent: 'rose' },
   in_transit: { label: 'In transit', accent: 'indigo' },

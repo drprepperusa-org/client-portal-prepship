@@ -199,6 +199,21 @@ check('the apply service writes no customer-facing rate', () => {
     'the customer-billed amount stays PrepShip-owned (PS-487 AC-2 / PS-435)');
 });
 
+// ── AC-2: a start-only return reads as Label Pending ────────────────────────
+check('the start-only status presents as "Return Started — Label Pending"', () => {
+  const presentation = readFileSync(
+    'portal-client/src/components/returns/returnPresentation.ts', 'utf8',
+  );
+  assert.match(
+    presentation,
+    /requested: \{ label: 'Return Started — Label Pending'/,
+    'AC-2 wants the start-only state named, not left as a bare "Requested"',
+  );
+  // Presentation only — the backend enum key must NOT be renamed, or every stored row,
+  // filter and guard that speaks 'requested' breaks.
+  assert.match(presentation, /^\s*'requested',$/m, 'the filter option keeps the enum key');
+});
+
 // ── AC-4: the optional PDF is private and scoped ────────────────────────────
 const pdfStart = actions.indexOf("'/returns/:id{[0-9]+}/external-label-pdf'");
 const pdfBlock = pdfStart >= 0 ? actions.slice(pdfStart, pdfStart + 3200) : '';
