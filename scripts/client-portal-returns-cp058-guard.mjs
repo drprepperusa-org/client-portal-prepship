@@ -317,6 +317,53 @@ check('a failed upload does NOT persist a dead reference', () => {
     'the 502 must return before the row is updated');
 });
 
+// ── AC-1: a return must record WHY it was started ────────────────────────────
+const createBlock = (() => {
+  const start = actions.indexOf("app.post('/returns'");
+  if (start < 0) {
+    console.error('SETUP FAILED: the return create route moved — this guard proves nothing');
+    process.exit(1);
+  }
+  const end = actions.indexOf('registerReturn', start + 10);
+  return actions.slice(start, end > start ? end : start + 8000);
+})();
+
+check('a blank return reason is refused at creation', () => {
+  assert.match(createBlock, /A return reason is required[\s\S]{0,40}?400/,
+    'a missing reason must 400, not be accepted');
+  assert.match(createBlock, /const requestedReason = body\.reason\?\.trim\(\)/,
+    'whitespace must not satisfy the requirement');
+});
+
+check('the reason is never invented on the caller\'s behalf', () => {
+  // The point of AC-1 is the REAL answer. A default like "Customer Return" would satisfy
+  // a NOT NULL column while destroying exactly the information the field exists to hold,
+  // and it would do so silently — every return would then look documented.
+  const code = stripComments(createBlock);
+  assert.ok(!/reason:\s*body\.reason\?\.trim\(\)\s*\|\|\s*null/.test(code),
+    'reason must no longer fall back to null');
+  assert.ok(!/reason[^\n]*\|\|\s*'Customer Return'/.test(code),
+    'a placeholder reason cannot be told apart from a real one');
+  assert.match(code, /reason: requestedReason/,
+    'the validated value is what gets stored');
+});
+
+check('the create UI does not advertise the reason as optional', () => {
+  // A backend rule the form contradicts is a 400 the operator cannot predict. This pins
+  // BOTH halves: the paired FE change is what keeps the rule from breaking a working
+  // flow, so it belongs in the same guard as the rule.
+  const modal = stripComments(
+    readFileSync('portal-client/src/components/returns/ReturnCreateModal.tsx', 'utf8')
+      .replace(/\r\n/g, '\n'),
+  );
+  assert.ok(!/Reason \(optional\)/.test(modal),
+    'the label still says optional while the backend requires it');
+  assert.ok(!/reason: reason\.trim\(\) \|\| undefined/.test(modal),
+    'the form still sends undefined for a blank reason');
+  assert.match(modal, /disabled=\{[^}]*!reason\.trim\(\)/,
+    'submit must be disabled on a blank reason rather than collecting a 400');
+});
+
 if (failures > 0) {
   console.error(`\nFAIL CP-058 external tracking guard (${failures} failing)`);
   process.exit(1);

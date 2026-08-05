@@ -83,11 +83,16 @@ export function ReturnCreateModal({
       toast.error('Recipient name required', 'Enter the name to print at the return destination.');
       return;
     }
+    const savedReason = reason.trim();
+    if (!savedReason) {
+      toast.error('Return reason required', 'Say why this return is being started.');
+      return;
+    }
     setSaving(true);
     try {
       const res = await portalApi.createReturn(accessToken, {
         orderId,
-        reason: reason.trim() || undefined,
+        reason: savedReason,
         returnRecipientName: savedRecipientName,
         items: chosen,
       });
@@ -197,12 +202,17 @@ export function ReturnCreateModal({
               413 W Walnut St, Gardena, CA 90248.
             </p>
           </div>
-          <Labeled label="Reason (optional)">
+          {/* CP-058 AC-1: required. The backend rejects a blank reason, so this must not
+              advertise itself as optional — the button is disabled rather than letting the
+              operator fill the whole form and then collect a 400. */}
+          <Labeled label="Reason">
             <textarea
               className={field + ' h-20 py-2'}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is this being returned?"
+              placeholder="Why is this being returned? (damaged, wrong item, no longer needed…)"
+              required
+              maxLength={500}
             />
           </Labeled>
 
@@ -210,7 +220,7 @@ export function ReturnCreateModal({
             <span className="text-xs text-ink-3">{selectedCount} item{selectedCount === 1 ? '' : 's'} selected</span>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={onClose}>Cancel</Button>
-              <Button leadingIcon={<Undo2 size={16} />} onClick={submit} disabled={saving || selectedCount === 0 || !returnRecipientName.trim()}>
+              <Button leadingIcon={<Undo2 size={16} />} onClick={submit} disabled={saving || selectedCount === 0 || !returnRecipientName.trim() || !reason.trim()}>
                 {saving ? 'Saving & creating label…' : 'Save & create return label'}
               </Button>
             </div>

@@ -96,6 +96,24 @@ function registerReturnCreateRoute(app: Hono): void {
     const returnRecipientName = requestedRecipientName
       ?? returnRecipientNameFromOrder(order.raw, clientName);
 
+    // CP-058 AC-1 — a return must say WHY it was started.
+    //
+    // This was optional and stored as NULL. The reason is the only field that separates
+    // a customer-remorse return from a damaged/wrong-item one, and unlike a weight or an
+    // address it CANNOT be reconstructed after the fact — nobody remembers next month.
+    // Required at creation because that is the only moment the person starting it knows.
+    //
+    // Enforced HERE rather than as a NOT NULL column: existing returns legitimately have
+    // a null reason, and a column constraint would either reject them or need a made-up
+    // backfill value, which is the same lost information wearing a disguise.
+    const requestedReason = body.reason?.trim();
+    if (!requestedReason) {
+      return c.json({ error: 'A return reason is required' }, 400);
+    }
+    if (requestedReason.length > 500) {
+      return c.json({ error: 'Return reason must be 500 characters or fewer' }, 400);
+    }
+
     const initiatedBy = scope.isGlobal ? 'three_pl' : 'client';
     const returnReference = await buildReturnReference(orderId, order.orderNumber);
     const orderedRows = await db
@@ -155,7 +173,7 @@ function registerReturnCreateRoute(app: Hono): void {
           status: 'requested',
           initiatedBy,
           initiatedByEmail: scope.email ?? null,
-          reason: body.reason?.trim() || null,
+          reason: requestedReason,
           returnRecipientName,
         })
         .returning();
