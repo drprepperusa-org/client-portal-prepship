@@ -12,6 +12,21 @@ import {
   resolveReturnExternalTracking,
 } from '../src/services/return-external-tracking.ts';
 
+/**
+ * Strip comments before any NEGATIVE assertion over source.
+ *
+ * Four separate checks in this file's history fired on the prose explaining a rule
+ * instead of the rule itself — a doc comment naming the provider fields it refuses to
+ * write, a route comment mentioning requirePermission, a comment saying the portal
+ * decides nothing about "finalized periods". A negative assertion cannot tell code from
+ * the sentence describing it, so it must never see the sentence.
+ */
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
 let failures = 0;
 function check(name, fn) {
   try {
@@ -212,6 +227,48 @@ check('the start-only status presents as "Return Started — Label Pending"', ()
   // Presentation only — the backend enum key must NOT be renamed, or every stored row,
   // filter and guard that speaks 'requested' breaks.
   assert.match(presentation, /^\s*'requested',$/m, 'the filter option keeps the enum key');
+});
+
+// ── AC-6: the date-edit surface is STAFF-ONLY and canonical-owned ───────────
+const dateStart = actions.indexOf("'/returns/:id{[0-9]+}/billing-date'");
+const dateBlock = dateStart >= 0 ? actions.slice(dateStart, dateStart + 3600) : '';
+
+check('the billing-date route exists and refuses CLIENT users', () => {
+  assert.ok(dateStart >= 0, 'the staff-only date-edit route must exist');
+  assert.match(dateBlock, /if \(!scope\.isGlobal\)/, 'client users must be refused');
+});
+
+check('a client user gets 404, not 403 (the endpoint is not confirmed to exist)', () => {
+  // AC-6: clients cannot edit the date OR see the audit. A 403 would confirm both that
+  // the endpoint exists and that this return is real.
+  assert.match(dateBlock, /!scope\.isGlobal[\s\S]{0,240}?'Return not found'[\s\S]{0,40}?404/);
+});
+
+check('the portal DECIDES nothing — it proxies to the canonical PrepShip route', () => {
+  assert.match(dateBlock, /\$\{baseUrl\}\/billing\/returns\/\$\{id\}\/billing-date/);
+  // Comment-stripped. This is the FOURTH negative assertion in this session to fire on
+  // the prose explaining a rule rather than the rule — the route's own comment says it
+  // decides nothing about "finalized periods or adjustments". Any negative that scans
+  // source must strip comments first; there is no exception worth remembering.
+  assert.doesNotMatch(
+    stripComments(dateBlock),
+    /finalized|adjustment|billingDateOverride|createBillingCreditNote/i,
+    'PS-487 owns the rule; the portal owns the surface',
+  );
+});
+
+check('the caller\'s own token is forwarded, so PrepShip re-authorises', () => {
+  assert.match(dateBlock, /const authorization = c\.req\.header\('authorization'\)/);
+  assert.match(dateBlock, /authorization,/, 'forward the bearer rather than a portal service key');
+});
+
+check('the canonical status is passed through verbatim (409 stays a 409)', () => {
+  assert.match(dateBlock, /upstream\.status/,
+    're-wording the refusal would hide why a finalized period was blocked');
+});
+
+check('the return must still be in the caller\'s scope', () => {
+  assert.match(dateBlock, /returnScopePredicate\(scope\)/);
 });
 
 // ── AC-4: the optional PDF is private and scoped ────────────────────────────
