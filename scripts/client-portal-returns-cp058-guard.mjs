@@ -92,11 +92,9 @@ check('a $0.00 label cost is accepted (free labels are real)', () => {
   assert.equal(d.externalLabelCost, 0);
 });
 
-check('tracking is trimmed and the carrier is optional', () => {
+check('tracking is trimmed', () => {
   const d = ok({ trackingNumber: '  1Z999AA10123456784  ' });
   assert.equal(d.trackingNumber, '1Z999AA10123456784');
-  assert.equal(d.carrierCode, null);
-  assert.equal(ok({ carrierCode: ' ups ' }).carrierCode, 'ups');
 });
 
 // ── AC-4: never a purchase, never a customer rate ───────────────────────────
@@ -139,6 +137,66 @@ check('the module makes no provider call and imports no carrier connector', () =
 check('the resulting status and audit event are named constants', () => {
   assert.equal(EXTERNAL_TRACKING_RETURN_STATUS, 'label_created');
   assert.equal(EXTERNAL_TRACKING_EVENT, 'external_tracking_assigned');
+});
+
+
+// ── the ROUTE + apply service stay thin and provider-free ───────────────────
+const actions = readFileSync('src/routes/client-portal/returns/actions.ts', 'utf8');
+const applySvc = readFileSync('src/services/return-external-tracking-apply.ts', 'utf8');
+const routeStart = actions.indexOf("'/returns/:id{[0-9]+}/external-tracking'");
+const routeBlock = routeStart >= 0 ? actions.slice(routeStart, routeStart + 3000) : '';
+
+check('the external-tracking route exists and is scope-gated', () => {
+  assert.ok(routeStart >= 0, 'the route must exist');
+  assert.match(routeBlock, /scopeOrResponse\(c\)/);
+  assert.match(routeBlock, /returnScopePredicate\(scope\)/,
+    'an out-of-scope return must not be reachable');
+});
+
+check('the route DELEGATES the decision and the write', () => {
+  assert.match(routeBlock, /resolveReturnExternalTracking\(\{/);
+  assert.match(routeBlock, /applyReturnExternalTracking\(\{/);
+  assert.doesNotMatch(routeBlock, /db\.transaction\(/, 'the write belongs to the service');
+});
+
+check('a rejected decision writes NOTHING', () => {
+  const reject = routeBlock.indexOf("decision.kind === 'rejected'");
+  const apply = routeBlock.indexOf('applyReturnExternalTracking(');
+  assert.ok(reject >= 0 && apply > reject, 'the rejection must return before the write');
+});
+
+check('an already-labelled return answers 409, not a silent overwrite', () => {
+  assert.match(routeBlock, /label_already_exists[\s\S]{0,160}?409/);
+});
+
+check('carrier is NOT a client-supplied field', () => {
+  // client-portal-returns-ui pins that carrier/service/provider stays server-internal.
+  // The first version of this route accepted carrierCode from the request body and broke
+  // that guard, correctly — AC-3 asks only for a tracking number, a cost and a PDF. The
+  // carrier was my addition, not the card's.
+  assert.doesNotMatch(routeBlock, /carrierCode/, 'carrier must stay server-internal');
+});
+
+check('neither the route nor the apply service calls a carrier', () => {
+  // Comment-stripped, for the reason recorded above.
+  const strip = (s) => s
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  for (const [name, src] of [['route', routeBlock], ['apply service', applySvc]]) {
+    assert.doesNotMatch(strip(src), /carrierConnectors|shipstation|easypost|createReturnLabel\(/i,
+      `${name} must never buy postage`);
+  }
+});
+
+check('the canonical slot is claimed by id, and the status moves with it', () => {
+  assert.match(applySvc, /\.update\(returns\)/);
+  assert.match(applySvc, /returnShipmentId: shipment!\.id/);
+  assert.match(applySvc, /status: EXTERNAL_TRACKING_RETURN_STATUS/);
+});
+
+check('the apply service writes no customer-facing rate', () => {
+  assert.doesNotMatch(applySvc, /returnCustomerShippingRate|selectedRateCost/,
+    'the customer-billed amount stays PrepShip-owned (PS-487 AC-2 / PS-435)');
 });
 
 if (failures > 0) {

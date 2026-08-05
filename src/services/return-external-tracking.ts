@@ -26,7 +26,6 @@ export type ExternalTrackingDecision =
       trackingNumber: string;
       /** Operator-entered cost of the label they bought elsewhere. */
       externalLabelCost: number;
-      carrierCode: string | null;
     };
 
 export function resolveReturnExternalTracking(input: {
@@ -37,7 +36,6 @@ export function resolveReturnExternalTracking(input: {
   };
   trackingNumber: unknown;
   labelCost: unknown;
-  carrierCode?: unknown;
 }): ExternalTrackingDecision {
   // Competing-truths check FIRST. A return that already has a PrepShip label must not
   // gain a second, external one — whichever arrived first stays canonical.
@@ -80,11 +78,8 @@ export function resolveReturnExternalTracking(input: {
     };
   }
 
-  const carrierCode = typeof input.carrierCode === 'string' && input.carrierCode.trim()
-    ? input.carrierCode.trim()
-    : null;
 
-  return { kind: 'accept', trackingNumber, externalLabelCost: labelCost, carrierCode };
+  return { kind: 'accept', trackingNumber, externalLabelCost: labelCost };
 }
 
 /**
@@ -104,13 +99,10 @@ export function externalTrackingShipmentFields(decision: {
   kind: 'accept';
   trackingNumber: string;
   externalLabelCost: number;
-  carrierCode: string | null;
 }): {
   isReturn: true;
   trackingNumber: string;
   labelTracking: string;
-  carrierCode: string | null;
-  labelCarrier: string | null;
   cost: string;
   source: 'external_return_label';
   voided: false;
@@ -120,8 +112,6 @@ export function externalTrackingShipmentFields(decision: {
     isReturn: true,
     trackingNumber: decision.trackingNumber,
     labelTracking: decision.trackingNumber,
-    carrierCode: decision.carrierCode,
-    labelCarrier: decision.carrierCode,
     cost,
     source: 'external_return_label',
     voided: false,

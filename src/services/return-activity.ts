@@ -10,6 +10,10 @@ export type ReturnActivityEventType =
   | 'label_failed'
   | 'label_delivered'
   | 'tracking_status_changed'
+  // CP-058: a label bought OUTSIDE PrepShip, recorded by hand. Deliberately distinct
+  // from 'label_created' — the history has to keep saying which returns PrepShip
+  // actually purchased postage for and which it merely recorded.
+  | 'external_tracking_assigned'
   | 'return_closed'
   | 'return_cancelled';
 

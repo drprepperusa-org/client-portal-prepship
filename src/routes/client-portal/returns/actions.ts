@@ -12,6 +12,8 @@ import { scopeOrResponse } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { deliverReturn } from '../../../services/return-delivery';
 import { recordReturnActivity } from '../../../services/return-activity';
+import { EXTERNAL_TRACKING_RETURN_STATUS, resolveReturnExternalTracking } from '../../../services/return-external-tracking';
+import { applyReturnExternalTracking } from '../../../services/return-external-tracking-apply';
 import {
   createReturnLabel,
   ReturnLabelPurchasePendingError,
@@ -318,4 +320,80 @@ export function registerReturnActionRoutes(app: Hono): void {
   registerReturnRecipientNameRoute(app);
   registerReturnLabelRoute(app);
   registerReturnDeliveryRoute(app);
+  registerReturnExternalTrackingRoute(app);
+}
+
+function registerReturnExternalTrackingRoute(app: Hono): void {
+  // CP-058 AC-3/AC-4 — record a return label bought OUTSIDE PrepShip.
+  //
+  // Thin: it loads the return in scope, hands the decision to the canonical rule, and
+  // delegates the write. It calls no carrier and computes no customer rate. The rule
+  // refuses when a PrepShip label already owns this return's tracking state, so the two
+  // paths can never both claim it.
+  app.post('/returns/:id{[0-9]+}/external-tracking', async (c) => {
+    const scope = scopeOrResponse(c);
+    if (!isClientPortalScope(scope)) return scope;
+    const id = Number(c.req.param('id'));
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      trackingNumber?: unknown;
+      labelCost?: unknown;
+    };
+
+    const [ret] = await db
+      .select({
+        id: returns.id,
+        orderId: returns.orderId,
+        clientId: returns.clientId,
+        status: returns.status,
+        returnShipmentId: returns.returnShipmentId,
+      })
+      .from(returns)
+      .where(and(eq(returns.id, id), returnScopePredicate(scope)))
+      .limit(1);
+    if (!ret) return c.json({ error: 'Return not found' }, 404);
+
+    const decision = resolveReturnExternalTracking({
+      return: { status: ret.status, returnShipmentId: ret.returnShipmentId },
+      trackingNumber: body.trackingNumber,
+      labelCost: body.labelCost,
+    });
+    if (decision.kind === 'rejected') {
+      // 409 for a state conflict (already labelled / past the window), 400 for input.
+      const status =
+        decision.code === 'label_already_exists' || decision.code === 'status_not_labelable'
+          ? 409
+          : 400;
+      return c.json({ error: decision.message, code: decision.code }, status);
+    }
+
+    const [order] = await db
+      .select({ orderNumber: orders.orderNumber })
+      .from(orders)
+      .where(eq(orders.id, ret.orderId))
+      .limit(1);
+
+    const result = await applyReturnExternalTracking({
+      returnId: ret.id,
+      orderId: ret.orderId,
+      clientId: ret.clientId,
+      orderNumber: order?.orderNumber ?? null,
+      decision,
+      actorEmail: scope.email,
+      actorType: scope.isGlobal ? 'operator' : 'client',
+    });
+
+    await recordPortalAudit('portal.returns.external_tracking.assign', scope, {
+      returnId: id,
+      returnShipmentId: result.returnShipmentId,
+      trackingNumber: decision.trackingNumber,
+    });
+    return c.json({
+      data: {
+        id: ret.id,
+        status: EXTERNAL_TRACKING_RETURN_STATUS,
+        returnShipmentId: result.returnShipmentId,
+      },
+    });
+  });
 }
