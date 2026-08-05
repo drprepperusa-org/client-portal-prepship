@@ -199,6 +199,52 @@ check('the apply service writes no customer-facing rate', () => {
     'the customer-billed amount stays PrepShip-owned (PS-487 AC-2 / PS-435)');
 });
 
+// ── AC-4: the optional PDF is private and scoped ────────────────────────────
+const pdfStart = actions.indexOf("'/returns/:id{[0-9]+}/external-label-pdf'");
+const pdfBlock = pdfStart >= 0 ? actions.slice(pdfStart, pdfStart + 3200) : '';
+
+check('the external-label PDF route exists and is scope-gated', () => {
+  assert.ok(pdfStart >= 0, 'the PDF route must exist');
+  assert.match(pdfBlock, /scopeOrResponse\(c\)/);
+  assert.match(pdfBlock, /returnScopePredicate\(scope\)/);
+});
+
+check('the PDF goes to the PRIVATE bucket, and only its path is persisted', () => {
+  // CP-030's bucket is private and read through short-lived signed URLs. Reusing it is
+  // what makes AC-4's "private/scoped" true; a second storage mechanism would be a
+  // second chance to publish a customer document by accident.
+  assert.match(pdfBlock, /uploadReturnInspectionMedia\(objectPath/);
+  assert.match(pdfBlock, /labelUrl: objectPath/, 'persist the object PATH, never the binary');
+  assert.doesNotMatch(pdfBlock, /getPublicUrl|publicUrl/, 'the bucket must never be public');
+});
+
+check('only a PDF, and only within the size limit', () => {
+  assert.match(pdfBlock, /file\.type !== 'application\/pdf'/);
+  assert.match(pdfBlock, /file\.size > EXTERNAL_LABEL_PDF_MAX_BYTES/);
+  assert.match(pdfBlock, /413/, 'an oversized upload must be refused, not truncated');
+});
+
+check('the filename is sanitised before it becomes an object path', () => {
+  assert.match(pdfBlock, /replace\(\/\[\^a-zA-Z0-9\._-\]\/g, '_'\)/,
+    'an unsanitised name lets a caller shape the storage path');
+});
+
+check('a PrepShip label\'s PDF can never be replaced by this route', () => {
+  // One return, one label document. Overwriting a PrepShip label PDF with a hand-uploaded
+  // one is the same competing-truths failure AC-4 forbids for tracking.
+  assert.match(pdfBlock, /shipmentSource !== 'external_return_label'/);
+  assert.match(pdfBlock, /returnShipmentId == null[\s\S]{0,200}?409/,
+    'a return with no external tracking yet has nothing to attach a PDF to');
+});
+
+check('a failed upload does NOT persist a dead reference', () => {
+  const upload = pdfBlock.indexOf('uploadReturnInspectionMedia(');
+  const persist = pdfBlock.indexOf('labelUrl: objectPath');
+  const fail = pdfBlock.indexOf('502');
+  assert.ok(upload >= 0 && fail > upload && persist > fail,
+    'the 502 must return before the row is updated');
+});
+
 if (failures > 0) {
   console.error(`\nFAIL CP-058 external tracking guard (${failures} failing)`);
   process.exit(1);
