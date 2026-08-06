@@ -744,3 +744,63 @@ test('settings access presents a focused master-detail roster', async ({ page })
   expect(hasMobileHorizontalOverflow).toBe(false);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+// ── CP-058 AC-8 — browser evidence for the return flows ──────────────────────
+//
+// Every CP-058 guard so far is static: it reads source and asserts what the code says.
+// These render the actual UI, because the defect this card already produced was a
+// backend route with no button — source-level checks passed while an operator had no
+// way to reach the feature.
+
+test('CP-058 AC-1/AC-2: a label-pending return reads as a deliberate state', async ({ page }) => {
+  const errors = await setupPortal(page, { returnOverrides: { status: 'requested' } });
+  await page.goto(`${baseUrl}/returns`);
+
+  // "Requested" invited "requested from whom?". The return exists and is waiting on a
+  // label, which is what the operator actually needs to know.
+  //
+  // Scoped to the ROW on purpose. A page-wide text match also resolves the hidden
+  // <option> in the status filter, so it would pass even if no row ever rendered the
+  // label — it would be proving the dropdown exists, not the status.
+  const row = page.getByRole('row').filter({ hasText: 'E2E-RET-1' });
+  await expect(row.getByText('Return Started — Label Pending')).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-058 AC-3/AC-4: the external-tracking surface is reachable and asks for no provider', async ({ page }) => {
+  const errors = await setupPortal(page, { returnOverrides: { status: 'requested' } });
+  await page.goto(`${baseUrl}/returns`);
+  await page.getByRole('button', { name: 'View return E2E-RET-1' }).click();
+  const drawer = page.getByRole('dialog');
+
+  await expect(drawer.getByText('Assign external tracking')).toBeVisible();
+  await expect(drawer.getByPlaceholder('Tracking number')).toBeVisible();
+  await expect(drawer.getByPlaceholder('Label cost')).toBeVisible();
+
+  // Carrier/service/provider are server-internal. A field for any of them would make the
+  // portal a second owner of label identity — the exact rule the route enforces.
+  const panel = await drawer.innerText();
+  for (const forbidden of ['Carrier', 'Service', 'Provider']) {
+    expect(panel.includes(`${forbidden} account`), `${forbidden} must not be collected`).toBe(false);
+  }
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-058 AC-6: the billing-date surface is staff-only', async ({ page }) => {
+  // Staff see it.
+  const staffErrors = await setupPortal(page, { admin: true, returnOverrides: { status: 'requested' } });
+  await page.goto(`${baseUrl}/returns`);
+  await page.getByRole('button', { name: 'View return E2E-RET-1' }).click();
+  await expect(page.getByRole('dialog').getByText('Correct billing date')).toBeVisible();
+  expect(staffErrors, staffErrors.join('\n')).toEqual([]);
+});
+
+test('CP-058 AC-6: a client user cannot see the billing-date surface at all', async ({ page }) => {
+  // Not merely disabled — absent. AC-6 says clients can neither edit the date nor see the
+  // audit, and a visible-but-disabled control still discloses that the capability exists.
+  const errors = await setupPortal(page, { admin: false, returnOverrides: { status: 'requested' } });
+  await page.goto(`${baseUrl}/returns`);
+  await page.getByRole('button', { name: 'View return E2E-RET-1' }).click();
+  await expect(page.getByRole('dialog').getByText('Correct billing date')).toHaveCount(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
