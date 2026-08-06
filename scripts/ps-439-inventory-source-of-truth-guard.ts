@@ -12,6 +12,10 @@ const page = read('portal-client/src/pages/Inventory.tsx');
 const receiveModal = read('portal-client/src/components/inbound/ReceiveInventoryModal.tsx');
 const returns = [
   read('src/routes/client-portal/returns/actions.ts'),
+  // Split out of actions.ts. They belong in this blob or the negative below silently
+  // stops scanning them, and a vacuous negative proves nothing.
+  read('src/routes/client-portal/returns/external-label.ts'),
+  read('src/routes/client-portal/returns/billing-date.ts'),
   read('src/services/returns.ts'),
   read('src/services/return-label-purchase-intents.ts'),
 ].join('\n');

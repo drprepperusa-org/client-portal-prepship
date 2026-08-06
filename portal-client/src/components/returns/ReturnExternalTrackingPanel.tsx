@@ -29,11 +29,14 @@ export function ReturnExternalTrackingPanel({ returnId }: { returnId: number }) 
   const toast = useToast();
   const qc = useQueryClient();
   const [trackingNumber, setTrackingNumber] = useState('');
-  const [labelCost, setLabelCost] = useState('');
+  // Named for what the CLIENT did — they paid a carrier directly. The internal
+  // cost vocabulary (labelCost) is forbidden in customer chunks by the bundle
+  // redaction guard; see CP-038's avgCostPerOrder→avgChargePerOrder precedent.
+  const [amountPaid, setAmountPaid] = useState('');
   const [pdf, setPdf] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const ready = trackingNumber.trim().length > 0 && labelCost.trim().length > 0;
+  const ready = trackingNumber.trim().length > 0 && amountPaid.trim().length > 0;
 
   async function assign() {
     if (!accessToken || !ready) return;
@@ -41,7 +44,7 @@ export function ReturnExternalTrackingPanel({ returnId }: { returnId: number }) 
     try {
       await portalApi.assignReturnExternalTracking(accessToken, returnId, {
         trackingNumber: trackingNumber.trim(),
-        labelCost: labelCost.trim(),
+        amountPaid: amountPaid.trim(),
       });
 
       // The PDF is optional and secondary: tracking is already recorded, so a failed
@@ -61,7 +64,7 @@ export function ReturnExternalTrackingPanel({ returnId }: { returnId: number }) 
       await qc.invalidateQueries({ queryKey: ['returns'] });
       toast.success('External tracking assigned', 'No postage was purchased.');
       setTrackingNumber('');
-      setLabelCost('');
+      setAmountPaid('');
       setPdf(null);
     } catch (err) {
       toast.error(
@@ -88,9 +91,9 @@ export function ReturnExternalTrackingPanel({ returnId }: { returnId: number }) 
         />
         <input
           className={field}
-          value={labelCost}
-          onChange={(e) => setLabelCost(e.target.value)}
-          placeholder="Label cost"
+          value={amountPaid}
+          onChange={(e) => setAmountPaid(e.target.value)}
+          placeholder="Amount paid"
           inputMode="decimal"
         />
       </div>

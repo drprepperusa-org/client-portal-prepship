@@ -40,7 +40,7 @@ function check(name, fn) {
 
 const pending = { status: 'requested', returnShipmentId: null };
 const ok = (o = {}) => resolveReturnExternalTracking({
-  return: pending, trackingNumber: '1Z999AA10123456784', labelCost: '7.95', ...o,
+  return: pending, trackingNumber: '1Z999AA10123456784', amountPaid: '7.95', ...o,
 });
 
 // ── AC-4: one canonical label state ─────────────────────────────────────────
@@ -48,7 +48,7 @@ check('a return that ALREADY has a PrepShip label refuses external tracking', ()
   const d = resolveReturnExternalTracking({
     return: { status: 'label_created', returnShipmentId: 28887 },
     trackingNumber: '1Z999AA10123456784',
-    labelCost: '7.95',
+    amountPaid: '7.95',
   });
   assert.equal(d.kind, 'rejected');
   assert.equal(d.code, 'label_already_exists',
@@ -61,7 +61,7 @@ check('the competing-truths check runs BEFORE any field validation', () => {
   const d = resolveReturnExternalTracking({
     return: { status: 'label_created', returnShipmentId: 28887 },
     trackingNumber: '',
-    labelCost: '',
+    amountPaid: '',
   });
   assert.equal(d.code, 'label_already_exists');
 });
@@ -71,7 +71,7 @@ check('a return past the labelable window refuses tracking', () => {
     const d = resolveReturnExternalTracking({
       return: { status, returnShipmentId: null },
       trackingNumber: '1Z999AA10123456784',
-      labelCost: '7.95',
+      amountPaid: '7.95',
     });
     assert.equal(d.code, 'status_not_labelable', status);
   }
@@ -82,7 +82,7 @@ check('a label-pending or failed return accepts it', () => {
     const d = resolveReturnExternalTracking({
       return: { status, returnShipmentId: null },
       trackingNumber: '1Z999AA10123456784',
-      labelCost: '7.95',
+      amountPaid: '7.95',
     });
     assert.equal(d.kind, 'accept', status);
   }
@@ -96,13 +96,13 @@ check('a tracking number is required', () => {
 });
 
 check('a label cost is required', () => {
-  for (const labelCost of ['', null, undefined, 'abc', -1]) {
-    assert.equal(ok({ labelCost }).code, 'label_cost_required', String(labelCost));
+  for (const amountPaid of ['', null, undefined, 'abc', -1]) {
+    assert.equal(ok({ amountPaid }).code, 'amount_paid_required', String(amountPaid));
   }
 });
 
 check('a $0.00 label cost is accepted (free labels are real)', () => {
-  const d = ok({ labelCost: '0.00' });
+  const d = ok({ amountPaid: '0.00' });
   assert.equal(d.kind, 'accept');
   assert.equal(d.externalLabelCost, 0);
 });
@@ -128,7 +128,7 @@ check('the recorded shipment carries NO provider identity', () => {
 });
 
 check('the external cost NEVER becomes a customer-facing rate', () => {
-  const fields = externalTrackingShipmentFields(ok({ labelCost: '12.34' }));
+  const fields = externalTrackingShipmentFields(ok({ amountPaid: '12.34' }));
   assert.equal(fields.cost, '12.34', 'the operator-entered cost is recorded as cost');
   // selectedRateCost and the customer rate are PrepShip-owned (PS-487 AC-2 / PS-435).
   assert.ok(!('selectedRateCost' in fields));
@@ -157,9 +157,14 @@ check('the resulting status and audit event are named constants', () => {
 
 // ── the ROUTE + apply service stay thin and provider-free ───────────────────
 const actions = readFileSync('src/routes/client-portal/returns/actions.ts', 'utf8');
+// The CP-058 routes live in their own files; actions.ts keeps the create route and the
+// aggregator. Each block below still asserts its route EXISTS before the negatives run —
+// on an empty block a doesNotMatch passes vacuously and proves nothing.
+const externalLabel = readFileSync('src/routes/client-portal/returns/external-label.ts', 'utf8');
+const billingDate = readFileSync('src/routes/client-portal/returns/billing-date.ts', 'utf8');
 const applySvc = readFileSync('src/services/return-external-tracking-apply.ts', 'utf8');
-const routeStart = actions.indexOf("'/returns/:id{[0-9]+}/external-tracking'");
-const routeBlock = routeStart >= 0 ? actions.slice(routeStart, routeStart + 3000) : '';
+const routeStart = externalLabel.indexOf("'/returns/:id{[0-9]+}/external-tracking'");
+const routeBlock = routeStart >= 0 ? externalLabel.slice(routeStart, routeStart + 3000) : '';
 
 check('the external-tracking route exists and is scope-gated', () => {
   assert.ok(routeStart >= 0, 'the route must exist');
@@ -230,8 +235,8 @@ check('the start-only status presents as "Return Started — Label Pending"', ()
 });
 
 // ── AC-6: the date-edit surface is STAFF-ONLY and canonical-owned ───────────
-const dateStart = actions.indexOf("'/returns/:id{[0-9]+}/billing-date'");
-const dateBlock = dateStart >= 0 ? actions.slice(dateStart, dateStart + 3600) : '';
+const dateStart = billingDate.indexOf("'/returns/:id{[0-9]+}/billing-date'");
+const dateBlock = dateStart >= 0 ? billingDate.slice(dateStart, dateStart + 3600) : '';
 
 check('the billing-date route exists and refuses CLIENT users', () => {
   assert.ok(dateStart >= 0, 'the staff-only date-edit route must exist');
@@ -272,8 +277,8 @@ check('the return must still be in the caller\'s scope', () => {
 });
 
 // ── AC-4: the optional PDF is private and scoped ────────────────────────────
-const pdfStart = actions.indexOf("'/returns/:id{[0-9]+}/external-label-pdf'");
-const pdfBlock = pdfStart >= 0 ? actions.slice(pdfStart, pdfStart + 3200) : '';
+const pdfStart = externalLabel.indexOf("'/returns/:id{[0-9]+}/external-label-pdf'");
+const pdfBlock = pdfStart >= 0 ? externalLabel.slice(pdfStart, pdfStart + 3200) : '';
 
 check('the external-label PDF route exists and is scope-gated', () => {
   assert.ok(pdfStart >= 0, 'the PDF route must exist');

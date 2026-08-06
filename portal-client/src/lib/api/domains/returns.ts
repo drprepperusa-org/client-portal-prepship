@@ -42,7 +42,7 @@ export const returnsApi = {
   assignReturnExternalTracking: (
     token: string,
     id: number,
-    body: { trackingNumber: string; labelCost: string },
+    body: { trackingNumber: string; amountPaid: string },
   ) =>
     apiPost<{ data: { id: number; returnShipmentId: number; status: string } }>(
       token,

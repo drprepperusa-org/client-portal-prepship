@@ -775,7 +775,7 @@ test('CP-058 AC-3/AC-4: the external-tracking surface is reachable and asks for 
 
   await expect(drawer.getByText('Assign external tracking')).toBeVisible();
   await expect(drawer.getByPlaceholder('Tracking number')).toBeVisible();
-  await expect(drawer.getByPlaceholder('Label cost')).toBeVisible();
+  await expect(drawer.getByPlaceholder('Amount paid')).toBeVisible();
 
   // Carrier/service/provider are server-internal. A field for any of them would make the
   // portal a second owner of label identity — the exact rule the route enforces.

@@ -15,7 +15,9 @@ const LABELABLE_STATUSES = new Set(['requested', 'label_failed']);
 
 export type ExternalTrackingRejection =
   | 'tracking_required'
-  | 'label_cost_required'
+  // The client-facing name is amountPaid: the internal cost vocabulary is forbidden
+  // in customer bundles, and this code travels to the portal in the error body.
+  | 'amount_paid_required'
   | 'label_already_exists'
   | 'status_not_labelable';
 
@@ -35,7 +37,8 @@ export function resolveReturnExternalTracking(input: {
     returnShipmentId: number | null;
   };
   trackingNumber: unknown;
-  labelCost: unknown;
+  /** What the client paid a carrier directly. Client-facing name; see the rejection type. */
+  amountPaid: unknown;
 }): ExternalTrackingDecision {
   // Competing-truths check FIRST. A return that already has a PrepShip label must not
   // gain a second, external one — whichever arrived first stays canonical.
@@ -67,19 +70,19 @@ export function resolveReturnExternalTracking(input: {
   // actually cost — NOT so it can become what the client is charged. A configured $0.00
   // is a real answer ("the label was free"), so only a missing or nonsensical value is
   // refused.
-  const labelCost = input.labelCost === '' || input.labelCost == null
+  const amountPaid = input.amountPaid === '' || input.amountPaid == null
     ? Number.NaN
-    : Number(input.labelCost);
-  if (!Number.isFinite(labelCost) || labelCost < 0) {
+    : Number(input.amountPaid);
+  if (!Number.isFinite(amountPaid) || amountPaid < 0) {
     return {
       kind: 'rejected',
-      code: 'label_cost_required',
-      message: 'A label cost is required (use 0 if the label was free).',
+      code: 'amount_paid_required',
+      message: 'An amount paid is required (use 0 if the label was free).',
     };
   }
 
 
-  return { kind: 'accept', trackingNumber, externalLabelCost: labelCost };
+  return { kind: 'accept', trackingNumber, externalLabelCost: amountPaid };
 }
 
 /**
