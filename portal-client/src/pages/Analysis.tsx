@@ -272,6 +272,7 @@ function OrderCombinationsTable({ rows, canCustomizeTables }: { rows: AnalysisOr
       rows={rows}
       rowKey={(row) => row.combinationKey}
       allowColumnCustomization={canCustomizeTables}
+      stickyHeader
     />
   );
 }
