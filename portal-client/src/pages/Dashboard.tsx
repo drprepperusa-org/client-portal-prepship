@@ -218,6 +218,7 @@ export default function Dashboard() {
                   rows={topSkuRows}
                   rowKey={(s) => s.sku}
                   allowColumnCustomization={canCustomizeTables}
+                  stickyHeader
                 />
               )}
             </div>
