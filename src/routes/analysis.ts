@@ -274,27 +274,39 @@ function withAnalysisScope<T extends object>(c: Context, q: T): T & ClientStoreS
 }
 
 function analysisOrderScopePredicate(q: AnalysisScopeInput): SQL {
+  // An UNRESTRICTED caller sees everything. A global admin token can still carry
+  // clientIds/storeIds, and applying those silently narrowed them to just those
+  // stores — picking a client whose store was absent returned an empty Analysis
+  // while "All clients" looked fine. predicates.ts already returns early on
+  // !isRestricted; this had diverged. The explicit storeId filter still applies.
+  const restricted = q.scopeRestricted === true || q.isRestricted === true;
   const predicates: SQL[] = [];
-  const clientIds = normalizeScopeIds(q.clientIds);
-  const storeIds = normalizeScopeIds(q.storeIds);
-
-  if (clientIds.length) {
-    predicates.push(sql`o.client_id = any(${intArraySql(clientIds)})`);
+  if (restricted) {
+    const clientIds = normalizeScopeIds(q.clientIds);
+    const storeIds = normalizeScopeIds(q.storeIds);
+    if (clientIds.length) {
+      predicates.push(sql`o.client_id = any(${intArraySql(clientIds)})`);
+    }
+    if (storeIds.length) {
+      predicates.push(sql`o.store_id = any(${intArraySql(storeIds)})`);
+    }
   }
-  if (storeIds.length) {
-    predicates.push(sql`o.store_id = any(${intArraySql(storeIds)})`);
-  }
-  const scopePredicate = !predicates.length
-    ? (q.scopeRestricted === true || q.isRestricted === true ? sql`false` : sql`true`)
-    : predicates.length === 1
-      ? predicates[0]!
-      : sql`(${sql.join(predicates, sql` or `)})`;
+  const scopePredicate = !restricted
+    ? sql`true`
+    : !predicates.length
+      ? sql`false`
+      : predicates.length === 1
+        ? predicates[0]!
+        : sql`(${sql.join(predicates, sql` or `)})`;
   return q.storeId === undefined
     ? scopePredicate
     : sql`(${scopePredicate}) and o.store_id = ${q.storeId}`;
 }
 
 function analysisShipmentScopePredicate(q: AnalysisScopeInput): SQL {
+  // Same rule as analysisOrderScopePredicate: unrestricted means unrestricted.
+  const restricted = q.scopeRestricted === true || q.isRestricted === true;
+  if (!restricted) return sql`true`;
   const predicates: SQL[] = [];
   const clientIds = normalizeScopeIds(q.clientIds);
   const storeIds = normalizeScopeIds(q.storeIds);
@@ -310,7 +322,7 @@ function analysisShipmentScopePredicate(q: AnalysisScopeInput): SQL {
     )`);
   }
   if (!predicates.length) {
-    return q.scopeRestricted === true || q.isRestricted === true ? sql`false` : sql`true`;
+    return sql`false`;
   }
   if (predicates.length === 1) return predicates[0]!;
   return sql`(${sql.join(predicates, sql` or `)})`;
