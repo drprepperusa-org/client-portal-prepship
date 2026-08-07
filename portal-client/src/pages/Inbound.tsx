@@ -112,6 +112,7 @@ export default function Inbound() {
             rows={receiptRows}
             rowKey={(row) => String(row.id)}
             allowColumnCustomization={canCustomizeTables}
+            stickyHeader
           />
           {receiptPagination && (
             <Pagination
@@ -151,6 +152,7 @@ export default function Inbound() {
             onRowClick={setSelected}
             rowActionLabel={(row) => `View inbound ${row.reference ?? `#${row.id}`}`}
             allowColumnCustomization={canCustomizeTables}
+            stickyHeader
           />
         </QueryState>
       </GlassPanel>

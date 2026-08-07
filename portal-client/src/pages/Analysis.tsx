@@ -190,6 +190,7 @@ export default function Analysis() {
             rowActionLabel={(r) => `View SKU details for ${r.sku}`}
             allowColumnCustomization={canCustomizeTables}
             empty={<EmptyState icon={<Inbox size={24} />} title="No analytics yet" message="SKU analytics will appear here once orders are synced." />}
+            stickyHeader
           />
         )}
       </GlassPanel>

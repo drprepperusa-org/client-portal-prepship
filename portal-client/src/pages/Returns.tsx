@@ -292,13 +292,7 @@ export default function Returns() {
         </div>
       </GlassPanel>
 
-      {/*
-        min-h mirrors DataTable's own maxBodyHeight (calc(100vh - 15rem)) so the
-        panel reaches the bottom of the viewport on a short list instead of
-        shrink-wrapping a handful of rows. stickyHeader alone only caps the
-        height; it does not fill it.
-      */}
-      <GlassPanel className="min-h-[calc(100vh-15rem)] p-2 sm:p-3">
+      <GlassPanel className="p-2 sm:p-3">
         <QueryState
           isLoading={query.isLoading && !returnsFetchFailed}
           isError={query.isError || returnsFetchFailed}

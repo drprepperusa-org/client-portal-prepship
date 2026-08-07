@@ -194,7 +194,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           emptyTitle="No SKUs found"
           emptyMessage="No inventory matches this view."
         >
-          <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} />
+          <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && (
             <Pagination
               page={pg.page}
@@ -274,7 +274,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
           emptyTitle="No movements"
           emptyMessage="No inventory movements for the selected filters and date range."
         >
-          <DataTable tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} />
+          <DataTable tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && (
             <Pagination
               page={pg.page}

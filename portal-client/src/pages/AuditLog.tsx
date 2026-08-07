@@ -355,6 +355,7 @@ export default function AuditLog() {
             rows={visibleRows}
             rowKey={(row) => String(row.id)}
             allowColumnCustomization={canCustomizeTables}
+            stickyHeader
           />
         ) : (
           <EmptyState
