@@ -2,7 +2,7 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
-import { and, desc, eq, gte, ilike, inArray, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { inventory, inventoryLedger } from '../../db/schema/inventory';
@@ -11,7 +11,7 @@ import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { inventoryLedgerScopePredicate, inventoryScopePredicate } from '../../lib/client-portal/predicates';
 import { listPortalInventory } from '../../lib/client-portal/read-models/inventory';
 import { applyMovements } from '../../services/inventory';
-import { parsePage, parsePageSize, parseDate, requestedClientId, requestedStoreId, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
+import { asTimestamp, parsePage, parsePageSize, parseDate, requestedClientId, requestedStoreId, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
 
@@ -56,8 +56,15 @@ app.get('/inventory-history', async (c) => {
     inventoryLedgerScopePredicate(scope, { clientId, storeId }),
     sku ? ilike(movementSku, `%${sku}%`) : undefined,
     type ? eq(inventoryLedger.type, type) : undefined,
-    from ? gte(movementClock, from) : undefined,
-    to ? lte(movementClock, to) : undefined,
+    // Explicit ::timestamptz cast, NOT drizzle gte/lte.
+    //
+    // movementClock is a raw coalesce() expression carrying no column type, so
+    // gte(movementClock, date) bound the parameter untyped and Postgres could not
+    // resolve the comparison. Every request with from/to returned 500 while an
+    // unfiltered one succeeded — which is why the History tab failed but the
+    // Stock Levels tab did not.
+    from ? sql`${movementClock} >= ${asTimestamp(from)}::timestamptz` : undefined,
+    to ? sql`${movementClock} <= ${asTimestamp(to)}::timestamptz` : undefined,
   );
   const rows = await db
     .select({
