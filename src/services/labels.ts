@@ -32,6 +32,9 @@ import {
 import { addMockLabelSignature } from '../lib/mock-label-access';
 import { confirmationProviderForOrder, marketplaceConfirmationPayload } from './labels-confirmation';
 import { saveMockLabel } from './mock-label-store';
+// CP-057: the intent state machine is owned by return-label-purchase-intents.ts; this file
+// reports the confirmed void event and does not reach into the intent schema itself.
+import { markReturnLabelPurchaseVoidedForShipment } from './return-label-purchase-intents';
 
 // Batch-label callers don't carry a panel-selected package, so customPackageId
 // is often null. When dims are present, fall back to the same ±0.1" tolerance
@@ -867,6 +870,34 @@ export async function voidLabelV2(shipmentId: number): Promise<VoidLabelResponse
     .update(shipments)
     .set({ voided: true, updatedAt: now })
     .where(eq(shipments.id, row.id));
+
+  // CP-057: a voided RETURN label must also advance its purchase intent, or the intent
+  // stays at `completed` and UNIQUE (return_id) forbids buying a replacement — the return
+  // is stranded with a dead label. `shipments.voided` above remains canonical for whether
+  // postage was voided; this is only the derived lifecycle marker written from that event.
+  //
+  // Ordered deliberately: the provider void already succeeded (it throws above otherwise)
+  // and the local void is committed, so the intent can only advance behind a real,
+  // confirmed void. A failure here must NOT undo a void that already happened at the
+  // provider, so it is logged rather than thrown: the shipment is voided either way, and a
+  // stranded intent is recoverable while a phantom un-void is not.
+  try {
+    const advancedIntentId = await markReturnLabelPurchaseVoidedForShipment(row.id, {
+      note: `Return label voided for shipment ${row.id}`,
+      actor: 'labels.voidLabelV2',
+    });
+    if (advancedIntentId != null) {
+      console.log('[labels] CP-057 return purchase intent voided', {
+        shipmentId: row.id,
+        intentId: advancedIntentId,
+      });
+    }
+  } catch (err) {
+    console.error(
+      '[labels] CP-057 return purchase intent could not be advanced after void:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   // Reset the order back to awaiting_shipment so a new label can be created.
   if (row.orderId) {

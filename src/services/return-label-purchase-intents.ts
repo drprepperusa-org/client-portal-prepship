@@ -418,6 +418,42 @@ export async function markReturnLabelPurchaseVoided(
   if (!updated) throw new Error('Only a completed return label purchase intent can be voided');
 }
 
+/**
+ * Advance the intent for a voided return SHIPMENT, if there is one.
+ *
+ * CP-057 correction. `markReturnLabelPurchaseVoided` above was correct and
+ * completely orphaned — a repository-wide search found its definition and the
+ * guard that asserts its text, and no production caller. So a real void set
+ * `shipments.voided = true` and left the intent stranded at `completed`, where
+ * UNIQUE (return_id) then forbade ever buying a replacement label. The state
+ * machine was right; nothing drove it.
+ *
+ * The lookup lives here rather than in the void path because this module owns
+ * the intent table and its transitions. `labels.ts` should say "this shipment
+ * was voided" and not have to learn the intent schema to do it.
+ *
+ * Returns the intent id it advanced, or null when the shipment is not a return
+ * label or carries no intent. A NO-OP is the correct outcome for an ordinary
+ * outbound void, not an error — most voids are not returns.
+ */
+export async function markReturnLabelPurchaseVoidedForShipment(
+  shipmentId: number,
+  resolution: { note: string; actor: string },
+): Promise<number | null> {
+  const [intent] = await db
+    .select({ id: returnLabelPurchaseIntents.id, state: returnLabelPurchaseIntents.state })
+    .from(returnLabelPurchaseIntents)
+    .where(eq(returnLabelPurchaseIntents.returnShipmentId, shipmentId))
+    .limit(1);
+  if (!intent) return null;
+  // Only a completed intent is voidable. Anything mid-flight must resolve through
+  // the unknown-outcome path first, and re-voiding an already-voided intent would
+  // rotate its key a second time for no reason.
+  if (intent.state !== 'completed') return null;
+  await markReturnLabelPurchaseVoided(intent.id, resolution);
+  return intent.id;
+}
+
 export function selectedRateFromIntent(intent: ReturnLabelPurchaseIntent): Rate | null {
   const value = intent.selectedRateJson as Partial<Rate> | null;
   return value && typeof value.carrier_id === 'string' && typeof value.service_code === 'string'

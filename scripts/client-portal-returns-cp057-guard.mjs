@@ -174,5 +174,36 @@ assert(
   );
 }
 
+// CP-057 correction: every assertion above proves the void TRANSITION is correct, and all of
+// them passed while `markReturnLabelPurchaseVoided` had no production caller anywhere. The
+// state machine was right and nothing drove it, so a real void left the intent stranded at
+// `completed`, where UNIQUE (return_id) forbids buying a replacement label. A guard that only
+// reads the helper cannot see that. These assert the WIRING.
+{
+  const labelsService = read('src/services/labels.ts');
+  assert(
+    /markReturnLabelPurchaseVoidedForShipment/.test(labelsService),
+    'the canonical void path advances the return purchase intent (not merely defines the helper)',
+  );
+  assert(
+    /export async function markReturnLabelPurchaseVoidedForShipment/.test(intents),
+    'the by-shipment lookup lives in the intents module, which owns the state machine',
+  );
+  const voidFn = labelsService.indexOf('export async function voidLabelV2');
+  const body = voidFn === -1 ? '' : labelsService.slice(voidFn, voidFn + 5000);
+  const setVoided = body.indexOf('.set({ voided: true');
+  const advance = body.indexOf('markReturnLabelPurchaseVoidedForShipment');
+  assert(
+    setVoided !== -1 && advance !== -1 && advance > setVoided,
+    'the intent advances only AFTER the canonical shipments.voided write, never before it',
+  );
+  // A stranded intent is recoverable; a void reported failed after the provider already
+  // voided is not. So this must never throw back into the void path.
+  assert(
+    /CP-057 return purchase intent could not be advanced/.test(body),
+    'a failure advancing the intent cannot fail a void that already happened at the provider',
+  );
+}
+
 if (failed) process.exit(1);
 console.log('PASS CP-057 static guard passed.');
