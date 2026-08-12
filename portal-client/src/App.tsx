@@ -17,6 +17,7 @@ const Orders = lazy(() => import('./pages/Orders'));
 const Inbound = lazy(() => import('./pages/Inbound'));
 const Shipments = lazy(() => import('./pages/Shipments'));
 const Returns = lazy(() => import('./pages/Returns'));
+const Replace = lazy(() => import('./pages/Replace'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Analysis = lazy(() => import('./pages/Analysis'));
 const Billing = lazy(() => import('./pages/Billing'));
@@ -105,6 +106,7 @@ export default function App() {
         <Route path="/inbound" element={<Lazy el={<Inbound />} />} />
         <Route path="/shipments" element={<Lazy el={<Shipments />} />} />
         <Route path="/returns" element={<Lazy el={<Returns />} />} />
+        <Route path="/replace" element={<Lazy el={<Replace />} />} />
         <Route path="/inventory" element={<Lazy el={<Inventory />} />} />
         <Route path="/analysis" element={<Lazy el={<Analysis />} />} />
         <Route path="/billing" element={<Lazy el={<Billing />} />} />
