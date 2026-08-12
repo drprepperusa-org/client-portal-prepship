@@ -8,6 +8,7 @@ import { isAllowedCorsOrigin } from './lib/http/cors';
 import { observeApiTiming } from './lib/http/api-metrics';
 import { appendServerTiming, elapsedMs, nowMs } from './lib/http/timing';
 import { requireAdmin, requireAuth } from './middleware/auth';
+import { requestTimeout } from './middleware/request-timeout';
 import health from './routes/health';
 import ordersRoute from './routes/orders';
 import shipmentsRoute from './routes/shipments';
@@ -115,6 +116,11 @@ app.use(
     exposeHeaders: ['X-Request-Id', 'Server-Timing'],
   })
 );
+
+// Bound every request before it reaches auth or a route handler, so a starved
+// pool answers with a 503 the UI can render instead of hanging until the
+// browser aborts. Long-running routes exempt themselves inside the middleware.
+app.use('*', requestTimeout);
 
 // PS-462: production Client Portal is a shadow renderer. Operational PrepShip
 // routes (including local billing generation/editing) cannot be enabled there.

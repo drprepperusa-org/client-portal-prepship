@@ -50,6 +50,11 @@ const schema = z.object({
   // transaction, not executing, so Postgres never applies it. Without this a
   // stalled peer holds a pooled connection until the pooler hard-kills it.
   DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Whole-request budget. Sits above DB_STATEMENT_TIMEOUT_MS (a single slow
+  // query fails on its own first) and below the browser's 30s abort, so a
+  // starved pool returns an actionable 503 instead of a socket that hangs
+  // until the client gives up and the UI renders skeletons forever.
+  REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   STRICT_JWT_CLAIMS: booleanFlag(false),
   CLIENT_PORTAL_ONLY_API: booleanFlag(true),
   // CP-027 — return-label live-postage approval flag. OFF by default: the
