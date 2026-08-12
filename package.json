@@ -205,6 +205,7 @@
     "test:shipstation-carrier-account-identity": "tsx scripts/shipstation-carrier-account-identity-guard.ts",
     "test:shopify-order-normalization": "tsx scripts/shopify-order-normalization-test.ts",
     "test:health-deep-readiness": "node scripts/health-deep-readiness-guard.mjs",
+    "test:health-request-pool": "tsx scripts/health-request-pool-runtime.ts",
     "status:sync": "tsx scripts/status-sync.ts",
     "test:status:sync": "tsx scripts/status-sync.ts --check",
     "test:sync-advisory-lock": "node scripts/sync-advisory-lock-guard.mjs",

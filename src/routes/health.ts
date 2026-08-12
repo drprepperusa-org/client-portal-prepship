@@ -2,9 +2,11 @@ import { Hono } from 'hono';
 import postgres from 'postgres';
 import { performance } from 'node:perf_hooks';
 import { env } from '../lib/env';
+import { sql } from '../db/client';
 
 const app = new Hono();
 const DB_HEALTH_TIMEOUT_MS = env.DB_HEALTH_TIMEOUT_MS;
+const DB_POOL_HEALTH_TIMEOUT_MS = env.DB_POOL_HEALTH_TIMEOUT_MS;
 const DB_HEALTH_STATEMENT_TIMEOUT_MS = Math.max(1_000, DB_HEALTH_TIMEOUT_MS - 1_000);
 const DB_HEALTH_CONNECT_TIMEOUT_SECONDS = Math.max(1, Math.ceil(DB_HEALTH_TIMEOUT_MS / 1_000));
 const EVENT_LOOP_HEALTH_TIMEOUT_MS = 500;
@@ -21,7 +23,12 @@ const healthSql = postgres(env.DATABASE_URL, {
 
 type CancelableQuery<T> = Promise<T> & { cancel?: () => void };
 
-type ReadinessComponentName = 'db' | 'orders' | 'printQueue' | 'eventLoop';
+type ReadinessComponentName =
+  | 'db'
+  | 'orders'
+  | 'printQueue'
+  | 'eventLoop'
+  | 'requestPool';
 
 type ReadinessComponent = {
   name: ReadinessComponentName;
@@ -74,7 +81,7 @@ async function checkComponent(
   }
 }
 
-async function checkDeepReadiness() {
+export async function checkDeepReadiness() {
   const components = await Promise.all([
     checkComponent('db', async () => {
       await withTimeout(healthSql`select 1`, DB_HEALTH_TIMEOUT_MS);
@@ -111,6 +118,17 @@ async function checkDeepReadiness() {
         throw new Error('event loop delay budget exceeded');
       }
       return { details: { delayMs, budgetMs: EVENT_LOOP_DELAY_BUDGET_MS } };
+    }),
+    // The pool that actually serves requests. Every check above runs on
+    // healthSql, a pool private to this route, so they only prove Postgres is
+    // reachable. On 2026-08-12 they all reported ok in ~22ms while the request
+    // pool was fully starved and the portal served nothing — readiness stayed
+    // green through a total outage. This probe is the one that goes red.
+    checkComponent('requestPool', async () => {
+      await withTimeout(sql`select 1`, DB_POOL_HEALTH_TIMEOUT_MS);
+      return {
+        details: { poolMax: env.DB_POOL_MAX, budgetMs: DB_POOL_HEALTH_TIMEOUT_MS },
+      };
     }),
   ]);
 

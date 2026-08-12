@@ -41,9 +41,31 @@ for (const expected of [
   "checkComponent('orders'",
   "checkComponent('printQueue'",
   "checkComponent('eventLoop'",
+  "checkComponent('requestPool'",
 ]) {
   assert(healthSource.includes(expected), `deep readiness reports ${expected}`);
 }
+
+// 2026-08-12: readiness reported "ready" with 22ms latency through a total
+// outage. Every check ran on healthSql — a pool private to this route — while
+// the pool that actually serves requests was fully starved, so the watchdog
+// stayed green while the portal served nothing. Readiness MUST exercise the
+// same pool the request path uses, or it only proves Postgres is reachable.
+assert(
+  /import\s*\{[^}]*\bsql\b[^}]*\}\s*from\s*'\.\.\/db\/client'/.test(healthSource),
+  'deep readiness must probe the shared request pool, not only its private health pool',
+);
+
+const poolCheckStart = healthSource.indexOf("checkComponent('requestPool'");
+const poolCheckBody = healthSource.slice(poolCheckStart, poolCheckStart + 400);
+assert(
+  poolCheckBody.includes('sql`') && !poolCheckBody.includes('healthSql`'),
+  'the requestPool component must run its probe through the shared pool, not healthSql',
+);
+assert(
+  poolCheckBody.includes('withTimeout'),
+  'the requestPool probe must be bounded, so a starved pool fails instead of hanging readiness',
+);
 
 assert(healthSource.includes('select 1'), 'deep readiness verifies DB select 1');
 assert(

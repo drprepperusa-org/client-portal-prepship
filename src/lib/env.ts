@@ -41,6 +41,11 @@ const schema = z.object({
   PREPSHIP_API_URL: z.string().url().optional(),
   CRON_SECRET: z.string().optional(),
   DB_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
+  // Budget for the readiness probe that runs on the SHARED request pool. Kept
+  // well under DB_HEALTH_TIMEOUT_MS: a healthy pool answers `select 1` in tens
+  // of milliseconds, so anything approaching seconds already means requests are
+  // queueing for a connection. Failing fast here is the signal we want.
+  DB_POOL_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   DB_POOL_MAX: z.coerce.number().int().positive().max(20).default(4),
   DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
   DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(8),
