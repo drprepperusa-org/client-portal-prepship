@@ -264,7 +264,17 @@ serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log('[runtime] RUN_SYNC_SCHEDULER=false; API scheduler disabled');
   }
 
-  if (env.RUN_SHIPMENT_TRACKING_SWEEP) {
+  // The sweep interleaves external carrier calls with writes on the shared
+  // request pool (DB_POOL_MAX). Inside a process that also serves user traffic,
+  // one stalled carrier call pins a pooled connection and starves every
+  // authenticated request, because postgres.js queues connection acquisition
+  // with no timeout. The Worker owns this sweep unconditionally, so an API
+  // process serving client-portal traffic must never start a second copy.
+  if (clientPortalOnly && env.RUN_SHIPMENT_TRACKING_SWEEP) {
+    console.warn(
+      '[runtime] RUN_SHIPMENT_TRACKING_SWEEP=true ignored: this process serves client-portal traffic; the Render Worker owns the tracking sweep'
+    );
+  } else if (env.RUN_SHIPMENT_TRACKING_SWEEP) {
     startShipmentTrackingSweep();
   } else {
     console.log('[runtime] RUN_SHIPMENT_TRACKING_SWEEP=false; tracking sweep disabled');

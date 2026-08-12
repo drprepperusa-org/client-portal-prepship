@@ -208,6 +208,7 @@
     "status:sync": "tsx scripts/status-sync.ts",
     "test:status:sync": "tsx scripts/status-sync.ts --check",
     "test:sync-advisory-lock": "node scripts/sync-advisory-lock-guard.mjs",
+    "test:api-tracking-sweep-split": "node scripts/api-tracking-sweep-split-guard.mjs",
     "status:carriers": "tsx scripts/status-carriers.ts",
     "test:status:carriers": "tsx scripts/status-carriers.ts --check",
     "verify:client-portal-live": "tsx scripts/verify-client-portal-live-parity.ts",

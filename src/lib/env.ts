@@ -45,6 +45,11 @@ const schema = z.object({
   DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
   DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(8),
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
+  // Backstop for a connection that opens a transaction and then stalls waiting
+  // on the client. statement_timeout cannot cover this: the backend is idle in
+  // transaction, not executing, so Postgres never applies it. Without this a
+  // stalled peer holds a pooled connection until the pooler hard-kills it.
+  DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   STRICT_JWT_CLAIMS: booleanFlag(false),
   CLIENT_PORTAL_ONLY_API: booleanFlag(true),
   // CP-027 — return-label live-postage approval flag. OFF by default: the

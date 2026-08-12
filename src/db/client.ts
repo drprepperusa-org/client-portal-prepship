@@ -15,7 +15,15 @@ const sql = postgres(env.DATABASE_URL, {
   // that was timing out on Render despite being a trivial SELECT).
   // 12s is well under Supabase's pooler hard-kill (typically 20-60s) but
   // long enough for legitimate analytical queries like /daily-stats.
-  connection: { statement_timeout: env.DB_STATEMENT_TIMEOUT_MS },
+  // idle_in_transaction_session_timeout covers the gap statement_timeout leaves:
+  // a connection that has opened a transaction and stalled is not executing, so
+  // statement_timeout never fires and the connection stays checked out. During
+  // the 2026-08-12 outage every pooled connection sat in 'ClientRead' (Postgres
+  // waiting on the app) — one for 64 minutes — with nothing to reclaim it.
+  connection: {
+    statement_timeout: env.DB_STATEMENT_TIMEOUT_MS,
+    idle_in_transaction_session_timeout: env.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+  },
 });
 
 export const db = drizzle(sql, { schema, casing: 'snake_case' });
