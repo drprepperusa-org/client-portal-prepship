@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -82,14 +83,26 @@ check('billing summaries use strict upper bound',
     /lt\(persistedBillingEffectiveDay, to\)/.test(summaries) &&
     /coalesce\(billing_effective_date, ship_date\) < \$\{input\.dateTo\}/.test(summaries));
 
-const billing = read('src/services/billing.ts');
-check('billing generation treats dateTo as exclusive and dates storage inside the period',
-  /dateTo: string; \/\/ ISO, UTC midnight, EXCLUSIVE/.test(billing) &&
-    !/<= \$\{toIso\}::timestamptz/.test(billing) &&
-    !/<= \$\{input\.dateTo\}::timestamptz/.test(billing) &&
-    /< \$\{toIso\}::timestamptz/.test(billing) &&
-    /const storageShipDate = new Date\(periodEnd\.getTime\(\) - STORAGE_LINE_DAY_MS\)/.test(billing) &&
-    /shipDate: storageShipDate/.test(billing));
+// CP-059A — the generation half of PS-382 moved to PrepShip.
+//
+// This block asserted that the PORTAL'S generator treated dateTo as EXCLUSIVE and
+// dated storage lines inside the period. That generator is retired and
+// src/services/billing.ts is deleted, so the assertions had no file to read.
+//
+// The rule is NOT dropped — it moved with the writer. PrepShip owns generation and
+// pins its own exclusive-bound behaviour there. What remains the portal's concern is
+// the READ path and the proxy, both already asserted above: billing-summaries.ts uses
+// `< dateTo` half-open bounds, and the proxy forwards range.fromUtc/toUtcExclusive.
+//
+// What IS asserted here now is that the exclusive-bound contract survives on the type
+// the read models still share, so a future reader cannot mistake dateTo for inclusive.
+const readSupport = read('src/services/billing-read-support.ts');
+check('the shared period type still documents dateTo as EXCLUSIVE',
+  /dateTo: string; \/\/ ISO, UTC midnight, EXCLUSIVE/.test(readSupport) &&
+    !/<= \$\{input\.dateTo\}::timestamptz/.test(readSupport));
+
+check('the portal retains no local billing generator to date-range',
+  !fs.existsSync('src/services/billing.ts'));
 
 const packageJson = read('package.json');
 check('package.json wires test:ps-382-billing-date-range',

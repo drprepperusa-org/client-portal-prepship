@@ -24,7 +24,7 @@ function assert(condition, message) {
 const routeSource = read('src/routes/billing.ts');
 // billingSummary/billingDetails (with their scope-predicate call sites) moved
 // to services/billing-summaries.ts (C4); assert over both so coverage follows.
-const serviceSource = read('src/services/billing.ts') + '\n' + read('src/services/billing-summaries.ts');
+const serviceSource = read('src/services/billing-read-support.ts') + '\n' + read('src/services/billing-summaries.ts');
 const reportingSource = read('src/services/reporting-metrics.ts');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -87,27 +87,24 @@ assert(
     reportingSource.includes('scopeStoreIds'),
   'billing summary/details/read-model reads apply client/store scope',
 );
-// CP-019: generateLineItems (the destructive generate → DELETE → recreate path)
-// must apply tenant scope to its config query, its source query, AND its
-// billing_line_items delete — not just the read path in billing-summaries.ts.
-// The check above passes even if generateLineItems is unscoped, so pin the
-// generate/delete path explicitly here.
-const generateSource = read('src/services/billing.ts');
-const delStart = generateSource.indexOf('db.delete(billingLineItems)');
-const deleteBlock = delStart >= 0 ? generateSource.slice(delStart, delStart + 600) : '';
+// CP-059A — CP-019 is now satisfied by RETIREMENT, not by scoping.
+//
+// This previously pinned tenant scope on three parts of generateLineItems: its
+// destructive billing_line_items delete, its source query, and its config query. The
+// risk it guarded was that an omitted clientId on a DESTRUCTIVE period rebuild could
+// wipe every tenant's billing rows.
+//
+// That generator is gone. PrepShip is the sole owner of billing_line_items generation,
+// so the Client Portal has no destructive billing path left to scope. Asserting the
+// path CANNOT EXIST is strictly stronger than asserting it was scoped correctly — a
+// scoped destructive writer is still a second authority over one money table.
+//
+// Read-path scope coverage is unchanged and still asserted above.
+const generatorHome = path.join(root, 'src/services/billing.ts');
 assert(
-  deleteBlock.includes('billingLineItemScopePredicate(input)'),
-  'CP-019: the destructive billing_line_items delete is tenant-scoped (an omitted clientId cannot wipe every tenant)',
-);
-assert(
-  generateSource.includes('export function billingOrderScopePredicate') &&
-    generateSource.includes('billingOrderScopePredicate(input)'),
-  'CP-019: generateLineItems source query applies order-level tenant scope',
-);
-const configBlock = /const configs = await db\.execute[\s\S]*?order by c\.name asc/.exec(generateSource)?.[0] ?? '';
-assert(
-  configBlock.includes('billingClientScopePredicate(input)'),
-  'CP-019: generateLineItems config query applies client/store scope',
+  !fs.existsSync(generatorHome),
+  'CP-059A: src/services/billing.ts must not exist — it owned generateLineItems, and a'
+    + ' file by that name invites a generator to be re-added to the portal',
 );
 
 assert(
