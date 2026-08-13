@@ -24,7 +24,7 @@ import {
   toFiniteNumber,
   toNum,
   type GenerateInput,
-} from './billing';
+} from './billing-read-support';
 import {
   BILLING_POLICY_WEEKEND_ROLLFORWARD,
   billingLineEffectiveDaySql,

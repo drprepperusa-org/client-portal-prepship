@@ -10,7 +10,6 @@ import {
   clientPackagePrices,
 } from '../db/schema/billing';
 import { clients } from '../db/schema/clients';
-import { generateLineItems } from '../services/billing';
 import { billingDetails, billingSummary } from '../services/billing-summaries';
 import { upsertBillingConfig } from '../services/billing-config';
 import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-scope';
@@ -242,15 +241,23 @@ const detailsSchema = generateRawSchema
     message: 'dateFrom/from and dateTo/to are required',
   });
 
-app.post('/generate', zValidator('json', generateSchema), async (c) => {
-  const body = c.req.valid('json');
-  const result = await generateLineItems({
-    clientId: body.clientId,
-    dateFrom: body.dateFrom!,
-    dateTo: body.dateTo!,
-  });
-  return c.json(result);
-});
+// CP-059A — the local POST /generate route is RETIRED, not disabled.
+//
+// It called generateLineItems(), a second independent generator that deleted and
+// rebuilt billing_line_items for a period. Two writers of one money table meant two
+// regeneration paths, duplicate authority, and rows the canonical PrepShip contract
+// could not account for — the portal wrote canonical return line types with no
+// relational return_id, which PS-488 then had to classify as Outbound.
+//
+// PrepShip is now the sole generator. The live operator workflow is unchanged: the
+// portal UI calls POST /api/client-portal/billing/generate, which authenticates,
+// enforces financial visibility, rejects a restricted caller overriding clientId,
+// and FORWARDS to PrepShip. See src/routes/client-portal/billing.ts.
+//
+// Not left as a 410 stub on purpose. A stub is a route someone can fill back in;
+// the generator itself is deleted and services/billing.ts no longer exists, so there
+// is nothing to re-enable. Reactivation now requires re-authoring a generator, which
+// ps-cp-059a-writer-retirement-guard.ts fails on.
 
 app.get('/summary', zValidator('query', generateSchema), async (c) => {
   const q = c.req.valid('query');
