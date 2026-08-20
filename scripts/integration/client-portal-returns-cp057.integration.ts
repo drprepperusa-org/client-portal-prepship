@@ -27,7 +27,7 @@ function response(value: unknown, status = 200): Response {
   });
 }
 
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
   const url = String(input);
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/return-preview') {
     if (customerRateMode === 'unavailable') {
@@ -489,7 +489,7 @@ async function absentOutcomeHoldScenario(): Promise<void> {
     () => check(false, 'stale generation cannot record a receipt'),
     () => check(true, 'stale generation cannot record a receipt'),
   );
-  check(result.returnShipmentId > 0, 'operator-authorized retry returns the canonical shipment');
+  check(result.returnShipmentId != null && result.returnShipmentId > 0, 'operator-authorized retry returns the canonical shipment');
 }
 
 async function offlineGatesScenario(): Promise<void> {

@@ -83,13 +83,15 @@ async function seed() {
 
   // Same SKU has a global (client_id NULL, SMALLER id) inventory row AND the
   // client's own row — the exact shape that 404'd the Analysis drawer.
+  // Stock is not a column on inventory (PS-439: quantity = Σ inventory_ledger.qty);
+  // this fixture only asserts id resolution, so it seeds no ledger movements.
   const invGlobal = (await db
     .insert(schema.inventory)
-    .values({ sku: 'SKU-A', name: 'Item A', clientId: null, stockQty: 4, reorderLevel: 10 })
+    .values({ sku: 'SKU-A', name: 'Item A', clientId: null, reorderLevel: 10 })
     .returning())[0]!;
   const invHugrab = (await db
     .insert(schema.inventory)
-    .values({ sku: 'SKU-A', name: 'Item A', clientId: hugrab.id, stockQty: 100, reorderLevel: 10 })
+    .values({ sku: 'SKU-A', name: 'Item A', clientId: hugrab.id, reorderLevel: 10 })
     .returning())[0]!;
 
   // HUGRAB shipped order: SKU-A ×2 @10 + SKU-B ×3 @5 → line revenue 35, units 5.
