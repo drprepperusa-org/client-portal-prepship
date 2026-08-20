@@ -38,6 +38,14 @@ export interface AnalysisBreakdown {
   orderCombinations?: AnalysisOrderCombination[];
 }
 
+export type ShippingMoneyState =
+  | 'attributed'
+  | 'partial_unattributed'
+  | 'unattributed_legacy'
+  | 'unbilled'
+  | 'external_label'
+  | 'voided_only';
+
 export interface SkuOrderRow {
   order_id: number;
   order_number: string;
@@ -47,14 +55,24 @@ export interface SkuOrderRow {
   qty: number;
   unit_price: string | null;
   item_name: string | null;
-  shippingCharge: string | null;
+  /** SKU's share of ALL billed shipping on the order (every class, every label). */
+  shippingTotal: string | null;
+  /** SKU's share of money attributed to standard-service labels only. */
+  shippingStandard: string | null;
+  /** SKU's share of money attributed to expedited-service labels only. */
+  shippingExpedited: string | null;
+  /** Why money is (or isn't) shown — never a guessed class. */
+  shippingMoneyState: ShippingMoneyState;
 }
 
 export interface SkuOrdersResult {
   sku: string;
   name: string | null;
   totalUnits: number;
-  avgShippingCharge: string;
+  /** Per-unit average over orders with attributable standard-class money. */
+  avgShippingStandard: string;
+  /** Per-unit average over orders with attributable expedited-class money. */
+  avgShippingExpedited: string;
   averageUnitsPerDay: number;
   dailySales: Array<{ day: string; units: number }>;
   orders: SkuOrderRow[];
