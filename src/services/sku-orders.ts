@@ -12,7 +12,7 @@
 // vs. client-portal) so visibility rules stay owned by the route, not here.
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
-import { EXPEDITED_SERVICES_SQL } from '../routes/analysis';
+import { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
 import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order-dedupe';
 
 export type SkuOrderRow = {

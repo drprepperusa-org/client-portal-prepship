@@ -9,17 +9,7 @@ import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order
  * order-scope predicate in so scope construction stays at the boundary.
  */
 
-const EXPEDITED_SERVICES = [
-  'ups_2nd_day_air', 'ups_2nd_day_air_am',
-  'ups_next_day_air', 'ups_next_day_air_saver', 'ups_next_day_air_early_am',
-  'ups_3_day_select',
-  'usps_priority_mail_express',
-  'fedex_2day', 'fedex_2day_am',
-  'fedex_express_saver',
-  'fedex_priority_overnight', 'fedex_standard_overnight', 'fedex_first_overnight',
-] as const;
-
-const EXPEDITED_SERVICES_SQL = sql`ARRAY[${sql.join(EXPEDITED_SERVICES.map((s) => sql`${s}`), sql`, `)}]::text[]`;
+import { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
 
 export async function skuOrdersAnalytics(input: {
   sku: string;
