@@ -28,7 +28,7 @@ function jsonResponse(value: unknown): Response {
   });
 }
 
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
   const url = String(input);
   if (url === 'https://prepship.example.test/client-portal/customer-shipping-money/return-preview') {
     customerRatePreviewCalls += 1;
