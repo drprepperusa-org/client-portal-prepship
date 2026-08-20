@@ -77,6 +77,11 @@ assert(
   'purchase intent ownership locks and rechecks the shared return label slot',
 );
 assert(
+  /shipments\.labelProviderKey/.test(slot) &&
+    /returnLabelPurchaseIntents\.providerReferenceKey/.test(slot),
+  'shipment lookup finds persisted in-flight purchase ownership through the stable provider key',
+);
+assert(
   /external_shipment_id: input\.externalShipmentId/.test(labels) &&
     /ssGetLabelByExternalShipmentId/.test(labels) &&
     /labels\/external_shipment_id/.test(labels) &&
@@ -134,7 +139,19 @@ for (const fixture of [
   'concurrent external assignments',
   'purchase intent wins the external race',
   'external assignment wins the purchase race',
+  'persisted in-flight purchase blocks void',
+  'the provider-key fallback rejects voiding the in-flight purchased intent',
+  'an in-flight purchase is rejected before any provider void call',
+  'the original purchase completes safely',
   'voided label releases the canonical slot',
+  'post-provider local void finalization is atomic',
+  'intent failure rolls back shipments.voided',
+  'already-voided retry is accepted only after provider readback',
+  'a non-completed existing intent rejects finalization',
+  'intent-state mismatch rolls back shipments.voided',
+  'stale concurrent void finalizer cannot clobber replacement',
+  'the delayed finalizer preserves the replacement link',
+  'the delayed finalizer cannot reset newer order workflow state',
   'provider success then shipment insert failure',
   'recovery blocks shipment persistence when customer pricing is unavailable',
   'blocked recovery never repurchases postage',
@@ -253,11 +270,36 @@ assert(
     setVoided !== -1 && advance !== -1 && advance > setVoided,
     'the intent advances only AFTER the canonical shipments.voided write, never before it',
   );
-  // A stranded intent is recoverable; a void reported failed after the provider already
-  // voided is not. So this must never throw back into the void path.
   assert(
-    /CP-057 return purchase intent could not be advanced/.test(body),
-    'a failure advancing the intent cannot fail a void that already happened at the provider',
+    /and\(eq\(shipments\.id, row\.id\), eq\(shipments\.voided, false\)\)/.test(body),
+    'a stale concurrent finalizer cannot rewrite an already-voided historical shipment',
+  );
+  assert(
+    /const advancedIntentId = await db\.transaction\(async \(tx\) =>/.test(body) &&
+      /lockReturnLabelSlotForShipment\(tx, row\.id\)/.test(body) &&
+      /markReturnLabelPurchaseVoidedForShipment\([\s\S]*?, tx\)/.test(body) &&
+      /await tx[\s\S]*?\.update\(orders\)/.test(body),
+    'shared slot lock, shipment void, completed-intent release, and order reset share one transaction',
+  );
+  assert(
+    !/CP-057 return purchase intent could not be advanced/.test(body),
+    'intent-finalization failures roll back local void truth instead of being logged after a partial commit',
+  );
+  assert(
+    /ssIsShipmentVoided\(/.test(body) && /if \(!providerAlreadyVoided\) throw err/.test(body),
+    'a provider already-voided response requires canonical provider readback before local retry',
+  );
+  assert(
+    /const preflightSlot = await db\.transaction/.test(body) &&
+      /assertReturnLabelVoidSlot\(preflightSlot, row\.id\)/.test(body),
+    'an in-flight persisted purchase is rejected under the shared slot lock before provider void',
+  );
+  const intentVoid = intents.indexOf('export async function markReturnLabelPurchaseVoidedForShipment');
+  const intentVoidBody = intentVoid === -1 ? '' : intents.slice(intentVoid, intentVoid + 1800);
+  assert(
+    /intent\.state === 'voided'/.test(intentVoidBody) &&
+      /intent\.state !== 'completed'[\s\S]*throw new Error/.test(intentVoidBody),
+    'only no intent or an already-voided intent can no-op; every other state mismatch aborts finalization',
   );
 }
 

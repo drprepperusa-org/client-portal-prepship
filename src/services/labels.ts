@@ -7,6 +7,7 @@ import { clients } from '../db/schema/clients';
 import {
   ssCreateReturnLabel,
   ssGetShipmentV1,
+  ssIsShipmentVoided,
   ssListRecentLabels,
   ssVoidShipment,
   type CreatedExternalLabel,
@@ -35,6 +36,26 @@ import { saveMockLabel } from './mock-label-store';
 // CP-057: the intent state machine is owned by return-label-purchase-intents.ts; this file
 // reports the confirmed void event and does not reach into the intent schema itself.
 import { markReturnLabelPurchaseVoidedForShipment } from './return-label-purchase-intents';
+import {
+  lockReturnLabelSlotForShipment,
+  type LockedReturnLabelSlot,
+} from './return-label-slot';
+
+function assertReturnLabelVoidSlot(
+  slot: LockedReturnLabelSlot | null,
+  shipmentId: number,
+): void {
+  if (!slot) return;
+  if (
+    slot.purchaseIntentState != null &&
+    !['completed', 'voided'].includes(slot.purchaseIntentState)
+  ) {
+    throw new Error('Return label purchase is still in progress');
+  }
+  if (slot.returnShipmentId !== shipmentId) {
+    throw new Error('Return label slot no longer links this shipment');
+  }
+}
 
 // Batch-label callers don't carry a panel-selected package, so customPackageId
 // is often null. When dims are present, fall back to the same ±0.1" tolerance
@@ -843,6 +864,14 @@ export async function voidLabelV2(shipmentId: number): Promise<VoidLabelResponse
   if (!row) throw new Error('Shipment not found');
   if (row.voided) throw new Error('Label already voided');
 
+  // Reject persisted-but-not-yet-linked return purchases before contacting the
+  // provider. The stable provider key lets the shared slot find `purchased`
+  // intents even before intent.returnShipmentId / returns.returnShipmentId exist.
+  const preflightSlot = await db.transaction((tx) =>
+    lockReturnLabelSlotForShipment(tx, row.id)
+  );
+  assertReturnLabelVoidSlot(preflightSlot, row.id);
+
   // Double guard: honor the explicit test_offline source marker AND verify
   // the shipment's client isn't flagged is_test (in case a test row was
   // somehow persisted with a real labelShipmentId).
@@ -860,51 +889,57 @@ export async function voidLabelV2(shipmentId: number): Promise<VoidLabelResponse
     try {
       await ssVoidShipment(row.labelShipmentId, creds.apiKeyV2 ?? undefined);
     } catch (err) {
-      // Surface the SS error but still record the local void — parity with v2 is to fail hard.
-      throw err;
+      // A prior provider success can be followed by a local transaction failure.
+      // On retry, accept an error only when provider readback proves the shipment
+      // is already cancelled/voided; otherwise preserve the original failure.
+      const providerAlreadyVoided = await ssIsShipmentVoided(
+        row.labelShipmentId,
+        creds.apiKeyV2 ?? undefined,
+      ).catch(() => false);
+      if (!providerAlreadyVoided) throw err;
     }
   }
 
   const now = new Date();
-  await db
-    .update(shipments)
-    .set({ voided: true, updatedAt: now })
-    .where(eq(shipments.id, row.id));
+  // CP-057: after the provider confirms the void, commit every local consequence
+  // together. A partial commit previously allowed `shipments.voided = true` while
+  // the matching intent stayed `completed`, permanently blocking a replacement.
+  // The return workflow remains linked to the historical shipment; that shipment's
+  // canonical voided flag releases the slot for the next label.
+  const advancedIntentId = await db.transaction(async (tx) => {
+    const slot = await lockReturnLabelSlotForShipment(tx, row.id);
+    assertReturnLabelVoidSlot(slot, row.id);
 
-  // CP-057: a voided RETURN label must also advance its purchase intent, or the intent
-  // stays at `completed` and UNIQUE (return_id) forbids buying a replacement — the return
-  // is stranded with a dead label. `shipments.voided` above remains canonical for whether
-  // postage was voided; this is only the derived lifecycle marker written from that event.
-  //
-  // Ordered deliberately: the provider void already succeeded (it throws above otherwise)
-  // and the local void is committed, so the intent can only advance behind a real,
-  // confirmed void. A failure here must NOT undo a void that already happened at the
-  // provider, so it is logged rather than thrown: the shipment is voided either way, and a
-  // stranded intent is recoverable while a phantom un-void is not.
-  try {
-    const advancedIntentId = await markReturnLabelPurchaseVoidedForShipment(row.id, {
+    const [voidedShipment] = await tx
+      .update(shipments)
+      .set({ voided: true, updatedAt: now })
+      .where(and(eq(shipments.id, row.id), eq(shipments.voided, false)))
+      .returning({ id: shipments.id });
+    if (!voidedShipment) throw new Error('Label already voided');
+
+    const intentId = await markReturnLabelPurchaseVoidedForShipment(row.id, {
       note: `Return label voided for shipment ${row.id}`,
       actor: 'labels.voidLabelV2',
-    });
-    if (advancedIntentId != null) {
-      console.log('[labels] CP-057 return purchase intent voided', {
-        shipmentId: row.id,
-        intentId: advancedIntentId,
-      });
+    }, tx);
+    if (slot?.purchaseIntentState === 'completed' && intentId == null) {
+      throw new Error('Completed return label purchase intent does not match this shipment');
     }
-  } catch (err) {
-    console.error(
-      '[labels] CP-057 return purchase intent could not be advanced after void:',
-      err instanceof Error ? err.message : err,
-    );
-  }
 
-  // Reset the order back to awaiting_shipment so a new label can be created.
-  if (row.orderId) {
-    await db
-      .update(orders)
-      .set({ orderStatus: 'awaiting_shipment', updatedAt: now })
-      .where(eq(orders.id, row.orderId));
+    // Reset the order back to awaiting_shipment so a new label can be created.
+    if (row.orderId) {
+      await tx
+        .update(orders)
+        .set({ orderStatus: 'awaiting_shipment', updatedAt: now })
+        .where(eq(orders.id, row.orderId));
+    }
+    return intentId;
+  });
+
+  if (advancedIntentId != null) {
+    console.log('[labels] CP-057 return purchase intent voided', {
+      shipmentId: row.id,
+      intentId: advancedIntentId,
+    });
   }
 
   return {

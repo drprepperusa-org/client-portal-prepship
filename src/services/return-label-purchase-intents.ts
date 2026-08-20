@@ -421,9 +421,10 @@ export async function completeReturnLabelPurchase(
 export async function markReturnLabelPurchaseVoided(
   intentId: number,
   resolution: { note: string; actor: string },
+  database: Pick<ReturnLabelIntentDatabase, 'update'> = db,
 ): Promise<void> {
   const now = new Date();
-  const [updated] = await db
+  const [updated] = await database
     .update(returnLabelPurchaseIntents)
     .set({
       state: 'voided',
@@ -470,18 +471,24 @@ export async function markReturnLabelPurchaseVoided(
 export async function markReturnLabelPurchaseVoidedForShipment(
   shipmentId: number,
   resolution: { note: string; actor: string },
+  database: Pick<ReturnLabelIntentDatabase, 'select' | 'update'> = db,
 ): Promise<number | null> {
-  const [intent] = await db
+  const [intent] = await database
     .select({ id: returnLabelPurchaseIntents.id, state: returnLabelPurchaseIntents.state })
     .from(returnLabelPurchaseIntents)
     .where(eq(returnLabelPurchaseIntents.returnShipmentId, shipmentId))
-    .limit(1);
+    .limit(1)
+    .for('update');
   if (!intent) return null;
-  // Only a completed intent is voidable. Anything mid-flight must resolve through
-  // the unknown-outcome path first, and re-voiding an already-voided intent would
-  // rotate its key a second time for no reason.
-  if (intent.state !== 'completed') return null;
-  await markReturnLabelPurchaseVoided(intent.id, resolution);
+  // Retrying local finalization after a committed response is a no-op. Never
+  // rotate the replacement key twice.
+  if (intent.state === 'voided') return intent.id;
+  // Every other existing state is an ownership mismatch. Returning null here
+  // would let shipments.voided commit while the intent still owned the return.
+  if (intent.state !== 'completed') {
+    throw new Error(`Return label purchase intent cannot be voided from state ${intent.state}`);
+  }
+  await markReturnLabelPurchaseVoided(intent.id, resolution, database);
   return intent.id;
 }
 

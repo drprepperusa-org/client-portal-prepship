@@ -77,6 +77,48 @@ export async function lockReturnLabelSlot(
   };
 }
 
+/**
+ * Find and lock the canonical return slot that currently owns a shipment.
+ *
+ * The initial lookups are intentionally unlocked: after they identify the
+ * return id, `lockReturnLabelSlot` takes the shared return-row lock and the
+ * caller must recheck that the shipment is still linked. This preserves the
+ * return -> shipment -> intent lock order used by purchase and external flows.
+ */
+export async function lockReturnLabelSlotForShipment(
+  reader: ReturnLabelSlotReader,
+  shipmentId: number,
+): Promise<LockedReturnLabelSlot | null> {
+  const [intent] = await reader
+    .select({ returnId: returnLabelPurchaseIntents.returnId })
+    .from(returnLabelPurchaseIntents)
+    .where(eq(returnLabelPurchaseIntents.returnShipmentId, shipmentId))
+    .limit(1);
+  const [shipment] = intent
+    ? []
+    : await reader
+      .select({ providerKey: shipments.labelProviderKey })
+      .from(shipments)
+      .where(eq(shipments.id, shipmentId))
+      .limit(1);
+  const [providerIntent] = intent || !shipment?.providerKey
+    ? []
+    : await reader
+      .select({ returnId: returnLabelPurchaseIntents.returnId })
+      .from(returnLabelPurchaseIntents)
+      .where(eq(returnLabelPurchaseIntents.providerReferenceKey, shipment.providerKey))
+      .limit(1);
+  const [returnRow] = intent || providerIntent
+    ? []
+    : await reader
+      .select({ id: returns.id })
+      .from(returns)
+      .where(eq(returns.returnShipmentId, shipmentId))
+      .limit(1);
+  const returnId = intent?.returnId ?? providerIntent?.returnId ?? returnRow?.id;
+  return returnId == null ? null : lockReturnLabelSlot(reader, returnId);
+}
+
 /** Definite failure/void releases intent ownership; every other state holds it. */
 export function purchaseIntentOwnsReturnLabelSlot(state: string | null): boolean {
   return state != null && state !== 'failed' && state !== 'voided';

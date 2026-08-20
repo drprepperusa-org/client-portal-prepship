@@ -122,6 +122,7 @@
     "test:client-portal-returns-cp043:integration": "tsx scripts/integration/client-portal-returns-cp043.integration.ts",
     "test:client-portal-returns-cp057": "node scripts/client-portal-returns-cp057-guard.mjs",
     "test:client-portal-returns-cp057:integration": "tsx scripts/integration/client-portal-returns-cp057.integration.ts",
+    "test:client-portal-returns-cp058:integration": "tsx scripts/integration/client-portal-returns-cp058-routes.integration.ts",
     "test:client-portal-returns-cp045": "node scripts/client-portal-returns-cp045-guard.mjs",
     "test:client-portal-returns-cp045:integration": "tsx scripts/integration/client-portal-returns-cp045.integration.ts",
     "test:client-portal-returns-canonical-fields": "node scripts/client-portal-returns-canonical-fields-guard.mjs",
