@@ -1,5 +1,6 @@
 import type { Return } from '../../../db/schema/returns';
 import type { PortalReturnRow } from '../../../lib/client-portal/contracts/returns';
+import { isClientSafeReturnPdfReference } from '../../../lib/client-portal/return-label-pdf';
 import { trackingUrlForCarrier } from '../../../lib/tracking-url';
 import { resolveReturnReference } from '../../../services/return-reference';
 import { iso } from './shared';
@@ -11,6 +12,8 @@ type ClientSafeReturnSource = {
   returnTracking: string | null;
   returnCarrier: string | null;
   returnLabelUrl: string | null;
+  returnShipmentSource: string | null;
+  returnShipmentVoided: boolean | null;
   validatedReturnCustomerShippingRate: string | null;
   returnedSkus: string[];
   returnedQuantity: number;
@@ -39,7 +42,12 @@ export async function toClientSafeReturnRow(
     deliveryStatus: row.ret.deliveryStatus,
     trackingNumber: row.returnTracking,
     trackingUrl: trackingUrlForCarrier(row.returnCarrier, row.returnTracking) || null,
-    pdfAvailable: Boolean(row.returnLabelUrl),
+    pdfAvailable: isClientSafeReturnPdfReference({
+      returnId: row.ret.id,
+      shipmentSource: row.returnShipmentSource,
+      shipmentVoided: row.returnShipmentVoided,
+      labelUrl: row.returnLabelUrl,
+    }),
     returnCustomerShippingRate: options.includeFinancials &&
       row.validatedReturnCustomerShippingRate != null
       ? Number(row.validatedReturnCustomerShippingRate)

@@ -69,6 +69,7 @@ export interface PortalReturnDetail extends PortalReturnRow {
   trackingStatus: string | null;
   deliveryError: string | null;
   returnToLocationId: number | null;
+  /** Resolved provider/mock URL or short-lived signed private URL; never a storage object path. */
   pdfUrl: string | null;
   requestedAt: string | null;
   closedAt: string | null;
@@ -92,6 +93,7 @@ export interface ReturnDeliveryResult {
   deliveryMethod: 'shopify_native' | 'manual_pdf';
   deliveryStatus: 'pending' | 'delivered' | 'failed';
   pdfAvailable: boolean;
+  /** Resolved provider/mock URL or short-lived signed private URL; never a storage object path. */
   pdfUrl: string | null;
   trackingNumber: string | null;
   trackingStatus: string | null;
