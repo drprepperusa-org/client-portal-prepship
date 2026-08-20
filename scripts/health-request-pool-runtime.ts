@@ -15,9 +15,22 @@ process.env.DB_CONNECT_TIMEOUT_SECONDS = '1';
 
 const { checkDeepReadiness } = await import('../src/routes/health');
 
+// Capture the readiness failure log lines. A component that fails must say WHY
+// on the server side — the public JSON stays reason-free, so without this line
+// a production probe failure is undiagnosable (the 2026-08 db/orders/printQueue
+// 503s ran for days with the underlying error swallowed).
+const failureLogLines: string[] = [];
+const originalConsoleError = console.error;
+console.error = (...args: unknown[]) => {
+  const line = args.map(String).join(' ');
+  if (line.startsWith('[health:ready]')) failureLogLines.push(line);
+  originalConsoleError(...args);
+};
+
 const startedAt = Date.now();
 const readiness = await checkDeepReadiness();
 const elapsedMs = Date.now() - startedAt;
+console.error = originalConsoleError;
 
 // The whole point: an unusable pool must resolve to a verdict, not hang. If
 // this ever hangs, readiness hangs, and the watchdog reads a timeout instead of
@@ -49,6 +62,17 @@ assert.ok(
   'the request pool probe must fail within its own budget rather than the DB budget',
 );
 console.log(`ok: the probe failed inside its budget (${requestPool?.latencyMs}ms)`);
+
+const failedComponents = readiness.components.filter((component) => component.status === 'fail');
+for (const component of failedComponents) {
+  assert.ok(
+    failureLogLines.some((line) => line.includes(`component=${component.name}`) && line.includes('code=')),
+    `a failed ${component.name} probe must log a [health:ready] line naming its error code`,
+  );
+}
+console.log(
+  `ok: every failed component logged a diagnosable reason (${failureLogLines.length} lines)`,
+);
 
 console.log('\nhealth request-pool runtime fixtures passed.');
 process.exit(0);

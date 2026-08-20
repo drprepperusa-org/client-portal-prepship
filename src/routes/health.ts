@@ -39,15 +39,42 @@ type ReadinessComponent = {
 
 async function withTimeout<T>(
   query: CancelableQuery<T>,
-  timeoutMs: number
+  timeoutMs: number,
+  name?: ReadinessComponentName
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
+  const startedAt = Date.now();
   try {
     return await Promise.race([
       query,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           query.cancel?.();
+          // The race discards the query's eventual outcome, which is the only
+          // place the real failure (e.g. postgres.js CONNECT_TIMEOUT) surfaces.
+          // Log how it finally settles so a probe that loses the race still
+          // tells us WHY instead of just "timed out".
+          if (name) {
+            query.then(
+              () => {
+                console.error(
+                  `[health:ready] component=${name} late-settle=ok afterMs=${Date.now() - startedAt}`
+                );
+              },
+              (error: unknown) => {
+                const code =
+                  error && typeof error === 'object' && 'code' in error
+                    ? String((error as { code: unknown }).code)
+                    : 'unknown';
+                const firstLine = (error instanceof Error ? error.message : String(error))
+                  .split('\n', 1)[0]
+                  ?.slice(0, 120);
+                console.error(
+                  `[health:ready] component=${name} late-settle=fail code=${code} reason=${firstLine} afterMs=${Date.now() - startedAt}`
+                );
+              }
+            );
+          }
           reject(
             new Error(`DB health check timed out after ${timeoutMs}ms`)
           );
@@ -57,6 +84,21 @@ async function withTimeout<T>(
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+// One safe line per component failure. The readiness JSON is public, so the
+// reason stays server-side; without this log the underlying postgres.js error
+// (CONNECT_TIMEOUT vs auth vs protocol) is unobservable in production — the
+// 2026-08 db/orders/printQueue 503s ran for days with no way to tell which.
+function logComponentFailure(name: ReadinessComponentName, error: unknown) {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : 'unknown';
+  const firstLine = (error instanceof Error ? error.message : String(error))
+    .split('\n', 1)[0]
+    ?.slice(0, 120);
+  console.error(`[health:ready] component=${name} fail code=${code} reason=${firstLine}`);
 }
 
 async function checkComponent(
@@ -72,7 +114,8 @@ async function checkComponent(
       latencyMs: Date.now() - startedAt,
       ...(result?.details ? { details: result.details } : {}),
     };
-  } catch {
+  } catch (error) {
+    logComponentFailure(name, error);
     return {
       name,
       status: 'fail',
@@ -84,10 +127,10 @@ async function checkComponent(
 export async function checkDeepReadiness() {
   const components = await Promise.all([
     checkComponent('db', async () => {
-      await withTimeout(healthSql`select 1`, DB_HEALTH_TIMEOUT_MS);
+      await withTimeout(healthSql`select 1`, DB_HEALTH_TIMEOUT_MS, 'db');
     }),
     checkComponent('orders', async () => {
-      await withTimeout(healthSql`select 1 from orders limit 1`, DB_HEALTH_TIMEOUT_MS);
+      await withTimeout(healthSql`select 1 from orders limit 1`, DB_HEALTH_TIMEOUT_MS, 'orders');
     }),
     checkComponent('printQueue', async () => {
       const [summary] = await withTimeout(
@@ -97,7 +140,8 @@ export async function checkDeepReadiness() {
             count(*) filter (where status = 'queued')::int as queued_count
           from print_queue_orders
         `,
-        DB_HEALTH_TIMEOUT_MS
+        DB_HEALTH_TIMEOUT_MS,
+        'printQueue'
       );
 
       return {
@@ -125,7 +169,7 @@ export async function checkDeepReadiness() {
     // pool was fully starved and the portal served nothing — readiness stayed
     // green through a total outage. This probe is the one that goes red.
     checkComponent('requestPool', async () => {
-      await withTimeout(sql`select 1`, DB_POOL_HEALTH_TIMEOUT_MS);
+      await withTimeout(sql`select 1`, DB_POOL_HEALTH_TIMEOUT_MS, 'requestPool');
       return {
         details: { poolMax: env.DB_POOL_MAX, budgetMs: DB_POOL_HEALTH_TIMEOUT_MS },
       };
