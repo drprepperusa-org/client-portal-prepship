@@ -178,6 +178,10 @@ const billingDate = readFileSync('src/routes/client-portal/returns/billing-date.
 const applySvc = readFileSync('src/services/return-external-tracking-apply.ts', 'utf8');
 const slotSvc = readFileSync('src/services/return-label-slot.ts', 'utf8');
 const storageSvc = readFileSync('src/lib/supabase.ts', 'utf8');
+const returnReads = readFileSync('src/routes/client-portal/returns/reads.ts', 'utf8');
+const returnDto = readFileSync('src/routes/client-portal/returns/dto.ts', 'utf8');
+const returnDelivery = readFileSync('src/services/return-delivery.ts', 'utf8');
+const returnPdfAccess = readFileSync('src/lib/client-portal/return-label-pdf.ts', 'utf8');
 const routeStart = externalLabel.indexOf("'/returns/:id{[0-9]+}/external-tracking'");
 const routeBlock = routeStart >= 0 ? externalLabel.slice(routeStart, routeStart + 3000) : '';
 
@@ -322,6 +326,21 @@ check('the PDF goes to the PRIVATE bucket, and only its path is persisted', () =
   assert.match(pdfBlock, /attachReturnExternalLabelPdf\(\{/);
   assert.match(applySvc, /labelUrl: input\.objectPath/, 'persist the object PATH, never the binary');
   assert.doesNotMatch(pdfBlock, /getPublicUrl|publicUrl/, 'the bucket must never be public');
+});
+
+check('client DTOs sign the owned private path and never expose its durable reference', () => {
+  assert.match(returnPdfAccess, /`returns\/\$\{input\.returnId\}\/external-label\/`/);
+  assert.match(returnPdfAccess, /input\.shipmentVoided !== false/);
+  assert.match(returnPdfAccess, /getReturnMediaSignedUrl\(labelUrl\)/);
+  assert.match(returnReads, /resolveClientSafeReturnPdfUrl\(\{/);
+  assert.match(returnReads, /shipmentVoided: row\.returnShipmentVoided/);
+  assert.match(returnDelivery, /resolveClientSafeReturnPdfUrl\(\{/);
+  assert.match(returnDelivery, /shipmentVoided: ctx\.returnShipment\.voided/);
+  assert.match(returnDto, /isClientSafeReturnPdfReference\(\{/);
+  assert.match(returnDto, /shipmentSource: row\.returnShipmentSource/);
+  assert.match(returnDto, /shipmentVoided: row\.returnShipmentVoided/);
+  assert.doesNotMatch(returnReads, /pdfUrl:\s*refreshMockLabelSignature\(row\.returnLabelUrl\)/);
+  assert.doesNotMatch(returnDelivery, /returnShipment\.labelUrl\s*\?\?\s*null/);
 });
 
 check('only a PDF, and only within the size limit', () => {

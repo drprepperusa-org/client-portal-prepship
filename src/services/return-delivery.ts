@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { shipments } from '../db/schema/shipments';
 import { orders } from '../db/schema/orders';
 import { returns } from '../db/schema/returns';
+import { resolveClientSafeReturnPdfUrl } from '../lib/client-portal/return-label-pdf';
 
 // ── CP-032 — Return delivery is PDF-ONLY (PrepShip label is canonical) ─────────
 //
@@ -59,11 +60,6 @@ export function resolveReturnDelivery(_ctx: { order: OrderRow }): { method: Retu
   return { method: 'manual_pdf' };
 }
 
-/** Does the canonical return shipment have a downloadable label PDF? */
-function returnPdfUrl(returnShipment: ReturnShipmentRow): string | null {
-  return returnShipment.labelUrl ?? null;
-}
-
 /** Persist the delivery decision + outcome onto the CP-026 returns row. */
 async function persistDeliveryOutcome(
   returnId: number | null,
@@ -91,14 +87,14 @@ function toClientSafe(args: {
   method: ReturnDeliveryMethod;
   status: ReturnDeliveryStatus;
   returnShipment: ReturnShipmentRow;
+  pdfUrl: string | null;
 }): ClientSafeDeliveryResult {
-  const pdfUrl = returnPdfUrl(args.returnShipment);
   return {
     deliveryMethod: args.method,
     deliveryStatus: args.status,
-    // The PrepShip return label PDF is the delivery mechanism — always exposed.
-    pdfAvailable: Boolean(pdfUrl),
-    pdfUrl,
+    // The return label PDF is exposed only after its client-safe URL resolves.
+    pdfAvailable: Boolean(args.pdfUrl),
+    pdfUrl: args.pdfUrl,
     trackingNumber: args.returnShipment.labelTracking ?? args.returnShipment.trackingNumber ?? null,
     trackingStatus: args.returnShipment.trackingStatus ?? null,
   };
@@ -108,14 +104,19 @@ function toClientSafe(args: {
  * CP-032: "deliver" a return = make the PrepShip-created label PDF downloadable.
  * There is NO Shopify/native delivery, NO connector call, and NO customer or
  * marketplace notification. Returns a CLIENT-SAFE result (no carrier/service/
- * provider). Status is 'delivered' (available) when the label URL exists, else
- * 'pending'.
+ * provider). Status is 'delivered' only when a client-safe PDF URL resolves,
+ * else 'pending'.
  */
 export async function deliverReturn(ctx: ReturnDeliveryContext): Promise<ClientSafeDeliveryResult> {
   const returnId = ctx.returnRow?.id ?? null;
   const { method } = resolveReturnDelivery({ order: ctx.order }); // always manual_pdf
-  const pdfUrl = returnPdfUrl(ctx.returnShipment);
+  const pdfUrl = await resolveClientSafeReturnPdfUrl({
+    returnId,
+    shipmentSource: ctx.returnShipment.source,
+    shipmentVoided: ctx.returnShipment.voided,
+    labelUrl: ctx.returnShipment.labelUrl,
+  });
   const status: ReturnDeliveryStatus = pdfUrl ? 'delivered' : 'pending';
   await persistDeliveryOutcome(returnId, method, status, null);
-  return toClientSafe({ method, status, returnShipment: ctx.returnShipment });
+  return toClientSafe({ method, status, returnShipment: ctx.returnShipment, pdfUrl });
 }

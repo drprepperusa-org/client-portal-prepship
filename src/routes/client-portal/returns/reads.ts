@@ -23,8 +23,8 @@ import {
   scopeOrResponse,
 } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
-import { refreshMockLabelSignature } from '../../../lib/mock-label-access';
 import { validatedReturnCustomerShippingRateSql } from '../../../lib/client-portal/customer-shipping-rate';
+import { resolveClientSafeReturnPdfUrl } from '../../../lib/client-portal/return-label-pdf';
 import { getReturnMediaSignedUrl } from '../../../lib/supabase';
 import { listOriginalOrderActivity, listReturnActivity } from '../../../services/return-activity';
 import { resolveReturnReference } from '../../../services/return-reference';
@@ -64,6 +64,8 @@ function registerReturnListRoute(app: Hono): void {
         returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
+        returnShipmentSource: shipments.source,
+        returnShipmentVoided: shipments.voided,
         validatedReturnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
         returnedSkus: sql<string[]>`coalesce((
           select array_agg(ri.sku order by ri.id)
@@ -148,6 +150,8 @@ function registerReturnDetailRoute(app: Hono): void {
         returnTrackingStatus: shipments.trackingStatus,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
+        returnShipmentSource: shipments.source,
+        returnShipmentVoided: shipments.voided,
         validatedReturnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
         returnedSkus: sql<string[]>`coalesce((
           select array_agg(ri.sku order by ri.id)
@@ -199,7 +203,15 @@ function registerReturnDetailRoute(app: Hono): void {
       }),
     );
 
-    const safeRow = await toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials });
+    const [safeRow, pdfUrl] = await Promise.all([
+      toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials }),
+      resolveClientSafeReturnPdfUrl({
+        returnId: row.ret.id,
+        shipmentSource: row.returnShipmentSource,
+        shipmentVoided: row.returnShipmentVoided,
+        labelUrl: row.returnLabelUrl,
+      }),
+    ]);
     await recordPortalAudit('portal.returns.detail.view', scope, {
       returnId: id,
       clientId: row.ret.clientId,
@@ -210,7 +222,8 @@ function registerReturnDetailRoute(app: Hono): void {
         trackingStatus: row.returnTrackingStatus ?? null,
         deliveryError: row.ret.deliveryError,
         returnToLocationId: row.ret.returnToLocationId,
-        pdfUrl: refreshMockLabelSignature(row.returnLabelUrl),
+        pdfAvailable: Boolean(pdfUrl),
+        pdfUrl,
         requestedAt: iso(row.ret.requestedAt),
         closedAt: iso(row.ret.closedAt),
         items: items.map((item: ReturnItem) => ({
