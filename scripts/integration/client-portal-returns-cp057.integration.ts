@@ -4,6 +4,7 @@
  * contact a carrier or purchase real postage.
  */
 import { and, eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { setupTestEnv } from './guard';
 
 setupTestEnv();
@@ -93,6 +94,9 @@ globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestIni
 const { db, sql: pgClient } = await import('../../src/db/client');
 const schema = await import('../../src/db/schema/index');
 const returnsService = await import('../../src/services/returns');
+const externalTrackingService = await import('../../src/services/return-external-tracking');
+const externalTrackingApply = await import('../../src/services/return-external-tracking-apply');
+const labelSlotService = await import('../../src/services/return-label-slot');
 const { env } = await import('../../src/lib/env');
 const { carrierConnectors } = await import('../../src/connectors/registry');
 const originalCreateLabel = carrierConnectors.shipstation.createLabel;
@@ -190,6 +194,8 @@ async function reset(): Promise<void> {
   await db.execute(sql`drop function if exists cp057_fail_return_insert()`);
   await db.execute(sql`drop trigger if exists cp057_fail_return_update on returns`);
   await db.execute(sql`drop function if exists cp057_fail_return_update()`);
+  await db.execute(sql`drop trigger if exists cp058_wait_external_insert on shipments`);
+  await db.execute(sql`drop function if exists cp058_wait_external_insert()`);
   await db.execute(sql`
     truncate table
       return_label_purchase_intents,
@@ -303,6 +309,28 @@ function assertRedacted(result: Record<string, unknown>): void {
   }
 }
 
+function externalDecision() {
+  const decision = externalTrackingService.resolveReturnExternalTracking({
+    return: { status: 'requested', returnShipmentId: null },
+    trackingNumber: '1ZCP058EXTERNAL0001',
+    amountPaid: '6.58',
+  });
+  if (decision.kind !== 'accept') throw new Error('CP-058 external fixture was rejected');
+  return decision;
+}
+
+function assignExternal(fixture: Awaited<ReturnType<typeof seed>>) {
+  return externalTrackingApply.applyReturnExternalTracking({
+    returnId: fixture.returnId,
+    orderId: fixture.orderId,
+    clientId: fixture.clientId,
+    orderNumber: 'CP057-ORDER',
+    decision: externalDecision(),
+    actorEmail: 'cp058@example.test',
+    actorType: 'client',
+  });
+}
+
 async function concurrencyScenario(): Promise<void> {
   console.log('\nCP-057 Group 1 - concurrent purchase ownership');
   await reset();
@@ -336,8 +364,244 @@ async function concurrencyScenario(): Promise<void> {
   );
 }
 
+async function externalVsExternalScenario(): Promise<void> {
+  console.log('\nCP-057/058 Group 2 - concurrent external assignments');
+  await reset();
+  const fixture = await seed();
+
+  const outcomes = await Promise.allSettled([
+    assignExternal(fixture),
+    assignExternal(fixture),
+  ]);
+
+  equal(providerCalls, 0, 'external tracking never calls the provider');
+  equal((await returnShipments(fixture.orderId)).length, 1, 'two external requests leave one shipment');
+  equal(
+    outcomes.filter((result) => result.status === 'fulfilled').length,
+    1,
+    'exactly one external request owns the slot',
+  );
+  const rejected = outcomes.find((result) => result.status === 'rejected');
+  check(
+    rejected?.status === 'rejected' &&
+      rejected.reason instanceof labelSlotService.ReturnLabelAssignmentConflictError &&
+      rejected.reason.code === 'label_assignment_in_progress',
+    'the losing external request receives label_assignment_in_progress',
+  );
+}
+
+async function purchaseWinsExternalRaceScenario(): Promise<void> {
+  console.log('\nCP-057/058 Group 3 - purchase intent wins the external race');
+  await reset();
+  const fixture = await seed();
+  let releaseProvider!: () => void;
+  let signalStarted!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  providerStarted = signalStarted;
+  providerRelease = new Promise<void>((resolve) => { releaseProvider = resolve; });
+
+  const purchase = create(fixture);
+  await started;
+  const external = await assignExternal(fixture).then(
+    () => null,
+    (error) => error,
+  );
+  releaseProvider();
+  const purchased = await purchase;
+
+  check(
+    external instanceof labelSlotService.ReturnLabelAssignmentConflictError &&
+      external.code === 'label_assignment_in_progress',
+    'external tracking loses with label_assignment_in_progress after intent ownership',
+  );
+  equal(providerCalls, 1, 'the winning purchase makes exactly one provider call');
+  const rows = await returnShipments(fixture.orderId);
+  equal(rows.length, 1, 'purchase-win race leaves one canonical shipment');
+  equal(rows[0]?.source, 'prepship_return_v2', 'the purchased shipment remains canonical');
+  equal(purchased.returnShipmentId, rows[0]?.id, 'the return links the purchased shipment');
+}
+
+async function waitForExternalInsertGate(): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [row] = await db.execute<{ waiting: number }>(sql`
+      select count(*)::int as waiting
+      from pg_locks
+      where locktype = 'advisory'
+        and classid = 57
+        and objid = 58
+        and granted = false
+    `);
+    if (Number(row?.waiting ?? 0) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('CP-058 external assignment never reached its transaction gate');
+}
+
+async function externalWinsPurchaseRaceScenario(): Promise<void> {
+  console.log('\nCP-057/058 Group 4 - external assignment wins the purchase race');
+  await reset();
+  const fixture = await seed();
+  const gateClient = postgres(process.env.TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connection: { application_name: 'cp058-external-winner-gate' },
+  });
+
+  let external: Promise<{ returnShipmentId: number }> | null = null;
+  let purchase: ReturnType<typeof create> | null = null;
+  try {
+    await gateClient`select pg_advisory_lock(57, 58)`;
+    await db.execute(sql`
+      create function cp058_wait_external_insert() returns trigger language plpgsql as $$
+      begin
+        if new.source = 'external_return_label' then
+          perform pg_advisory_xact_lock(57, 58);
+        end if;
+        return new;
+      end $$
+    `);
+    await db.execute(sql`
+      create trigger cp058_wait_external_insert before insert on shipments
+      for each row execute function cp058_wait_external_insert()
+    `);
+
+    // The external transaction locks the return row, then waits in the insert
+    // trigger. Starting the purchase now makes it queue behind that exact lock.
+    external = assignExternal(fixture);
+    await waitForExternalInsertGate();
+    purchase = create(fixture);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } finally {
+    await gateClient`select pg_advisory_unlock(57, 58)`;
+    await gateClient.end({ timeout: 5 });
+  }
+
+  const [externalOutcome, purchaseOutcome] = await Promise.allSettled([
+    external!,
+    purchase!,
+  ]);
+  check(externalOutcome.status === 'fulfilled', 'the external assignment commits first');
+  check(
+    purchaseOutcome.status === 'rejected' &&
+      purchaseOutcome.reason instanceof labelSlotService.ReturnLabelAssignmentConflictError &&
+      purchaseOutcome.reason.code === 'label_assignment_in_progress',
+    'the losing purchase receives label_assignment_in_progress',
+  );
+  equal(providerCalls, 0, 'external-win race reaches no provider call');
+  const rows = await returnShipments(fixture.orderId);
+  equal(rows.length, 1, 'external-win race leaves one canonical shipment');
+  equal(rows[0]?.source, 'external_return_label', 'the external shipment remains canonical');
+  const [returnRow] = await db.select().from(schema.returns).where(eq(schema.returns.id, fixture.returnId));
+  equal(returnRow?.returnShipmentId, rows[0]?.id, 'the return links only the external shipment');
+}
+
+async function voidedSlotReplacementScenario(): Promise<void> {
+  console.log('\nCP-057/058 Group 5 - voided label releases the canonical slot');
+  await reset();
+  const purchaseFixture = await seed();
+  const original = await create(purchaseFixture);
+  await db
+    .update(schema.shipments)
+    .set({ voided: true, updatedAt: new Date() })
+    .where(eq(schema.shipments.id, original.returnShipmentId!));
+  const intentService = await import('../../src/services/return-label-purchase-intents');
+  await intentService.markReturnLabelPurchaseVoidedForShipment(original.returnShipmentId!, {
+    actor: 'cp057-fixture',
+    note: 'Throwaway fixture verified provider void',
+  });
+
+  const replacement = await create(purchaseFixture);
+  equal(providerCalls, 2, 'a voided purchased label permits exactly one replacement purchase');
+  check(
+    replacement.returnShipmentId !== original.returnShipmentId,
+    'replacement purchase links a new canonical shipment',
+  );
+  const [purchaseReturn] = await db
+    .select()
+    .from(schema.returns)
+    .where(eq(schema.returns.id, purchaseFixture.returnId));
+  equal(
+    purchaseReturn?.returnShipmentId,
+    replacement.returnShipmentId,
+    'the voided historical link is conditionally replaced',
+  );
+
+  await reset();
+  const externalFixture = await seed();
+  const firstExternal = await assignExternal(externalFixture);
+  await db
+    .update(schema.shipments)
+    .set({ voided: true, updatedAt: new Date() })
+    .where(eq(schema.shipments.id, firstExternal.returnShipmentId));
+  const secondExternal = await assignExternal(externalFixture);
+  check(
+    secondExternal.returnShipmentId !== firstExternal.returnShipmentId,
+    'external tracking can replace a voided link when workflow status is labelable',
+  );
+  const [externalReturn] = await db
+    .select()
+    .from(schema.returns)
+    .where(eq(schema.returns.id, externalFixture.returnId));
+  equal(
+    externalReturn?.returnShipmentId,
+    secondExternal.returnShipmentId,
+    'the new external shipment owns the released slot',
+  );
+  equal(providerCalls, 0, 'void-to-external replacement calls no provider');
+}
+
+async function externalPdfOwnershipScenario(): Promise<void> {
+  console.log('\nCP-057/058 Group 5B - external PDF ownership follows the linked shipment');
+  await reset();
+  const fixture = await seed();
+  const first = await assignExternal(fixture);
+  const firstPath = `returns/${fixture.returnId}/external-label/first.pdf`;
+  await externalTrackingApply.attachReturnExternalLabelPdf({
+    returnId: fixture.returnId,
+    expectedShipmentId: first.returnShipmentId,
+    objectPath: firstPath,
+  });
+
+  const [attached] = await db
+    .select({ labelUrl: schema.shipments.labelUrl })
+    .from(schema.shipments)
+    .where(eq(schema.shipments.id, first.returnShipmentId));
+  equal(attached?.labelUrl, firstPath, 'the linked external shipment accepts its PDF path');
+
+  await db
+    .update(schema.shipments)
+    .set({ voided: true, updatedAt: new Date() })
+    .where(eq(schema.shipments.id, first.returnShipmentId));
+  const replacement = await assignExternal(fixture);
+
+  const lostOwnership = await externalTrackingApply.attachReturnExternalLabelPdf({
+    returnId: fixture.returnId,
+    expectedShipmentId: first.returnShipmentId,
+    objectPath: `returns/${fixture.returnId}/external-label/stale.pdf`,
+  }).then(
+    () => null,
+    (error) => error,
+  );
+  check(
+    lostOwnership instanceof labelSlotService.ReturnLabelAssignmentConflictError,
+    'a PDF request for the replaced shipment loses with the assignment conflict',
+  );
+
+  const [oldShipment] = await db
+    .select({ labelUrl: schema.shipments.labelUrl })
+    .from(schema.shipments)
+    .where(eq(schema.shipments.id, first.returnShipmentId));
+  const [newShipment] = await db
+    .select({ labelUrl: schema.shipments.labelUrl })
+    .from(schema.shipments)
+    .where(eq(schema.shipments.id, replacement.returnShipmentId));
+  equal(oldShipment?.labelUrl, firstPath, 'a stale PDF request does not overwrite the old path');
+  equal(newShipment?.labelUrl, null, 'a stale PDF request cannot write onto the new owner');
+  equal(providerCalls, 0, 'external PDF ownership checks call no provider');
+}
+
 async function shipmentInsertRecoveryScenario(): Promise<void> {
-  console.log('\nCP-057 Group 2 - provider success then shipment insert failure');
+  console.log('\nCP-057 Group 6 - provider success then shipment insert failure');
   await reset();
   const fixture = await seed();
   await db.execute(sql`
@@ -379,7 +643,7 @@ async function shipmentInsertRecoveryScenario(): Promise<void> {
 }
 
 async function returnUpdateRecoveryScenario(): Promise<void> {
-  console.log('\nCP-057 Group 3 - shipment success then return-row update failure');
+  console.log('\nCP-057 Group 7 - shipment success then return-row update failure');
   await reset();
   const fixture = await seed();
   await db.execute(sql`
@@ -413,7 +677,7 @@ async function returnUpdateRecoveryScenario(): Promise<void> {
 }
 
 async function unknownOutcomeScenario(): Promise<void> {
-  console.log('\nCP-057 Group 4 - timeout after submission');
+  console.log('\nCP-057 Group 8 - timeout after submission');
   await reset();
   const fixture = await seed();
   providerMode = 'timeout_after_submit';
@@ -441,7 +705,7 @@ async function unknownOutcomeScenario(): Promise<void> {
 }
 
 async function absentOutcomeHoldScenario(): Promise<void> {
-  console.log('\nCP-057 Group 5 - provider absence remains held');
+  console.log('\nCP-057 Group 9 - provider absence remains held');
   await reset();
   const fixture = await seed();
   providerMode = 'timeout_before_submit';
@@ -493,7 +757,7 @@ async function absentOutcomeHoldScenario(): Promise<void> {
 }
 
 async function offlineGatesScenario(): Promise<void> {
-  console.log('\nCP-057 Group 6 - live purchase gates and redaction');
+  console.log('\nCP-057 Group 10 - live purchase gates and redaction');
   await reset();
   env.RETURNS_LIVE_LABELS = false;
   const flagOffFixture = await seed();
@@ -518,6 +782,11 @@ async function offlineGatesScenario(): Promise<void> {
 
 async function main(): Promise<void> {
   await concurrencyScenario();
+  await externalVsExternalScenario();
+  await purchaseWinsExternalRaceScenario();
+  await externalWinsPurchaseRaceScenario();
+  await voidedSlotReplacementScenario();
+  await externalPdfOwnershipScenario();
   await shipmentInsertRecoveryScenario();
   await returnUpdateRecoveryScenario();
   await unknownOutcomeScenario();

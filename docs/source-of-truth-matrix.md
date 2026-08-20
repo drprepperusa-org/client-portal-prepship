@@ -1081,6 +1081,13 @@ canonical `shipments` label/tracking/rate/cost record. PS-423 adds renewable,
 generation-fenced ownership: ambiguous outcomes remain held even when a
 provider lookup returns 404, and only receipt reconciliation or an audited
 operator no-effect resolution can advance the operation.
+CP-057/058 serialize live purchase-intent acquisition and external tracking on
+the canonical `returns` row. The purchase commits intent ownership before a
+provider call; external tracking atomically inserts and links its shipment, and
+a race loser receives `label_assignment_in_progress` without an orphan shipment
+or provider call. A voided linked shipment releases the slot while remaining
+historical evidence. External PDF persistence conditionally rechecks that the
+same active external shipment is still linked.
 PS-435 adds a fail-closed call to PrepShip's canonical customer-shipping-money
 owner before the provider mutation. Candidate provider facts stay server-to-server;
 the adapter, return DTO, Billing, and UI receive only the customer-safe amount and

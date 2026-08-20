@@ -30,6 +30,14 @@ export async function uploadReturnInspectionMedia(
   if (error) throw new Error(`Return inspection media upload failed: ${error.message}`);
 }
 
+/** Remove a just-uploaded private object when its owning DB write loses a race. */
+export async function removeReturnInspectionMedia(objectPath: string): Promise<void> {
+  const { error } = await supabaseAdmin.storage
+    .from(env.RETURNS_MEDIA_BUCKET)
+    .remove([objectPath]);
+  if (error) throw new Error(`Return inspection media cleanup failed: ${error.message}`);
+}
+
 /** Mint a short-lived signed URL for a stored object path. Absolute http(s)
  *  refs (legacy/already-hosted) pass through unchanged. Returns null when the
  *  object cannot be signed (missing/renamed) so the caller can degrade to a

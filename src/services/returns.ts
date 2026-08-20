@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { env } from '../lib/env';
 import { shipments } from '../db/schema/shipments';
@@ -46,6 +46,7 @@ import {
   selectedRateFromIntent,
   type ReturnLabelPurchaseAction,
 } from './return-label-purchase-intents';
+import { ReturnLabelAssignmentConflictError } from './return-label-slot';
 
 // ── CP-027 — backend return-label service ─────────────────────────────────────
 //
@@ -166,7 +167,7 @@ export class ReturnCustomerRateUnavailableError extends Error {
   }
 }
 
-export class ReturnLabelPurchasePendingError extends Error {
+export class ReturnLabelPurchasePendingError extends ReturnLabelAssignmentConflictError {
   constructor() {
     super('Return label purchase is being reconciled. Please retry shortly.');
     this.name = 'ReturnLabelPurchasePendingError';
@@ -606,11 +607,30 @@ async function markReturnLabelCreated(
     .where(
       and(
         eq(returns.id, returnId),
+        or(
+          isNull(returns.returnShipmentId),
+          eq(returns.returnShipmentId, shipmentId),
+          sql`exists (
+            select 1
+            from ${shipments} prior_return_shipment
+            where prior_return_shipment.id = ${returns.returnShipmentId}
+              and prior_return_shipment.voided = true
+          )`,
+        ),
         sql`(
           ${returns.status} in ('requested', 'label_failed')
           or (
             ${returns.status} = 'label_created'
-            and (${returns.returnShipmentId} is null or ${returns.returnShipmentId} = ${shipmentId})
+            and (
+              ${returns.returnShipmentId} is null
+              or ${returns.returnShipmentId} = ${shipmentId}
+              or exists (
+                select 1
+                from ${shipments} prior_return_shipment
+                where prior_return_shipment.id = ${returns.returnShipmentId}
+                  and prior_return_shipment.voided = true
+              )
+            )
           )
         )`,
       ),
@@ -734,7 +754,12 @@ export async function createReturnLabel(
         ),
       )
       .limit(1);
-    if (linked) {
+    if (linked && !linked.voided) {
+      if (linked.source === 'external_return_label') {
+        throw new ReturnLabelAssignmentConflictError(
+          'This return already has an external label. Refresh to view its tracking.',
+        );
+      }
       const customerRate = await ensureReturnCustomerRateSnapshot(returnRow, linked, input.authorization);
       return toClientSafeResultFromShipment(linked, customerRate);
     }
@@ -750,6 +775,11 @@ export async function createReturnLabel(
   //    return requires an explicit, AUDITED admin override. ──
   const existingReturn = await findActiveReturnForOrder(order.id);
   if (existingReturn) {
+    if (returnRow && existingReturn.source === 'external_return_label') {
+      throw new ReturnLabelAssignmentConflictError(
+        'This return already has an external label. Refresh to view its tracking.',
+      );
+    }
     if (
       returnRow &&
       existingIntent &&

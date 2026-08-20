@@ -44,6 +44,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "migrate:ps-423-return-label-fencing": "tsx scripts/apply-ps-423-return-label-fencing-migration.ts",
+    "migrate:cp-057-return-label-voided": "tsx scripts/apply-cp-057-return-label-voided-migration.ts",
     "marketplace:reconcile": "tsx scripts/reconcile-marketplace-order-status.ts",
     "marketplace:reconcile:apply": "tsx scripts/reconcile-marketplace-order-status.ts --apply",
     "marketplace:confirm:retry": "tsx scripts/retry-marketplace-confirmation.ts",
