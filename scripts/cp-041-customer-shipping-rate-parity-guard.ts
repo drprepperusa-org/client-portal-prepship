@@ -3,6 +3,18 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { sql } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { orders } from '../src/db/schema/orders';
+import { shipments } from '../src/db/schema/shipments';
+import {
+  customerSafeBillingLineSql,
+  orderCustomerShippingRateSql,
+  projectedCustomerShippingRateSql,
+  shipmentCustomerShippingRateSql,
+  validatedReturnCustomerShippingRateSql,
+} from '../src/lib/client-portal/customer-shipping-rate';
 
 const root = process.cwd();
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -102,6 +114,110 @@ assert.match(snapshot, /customerShippingMoneyPolicyVersion/,
   'snapshot reader requires explicit policy provenance');
 assert.doesNotMatch(snapshot, /\b(?:labelCost|otherCost|shipmentCost|houseCost|rawCost)\b/,
   'snapshot reader never promotes raw or legacy shipment-cost aliases');
+
+// PS-508/PS-509 consumer cutover: compile the SQL, rather than accepting source
+// comments as proof, and pin each version to the provenance PrepShip freezes.
+const dialect = new PgDialect();
+const outboundProjection = dialect.sqlToQuery(projectedCustomerShippingRateSql()).sql;
+const returnProjection = dialect.sqlToQuery(validatedReturnCustomerShippingRateSql()).sql;
+const returnBillingGate = dialect.sqlToQuery(customerSafeBillingLineSql({
+  lineType: sql.raw('bli.line_type'),
+  shipmentId: sql.raw('bli.shipment_id'),
+  totalCost: sql.raw('bli.total_cost'),
+})).sql;
+const orderProjection = dialect.sqlToQuery(orderCustomerShippingRateSql()).sql;
+const embeddedOrderQuery = drizzle.mock({ casing: 'snake_case' })
+  .select({ customerShippingRate: orderCustomerShippingRateSql() })
+  .from(orders)
+  .toSQL()
+  .sql;
+const embeddedShipmentQuery = drizzle.mock({ casing: 'snake_case' })
+  .select({ customerShippingRate: shipmentCustomerShippingRateSql() })
+  .from(shipments)
+  .toSQL()
+  .sql;
+const ps508Contract = new RegExp([
+  "customerRateSource' in \\(\\s*",
+  "'realized_customer_shipping_rate',\\s*",
+  "'hugrab_shipping_rate_override',\\s*",
+  "'house_next_best_customer_rate'\\s*\\)",
+  "[\\s\\S]*customerShippingMoneyPolicyVersion' = 'ps-508-v1'",
+  "[\\s\\S]*not \\([\\s\\S]*\\? 'customerShippingMoneyCaptureSource'",
+].join(''));
+const ps509Contract = new RegExp([
+  "customerRateSource' in \\(\\s*",
+  "'carrier_markup_customer_shipping_rate',\\s*",
+  "'hugrab_shipping_rate_override'\\s*\\)",
+  "[\\s\\S]*rateCostSource' = 'shipstation_sync_receipt_cost'",
+  "[\\s\\S]*customerShippingMoneyPolicyVersion' = 'ps-509-v1'",
+  "[\\s\\S]*\\? 'customerShippingMoneyCaptureSource'",
+  "[\\s\\S]*customerShippingMoneyCaptureSource'",
+  "[\\s\\S]*= 'shipstation_sync_ingestion'",
+].join(''));
+const workflowFence = new RegExp([
+  'coalesce\\("shipments"\\."isReturn", false\\) = true',
+  '[\\s\\S]*ps-437-v1',
+  '[\\s\\S]*coalesce\\("shipments"\\."isReturn", false\\) = false',
+  '[\\s\\S]*ps-508-v1',
+  '[\\s\\S]*ps-509-v1',
+].join(''));
+
+assert.match(
+  outboundProjection,
+  /customerShippingMoneyPolicyVersion' = 'ps-437-v1'/,
+  'ordinary outbound reads the historical ps-437 tuple',
+);
+assert.match(
+  outboundProjection,
+  ps508Contract,
+  'ps-508 requires purchase-path provenance and no sync capture key',
+);
+assert.match(
+  outboundProjection,
+  ps509Contract,
+  'ps-509 requires sync-ingress formula, receipt-cost, and capture provenance',
+);
+assert.match(
+  outboundProjection,
+  workflowFence,
+  'return shipments stay ps-437-only while ordinary outbound opts into newer versions',
+);
+
+for (const [name, compiled] of [
+  ['return display projection', returnProjection],
+  ['return billing-line gate', returnBillingGate],
+] as const) {
+  assert.match(compiled, /customerShippingMoneyPolicyVersion' = 'ps-437-v1'/,
+    `${name} retains the return ps-437 contract`);
+  assert.doesNotMatch(compiled, /ps-508-v1|ps-509-v1/,
+    `${name} must not opt return money into outbound contracts`);
+}
+
+assert.match(
+  orderProjection,
+  /and coalesce\("shipments"\."isReturn", false\) = false/,
+  'order-grain customer shipping excludes return postage shipments',
+);
+assert.match(
+  embeddedOrderQuery,
+  /where "order_id" = "orders"\."id"/,
+  'the order-grain subquery keeps its outer orders.id correlation when embedded',
+);
+assert.doesNotMatch(
+  embeddedOrderQuery,
+  /where "order_id" = "id"/,
+  'Drizzle must not collapse the correlation into shipment.order_id = shipment.id',
+);
+assert.match(
+  embeddedShipmentQuery,
+  /bli\.shipment_id = "shipments"\."id"/,
+  'the billing-line subquery keeps its outer shipment correlation when embedded',
+);
+assert.doesNotMatch(
+  embeddedShipmentQuery,
+  /bli\.shipment_id = "id"/,
+  'Drizzle must not collapse the billing lookup into billing_line.shipment_id = billing_line.id',
+);
 
 const pkg = JSON.parse(read('package.json')) as { scripts?: Record<string, string> };
 assert.equal(

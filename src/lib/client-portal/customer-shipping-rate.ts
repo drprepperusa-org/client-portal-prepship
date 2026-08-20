@@ -3,7 +3,7 @@ import { orders } from '../../db/schema/orders';
 import { returns } from '../../db/schema/returns';
 import { shipments } from '../../db/schema/shipments';
 
-function frozenCustomerShippingTupleIsValidSql(): SQL {
+function frozenCustomerShippingTupleHasValidMoneySql(): SQL {
   return sql`coalesce(${shipments.selectedRateJson}, '{}'::jsonb) ?& array[
     'selectedRateCost',
     'cShippingRateAmount',
@@ -24,12 +24,61 @@ function frozenCustomerShippingTupleIsValidSql(): SQL {
         - (${shipments.selectedRateJson}->>'selectedRateCost')::numeric,
       2
     ) = round((${shipments.selectedRateJson}->>'shippingMarginAmount')::numeric, 2)
+  `;
+}
+
+/** PS-437 return/replacement tuple. Kept as the return-only compatibility gate. */
+function frozenCustomerShippingTupleIsValidSql(): SQL {
+  return sql`(${frozenCustomerShippingTupleHasValidMoneySql()})
     and ${shipments.selectedRateJson}->>'customerRateSource' in (
       'realized_customer_shipping_rate',
       'hugrab_shipping_rate_override'
     )
     and ${shipments.selectedRateJson}->>'rateCostSource' = 'label_final_cost'
-    and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-437-v1'`;
+    and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-437-v1'
+    and not (
+      coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
+        ? 'customerShippingMoneyCaptureSource'
+    )`;
+}
+
+/** PS-508 ordinary-outbound label-purchase tuple. */
+function frozenOutboundPurchaseCustomerShippingTupleIsValidSql(): SQL {
+  return sql`(${frozenCustomerShippingTupleHasValidMoneySql()})
+    and ${shipments.selectedRateJson}->>'customerRateSource' in (
+      'realized_customer_shipping_rate',
+      'hugrab_shipping_rate_override',
+      'house_next_best_customer_rate'
+    )
+    and ${shipments.selectedRateJson}->>'rateCostSource' = 'label_final_cost'
+    and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-508-v1'
+    and not (
+      coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
+        ? 'customerShippingMoneyCaptureSource'
+    )`;
+}
+
+/** PS-509 ShipStation sync-ingress tuple. */
+function frozenSyncIngressCustomerShippingTupleIsValidSql(): SQL {
+  return sql`(${frozenCustomerShippingTupleHasValidMoneySql()})
+    and ${shipments.selectedRateJson}->>'customerRateSource' in (
+      'carrier_markup_customer_shipping_rate',
+      'hugrab_shipping_rate_override'
+    )
+    and ${shipments.selectedRateJson}->>'rateCostSource' = 'shipstation_sync_receipt_cost'
+    and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-509-v1'
+    and coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
+      ? 'customerShippingMoneyCaptureSource'
+    and ${shipments.selectedRateJson}->>'customerShippingMoneyCaptureSource'
+      = 'shipstation_sync_ingestion'`;
+}
+
+function frozenOutboundCustomerShippingTupleIsValidSql(): SQL {
+  return sql`(
+    (${frozenCustomerShippingTupleIsValidSql()})
+    or (${frozenOutboundPurchaseCustomerShippingTupleIsValidSql()})
+    or (${frozenSyncIngressCustomerShippingTupleIsValidSql()})
+  )`;
 }
 
 function frozenCustomerShippingAmountSql(): SQL {
@@ -37,13 +86,18 @@ function frozenCustomerShippingAmountSql(): SQL {
 }
 
 /**
- * Compatibility name retained for callers. PS-437 removed the SQL pricing
- * mirror: this now reads only PrepShip's explicit, policy-versioned shipment
- * snapshot and never derives customer money from cost or billing config.
+ * Compatibility name retained for callers. This reads only PrepShip's
+ * explicit, policy-versioned shipment snapshot and never derives customer
+ * money from cost or billing config. Return labels remain ps-437-only;
+ * ordinary outbound labels accept the canonical ps-437/508/509 contracts.
  */
 export function projectedCustomerShippingRateSql(): SQL<string | null> {
   return sql`case
-    when ${frozenCustomerShippingTupleIsValidSql()}
+    when coalesce(${shipments.isReturn}, false) = true
+      and ${frozenCustomerShippingTupleIsValidSql()}
+      then (${frozenCustomerShippingAmountSql()})::text
+    when coalesce(${shipments.isReturn}, false) = false
+      and ${frozenOutboundCustomerShippingTupleIsValidSql()}
       then (${frozenCustomerShippingAmountSql()})::text
     else null
   end`;
@@ -93,11 +147,13 @@ export function customerSafeBillingLineSql(input: {
 }
 
 export function shipmentCustomerShippingRateSql(): SQL<string | null> {
+  // Preserve the outer shipment qualifier inside the billing-line subquery.
+  const correlatedShipmentId = sql`${shipments.id}`;
   return sql`coalesce(
     (
       select sum(bli.total_cost)
       from billing_line_items bli
-      where bli.shipment_id = ${shipments.id}
+      where bli.shipment_id = ${correlatedShipmentId}
         and bli.line_type = 'shipping'
     )::text,
     ${projectedCustomerShippingRateSql()}
@@ -107,7 +163,7 @@ export function shipmentCustomerShippingRateSql(): SQL<string | null> {
 /**
  * Order-grain C. Shipping Rate: the SAME per-shipment resolver above
  * (shipmentCustomerShippingRateSql — frozen billing line → frozen snapshot) applied to
- * each of the order's NON-VOIDED shipments and summed. The Client Portal Orders
+ * each of the order's NON-VOIDED, NON-RETURN shipments and summed. The Client Portal Orders
  * list/detail read-model uses this so an order row resolves the identical value
  * the Shipments surface shows — WITHOUT ever falling back to
  * orders.shipping_amount. Buyer-paid store/checkout shipping is unrelated to the
@@ -122,10 +178,14 @@ export function shipmentCustomerShippingRateSql(): SQL<string | null> {
  * "Pending" if the order still has an active shipment.
  */
 export function orderCustomerShippingRateSql(): SQL<string | null> {
+  // Keep the outer table qualifier when Drizzle embeds this fragment in a
+  // single-table select; a direct column chunk can otherwise become `id`.
+  const correlatedOrderId = sql`${orders.id}`;
   return sql`(
     select sum((${shipmentCustomerShippingRateSql()})::numeric)::text
     from ${shipments}
-    where ${shipments.orderId} = ${orders.id}
+    where ${shipments.orderId} = ${correlatedOrderId}
       and coalesce(${shipments.voided}, false) = false
+      and coalesce(${shipments.isReturn}, false) = false
   )`;
 }

@@ -42,6 +42,19 @@ assert.equal(readFrozenCustomerShippingMoney({
   ...valid,
   shippingMarginAmount: 9,
 }), null, 'inconsistent margin tuples fail closed');
+assert.equal(readFrozenCustomerShippingMoney({
+  ...valid,
+  customerRateSource: 'house_next_best_customer_rate',
+  customerShippingMoneyPolicyVersion: 'ps-508-v1',
+  billingDescriptionSuffix: ' (house rate)',
+}), null, 'the return/replacement reader does not opt into ps-508 outbound tuples');
+assert.equal(readFrozenCustomerShippingMoney({
+  ...valid,
+  customerRateSource: 'carrier_markup_customer_shipping_rate',
+  rateCostSource: 'shipstation_sync_receipt_cost',
+  customerShippingMoneyPolicyVersion: 'ps-509-v1',
+  customerShippingMoneyCaptureSource: 'shipstation_sync_ingestion',
+}), null, 'the return/replacement reader does not opt into ps-509 sync-ingress tuples');
 
 assert.match(service, /selectedRateCost:\s*costStr/,
   'return shipment persists exact provider total');

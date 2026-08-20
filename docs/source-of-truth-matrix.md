@@ -917,7 +917,7 @@ does not fan out, cap, merge, total, average, share, or rank them. Guard:
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode`/`shippingService` = **null** | hard-nulled in `toPortalOrderDto` | n/a | backend-owned-truth (redaction) |
 | Ship-to | `shipToName/City/State` | same | `orders` columns + raw `shipTo` jsonb (client's own recipient) | order time | presentation-only |
 | Weight (admin only) | `weightOz` | `weightOz` | `orders.weight_oz`, gated by `scope.isGlobal` in the order read-model | order import / packing update time | presentation-only (operator-only) |
-| Shipping charge | `customerShippingRate` | `customerShippingRate` | billed `Σ billing_line_items` (shipping) → fallback `orders.shippingAmount` | billing / order time | derived-from-canonical (backend-owned) |
+| Shipping charge | `customerShippingRate` | `customerShippingRate` | per non-voided, non-return shipment: frozen `Σ billing_line_items` (`line_type='shipping'`) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot under the versioned outbound contract; never `orders.shippingAmount` | PrepShip label/billing freeze | backend-owned-truth (PS-437/508/509, gated) |
 
 Owner: `src/lib/client-portal/dto.ts` (`toPortalOrderDto`) over `orders` /
 `order_items` / `order_overrides`. Route: `src/routes/client-portal/orders.ts`.
@@ -949,7 +949,7 @@ Guard: `client-portal-order-detail-guard.ts`.
 | Delivery status | `shipmentStatus` | `shipmentStatus` | `portalShipmentStatusSql`: voided wins; known persisted carrier status passes through; no carrier movement = `label_created`; invalid persisted value = `unavailable` | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042/CP-051) |
 | Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier or ShipStation per-label delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
-| Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot (`customerShippingMoneyPolicyVersion='ps-437-v1'`); never raw cost or a Client Portal formula | PrepShip label/billing freeze | backend-owned-truth (PS-437, gated) |
+| Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot; return labels stay `customerShippingMoneyPolicyVersion='ps-437-v1'`, while ordinary outbound accepts the version-specific `ps-437-v1`, `ps-508-v1`, and `ps-509-v1` provenance contracts; never raw cost or a Client Portal formula | PrepShip label/billing freeze | backend-owned-truth (PS-437/508/509, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
 
 Owner: `toPortalShipmentDto` over `shipments`. Route:
