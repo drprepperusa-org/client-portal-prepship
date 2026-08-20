@@ -44,6 +44,8 @@ const page = [
 ].join('\n');
 const createModal = read('portal-client/src/components/returns/ReturnCreateModal.tsx');
 const createModalCode = stripComments(createModal);
+const returnDelivery = read('src/services/return-delivery.ts');
+const returnPdfAccess = read('src/lib/client-portal/return-label-pdf.ts');
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. Route sub-module exists + mounted in the aggregator ──
@@ -158,11 +160,13 @@ assert(
   !/getRates|isBlockedRate|carrierConnectors/.test(route),
   'the returns route never rate-shops or calls a carrier connector (no getRates/isBlockedRate/carrierConnectors)',
 );
-// The PDF is served through the existing label route (labelUrl) — no new
-// mechanism is invented in this route.
+// The canonical label reference stays on shipments. Private external-upload
+// paths are resolved server-side; the browser never receives the durable key.
 assert(
-  /labelUrl/.test(route) && /pdfUrl/.test(route),
-  'the return label PDF is surfaced via the existing shipments.labelUrl (served by the /labels route), exposed as pdfUrl',
+  /resolveClientSafeReturnPdfUrl/.test(route) &&
+    /resolveClientSafeReturnPdfUrl/.test(returnDelivery) &&
+    /getReturnMediaSignedUrl/.test(returnPdfAccess),
+  'the return label PDF stays shipment-owned and private uploads are exposed only through signed URLs',
 );
 
 // ── 5. Frontend page exists + registered in the router + in the nav ──

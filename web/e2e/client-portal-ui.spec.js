@@ -786,6 +786,24 @@ test('CP-058 AC-3/AC-4: the external-tracking surface is reachable and asks for 
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
+test('CP-058 AC-4: a private external-label PDF uses the backend signed URL', async ({ page }) => {
+  const signedPdfUrl = 'https://signed.example.test/cp058-return-label.pdf?token=e2e';
+  const errors = await setupPortal(page, {
+    returnOverrides: {
+      status: 'label_created',
+      pdfAvailable: true,
+      pdfUrl: signedPdfUrl,
+    },
+  });
+  await page.goto(`${baseUrl}/returns`);
+
+  const row = page.getByRole('row').filter({ hasText: 'E2E-RET-1' });
+  await row.getByRole('button', { name: 'Download' }).click();
+  const download = page.getByRole('dialog').getByRole('link', { name: 'Download return label' });
+  await expect(download).toHaveAttribute('href', signedPdfUrl);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
 test('CP-058 AC-6: the billing-date surface is staff-only', async ({ page }) => {
   // Staff see it.
   const staffErrors = await setupPortal(page, { admin: true, returnOverrides: { status: 'requested' } });
