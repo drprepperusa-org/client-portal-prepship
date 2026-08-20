@@ -244,7 +244,8 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
       sku: 'E2E-SKU',
       name: 'E2E product',
       totalUnits: 3,
-      avgShippingCharge: '4.00',
+      avgShippingStandard: '4.00',
+      avgShippingExpedited: '18.00',
       averageUnitsPerDay: 1.5,
       dailySales: [{ day, units: 3 }],
       orders: [{
@@ -256,7 +257,11 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
         qty: 3,
         unit_price: '8.33',
         item_name: 'E2E product',
-        shippingCharge: '4.00',
+        // CP-060: mixed-class order — total plus per-class split.
+        shippingTotal: '22.00',
+        shippingStandard: '4.00',
+        shippingExpedited: '18.00',
+        shippingMoneyState: 'attributed',
       }],
     };
   }
@@ -600,6 +605,11 @@ test('Analysis SKU drawer renders the customer-safe DTO', async ({ page }) => {
   await expect(drawer.getByText('Recent orders (1)')).toBeVisible();
   await expect(drawer.getByRole('button', { name: /E2E-501/ })).toBeVisible();
   await expect(drawer.getByText('1.5', { exact: true })).toBeVisible();
+  // CP-060: total renders, and the mixed-class order shows its std/exp split.
+  await expect(drawer.getByText('$22.00')).toBeVisible();
+  await expect(drawer.getByText(/std \$4\.00 · exp \$18\.00/)).toBeVisible();
+  await expect(drawer.getByText('Avg std shipping')).toBeVisible();
+  await expect(drawer.getByText('Avg expedited')).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

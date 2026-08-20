@@ -59,10 +59,18 @@ assert(
   'base dashboard route keeps the default (house_markup) basis',
 );
 
-// 4. Client boundary exposes a charge-named drawer key, not a cost-named one.
+// 4. Client boundary exposes customer-named drawer keys, not cost-named ones.
+//    CP-060 replaced the std-only generic shippingCharge/avgShippingCharge with
+//    per-class fields; the internal *_cost vocabulary still must not cross.
 assert(
-  /shippingCharge/.test(cpAnalysis) && /avgShippingCharge/.test(cpAnalysis),
-  'sku-orders boundary exposes shippingCharge / avgShippingCharge',
+  /shippingTotal/.test(cpAnalysis) &&
+    /shippingStandard/.test(cpAnalysis) &&
+    /shippingExpedited/.test(cpAnalysis),
+  'sku-orders boundary exposes shippingTotal / shippingStandard / shippingExpedited',
+);
+assert(
+  !/standard_shipping_cost/.test(cpAnalysis),
+  'sku-orders boundary does not leak the internal standard_shipping_cost column name',
 );
 
 // 5. The client Dashboard read-model no longer carries the internal allocation vocab.

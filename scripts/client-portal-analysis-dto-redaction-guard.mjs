@@ -56,7 +56,8 @@ const skuOrdersTopLevelFields = [
   'sku',
   'name',
   'totalUnits',
-  'avgShippingCharge',
+  'avgShippingStandard',
+  'avgShippingExpedited',
   'averageUnitsPerDay',
   'dailySales',
   'orders',
@@ -70,17 +71,31 @@ const skuOrderFields = [
   'qty',
   'unit_price',
   'item_name',
-  'shippingCharge',
+  'shippingTotal',
+  'shippingStandard',
+  'shippingExpedited',
+  'shippingMoneyState',
+];
+// CP-060: shipping_total/standard/expedited/money_state are the APPROVED
+// source columns the serializer maps from; everything else stays forbidden,
+// including the retired std-only generics.
+const skuOrderApprovedSourceColumns = [
+  'shipping_total',
+  'shipping_standard',
+  'shipping_expedited',
+  'shipping_money_state',
 ];
 const skuOrdersForbiddenFields = [
   'clientId',
-  'standardShipCount',
-  'standardShippingTotal',
-  'avgStandardShippingCost',
+  'shipCountStandard',
+  'shipCountExpedited',
+  'shippingStandardTotal',
+  'shippingExpeditedTotal',
+  'shippingCharge',
+  'avgShippingCharge',
   'carrier_code',
   'service_code',
   'shipping_cost',
-  'shipping_total',
   'standard_shipping_cost',
   'standard_shipping_total',
   'is_external_shipped',
@@ -136,11 +151,13 @@ assert(
   'SKU-order serializer emits only approved customer order fields',
 );
 assert(
-  skuOrdersForbiddenFields
-    .filter((field) => !['shipping_cost', 'standard_shipping_cost'].includes(field))
-    .every((field) => !skuOrderDtoBody.includes(field)) &&
-    skuOrderDtoBody.includes('shippingCharge: order.standard_shipping_cost'),
-  'SKU-order serializer maps only the approved customer shipping charge',
+  skuOrdersForbiddenFields.every((field) => !skuOrderDtoBody.includes(field)) &&
+    skuOrderDtoBody.includes('shippingTotal: order.shipping_total') &&
+    skuOrderDtoBody.includes('shippingStandard: order.shipping_standard') &&
+    skuOrderDtoBody.includes('shippingExpedited: order.shipping_expedited') &&
+    skuOrderDtoBody.includes('shippingMoneyState: order.shipping_money_state') &&
+    skuOrderApprovedSourceColumns.length === 4,
+  'SKU-order serializer maps only the approved per-class customer shipping fields',
 );
 
 const skuOrdersDtoMatch = route.match(

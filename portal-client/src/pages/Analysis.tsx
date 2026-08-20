@@ -277,6 +277,15 @@ function OrderCombinationsTable({ rows, canCustomizeTables }: { rows: AnalysisOr
   );
 }
 
+// Explicit money-state captions for orders whose shipping cannot be shown as a
+// number. attributed/partial with a positive total render the money instead.
+const SHIPPING_STATE_LABELS: Partial<Record<string, string>> = {
+  unbilled: 'unbilled',
+  external_label: 'external label',
+  voided_only: 'label voided',
+  unattributed_legacy: 'legacy billing',
+};
+
 function SkuStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
@@ -309,9 +318,10 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SkuStat label="30-day units" value={String(data?.totalUnits ?? 0)} />
-        <SkuStat label="Avg shipping charge" value={money(Number(data?.avgShippingCharge ?? 0))} />
+        <SkuStat label="Avg std shipping" value={money(Number(data?.avgShippingStandard ?? 0))} />
+        <SkuStat label="Avg expedited" value={money(Number(data?.avgShippingExpedited ?? 0))} />
         <SkuStat label="Avg / day" value={(data?.averageUnitsPerDay ?? 0).toFixed(1)} />
       </div>
 
@@ -377,8 +387,21 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
                   <p className="truncate text-xs text-ink-3">{o.ship_to_name ?? '—'} · {shortDate(o.order_date)}</p>
                 </div>
                 <span className="shrink-0 tnum text-xs text-ink-3">×{o.qty}</span>
-                {o.shippingCharge && Number(o.shippingCharge) > 0 && (
-                  <span className="shrink-0 tnum text-xs font-medium text-ink-2">{money(Number(o.shippingCharge))}</span>
+                {o.shippingTotal && Number(o.shippingTotal) > 0 ? (
+                  <span className="shrink-0 text-right">
+                    <span className="tnum text-xs font-medium text-ink-2">{money(Number(o.shippingTotal))}</span>
+                    {Number(o.shippingStandard ?? 0) > 0 && Number(o.shippingExpedited ?? 0) > 0 && (
+                      <span className="block tnum text-[10px] text-ink-3">
+                        std {money(Number(o.shippingStandard))} · exp {money(Number(o.shippingExpedited))}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  SHIPPING_STATE_LABELS[o.shippingMoneyState] ? (
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-3">
+                      {SHIPPING_STATE_LABELS[o.shippingMoneyState]}
+                    </span>
+                  ) : null
                 )}
                 <Chip accent={meta.accent} dot={false}>{meta.label}</Chip>
               </button>

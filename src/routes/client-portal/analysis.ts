@@ -60,7 +60,10 @@ export function toClientAnalysisSkuOrderDto(order: ClientAnalysisSkuOrderSource)
     qty: order.qty,
     unit_price: order.unit_price,
     item_name: order.item_name,
-    shippingCharge: order.standard_shipping_cost,
+    shippingTotal: order.shipping_total,
+    shippingStandard: order.shipping_standard,
+    shippingExpedited: order.shipping_expedited,
+    shippingMoneyState: order.shipping_money_state,
   };
 }
 
@@ -69,7 +72,8 @@ export function toClientAnalysisSkuOrdersDto(result: ClientAnalysisSkuOrdersSour
     sku: result.sku,
     name: result.name,
     totalUnits: result.totalUnits,
-    avgShippingCharge: result.avgStandardShippingCost,
+    avgShippingStandard: result.avgShippingStandard,
+    avgShippingExpedited: result.avgShippingExpedited,
     // Backend owner: totalUnits / dense dailySales buckets for the requested
     // inclusive date window. Empty windows return zero.
     averageUnitsPerDay: result.dailySales.length > 0 ? result.totalUnits / result.dailySales.length : 0,

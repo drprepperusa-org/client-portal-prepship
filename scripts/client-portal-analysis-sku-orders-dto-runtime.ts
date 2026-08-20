@@ -13,9 +13,12 @@ const source = {
   name: 'Customer item',
   clientId: 50,
   totalUnits: 3,
-  standardShipCount: 1,
-  standardShippingTotal: '6.00',
-  avgStandardShippingCost: '3.00',
+  shipCountStandard: 1,
+  shipCountExpedited: 1,
+  shippingStandardTotal: '6.00',
+  shippingExpeditedTotal: '20.00',
+  avgShippingStandard: '3.00',
+  avgShippingExpedited: '10.00',
   dailySales: [
     { day: '2026-07-13', units: 1, future_daily_debug: 'blocked' },
     { day: '2026-07-14', units: 2, future_daily_debug: 'blocked' },
@@ -34,9 +37,10 @@ const source = {
       unit_price: '12.00',
       item_name: 'Customer item',
       shipping_cost: '3.00',
-      shipping_total: '6.00',
-      standard_shipping_cost: '3.00',
-      standard_shipping_total: '6.00',
+      shipping_total: '26.00',
+      shipping_standard: '6.00',
+      shipping_expedited: '20.00',
+      shipping_money_state: 'attributed',
       is_external_shipped: true,
       future_order_debug: 'blocked',
     },
@@ -48,7 +52,8 @@ const expectedTopLevel = [
   'sku',
   'name',
   'totalUnits',
-  'avgShippingCharge',
+  'avgShippingStandard',
+  'avgShippingExpedited',
   'averageUnitsPerDay',
   'dailySales',
   'orders',
@@ -62,13 +67,20 @@ const expectedOrder = [
   'qty',
   'unit_price',
   'item_name',
-  'shippingCharge',
+  'shippingTotal',
+  'shippingStandard',
+  'shippingExpedited',
+  'shippingMoneyState',
 ];
 const forbidden = [
   'clientId',
-  'standardShipCount',
-  'standardShippingTotal',
-  'avgStandardShippingCost',
+  'shipCountStandard',
+  'shipCountExpedited',
+  'shippingStandardTotal',
+  'shippingExpeditedTotal',
+  // Pre-CP-060 std-only fields under generic names: retired, must not return.
+  'shippingCharge',
+  'avgShippingCharge',
   'carrier_code',
   'service_code',
   'shipping_cost',
@@ -104,7 +116,8 @@ assert(
   'daily sales DTO whitelist drifted',
 );
 assert(dto.averageUnitsPerDay === 1.5, 'backend average-units formula drifted');
+assert(dto.orders[0]?.shippingMoneyState === 'attributed', 'shippingMoneyState must cross the DTO boundary');
 const emittedKeys = collectKeys(dto);
 assert(forbidden.every((field) => !emittedKeys.has(field)), 'forbidden or future shared field crossed DTO boundary');
 
-console.log('PASS CP-050 Analysis SKU-orders DTO runtime whitelist');
+console.log('PASS CP-050/CP-060 Analysis SKU-orders DTO runtime whitelist');

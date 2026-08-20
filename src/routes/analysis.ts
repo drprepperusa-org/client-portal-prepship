@@ -8,22 +8,8 @@ import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-
 import { rawVisibleAwaitingOrdersPredicateForAlias } from '../lib/client-portal/predicates';
 import { hasAppPermission } from '../middleware/auth';
 
-// v2-parity: exact list from apps/api/src/common/prepship-config.ts.
-// v4 previously used a broad regex `(priority|express|overnight|expedited|...)`
-// which over-matched `usps_priority_mail` as expedited. v2 treats USPS priority
-// as standard; only priority_mail_express is expedited. The regex was inflating
-// AnalysisView "expedited" counts for every USPS priority shipment.
-const EXPEDITED_SERVICES = [
-  'ups_2nd_day_air', 'ups_2nd_day_air_am',
-  'ups_next_day_air', 'ups_next_day_air_saver', 'ups_next_day_air_early_am',
-  'ups_3_day_select',
-  'usps_priority_mail_express',
-  'fedex_2day', 'fedex_2day_am',
-  'fedex_express_saver',
-  'fedex_priority_overnight', 'fedex_standard_overnight', 'fedex_first_overnight',
-] as const;
-
-export const EXPEDITED_SERVICES_SQL = sql`ARRAY[${sql.join(EXPEDITED_SERVICES.map((s) => sql`${s}`), sql`, `)}]::text[]`;
+export { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
+import { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
 
 const app = new Hono();
 
