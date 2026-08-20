@@ -77,6 +77,9 @@ export const orders = pgTable(
     index('orders_client_status_date_id_idx')
       .on(t.clientId, t.orderStatus, t.orderDate.desc(), t.id.desc())
       .where(sql`${t.clientId} is not null`),
+    index('orders_client_date_id_idx')
+      .on(t.clientId, t.orderDate.desc(), t.id.desc())
+      .where(sql`${t.clientId} is not null`),
     index('orders_store_status_date_idx')
       .on(t.storeId, t.orderStatus, t.orderDate.desc())
       .where(sql`${t.storeId} is not null`),
