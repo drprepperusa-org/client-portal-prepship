@@ -4,8 +4,18 @@
 // helper's only live caller is the client portal, which passes
 // shippingBasis: 'customer_billed' — the 'house_markup' default is retained but
 // has no live caller.) This file only SELECTs from orders / order_items /
-// shipments — it never writes, so it is safe under the shipped/cancelled data
-// lockdown (analytics reads are explicitly allowed).
+// shipments / billing_line_items — it never writes, so it is safe under the
+// shipped/cancelled data lockdown (analytics reads are explicitly allowed).
+//
+// CP-060: shipping money is classified PER SHIPMENT. Every non-voided label is
+// classified standard/expedited by its own service code and carries its own
+// billed money via billing_line_items.shipment_id. Money that cannot be
+// attributed to a label (legacy lines with shipment_id NULL, voided-only or
+// external orders) is never given a class — it surfaces through an explicit
+// shipping_money_state instead. The pre-CP-060 model classified the ENTIRE
+// order-grain sum by the newest label's service, which misclassified mixed
+// standard/expedited multi-label orders and disagreed with PrepShip's
+// per-shipment reporting (PS-418).
 //
 // The query is parametrized by `orderScopeSql`: a raw predicate against the
 // orders table aliased as `o`. Callers pass their own tenant scope (operator
@@ -14,6 +24,14 @@ import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
 import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order-dedupe';
+
+export type ShippingMoneyState =
+  | 'attributed'
+  | 'partial_unattributed'
+  | 'unattributed_legacy'
+  | 'unbilled'
+  | 'external_label'
+  | 'voided_only';
 
 export type SkuOrderRow = {
   order_id: number;
@@ -28,8 +46,9 @@ export type SkuOrderRow = {
   item_name: string | null;
   shipping_cost: string | null;
   shipping_total: string | null;
-  standard_shipping_cost: string | null;
-  standard_shipping_total: string | null;
+  shipping_standard: string | null;
+  shipping_expedited: string | null;
+  shipping_money_state: ShippingMoneyState;
   is_external_shipped: boolean;
 };
 
@@ -38,9 +57,12 @@ export type SkuOrdersResult = {
   name: string | null;
   clientId: number | null;
   totalUnits: number;
-  standardShipCount: number;
-  standardShippingTotal: string;
-  avgStandardShippingCost: string;
+  shipCountStandard: number;
+  shipCountExpedited: number;
+  shippingStandardTotal: string;
+  shippingExpeditedTotal: string;
+  avgShippingStandard: string;
+  avgShippingExpedited: string;
   dailySales: Array<{ day: string; units: number }>;
   orders: SkuOrderRow[];
 };
@@ -64,12 +86,7 @@ export type SkuOrdersInput = {
 
 export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrdersResult> {
   const { sku, canViewFinancials } = input;
-  // CP-038: see getSkuBreakdownFromOrderItems. `o` is the orders alias in both inner queries;
-  // 'customer_billed' reads the canonical billed shipping instead of the inline marked_cost.
-  const shippingAmountExpr =
-    input.shippingBasis === 'customer_billed'
-      ? sql`coalesce((select sum(b.total_cost) from billing_line_items b where b.order_id = o.id and b.line_type = 'shipping'), 0)`
-      : sql`coalesce(ls.marked_cost, 0)`;
+  const customerBilled = input.shippingBasis === 'customer_billed';
   const since = input.dateFrom
     ? new Date(input.dateFrom).toISOString()
     : input.days
@@ -133,10 +150,107 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     dailySales.push({ day, units: salesMap.get(day) ?? 0 });
   }
 
+  // CP-060 per-shipment money aggregate. One row per order:
+  //   - every NON-VOIDED label classified by ITS OWN service code
+  //   - customer money joined per label via billing_line_items.shipment_id
+  //   - house money computed per label with the same markup model as before
+  // Voided labels contribute nothing — including to classification, so a
+  // voided newest label can no longer classify the whole order.
+  const labelsLateral = sql`
+    left join lateral (
+      select
+        count(*)::int                                                       as active_label_count,
+        max(s.service_code)                                                 as service_code,
+        coalesce(sum(billed.amount) filter (where cls.is_exp), 0)::numeric  as exp_billed,
+        coalesce(sum(billed.amount) filter (where not cls.is_exp), 0)::numeric as std_billed,
+        coalesce(sum(billed.amount), 0)::numeric                            as attributed_billed,
+        coalesce(sum(house.amount) filter (where cls.is_exp), 0)::numeric   as exp_house,
+        coalesce(sum(house.amount) filter (where not cls.is_exp), 0)::numeric as std_house,
+        coalesce(sum(house.amount), 0)::numeric                             as house_billed
+      from shipments s
+      left join lateral (
+        select sum(b.total_cost)::numeric as amount
+        from billing_line_items b
+        where b.shipment_id = s.id and b.line_type = 'shipping'
+      ) billed on true
+      left join settings pid_markup
+        on pid_markup.key = 'markup.' || coalesce(s.provider_account_id, s.label_provider, s.selected_pid)::text
+      left join settings carrier_markup
+        on carrier_markup.key in ('markup.' || s.carrier_code, 'markup.' || lower(s.carrier_code))
+      cross join lateral (
+        select
+          (coalesce(s.cost, s.label_cost, 0) + coalesce(s.other_cost, 0))::numeric as base_cost,
+          case
+            when coalesce(pid_markup.value, carrier_markup.value) ~ '^\\s*\\{'
+              then coalesce(pid_markup.value, carrier_markup.value)::jsonb
+            else null::jsonb
+          end as markup
+      ) cost_model
+      cross join lateral (
+        select case
+          when lower(cost_model.markup->>'type') in ('pct', 'percent')
+            then cost_model.base_cost * (1 + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0) / 100)
+          when lower(cost_model.markup->>'type') in ('amount', 'flat')
+            then cost_model.base_cost + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0)
+          else cost_model.base_cost
+        end as amount
+      ) house
+      cross join lateral (
+        select lower(coalesce(s.service_code, '')) = ANY(${EXPEDITED_SERVICES_SQL}) as is_exp
+      ) cls
+      where s.order_id = o.id
+        and coalesce(s.voided, false) = false
+    ) labels on true
+    left join lateral (
+      select
+        coalesce(sum(b.total_cost), 0)::numeric                             as order_billed,
+        count(*) filter (where b.shipment_id is null)::int                  as unattributed_lines
+      from billing_line_items b
+      where b.order_id = o.id and b.line_type = 'shipping'
+    ) ob on true
+    cross join lateral (
+      select exists (select 1 from shipments s2 where s2.order_id = o.id) as has_any_shipment
+    ) sh
+  `;
+
+  // Basis switch. customer_billed: order total is the canonical billed sum and
+  // class money is only what attributes to a label. house_markup: per-label
+  // marked cost is both the total and the attributed money (no legacy lines).
+  const moneyColumns = customerBilled
+    ? sql`
+        ob.order_billed                                                    as money_total,
+        labels.std_billed                                                  as money_std,
+        labels.exp_billed                                                  as money_exp,
+        labels.attributed_billed                                           as money_attributed,
+        ob.unattributed_lines                                              as money_unattr_lines,
+      `
+    : sql`
+        labels.house_billed                                                as money_total,
+        labels.std_house                                                   as money_std,
+        labels.exp_house                                                   as money_exp,
+        labels.house_billed                                                as money_attributed,
+        0::int                                                             as money_unattr_lines,
+      `;
+
+  const stateCaseSql = sql`
+    case
+      when coalesce(r.active_label_count, 0) = 0 and not r.has_any_shipment
+           and r.order_status = 'shipped' then 'external_label'
+      when coalesce(r.active_label_count, 0) = 0 and r.has_any_shipment then 'voided_only'
+      when coalesce(r.money_total, 0) <= 0 then 'unbilled'
+      when coalesce(r.money_unattr_lines, 0) = 0 then 'attributed'
+      when coalesce(r.money_attributed, 0) > 0 then 'partial_unattributed'
+      else 'unattributed_legacy'
+    end
+  `;
+
   const [shippingSummary] = await db.execute<{
-    standard_ship_count: number;
-    standard_shipping_total: string;
-    avg_standard_shipping_cost: string;
+    std_ship_count: number;
+    exp_ship_count: number;
+    std_shipping_total: string;
+    exp_shipping_total: string;
+    avg_std_shipping: string;
+    avg_exp_shipping: string;
   }>(sql`
     with matching_order_ids as (
       select distinct o.id
@@ -153,105 +267,72 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       select
         o.id                                                               as order_id,
         o.order_status                                                     as order_status,
-        coalesce(ls.service_code, o.service_code)                          as service_code,
-        ls.order_id                                                        as shipment_order_id,
-        ${shippingAmountExpr}                                              as label_cost,
+        labels.active_label_count                                          as active_label_count,
+        sh.has_any_shipment                                                as has_any_shipment,
+        ${moneyColumns}
         oi.sku                                                             as sku,
         oi.sku                                                             as sku_key,
-        coalesce(nullif(oi.name, ''), '-')                                 as name,
         greatest(0, coalesce(oi.quantity, 0))::int                         as qty
       from matching_order_ids moi
       join orders o on o.id = moi.id
       join order_items oi on oi.order_id = o.id
-      left join lateral (
-        select
-          s.order_id,
-          s.service_code,
-          case
-            when lower(cost_model.markup->>'type') in ('pct', 'percent')
-              then cost_model.base_cost * (1 + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0) / 100)
-            when lower(cost_model.markup->>'type') in ('amount', 'flat')
-              then cost_model.base_cost + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0)
-            else cost_model.base_cost
-          end as marked_cost
-        from shipments s
-        left join settings pid_markup
-          on pid_markup.key = 'markup.' || coalesce(s.provider_account_id, s.label_provider, s.selected_pid)::text
-        left join settings carrier_markup
-          on carrier_markup.key in ('markup.' || s.carrier_code, 'markup.' || lower(s.carrier_code))
-        cross join lateral (
-          select
-            (coalesce(s.cost, s.label_cost, 0) + coalesce(s.other_cost, 0))::numeric as base_cost,
-            case
-              when coalesce(pid_markup.value, carrier_markup.value) ~ '^\\s*\\{'
-                then coalesce(pid_markup.value, carrier_markup.value)::jsonb
-            else null::jsonb
-          end as markup
-        ) cost_model
-        where s.order_id = o.id
-          and coalesce(s.voided, false) = false
-        order by s.id desc
-        limit 1
-      ) ls on true
+      ${labelsLateral}
       where oi.quantity > 0
     ),
     order_sku_rows as (
       select
         order_id,
         max(order_status)                                                   as order_status,
-        max(service_code)                                                    as service_code,
-        max(shipment_order_id)                                               as shipment_order_id,
-        max(label_cost)                                                      as label_cost,
+        max(active_label_count)                                             as active_label_count,
+        bool_or(has_any_shipment)                                           as has_any_shipment,
+        max(money_total)                                                    as money_total,
+        max(money_std)                                                      as money_std,
+        max(money_exp)                                                      as money_exp,
+        max(money_attributed)                                               as money_attributed,
+        max(money_unattr_lines)                                             as money_unattr_lines,
         sku_key,
-        max(sku)                                                             as sku,
-        sum(qty)::int                                                        as qty
+        max(sku)                                                            as sku,
+        sum(qty)::int                                                       as qty
       from item_rows
       group by order_id, sku_key
     ),
     allocated as (
       select
         r.*,
-        sum(qty) over (partition by r.order_id)::int                         as order_qty_total,
-        case
-          when r.order_status = 'shipped' and r.shipment_order_id is null then true
-          else false
-        end                                                                 as is_external,
-        case
-          when lower(coalesce(r.service_code, '')) = ANY(${EXPEDITED_SERVICES_SQL})
-            then 'exp'
-          else 'std'
-        end                                                                 as ship_class
+        sum(qty) over (partition by r.order_id)::int                        as order_qty_total,
+        ${stateCaseSql}                                                     as money_state
       from order_sku_rows r
+    ),
+    classed as (
+      select *,
+        (money_state in ('attributed', 'partial_unattributed'))            as attributable
+      from allocated
+      where lower(sku) = lower(${sku})
     )
     select
-      count(*) filter (
-        where lower(sku) = lower(${sku})
-          and not is_external
-          and label_cost > 0
-          and ship_class = 'std'
-      )::int as standard_ship_count,
-      coalesce(sum(label_cost * qty / nullif(order_qty_total, 0)) filter (
-        where lower(sku) = lower(${sku})
-          and not is_external
-          and label_cost > 0
-          and ship_class = 'std'
-      ), 0)::text as standard_shipping_total,
+      count(*) filter (where attributable and money_std > 0)::int          as std_ship_count,
+      count(*) filter (where attributable and money_exp > 0)::int          as exp_ship_count,
+      coalesce(sum(money_std * qty / nullif(order_qty_total, 0)) filter (
+        where attributable and money_std > 0
+      ), 0)::text as std_shipping_total,
+      coalesce(sum(money_exp * qty / nullif(order_qty_total, 0)) filter (
+        where attributable and money_exp > 0
+      ), 0)::text as exp_shipping_total,
       coalesce(
-        sum(label_cost * qty / nullif(order_qty_total, 0)) filter (
-          where lower(sku) = lower(${sku})
-            and not is_external
-            and label_cost > 0
-            and ship_class = 'std'
+        sum(money_std * qty / nullif(order_qty_total, 0)) filter (
+          where attributable and money_std > 0
         )
-        / nullif(sum(qty) filter (
-          where lower(sku) = lower(${sku})
-            and not is_external
-            and label_cost > 0
-            and ship_class = 'std'
-        ), 0),
+        / nullif(sum(qty) filter (where attributable and money_std > 0), 0),
         0
-      )::text as avg_standard_shipping_cost
-    from allocated
+      )::text as avg_std_shipping,
+      coalesce(
+        sum(money_exp * qty / nullif(order_qty_total, 0)) filter (
+          where attributable and money_exp > 0
+        )
+        / nullif(sum(qty) filter (where attributable and money_exp > 0), 0),
+        0
+      )::text as avg_exp_shipping
+    from classed
   `);
 
   const rows = await db.execute<SkuOrderRow>(sql`
@@ -274,9 +355,10 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         o.order_status                                                     as order_status,
         o.ship_to_name                                                     as ship_to_name,
         o.carrier_code                                                     as carrier_code,
-        coalesce(ls.service_code, o.service_code)                          as service_code,
-        ls.order_id                                                        as shipment_order_id,
-        ${shippingAmountExpr}                                              as label_cost,
+        coalesce(labels.service_code, o.service_code)                      as service_code,
+        labels.active_label_count                                          as active_label_count,
+        sh.has_any_shipment                                                as has_any_shipment,
+        ${moneyColumns}
         coalesce(o.externally_shipped, false)                              as externally_shipped_flag,
         oi.sku                                                             as sku,
         oi.sku                                                             as sku_key,
@@ -286,71 +368,39 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       from matching_order_ids moi
       join orders o on o.id = moi.id
       join order_items oi on oi.order_id = o.id
-      left join lateral (
-        select
-          s.order_id,
-          s.service_code,
-          case
-            when lower(cost_model.markup->>'type') in ('pct', 'percent')
-              then cost_model.base_cost * (1 + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0) / 100)
-            when lower(cost_model.markup->>'type') in ('amount', 'flat')
-              then cost_model.base_cost + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0)
-            else cost_model.base_cost
-          end as marked_cost
-        from shipments s
-        left join settings pid_markup
-          on pid_markup.key = 'markup.' || coalesce(s.provider_account_id, s.label_provider, s.selected_pid)::text
-        left join settings carrier_markup
-          on carrier_markup.key in ('markup.' || s.carrier_code, 'markup.' || lower(s.carrier_code))
-        cross join lateral (
-          select
-            (coalesce(s.cost, s.label_cost, 0) + coalesce(s.other_cost, 0))::numeric as base_cost,
-            case
-              when coalesce(pid_markup.value, carrier_markup.value) ~ '^\\s*\\{'
-                then coalesce(pid_markup.value, carrier_markup.value)::jsonb
-              else null::jsonb
-            end as markup
-        ) cost_model
-        where s.order_id = o.id
-          and coalesce(s.voided, false) = false
-        order by s.id desc
-        limit 1
-      ) ls on true
+      ${labelsLateral}
       where oi.quantity > 0
     ),
     order_sku_rows as (
       select
         order_id,
         max(order_number)                                                   as order_number,
-        min(order_date)                                                      as order_date,
-        max(order_status)                                                    as order_status,
-        max(ship_to_name)                                                    as ship_to_name,
-        max(carrier_code)                                                    as carrier_code,
-        max(service_code)                                                    as service_code,
-        max(shipment_order_id)                                               as shipment_order_id,
-        max(label_cost)                                                      as label_cost,
-        bool_or(externally_shipped_flag)                                     as externally_shipped_flag,
+        min(order_date)                                                     as order_date,
+        max(order_status)                                                   as order_status,
+        max(ship_to_name)                                                   as ship_to_name,
+        max(carrier_code)                                                   as carrier_code,
+        max(service_code)                                                   as service_code,
+        max(active_label_count)                                             as active_label_count,
+        bool_or(has_any_shipment)                                           as has_any_shipment,
+        max(money_total)                                                    as money_total,
+        max(money_std)                                                      as money_std,
+        max(money_exp)                                                      as money_exp,
+        max(money_attributed)                                               as money_attributed,
+        max(money_unattr_lines)                                             as money_unattr_lines,
+        bool_or(externally_shipped_flag)                                    as externally_shipped_flag,
         sku_key,
-        max(sku)                                                             as sku,
-        (array_agg(item_name order by length(item_name) desc))[1]            as item_name,
-        sum(qty)::int                                                        as qty,
-        max(unit_price)                                                      as unit_price
+        max(sku)                                                            as sku,
+        (array_agg(item_name order by length(item_name) desc))[1]           as item_name,
+        sum(qty)::int                                                       as qty,
+        max(unit_price)                                                     as unit_price
       from item_rows
       group by order_id, sku_key
     ),
     allocated as (
       select
         r.*,
-        sum(qty) over (partition by r.order_id)::int                         as order_qty_total,
-        case
-          when r.order_status = 'shipped' and r.shipment_order_id is null then true
-          else false
-        end                                                                 as is_external,
-        case
-          when lower(coalesce(r.service_code, '')) = ANY(${EXPEDITED_SERVICES_SQL})
-            then 'exp'
-          else 'std'
-        end                                                                 as ship_class
+        sum(qty) over (partition by r.order_id)::int                        as order_qty_total,
+        ${stateCaseSql}                                                     as money_state
       from order_sku_rows r
     )
     select
@@ -365,22 +415,29 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       unit_price,
       item_name,
       case
-        when not is_external and label_cost > 0 then (label_cost / nullif(order_qty_total, 0))::text
+        when money_state in ('attributed', 'partial_unattributed', 'unattributed_legacy')
+             and money_total > 0
+          then (money_total / nullif(order_qty_total, 0))::text
         else null
       end as shipping_cost,
       case
-        when not is_external and label_cost > 0 then (label_cost * qty / nullif(order_qty_total, 0))::text
+        when money_state in ('attributed', 'partial_unattributed', 'unattributed_legacy')
+             and money_total > 0
+          then (money_total * qty / nullif(order_qty_total, 0))::text
         else null
       end as shipping_total,
       case
-        when not is_external and label_cost > 0 and ship_class = 'std' then (label_cost / nullif(order_qty_total, 0))::text
+        when money_state in ('attributed', 'partial_unattributed') and money_std > 0
+          then (money_std * qty / nullif(order_qty_total, 0))::text
         else null
-      end as standard_shipping_cost,
+      end as shipping_standard,
       case
-        when not is_external and label_cost > 0 and ship_class = 'std' then (label_cost * qty / nullif(order_qty_total, 0))::text
+        when money_state in ('attributed', 'partial_unattributed') and money_exp > 0
+          then (money_exp * qty / nullif(order_qty_total, 0))::text
         else null
-      end as standard_shipping_total,
-      (is_external or externally_shipped_flag)                               as is_external_shipped
+      end as shipping_expedited,
+      money_state                                                          as shipping_money_state,
+      (money_state = 'external_label' or externally_shipped_flag)          as is_external_shipped
     from allocated
     where lower(sku) = lower(${sku})
     order by order_date desc nulls last
@@ -394,8 +451,8 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         ...orderRow,
         shipping_cost: null,
         shipping_total: null,
-        standard_shipping_cost: null,
-        standard_shipping_total: null,
+        shipping_standard: null,
+        shipping_expedited: null,
       }));
 
   return {
@@ -403,9 +460,12 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     name: input.name ?? null,
     clientId: input.clientId ?? null,
     totalUnits: dailySales.reduce((sum, r) => sum + r.units, 0),
-    standardShipCount: visibleShippingSummary?.standard_ship_count ?? 0,
-    standardShippingTotal: visibleShippingSummary?.standard_shipping_total ?? '0',
-    avgStandardShippingCost: visibleShippingSummary?.avg_standard_shipping_cost ?? '0',
+    shipCountStandard: visibleShippingSummary?.std_ship_count ?? 0,
+    shipCountExpedited: visibleShippingSummary?.exp_ship_count ?? 0,
+    shippingStandardTotal: visibleShippingSummary?.std_shipping_total ?? '0',
+    shippingExpeditedTotal: visibleShippingSummary?.exp_shipping_total ?? '0',
+    avgShippingStandard: visibleShippingSummary?.avg_std_shipping ?? '0',
+    avgShippingExpedited: visibleShippingSummary?.avg_exp_shipping ?? '0',
     dailySales,
     orders: visibleRows,
   };

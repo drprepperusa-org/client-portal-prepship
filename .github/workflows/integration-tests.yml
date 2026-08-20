@@ -52,6 +52,8 @@ jobs:
         run: npm run test:client-portal-returns-cp057:integration
       - name: Run CP-057/058 public-route and storage-compensation suite
         run: npm run test:client-portal-returns-cp058:integration
+      - name: Run CP-060 per-shipment shipping classification suite
+        run: npm run test:client-portal-analysis-cp060:integration
       - name: Run CP-048 access security integration suite
         run: npm run test:client-portal-access-security:integration
       - name: Run shopify connect integration suite
