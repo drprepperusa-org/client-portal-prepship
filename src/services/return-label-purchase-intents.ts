@@ -7,6 +7,10 @@ import {
 } from '../db/schema/return-label-purchase-intents';
 import type { CreatedExternalLabel } from '../lib/shipstation/labels';
 import type { Rate } from '../lib/shipstation';
+import {
+  lockReturnLabelSlot,
+  ReturnLabelAssignmentConflictError,
+} from './return-label-slot';
 
 const STALE_PURCHASE_MS = 5 * 60 * 1000;
 const PURCHASE_LEASE_MS = 3 * 60 * 1000;
@@ -25,15 +29,24 @@ export type ReturnLabelPurchaseAction =
   | { kind: 'completed'; intent: ReturnLabelPurchaseIntent }
   | { kind: 'in_progress'; intent: ReturnLabelPurchaseIntent };
 
-export async function getReturnLabelPurchaseIntent(
+type ReturnLabelIntentDatabase = Pick<typeof db, 'select' | 'insert' | 'update'>;
+
+async function getReturnLabelPurchaseIntentFrom(
+  database: Pick<typeof db, 'select'>,
   returnId: number,
 ): Promise<ReturnLabelPurchaseIntent | null> {
-  const [row] = await db
+  const [row] = await database
     .select()
     .from(returnLabelPurchaseIntents)
     .where(eq(returnLabelPurchaseIntents.returnId, returnId))
     .limit(1);
   return row ?? null;
+}
+
+export async function getReturnLabelPurchaseIntent(
+  returnId: number,
+): Promise<ReturnLabelPurchaseIntent | null> {
+  return getReturnLabelPurchaseIntentFrom(db, returnId);
 }
 
 export async function listHeldReturnLabelPurchases(limit = 100): Promise<ReturnLabelPurchaseIntent[]> {
@@ -54,10 +67,13 @@ function purchaseLease(intent: ReturnLabelPurchaseIntent): ReturnLabelPurchaseLe
   };
 }
 
-async function tryClaim(returnId: number): Promise<ReturnLabelPurchaseIntent | null> {
+async function tryClaim(
+  database: ReturnLabelIntentDatabase,
+  returnId: number,
+): Promise<ReturnLabelPurchaseIntent | null> {
   const now = new Date();
   const leaseToken = randomUUID();
-  const [claimed] = await db
+  const [claimed] = await database
     .update(returnLabelPurchaseIntents)
     .set({
       state: 'purchasing',
@@ -89,65 +105,80 @@ async function tryClaim(returnId: number): Promise<ReturnLabelPurchaseIntent | n
 export async function acquireReturnLabelPurchase(
   returnId: number,
 ): Promise<ReturnLabelPurchaseAction> {
-  await db
-    .insert(returnLabelPurchaseIntents)
-    .values({
-      returnId,
-      providerReferenceKey: `cp-return-${randomUUID()}`,
-    })
-    .onConflictDoNothing({ target: returnLabelPurchaseIntents.returnId });
+  return db.transaction(async (tx) => {
+    // This row is the shared mutex for every way a return can gain label/tracking
+    // ownership. The external path takes the same lock before inserting a shipment.
+    const slot = await lockReturnLabelSlot(tx, returnId);
+    if (!slot) throw new Error('Return workflow record not found');
+    if (
+      (slot.returnShipmentId != null && !slot.linkedShipmentVoided) ||
+      !['requested', 'label_failed', 'label_created'].includes(slot.status)
+    ) {
+      throw new ReturnLabelAssignmentConflictError();
+    }
 
-  const claimed = await tryClaim(returnId);
-  if (claimed) return { kind: 'purchase', intent: claimed, lease: purchaseLease(claimed) };
-
-  let intent = await getReturnLabelPurchaseIntent(returnId);
-  if (!intent) throw new Error('Return label purchase intent could not be reserved');
-
-  if (
-    intent.state === 'purchasing' &&
-    (
-      (intent.leaseExpiresAt != null && intent.leaseExpiresAt.getTime() <= Date.now()) ||
-      (intent.leaseExpiresAt == null &&
-        intent.lastAttemptAt != null &&
-        intent.lastAttemptAt.getTime() <= Date.now() - STALE_PURCHASE_MS)
-    )
-  ) {
-    const now = new Date();
-    const [stale] = await db
-      .update(returnLabelPurchaseIntents)
-      .set({
-        state: 'unknown_outcome',
-        leaseToken: null,
-        leaseExpiresAt: null,
-        lastSafeError: 'Provider outcome requires reconciliation',
-        updatedAt: now,
+    await tx
+      .insert(returnLabelPurchaseIntents)
+      .values({
+        returnId,
+        providerReferenceKey: `cp-return-${randomUUID()}`,
       })
-      .where(
-        and(
-          eq(returnLabelPurchaseIntents.id, intent.id),
-          eq(returnLabelPurchaseIntents.state, 'purchasing'),
-          or(
-            lte(returnLabelPurchaseIntents.leaseExpiresAt, now),
-            and(
-              isNull(returnLabelPurchaseIntents.leaseExpiresAt),
-              lte(returnLabelPurchaseIntents.lastAttemptAt, new Date(Date.now() - STALE_PURCHASE_MS)),
+      .onConflictDoNothing({ target: returnLabelPurchaseIntents.returnId });
+
+    const claimed = await tryClaim(tx, returnId);
+    if (claimed) return { kind: 'purchase', intent: claimed, lease: purchaseLease(claimed) };
+
+    let intent = await getReturnLabelPurchaseIntentFrom(tx, returnId);
+    if (!intent) throw new Error('Return label purchase intent could not be reserved');
+
+    if (
+      intent.state === 'purchasing' &&
+      (
+        (intent.leaseExpiresAt != null && intent.leaseExpiresAt.getTime() <= Date.now()) ||
+        (intent.leaseExpiresAt == null &&
+          intent.lastAttemptAt != null &&
+          intent.lastAttemptAt.getTime() <= Date.now() - STALE_PURCHASE_MS)
+      )
+    ) {
+      const now = new Date();
+      const [stale] = await tx
+        .update(returnLabelPurchaseIntents)
+        .set({
+          state: 'unknown_outcome',
+          leaseToken: null,
+          leaseExpiresAt: null,
+          lastSafeError: 'Provider outcome requires reconciliation',
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(returnLabelPurchaseIntents.id, intent.id),
+            eq(returnLabelPurchaseIntents.state, 'purchasing'),
+            or(
+              lte(returnLabelPurchaseIntents.leaseExpiresAt, now),
+              and(
+                isNull(returnLabelPurchaseIntents.leaseExpiresAt),
+                lte(returnLabelPurchaseIntents.lastAttemptAt, new Date(Date.now() - STALE_PURCHASE_MS)),
+              ),
             ),
           ),
-        ),
-      )
-      .returning();
-    intent = stale ?? (await getReturnLabelPurchaseIntent(returnId)) ?? intent;
-  }
+        )
+        .returning();
+      intent = stale ?? (await getReturnLabelPurchaseIntentFrom(tx, returnId)) ?? intent;
+    }
 
-  if (intent.state === 'completed') return { kind: 'completed', intent };
-  if (intent.state === 'purchased' || intent.state === 'unknown_outcome') {
-    return { kind: 'recover', intent };
-  }
-  if (intent.state === 'reserved' || intent.state === 'failed') {
-    const retryClaim = await tryClaim(returnId);
-    if (retryClaim) return { kind: 'purchase', intent: retryClaim, lease: purchaseLease(retryClaim) };
-  }
-  return { kind: 'in_progress', intent };
+    if (intent.state === 'completed') return { kind: 'completed', intent };
+    if (intent.state === 'purchased' || intent.state === 'unknown_outcome') {
+      return { kind: 'recover', intent };
+    }
+    if (intent.state === 'reserved' || intent.state === 'failed' || intent.state === 'voided') {
+      const retryClaim = await tryClaim(tx, returnId);
+      if (retryClaim) {
+        return { kind: 'purchase', intent: retryClaim, lease: purchaseLease(retryClaim) };
+      }
+    }
+    return { kind: 'in_progress', intent };
+  });
 }
 
 export async function saveReturnLabelSelectedRate(
@@ -390,9 +421,10 @@ export async function completeReturnLabelPurchase(
 export async function markReturnLabelPurchaseVoided(
   intentId: number,
   resolution: { note: string; actor: string },
+  database: Pick<ReturnLabelIntentDatabase, 'update'> = db,
 ): Promise<void> {
   const now = new Date();
-  const [updated] = await db
+  const [updated] = await database
     .update(returnLabelPurchaseIntents)
     .set({
       state: 'voided',
@@ -439,18 +471,24 @@ export async function markReturnLabelPurchaseVoided(
 export async function markReturnLabelPurchaseVoidedForShipment(
   shipmentId: number,
   resolution: { note: string; actor: string },
+  database: Pick<ReturnLabelIntentDatabase, 'select' | 'update'> = db,
 ): Promise<number | null> {
-  const [intent] = await db
+  const [intent] = await database
     .select({ id: returnLabelPurchaseIntents.id, state: returnLabelPurchaseIntents.state })
     .from(returnLabelPurchaseIntents)
     .where(eq(returnLabelPurchaseIntents.returnShipmentId, shipmentId))
-    .limit(1);
+    .limit(1)
+    .for('update');
   if (!intent) return null;
-  // Only a completed intent is voidable. Anything mid-flight must resolve through
-  // the unknown-outcome path first, and re-voiding an already-voided intent would
-  // rotate its key a second time for no reason.
-  if (intent.state !== 'completed') return null;
-  await markReturnLabelPurchaseVoided(intent.id, resolution);
+  // Retrying local finalization after a committed response is a no-op. Never
+  // rotate the replacement key twice.
+  if (intent.state === 'voided') return intent.id;
+  // Every other existing state is an ownership mismatch. Returning null here
+  // would let shipments.voided commit while the intent still owned the return.
+  if (intent.state !== 'completed') {
+    throw new Error(`Return label purchase intent cannot be voided from state ${intent.state}`);
+  }
+  await markReturnLabelPurchaseVoided(intent.id, resolution, database);
   return intent.id;
 }
 

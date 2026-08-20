@@ -33,8 +33,10 @@ export type ExternalTrackingDecision =
 export function resolveReturnExternalTracking(input: {
   return: {
     status: string;
-    /** Non-null means a label already owns this return's tracking state. */
+    /** Non-null means a label owns the slot unless that shipment is voided. */
     returnShipmentId: number | null;
+    /** A voided linked shipment is historical evidence, not active ownership. */
+    linkedShipmentVoided?: boolean;
   };
   trackingNumber: unknown;
   /** What the client paid a carrier directly. Client-facing name; see the rejection type. */
@@ -42,14 +44,18 @@ export function resolveReturnExternalTracking(input: {
 }): ExternalTrackingDecision {
   // Competing-truths check FIRST. A return that already has a PrepShip label must not
   // gain a second, external one — whichever arrived first stays canonical.
-  if (input.return.returnShipmentId != null) {
+  const releasedVoidedLabel = input.return.linkedShipmentVoided === true;
+  if (input.return.returnShipmentId != null && !releasedVoidedLabel) {
     return {
       kind: 'rejected',
       code: 'label_already_exists',
       message: 'This return already has a label. Void it before assigning external tracking.',
     };
   }
-  if (!LABELABLE_STATUSES.has(input.return.status)) {
+  if (
+    !LABELABLE_STATUSES.has(input.return.status) &&
+    !(input.return.status === 'label_created' && releasedVoidedLabel)
+  ) {
     return {
       kind: 'rejected',
       code: 'status_not_labelable',

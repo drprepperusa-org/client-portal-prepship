@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db } from '../db/client';
 import { returns } from '../db/schema/returns';
 import { shipments } from '../db/schema/shipments';
@@ -7,14 +7,20 @@ import {
   EXTERNAL_TRACKING_EVENT,
   EXTERNAL_TRACKING_RETURN_STATUS,
   externalTrackingShipmentFields,
+  resolveReturnExternalTracking,
 } from './return-external-tracking';
+import {
+  lockReturnLabelSlot,
+  purchaseIntentOwnsReturnLabelSlot,
+  ReturnLabelAssignmentConflictError,
+} from './return-label-slot';
 
 // CP-058 AC-3/AC-4 — PERSIST an already-decided external tracking assignment.
 //
 // Split from the rule (return-external-tracking.ts) so that module stays import-free and
 // therefore structurally incapable of buying postage, and split from the route so the
-// route stays thin. This module only writes what the rule already approved: it re-checks
-// nothing and calls no provider.
+// route stays thin. This module calls no provider and re-checks the canonical slot while
+// holding the same return-row lock used by the live purchase-intent claimant.
 
 export async function applyReturnExternalTracking(input: {
   returnId: number;
@@ -34,6 +40,25 @@ export async function applyReturnExternalTracking(input: {
   const fields = externalTrackingShipmentFields(input.decision);
 
   return db.transaction(async (tx) => {
+    const slot = await lockReturnLabelSlot(tx, input.returnId);
+    if (!slot) throw new ReturnLabelAssignmentConflictError('This return no longer exists.');
+
+    const lockedDecision = resolveReturnExternalTracking({
+      return: {
+        status: slot.status,
+        returnShipmentId: slot.returnShipmentId,
+        linkedShipmentVoided: slot.linkedShipmentVoided,
+      },
+      trackingNumber: input.decision.trackingNumber,
+      amountPaid: input.decision.externalLabelCost,
+    });
+    if (
+      lockedDecision.kind === 'rejected' ||
+      purchaseIntentOwnsReturnLabelSlot(slot.purchaseIntentState)
+    ) {
+      throw new ReturnLabelAssignmentConflictError();
+    }
+
     const [shipment] = await tx
       .insert(shipments)
       .values({
@@ -47,9 +72,8 @@ export async function applyReturnExternalTracking(input: {
       })
       .returning({ id: shipments.id });
 
-    // Claim the ONE canonical slot. The where-clause requires it to still be empty, so a
-    // concurrent PrepShip label purchase cannot be overwritten by this write: whichever
-    // transaction lands first keeps the return, and the loser updates zero rows.
+    // Claim the ONE canonical slot. The conditional write is defense in depth behind the
+    // row lock; a losing transaction rolls the shipment insert back with this transaction.
     const linked = await tx
       .update(returns)
       .set({
@@ -57,10 +81,26 @@ export async function applyReturnExternalTracking(input: {
         status: EXTERNAL_TRACKING_RETURN_STATUS,
         updatedAt: now,
       })
-      .where(eq(returns.id, input.returnId))
+      .where(
+        and(
+          eq(returns.id, input.returnId),
+          slot.linkedShipmentVoided && slot.returnShipmentId != null
+            ? or(
+                isNull(returns.returnShipmentId),
+                eq(returns.returnShipmentId, slot.returnShipmentId),
+              )
+            : isNull(returns.returnShipmentId),
+          inArray(
+            returns.status,
+            slot.linkedShipmentVoided
+              ? ['requested', 'label_failed', 'label_created']
+              : ['requested', 'label_failed'],
+          ),
+        ),
+      )
       .returning({ id: returns.id });
     if (!linked.length) {
-      throw new Error('Return disappeared while assigning external tracking');
+      throw new ReturnLabelAssignmentConflictError();
     }
 
     return { returnShipmentId: shipment!.id };
@@ -82,5 +122,41 @@ export async function applyReturnExternalTracking(input: {
       eventAt: now,
     });
     return result;
+  });
+}
+
+/**
+ * Persist an uploaded external-label PDF only while the same external shipment
+ * still owns the locked return slot. The object itself stays in the private
+ * returns bucket; this function writes only its durable path.
+ */
+export async function attachReturnExternalLabelPdf(input: {
+  returnId: number;
+  expectedShipmentId: number;
+  objectPath: string;
+  now?: Date;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    const slot = await lockReturnLabelSlot(tx, input.returnId);
+    if (!slot || slot.returnShipmentId !== input.expectedShipmentId) {
+      throw new ReturnLabelAssignmentConflictError();
+    }
+
+    const [updated] = await tx
+      .update(shipments)
+      .set({
+        labelUrl: input.objectPath,
+        labelFormat: 'pdf',
+        updatedAt: input.now ?? new Date(),
+      })
+      .where(
+        and(
+          eq(shipments.id, input.expectedShipmentId),
+          eq(shipments.source, 'external_return_label'),
+          eq(shipments.voided, false),
+        ),
+      )
+      .returning({ id: shipments.id });
+    if (!updated) throw new ReturnLabelAssignmentConflictError();
   });
 }

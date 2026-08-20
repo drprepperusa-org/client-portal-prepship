@@ -88,6 +88,19 @@ check('a label-pending or failed return accepts it', () => {
   }
 });
 
+check('a voided historical label releases the slot without rewriting return status', () => {
+  const d = resolveReturnExternalTracking({
+    return: {
+      status: 'label_created',
+      returnShipmentId: 28887,
+      linkedShipmentVoided: true,
+    },
+    trackingNumber: '1Z999AA10123456784',
+    amountPaid: '7.95',
+  });
+  assert.equal(d.kind, 'accept');
+});
+
 // ── AC-3: required tracking + cost ──────────────────────────────────────────
 check('a tracking number is required', () => {
   for (const trackingNumber of ['', '   ', null, undefined, 42]) {
@@ -163,6 +176,8 @@ const actions = readFileSync('src/routes/client-portal/returns/actions.ts', 'utf
 const externalLabel = readFileSync('src/routes/client-portal/returns/external-label.ts', 'utf8');
 const billingDate = readFileSync('src/routes/client-portal/returns/billing-date.ts', 'utf8');
 const applySvc = readFileSync('src/services/return-external-tracking-apply.ts', 'utf8');
+const slotSvc = readFileSync('src/services/return-label-slot.ts', 'utf8');
+const storageSvc = readFileSync('src/lib/supabase.ts', 'utf8');
 const routeStart = externalLabel.indexOf("'/returns/:id{[0-9]+}/external-tracking'");
 const routeBlock = routeStart >= 0 ? externalLabel.slice(routeStart, routeStart + 3000) : '';
 
@@ -212,6 +227,19 @@ check('the canonical slot is claimed by id, and the status moves with it', () =>
   assert.match(applySvc, /\.update\(returns\)/);
   assert.match(applySvc, /returnShipmentId: shipment!\.id/);
   assert.match(applySvc, /status: EXTERNAL_TRACKING_RETURN_STATUS/);
+});
+
+check('external tracking locks the same slot and checks purchase-intent ownership', () => {
+  assert.match(applySvc, /lockReturnLabelSlot\(tx, input\.returnId\)/);
+  assert.match(applySvc, /purchaseIntentOwnsReturnLabelSlot\(slot\.purchaseIntentState\)/);
+  assert.match(slotSvc, /\.for\('update'\)/, 'the canonical return row is the mutex');
+  assert.match(applySvc, /isNull\(returns\.returnShipmentId\)/);
+});
+
+check('a race loser receives the stable 409 conflict code', () => {
+  assert.match(externalLabel, /ReturnLabelAssignmentConflictError/);
+  assert.match(externalLabel, /code: error\.code[\s\S]{0,40}?409/);
+  assert.match(slotSvc, /label_assignment_in_progress/);
 });
 
 check('the apply service writes no customer-facing rate', () => {
@@ -278,7 +306,7 @@ check('the return must still be in the caller\'s scope', () => {
 
 // ── AC-4: the optional PDF is private and scoped ────────────────────────────
 const pdfStart = externalLabel.indexOf("'/returns/:id{[0-9]+}/external-label-pdf'");
-const pdfBlock = pdfStart >= 0 ? externalLabel.slice(pdfStart, pdfStart + 3200) : '';
+const pdfBlock = pdfStart >= 0 ? externalLabel.slice(pdfStart, pdfStart + 5200) : '';
 
 check('the external-label PDF route exists and is scope-gated', () => {
   assert.ok(pdfStart >= 0, 'the PDF route must exist');
@@ -291,7 +319,8 @@ check('the PDF goes to the PRIVATE bucket, and only its path is persisted', () =
   // what makes AC-4's "private/scoped" true; a second storage mechanism would be a
   // second chance to publish a customer document by accident.
   assert.match(pdfBlock, /uploadReturnInspectionMedia\(objectPath/);
-  assert.match(pdfBlock, /labelUrl: objectPath/, 'persist the object PATH, never the binary');
+  assert.match(pdfBlock, /attachReturnExternalLabelPdf\(\{/);
+  assert.match(applySvc, /labelUrl: input\.objectPath/, 'persist the object PATH, never the binary');
   assert.doesNotMatch(pdfBlock, /getPublicUrl|publicUrl/, 'the bucket must never be public');
 });
 
@@ -316,10 +345,22 @@ check('a PrepShip label\'s PDF can never be replaced by this route', () => {
 
 check('a failed upload does NOT persist a dead reference', () => {
   const upload = pdfBlock.indexOf('uploadReturnInspectionMedia(');
-  const persist = pdfBlock.indexOf('labelUrl: objectPath');
+  const persist = pdfBlock.indexOf('attachReturnExternalLabelPdf({');
   const fail = pdfBlock.indexOf('502');
   assert.ok(upload >= 0 && fail > upload && persist > fail,
     'the 502 must return before the row is updated');
+});
+
+check('PDF persistence rechecks ownership and removes a race-lost upload', () => {
+  assert.match(applySvc, /slot\.returnShipmentId !== input\.expectedShipmentId/);
+  assert.match(applySvc, /eq\(shipments\.source, 'external_return_label'\)/);
+  assert.match(applySvc, /eq\(shipments\.voided, false\)/);
+  assert.match(pdfBlock, /removeReturnInspectionMedia\(objectPath\)/);
+  assert.match(storageSvc, /\.remove\(\[objectPath\]\)/);
+  assert.match(
+    readFileSync('scripts/integration/client-portal-returns-cp057.integration.ts', 'utf8'),
+    /external PDF ownership follows the linked shipment/,
+  );
 });
 
 // ── AC-1: a return must record WHY it was started ────────────────────────────

@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../../db/client';
-import { uploadReturnInspectionMedia } from '../../../lib/supabase';
+import {
+  removeReturnInspectionMedia,
+  uploadReturnInspectionMedia,
+} from '../../../lib/supabase';
 import { orders } from '../../../db/schema/orders';
 import { returns } from '../../../db/schema/returns';
 import { shipments } from '../../../db/schema/shipments';
@@ -11,7 +14,11 @@ import { scopeOrResponse } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { recordReturnActivity } from '../../../services/return-activity';
 import { EXTERNAL_TRACKING_RETURN_STATUS, resolveReturnExternalTracking } from '../../../services/return-external-tracking';
-import { applyReturnExternalTracking } from '../../../services/return-external-tracking-apply';
+import {
+  applyReturnExternalTracking,
+  attachReturnExternalLabelPdf,
+} from '../../../services/return-external-tracking-apply';
+import { ReturnLabelAssignmentConflictError } from '../../../services/return-label-slot';
 import { returnScopePredicate } from './shared';
 
 /** CP-058: an external return label PDF is a document, not media — 10 MB is ample. */
@@ -41,14 +48,20 @@ export function registerReturnExternalTrackingRoute(app: Hono): void {
         clientId: returns.clientId,
         status: returns.status,
         returnShipmentId: returns.returnShipmentId,
+        returnShipmentVoided: shipments.voided,
       })
       .from(returns)
+      .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
       .where(and(eq(returns.id, id), returnScopePredicate(scope)))
       .limit(1);
     if (!ret) return c.json({ error: 'Return not found' }, 404);
 
     const decision = resolveReturnExternalTracking({
-      return: { status: ret.status, returnShipmentId: ret.returnShipmentId },
+      return: {
+        status: ret.status,
+        returnShipmentId: ret.returnShipmentId,
+        linkedShipmentVoided: ret.returnShipmentVoided === true,
+      },
       trackingNumber: body.trackingNumber,
       amountPaid: body.amountPaid,
     });
@@ -67,15 +80,23 @@ export function registerReturnExternalTrackingRoute(app: Hono): void {
       .where(eq(orders.id, ret.orderId))
       .limit(1);
 
-    const result = await applyReturnExternalTracking({
-      returnId: ret.id,
-      orderId: ret.orderId,
-      clientId: ret.clientId,
-      orderNumber: order?.orderNumber ?? null,
-      decision,
-      actorEmail: scope.email,
-      actorType: scope.isGlobal ? 'operator' : 'client',
-    });
+    let result: { returnShipmentId: number };
+    try {
+      result = await applyReturnExternalTracking({
+        returnId: ret.id,
+        orderId: ret.orderId,
+        clientId: ret.clientId,
+        orderNumber: order?.orderNumber ?? null,
+        decision,
+        actorEmail: scope.email,
+        actorType: scope.isGlobal ? 'operator' : 'client',
+      });
+    } catch (error) {
+      if (error instanceof ReturnLabelAssignmentConflictError) {
+        return c.json({ error: error.message, code: error.code }, 409);
+      }
+      throw error;
+    }
 
     await recordPortalAudit('portal.returns.external_tracking.assign', scope, {
       returnId: id,
@@ -113,7 +134,6 @@ export function registerReturnExternalLabelPdfRoute(app: Hono): void {
         id: returns.id,
         returnShipmentId: returns.returnShipmentId,
         shipmentSource: shipments.source,
-        existingLabelUrl: shipments.labelUrl,
       })
       .from(returns)
       .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
@@ -155,10 +175,26 @@ export function registerReturnExternalLabelPdfRoute(app: Hono): void {
     }
 
     // Persist only the durable object PATH, never the binary or a public URL.
-    await db
-      .update(shipments)
-      .set({ labelUrl: objectPath, labelFormat: 'pdf' })
-      .where(eq(shipments.id, ret.returnShipmentId));
+    try {
+      await attachReturnExternalLabelPdf({
+        returnId: id,
+        expectedShipmentId: ret.returnShipmentId,
+        objectPath,
+      });
+    } catch (error) {
+      try {
+        await removeReturnInspectionMedia(objectPath);
+      } catch (cleanupError) {
+        console.error(
+          '[returns] external label pdf cleanup failed:',
+          cleanupError instanceof Error ? cleanupError.message : cleanupError,
+        );
+      }
+      if (error instanceof ReturnLabelAssignmentConflictError) {
+        return c.json({ error: error.message, code: error.code }, 409);
+      }
+      throw error;
+    }
 
     await recordReturnActivity({
       returnId: id,

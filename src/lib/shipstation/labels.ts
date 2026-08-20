@@ -268,6 +268,18 @@ export async function ssVoidShipment(shipmentId: number | string, apiKeyV2?: str
   });
 }
 
+/** Read back provider truth after an ambiguous/already-voided response. */
+export async function ssIsShipmentVoided(
+  shipmentId: number | string,
+  apiKeyV2?: string,
+): Promise<boolean> {
+  const id = typeof shipmentId === 'number' ? `se-${shipmentId}` : shipmentId;
+  const payload = await ssRequest<Record<string, unknown>>(`/v2/shipments/${id}`, {
+    apiKey: apiKeyV2,
+  });
+  return payload.voided === true || payload.shipment_status === 'cancelled';
+}
+
 export async function ssCreateReturnLabel(
   shipmentId: number,
   reason: string,

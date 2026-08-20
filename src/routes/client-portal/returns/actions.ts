@@ -19,6 +19,10 @@ import {
   ReturnLabelStateError,
   ReturnCustomerRateUnavailableError,
 } from '../../../services/returns';
+import {
+  RETURN_LABEL_ASSIGNMENT_CONFLICT_CODE,
+  ReturnLabelAssignmentConflictError,
+} from '../../../services/return-label-slot';
 import { registerReturnBillingDateRoute } from './billing-date';
 import {
   registerReturnExternalLabelPdfRoute,
@@ -272,6 +276,8 @@ function registerReturnLabelRoute(app: Hono): void {
       const isDuplicate = /active return already exists/i.test(message);
       const isRateUnavailable = err instanceof ReturnLabelRateUnavailableError;
       const isPurchasePending = err instanceof ReturnLabelPurchasePendingError;
+      const assignmentConflict = err instanceof ReturnLabelAssignmentConflictError ? err : null;
+      const isAssignmentConflict = isPurchasePending || assignmentConflict != null;
       const isInvalidState = err instanceof ReturnLabelStateError;
       const isCustomerRateUnavailable = err instanceof ReturnCustomerRateUnavailableError;
       if (isRateUnavailable) {
@@ -282,17 +288,23 @@ function registerReturnLabelRoute(app: Hono): void {
           ratePolicy: returnLabelRatePolicy,
         });
       }
-      const status = isDuplicate || isInvalidState || isPurchasePending
+      const status = isDuplicate || isInvalidState || isAssignmentConflict
         ? 409
         : isRateUnavailable || isCustomerRateUnavailable
           ? 422
           : 500;
       const clientMessage =
-        isDuplicate || isInvalidState || isPurchasePending || isRateUnavailable ||
+        isDuplicate || isInvalidState || isAssignmentConflict || isRateUnavailable ||
         isCustomerRateUnavailable
           ? message
           : 'Could not create return label. Please try again or contact PrepShip support.';
-      return c.json({ error: clientMessage }, status);
+      return c.json(
+        {
+          error: clientMessage,
+          ...(isAssignmentConflict ? { code: RETURN_LABEL_ASSIGNMENT_CONFLICT_CODE } : {}),
+        },
+        status,
+      );
     }
   });
 }

@@ -17,6 +17,7 @@ const fencingMigration = read('drizzle/0047_return_label_operation_fencing.sql')
 const voidMigration = read('drizzle/0049_return_label_purchase_intent_voided.sql');
 const intentSchema = read('src/db/schema/return-label-purchase-intents.ts');
 const intents = read('src/services/return-label-purchase-intents.ts');
+const slot = read('src/services/return-label-slot.ts');
 const returnsService = read('src/services/returns.ts');
 const labels = read('src/lib/shipstation/labels.ts');
 const admin = read('src/routes/admin.ts');
@@ -24,9 +25,11 @@ const route = readSourceTree([
   'src/routes/client-portal/returns.ts',
   'src/routes/client-portal/returns',
 ]);
+const returnActions = read('src/routes/client-portal/returns/actions.ts');
 const integration = read('scripts/integration/client-portal-returns-cp057.integration.ts');
 const workflow = read('.github/workflows/integration-tests.yml');
 const runbook = read('docs/client-portal-return-label-live-runbook.md');
+const voidMigrationRunner = read('scripts/apply-cp-057-return-label-voided-migration.ts');
 const matrix = read('docs/source-of-truth-matrix.md');
 const pkg = JSON.parse(read('package.json'));
 
@@ -67,6 +70,18 @@ assert(
   'purchase ownership is acquired with a conditional durable state transition',
 );
 assert(
+  /db\.transaction\(async \(tx\)/.test(intents) &&
+    /lockReturnLabelSlot\(tx, returnId\)/.test(intents) &&
+    /\.for\('update'\)/.test(slot) &&
+    /ReturnLabelAssignmentConflictError/.test(intents),
+  'purchase intent ownership locks and rechecks the shared return label slot',
+);
+assert(
+  /shipments\.labelProviderKey/.test(slot) &&
+    /returnLabelPurchaseIntents\.providerReferenceKey/.test(slot),
+  'shipment lookup finds persisted in-flight purchase ownership through the stable provider key',
+);
+assert(
   /external_shipment_id: input\.externalShipmentId/.test(labels) &&
     /ssGetLabelByExternalShipmentId/.test(labels) &&
     /labels\/external_shipment_id/.test(labels) &&
@@ -105,9 +120,38 @@ assert(
   /ReturnLabelPurchasePendingError/.test(route) && /isPurchasePending/.test(route),
   'the API exposes a redaction-safe pending response instead of blind retry behavior',
 );
+assert(
+  /existingReturn\.source === 'external_return_label'[\s\S]{0,220}ReturnLabelAssignmentConflictError/.test(
+    returnsService,
+  ),
+  'a committed external winner remains a typed conflict before intent acquisition',
+);
+assert(
+  /RETURN_LABEL_ASSIGNMENT_CONFLICT_CODE/.test(returnActions) &&
+    /isAssignmentConflict/.test(returnActions) &&
+    /code: RETURN_LABEL_ASSIGNMENT_CONFLICT_CODE/.test(returnActions) &&
+    /isDuplicate \|\| isInvalidState \|\| isAssignmentConflict[\s\S]{0,80}?409/.test(returnActions),
+  'the live-label endpoint returns 409 label_assignment_in_progress for a slot loser',
+);
 
 for (const fixture of [
   'concurrent purchase ownership',
+  'concurrent external assignments',
+  'purchase intent wins the external race',
+  'external assignment wins the purchase race',
+  'persisted in-flight purchase blocks void',
+  'the provider-key fallback rejects voiding the in-flight purchased intent',
+  'an in-flight purchase is rejected before any provider void call',
+  'the original purchase completes safely',
+  'voided label releases the canonical slot',
+  'post-provider local void finalization is atomic',
+  'intent failure rolls back shipments.voided',
+  'already-voided retry is accepted only after provider readback',
+  'a non-completed existing intent rejects finalization',
+  'intent-state mismatch rolls back shipments.voided',
+  'stale concurrent void finalizer cannot clobber replacement',
+  'the delayed finalizer preserves the replacement link',
+  'the delayed finalizer cannot reset newer order workflow state',
   'provider success then shipment insert failure',
   'recovery blocks shipment persistence when customer pricing is unavailable',
   'blocked recovery never repurchases postage',
@@ -138,6 +182,35 @@ assert(
     /Never[\s\S]*blindly retry/i.test(runbook) &&
     /three concurrent probes/.test(runbook),
   'runbook gates real postage on approval, readiness, and reconciliation safety',
+);
+assert(
+  /--apply/.test(voidMigrationRunner) &&
+    /--confirm=/.test(voidMigrationRunner) &&
+    /--host=/.test(voidMigrationRunner) &&
+    /--database=/.test(voidMigrationRunner) &&
+    /DRY RUN/.test(voidMigrationRunner) &&
+    /EXPECTED_MIGRATION_SHA256/.test(voidMigrationRunner) &&
+    /createHash\('sha256'\)/.test(voidMigrationRunner) &&
+    /row_fingerprint/.test(voidMigrationRunner) &&
+    /access exclusive mode/.test(voidMigrationRunner) &&
+    /assertPostconditions\(lockedBefore, lockedAfter\)/.test(voidMigrationRunner) &&
+    /rls_enabled/.test(voidMigrationRunner) &&
+    /return_unique_index/.test(voidMigrationRunner) &&
+    /provider_ref_unique_index/.test(voidMigrationRunner) &&
+    /state_index/.test(voidMigrationRunner) &&
+    /state_lease_index/.test(voidMigrationRunner) &&
+    /lease_expires_column/.test(voidMigrationRunner) &&
+    /resolution_note_column/.test(voidMigrationRunner) &&
+    pkg.scripts?.['migrate:cp-057-return-label-voided'] ===
+      'tsx scripts/apply-cp-057-return-label-voided-migration.ts',
+  'migration 0049 has a dry-run-default, explicit-apply, readback-verified operator lane',
+);
+assert(
+  /0047_return_label_operation_fencing/.test(runbook) &&
+    /migrate:cp-057-return-label-voided/.test(runbook) &&
+    /RETURN_BILLING_ENABLED=false/.test(runbook) &&
+    /\$2\.50/.test(runbook),
+  'runbook covers 0047/0049, bounded billing proof, and both flag shutdowns',
 );
 assert(
   /return_label_purchase_intents/.test(matrix) &&
@@ -197,11 +270,36 @@ assert(
     setVoided !== -1 && advance !== -1 && advance > setVoided,
     'the intent advances only AFTER the canonical shipments.voided write, never before it',
   );
-  // A stranded intent is recoverable; a void reported failed after the provider already
-  // voided is not. So this must never throw back into the void path.
   assert(
-    /CP-057 return purchase intent could not be advanced/.test(body),
-    'a failure advancing the intent cannot fail a void that already happened at the provider',
+    /and\(eq\(shipments\.id, row\.id\), eq\(shipments\.voided, false\)\)/.test(body),
+    'a stale concurrent finalizer cannot rewrite an already-voided historical shipment',
+  );
+  assert(
+    /const advancedIntentId = await db\.transaction\(async \(tx\) =>/.test(body) &&
+      /lockReturnLabelSlotForShipment\(tx, row\.id\)/.test(body) &&
+      /markReturnLabelPurchaseVoidedForShipment\([\s\S]*?, tx\)/.test(body) &&
+      /await tx[\s\S]*?\.update\(orders\)/.test(body),
+    'shared slot lock, shipment void, completed-intent release, and order reset share one transaction',
+  );
+  assert(
+    !/CP-057 return purchase intent could not be advanced/.test(body),
+    'intent-finalization failures roll back local void truth instead of being logged after a partial commit',
+  );
+  assert(
+    /ssIsShipmentVoided\(/.test(body) && /if \(!providerAlreadyVoided\) throw err/.test(body),
+    'a provider already-voided response requires canonical provider readback before local retry',
+  );
+  assert(
+    /const preflightSlot = await db\.transaction/.test(body) &&
+      /assertReturnLabelVoidSlot\(preflightSlot, row\.id\)/.test(body),
+    'an in-flight persisted purchase is rejected under the shared slot lock before provider void',
+  );
+  const intentVoid = intents.indexOf('export async function markReturnLabelPurchaseVoidedForShipment');
+  const intentVoidBody = intentVoid === -1 ? '' : intents.slice(intentVoid, intentVoid + 1800);
+  assert(
+    /intent\.state === 'voided'/.test(intentVoidBody) &&
+      /intent\.state !== 'completed'[\s\S]*throw new Error/.test(intentVoidBody),
+    'only no intent or an already-voided intent can no-op; every other state mismatch aborts finalization',
   );
 }
 

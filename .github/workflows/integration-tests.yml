@@ -50,6 +50,8 @@ jobs:
         run: npm run test:client-portal-returns-cp045:integration
       - name: Run CP-057 duplicate-postage integration suite
         run: npm run test:client-portal-returns-cp057:integration
+      - name: Run CP-057/058 public-route and storage-compensation suite
+        run: npm run test:client-portal-returns-cp058:integration
       - name: Run CP-048 access security integration suite
         run: npm run test:client-portal-access-security:integration
       - name: Run shopify connect integration suite
