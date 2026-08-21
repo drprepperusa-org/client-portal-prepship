@@ -82,9 +82,54 @@ check(
   !/order by s\.id desc/i.test(skuOrders),
   'sku-orders contains no newest-label (`order by s.id desc`) classifier',
 );
+// The correction (Hermes 2026-08-21). The first cut summed the ORDER TOTAL over
+// billing_line_items by order_id while summing the class split over shipments,
+// so money on a line pointing at a voided or foreign shipment landed in the
+// total, in neither class, and still reported 'attributed'. Both halves must now
+// come from the canonical per-shipment resolver, which is also what the order
+// detail Shipping row sums — so the drawer total cannot disagree with it.
 check(
-  skuOrders.includes('billing_line_items b') && skuOrders.includes('b.shipment_id = s.id'),
-  'sku-orders attributes billed money per shipment via billing_line_items.shipment_id',
+  skuOrders.includes('shipmentCustomerShippingRateSql') &&
+    skuOrders.includes("from '../lib/client-portal/customer-shipping-rate'"),
+  'sku-orders takes its shipping money from the canonical per-shipment resolver',
+);
+check(
+  skuOrders.includes('shipmentIsCustomerShippingEligibleSql()'),
+  'sku-orders selects eligible shipments through the shared eligibility predicate',
+);
+check(
+  !/from billing_line_items/i.test(skuOrders),
+  'sku-orders no longer sums billing_line_items itself (no order-grain shipping total)',
+);
+check(
+  !/unattributed|money_attributed|partial_unattributed/.test(skuOrders),
+  'sku-orders carries no residual/unattributed money vocabulary',
+);
+check(
+  /money_total is null\s*then 'pending'/.test(skuOrders) && !/then 'unbilled'/.test(skuOrders),
+  "sku-orders reports 'pending' (not 'unbilled') when the resolver has no answer yet",
+);
+
+// The eligibility rule decides which shipments carry customer money. Exactly one
+// definition, same discipline as EXPEDITED_SERVICES above — a copy in the drawer
+// would silently keep the old rule if PS-4xx adds an exclusion upstream.
+const eligibilityFiles = walk('src').filter((file) =>
+  /coalesce\([^)]*isReturn[^)]*\)\s*=\s*false/.test(stripComments(read(file))),
+);
+check(
+  eligibilityFiles.length === 1 &&
+    eligibilityFiles[0].split('\\').join('/') === 'src/lib/client-portal/customer-shipping-rate.ts',
+  `exactly one customer-shipping eligibility predicate, in customer-shipping-rate.ts (found: ${eligibilityFiles.join(', ') || 'none'})`,
+);
+
+// The contract's money-state vocabulary must match the read model's exactly.
+const analysisContract = stripComments(read('src/lib/client-portal/contracts/analysis.ts'));
+for (const state of ['attributed', 'pending', 'external_label', 'voided_only']) {
+  check(analysisContract.includes(`'${state}'`), `contract declares the ${state} money state`);
+}
+check(
+  !/partial_unattributed|unattributed_legacy|'unbilled'/.test(analysisContract),
+  'contract retires the residual money states',
 );
 check(
   skuOrders.includes('shipping_money_state'),

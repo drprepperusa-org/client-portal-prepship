@@ -38,13 +38,22 @@ export interface AnalysisBreakdown {
   orderCombinations?: AnalysisOrderCombination[];
 }
 
-export type ShippingMoneyState =
-  | 'attributed'
-  | 'partial_unattributed'
-  | 'unattributed_legacy'
-  | 'unbilled'
-  | 'external_label'
-  | 'voided_only';
+/**
+ * Why an order's shipping figure is, or is not, a number.
+ *
+ * Source: PrepShip's frozen billing line per shipment, falling back to its
+ * frozen rate snapshot — the same per-shipment resolver the Orders surface and
+ * the order-detail charge summary use. Event clock: label/bill time.
+ * Owner: PrepShip.
+ *
+ * `pending` replaces the former `unbilled`: an eligible label exists but the
+ * resolver has no answer yet, exactly the window the Orders DTO reports as
+ * `customerShippingRatePending`. Calling it "unbilled" asserted something the
+ * order page contradicts. The former `partial_unattributed` /
+ * `unattributed_legacy` no longer exist — total and class split come from one
+ * row set, so there is no residual to name.
+ */
+export type ShippingMoneyState = 'attributed' | 'pending' | 'external_label' | 'voided_only';
 
 export interface SkuOrderRow {
   order_id: number;
@@ -55,11 +64,16 @@ export interface SkuOrderRow {
   qty: number;
   unit_price: string | null;
   item_name: string | null;
-  /** SKU's share of ALL billed shipping on the order (every class, every label). */
+  /**
+   * SKU's share of the order's canonical customer shipping money — the same
+   * per-shipment value `orderCustomerShippingRateSql()` sums for the order
+   * detail Shipping row, so the two cannot disagree. Allocated across the
+   * order's units. Source/clock/owner as for ShippingMoneyState.
+   */
   shippingTotal: string | null;
-  /** SKU's share of money attributed to standard-service labels only. */
+  /** The standard-service part of shippingTotal; standard + expedited = total. */
   shippingStandard: string | null;
-  /** SKU's share of money attributed to expedited-service labels only. */
+  /** The expedited-service part of shippingTotal. */
   shippingExpedited: string | null;
   /** Why money is (or isn't) shown — never a guessed class. */
   shippingMoneyState: ShippingMoneyState;
