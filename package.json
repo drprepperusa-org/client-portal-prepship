@@ -237,7 +237,8 @@
     "test:cp-058:browser": "playwright test web/e2e/client-portal-ui.spec.js -g \"CP-058\" --reporter=line",
     "test:cp-059a-writer-retirement": "tsx scripts/ps-cp-059a-writer-retirement-guard.ts",
     "test:client-portal-analysis-cp060:integration": "tsx scripts/integration/client-portal-analysis-cp060.integration.ts",
-    "test:client-portal-analysis-cp060": "node scripts/client-portal-analysis-cp060-guard.mjs"
+    "test:client-portal-analysis-cp060": "node scripts/client-portal-analysis-cp060-guard.mjs",
+    "test:client-portal-replacements-cp061:integration": "tsx scripts/integration/client-portal-replacements-cp061.integration.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
