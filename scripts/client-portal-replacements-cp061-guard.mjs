@@ -148,6 +148,18 @@ check(
   'the CP-061 suite runs last in the job (its fail-soft scenario drops the replacement tables)',
 );
 
+// The suite truncates replacement_items/replacements on its first line, so the
+// throwaway database must actually HAVE them. drizzle.config.ts lists schema
+// files explicitly rather than globbing, and CP-061 shipped the mirror in
+// schema/index.ts without adding it there — so drizzle-kit push never created
+// the tables and the suite failed on scenario 1 the first time CI ran it.
+// Exporting a schema file is not the same as pushing it.
+const drizzleConfig = read('drizzle.config.ts');
+check(
+  drizzleConfig.includes("'./src/db/schema/replacements.ts'"),
+  'drizzle.config.ts pushes the replacements schema so the test database has the tables',
+);
+
 if (failures > 0) {
   console.error(`\n✖ CP-061 guard: ${failures} failing check(s).`);
   process.exit(1);
