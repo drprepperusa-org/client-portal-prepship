@@ -113,6 +113,11 @@ const orderRow = {
   sourceStoreId: 'e2e-store',
   orderStatus: 'shipped',
   fulfillmentStatus: 'in_transit',
+  // CP-061: backend-derived badge fields — the UI renders these verbatim.
+  hasActiveReplacement: true,
+  replacementStatus: 'requested',
+  replacementCount: 1,
+  replacementReference: '200014902407643-REPLACE',
   orderDate: '2026-07-16T11:59:00.000Z',
   shipToName: 'E2E Customer',
   shipToLine1: null,
@@ -164,6 +169,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
       canManageUsers: capabilities.canManageUsers ?? admin,
       canManageAdmins: capabilities.canManageAdmins ?? admin,
       canViewAudit: capabilities.canViewAudit ?? admin,
+      canRequestReplacements: capabilities.canRequestReplacements ?? admin,
     };
   }
   if (pathname === '/api/client-portal/clients') {
@@ -337,6 +343,42 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   if (pathname === '/api/client-portal/audit-log') return { data: [] };
   if (pathname === '/api/client-portal/inventory-history') {
     return { data: [], pagination: emptyPagination };
+  }
+  if (pathname === '/api/client-portal/replacements') {
+    return {
+      data: [{
+        id: 7,
+        reference: '200014902407643-REPLACE',
+        orderId: 101,
+        orderNumber: '200014902407643',
+        clientId: 1,
+        clientName: 'Walmart - DJC',
+        status: 'requested',
+        reason: 'Arrived damaged',
+        itemCount: 1,
+        requestedAt: '2026-07-16T12:30:00.000Z',
+      }],
+    };
+  }
+  if (pathname === '/api/client-portal/replacements/7') {
+    return {
+      data: {
+        id: 7,
+        reference: '200014902407643-REPLACE',
+        orderId: 101,
+        orderNumber: '200014902407643',
+        clientId: 1,
+        clientName: 'Walmart - DJC',
+        status: 'requested',
+        reason: 'Arrived damaged',
+        itemCount: 1,
+        requestedAt: '2026-07-16T12:30:00.000Z',
+        items: [{ id: 1, sku: 'E2E-SKU', name: 'E2E product', quantity: 1 }],
+      },
+    };
+  }
+  if (pathname === '/api/client-portal/orders/101') {
+    return { data: { ...orderRow, items: [], chargeSummary: [] } };
   }
   if (pathname === '/api/client-portal/orders') {
     return { data: [orderRow], pagination: { ...emptyPagination, total: 1 } };
@@ -618,6 +660,39 @@ test('client users remain denied from admin settings', async ({ page }) => {
   await page.goto(`${baseUrl}/settings`);
   await expect(page).toHaveURL(`${baseUrl}/`);
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+});
+
+test('CP-061: REPLACE badge renders from the backend flag on row and detail', async ({ page }) => {
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/orders`);
+  // Row badge — backend-derived hasActiveReplacement only.
+  await expect(page.getByText('REPLACE', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: /View order 200014902407643/ }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByText('REPLACE', { exact: true })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-061: /replace lists canonical rows and opens the detail drawer', async ({ page }) => {
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/replace`);
+  await expect(page.getByText('200014902407643-REPLACE')).toBeVisible();
+  await expect(page.getByText('1 item', { exact: true })).toBeVisible();
+  await page.getByText('200014902407643-REPLACE').click();
+  const drawer = page.getByRole('dialog', { name: '200014902407643-REPLACE' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('Arrived damaged')).toBeVisible();
+  await expect(drawer.getByText('E2E-SKU')).toBeVisible();
+  // Staff (admin) sees the capability-gated create action.
+  await expect(page.getByRole('button', { name: 'Request replacement' })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-061: client_user sees no create action on /replace', async ({ page }) => {
+  await setupPortal(page, { admin: false });
+  await page.goto(`${baseUrl}/replace`);
+  await expect(page.getByText('200014902407643-REPLACE')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Request replacement' })).toHaveCount(0);
 });
 
 test('client can rename a Shopify connection without changing provider identity', async ({ page }) => {
