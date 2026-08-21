@@ -132,6 +132,22 @@ check(
   'package.json exposes test:client-portal-replacements-cp061',
 );
 
+// 7. CI executes the DB-backed suite. PR #18 claimed the nine scenarios ran in
+// CI while integration-tests.yml never invoked them (Hermes, 2026-08-21); a
+// suite that exists but is not run proves nothing at the reviewed SHA.
+const workflow = read('.github/workflows/integration-tests.yml');
+check(
+  workflow.includes('npm run test:client-portal-replacements-cp061:integration') &&
+    pkg.scripts?.['test:client-portal-replacements-cp061:integration'] ===
+      'tsx scripts/integration/client-portal-replacements-cp061.integration.ts',
+  'integration-tests.yml runs the DB-backed CP-061 suite',
+);
+check(
+  workflow.lastIndexOf('test:client-portal-replacements-cp061:integration') >
+    workflow.lastIndexOf('test:shopify-connect-integration'),
+  'the CP-061 suite runs last in the job (its fail-soft scenario drops the replacement tables)',
+);
+
 if (failures > 0) {
   console.error(`\n✖ CP-061 guard: ${failures} failing check(s).`);
   process.exit(1);
