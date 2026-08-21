@@ -15,6 +15,7 @@ export * from './parent-skus';
 export * from './inventory-sku-parents';
 export * from './return-labels';
 export * from './returns';
+export * from './replacements';
 export * from './return-label-purchase-intents';
 export * from './mock-labels';
 export * from './product-defaults';
