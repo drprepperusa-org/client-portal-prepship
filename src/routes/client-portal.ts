@@ -20,6 +20,7 @@ import accessRoute from './client-portal/access';
 import integrationsRoute from './client-portal/integrations';
 import inboundRoute from './client-portal/inbound';
 import returnsRoute from './client-portal/returns';
+import replacementsRoute from './client-portal/replacements';
 import syncRoute from './client-portal/sync';
 import auditLogRoute from './client-portal/audit-log';
 
@@ -36,6 +37,7 @@ app.route('/', accessRoute);
 app.route('/', integrationsRoute);
 app.route('/', inboundRoute);
 app.route('/', returnsRoute);
+app.route('/', replacementsRoute);
 app.route('/', syncRoute);
 app.route('/', auditLogRoute);
 

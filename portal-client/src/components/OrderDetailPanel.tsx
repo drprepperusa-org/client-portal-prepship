@@ -50,7 +50,12 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <Chip accent={meta.accent}>{meta.label}</Chip>
+        <span className="flex items-center gap-2">
+          <Chip accent={meta.accent}>{meta.label}</Chip>
+          {/* CP-061: backend-derived REPLACE badge — rendered from
+              hasActiveReplacement only, never re-derived in the client. */}
+          {o.hasActiveReplacement && <Chip accent="emerald" dot={false}>REPLACE</Chip>}
+        </span>
         <span className="truncate text-sm text-ink-3">
           {o.orderNumber ? `#${o.orderNumber} · ` : ''}{shortDate(o.orderDate)}
         </span>

@@ -2,6 +2,7 @@ export * from './common';
 export * from './orders';
 export * from './shipments';
 export * from './returns';
+export * from './replacements';
 export * from './inventory';
 export * from './connections';
 export * from './dashboard';

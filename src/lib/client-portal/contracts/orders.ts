@@ -25,6 +25,11 @@ export interface PortalOrder {
   sourceStoreId: string | null;
   orderStatus: string | null;
   fulfillmentStatus: PortalOrderFulfillmentStatus;
+  /** CP-061: backend-derived REPLACE badge — render verbatim, never re-derive. */
+  hasActiveReplacement: boolean;
+  replacementStatus: string | null;
+  replacementCount: number;
+  replacementReference: string | null;
   orderDate: string | null;
   shipToName: string | null;
   shipToLine1: string | null;
