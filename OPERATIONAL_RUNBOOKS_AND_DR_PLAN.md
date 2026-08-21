@@ -67,14 +67,14 @@ This is a planning/control batch only. It does not change runtime code, deployme
 
 ## Production Watchdog
 
-The production watchdog is a one-shot, read-first safety script for external uptime checks and controlled Render recovery. Run it from an approved scheduler or Render Shell with `npm run watchdog:production`. It checks the Vercel shell URL, Render `/health`, and Render `/health/ready` plus `/health/deep`; readiness is considered acceptable when either deep readiness endpoint passes after `/health` passes.
+The production watchdog is a one-shot, read-first safety script for external uptime checks and controlled Render recovery. Run it from an approved scheduler or Render Shell with `npm run watchdog:production`. It checks the Vercel shell URL, Render `/health`, and Render `/health/ready`. `/health/ready` is the canonical readiness verdict and is probed exactly once per run; a 503 there is unhealthy and is never averaged against another probe. (Until 2026-08-21 the watchdog also raced `/health/deep` and accepted either passing, which hid hours of `/health/ready` 503s behind a sibling 200 and doubled the probe load on the wedging private health pool.) `/health/deep` remains available for operators.
 
 Required read-only env vars:
 
 | Env var | Purpose |
 |---|---|
 | `VERCEL_SHELL_URL` | Public Vercel app shell URL to fetch. 5xx/network failures count as unhealthy; 3xx/4xx auth gates are acceptable for the shell. |
-| `RENDER_BASE_URL` | Render API base URL. The watchdog appends `/health`, `/health/ready`, and `/health/deep`. |
+| `RENDER_BASE_URL` | Render API base URL. The watchdog appends `/health` and `/health/ready`. |
 | `WATCHDOG_ALERT_WEBHOOK_URL` | Optional alert destination. If missing, the sanitized alert is written to process logs only. |
 | `WATCHDOG_STATE_FILE` | Optional persistent JSON state path for consecutive failure and restart counters. Defaults under `outputs/`. |
 
@@ -96,7 +96,7 @@ Render dashboard restart:
 1. Open the affected Render service.
 2. Confirm current deploy, logs, and health status.
 3. Use the dashboard Manual Deploy or Restart action for the API/worker service.
-4. Re-run `/health`, `/health/ready` or `/health/deep`, and the relevant user smoke.
+4. Re-run `/health`, `/health/ready`, and the relevant user smoke.
 5. Preserve timestamps, deploy id, request IDs, and sanitized logs in the incident record.
 
 Manual fallback:

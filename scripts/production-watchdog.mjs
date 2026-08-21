@@ -121,36 +121,31 @@ async function runChecks() {
 
   if (!config.renderBaseUrl) {
     checks.push({ name: 'Render /health', ok: false, status: 'config-missing', target: 'RENDER_BASE_URL' });
-    checks.push({
-      name: 'Render /health/ready or /health/deep',
-      ok: false,
-      status: 'config-missing',
-      target: 'RENDER_BASE_URL',
-    });
+    checks.push({ name: 'Render /health/ready', ok: false, status: 'config-missing', target: 'RENDER_BASE_URL' });
     return checks;
   }
 
   checks.push(await checkHttp('Render /health', joinUrl(config.renderBaseUrl, '/health'), (status) => status >= 200 && status < 300));
 
-  const detailChecks = await Promise.all([
-    checkHttp('Render /health/ready', joinUrl(config.renderBaseUrl, '/health/ready'), (status) => status >= 200 && status < 300),
-    checkHttp('Render /health/deep', joinUrl(config.renderBaseUrl, '/health/deep'), (status) => status >= 200 && status < 300),
-  ]);
-  checks.push(...detailChecks);
+  // /health/ready is the canonical readiness verdict and is probed exactly once.
+  // It used to be raced against /health/deep (same checker, same private pool)
+  // with "either passes" accepted as healthy: on 2026-08-21 that hid hours of
+  // /health/ready 503s behind a sibling 200 and doubled the probe load on the
+  // pool that was wedging. A readiness 503 is the finding, never to be averaged
+  // away. /health/deep stays available for operators; the watchdog does not
+  // request it.
+  checks.push(
+    await checkHttp('Render /health/ready', joinUrl(config.renderBaseUrl, '/health/ready'), (status) => status >= 200 && status < 300),
+  );
 
   return checks;
 }
 
 function summarizeHealth(checks) {
-  const baseFailures = checks.filter((check) => check.name !== 'Render /health/ready' && check.name !== 'Render /health/deep' && !check.ok);
-  const detailChecks = checks.filter((check) => check.name === 'Render /health/ready' || check.name === 'Render /health/deep');
-  const detailOk = detailChecks.length === 0 || detailChecks.some((check) => check.ok);
+  const failures = checks.filter((check) => !check.ok);
   return {
-    ok: baseFailures.length === 0 && detailOk,
-    failingChecks: [
-      ...baseFailures.map((check) => check.name),
-      ...(detailOk ? [] : ['Render /health/ready or /health/deep']),
-    ],
+    ok: failures.length === 0,
+    failingChecks: failures.map((check) => check.name),
   };
 }
 

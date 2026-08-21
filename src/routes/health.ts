@@ -13,13 +13,34 @@ const EVENT_LOOP_HEALTH_TIMEOUT_MS = 500;
 const EVENT_LOOP_DELAY_BUDGET_MS = 250;
 const DEPLOYED_COMMIT = env.RENDER_GIT_COMMIT?.trim() || env.GIT_SHA?.trim() || 'unknown';
 
-const healthSql = postgres(env.DATABASE_URL, {
-  prepare: false,
-  max: 3,
-  idle_timeout: 10,
-  connect_timeout: DB_HEALTH_CONNECT_TIMEOUT_SECONDS,
-  connection: { statement_timeout: DB_HEALTH_STATEMENT_TIMEOUT_MS },
-});
+function createHealthPool() {
+  return postgres(env.DATABASE_URL, {
+    prepare: false,
+    max: 3,
+    idle_timeout: 10,
+    connect_timeout: DB_HEALTH_CONNECT_TIMEOUT_SECONDS,
+    connection: { statement_timeout: DB_HEALTH_STATEMENT_TIMEOUT_MS },
+  });
+}
+
+// Private to this route. Replaceable on purpose: a probe that times out has a
+// connection that stopped answering, and postgres.js keeps that connection in
+// its busy list forever (no socket-level timeout exists for an in-flight query)
+// while pipelining later probes onto it. Retaining it turned one stall into a
+// permanently poisoned slot — the 2026-08 db/orders/printQueue 503s that only a
+// restart cleared. See scripts/health-wedged-pool-runtime.ts.
+let healthSql = createHealthPool();
+
+class ProbeTimeoutError extends Error {}
+
+function resetHealthPool(reason: string) {
+  const retired = healthSql;
+  healthSql = createHealthPool();
+  console.error(`[health:ready] health pool reset reason=${reason}`);
+  // end({ timeout: 0 }) destroys every connection of the retired pool,
+  // including the wedged one, and rejects anything still queued on it.
+  void retired.end({ timeout: 0 }).catch(() => undefined);
+}
 
 type CancelableQuery<T> = Promise<T> & { cancel?: () => void };
 
@@ -66,6 +87,8 @@ async function withTimeout<T>(
                   error && typeof error === 'object' && 'code' in error
                     ? String((error as { code: unknown }).code)
                     : 'unknown';
+                // Self-inflicted by resetHealthPool(); nothing to diagnose.
+                if (code === 'CONNECTION_DESTROYED') return;
                 const firstLine = (error instanceof Error ? error.message : String(error))
                   .split('\n', 1)[0]
                   ?.slice(0, 120);
@@ -75,9 +98,7 @@ async function withTimeout<T>(
               }
             );
           }
-          reject(
-            new Error(`DB health check timed out after ${timeoutMs}ms`)
-          );
+          reject(new ProbeTimeoutError(`DB health check timed out after ${timeoutMs}ms`));
         }, timeoutMs);
       }),
     ]);
@@ -101,31 +122,47 @@ function logComponentFailure(name: ReadinessComponentName, error: unknown) {
   console.error(`[health:ready] component=${name} fail code=${code} reason=${firstLine}`);
 }
 
+type ProbeOutcome = { component: ReadinessComponent; timedOut: boolean };
+
 async function checkComponent(
   name: ReadinessComponentName,
   action: () => Promise<{ details?: Record<string, number | string> } | void>
-): Promise<ReadinessComponent> {
+): Promise<ProbeOutcome> {
   const startedAt = Date.now();
   try {
     const result = await action();
     return {
-      name,
-      status: 'ok',
-      latencyMs: Date.now() - startedAt,
-      ...(result?.details ? { details: result.details } : {}),
+      component: {
+        name,
+        status: 'ok',
+        latencyMs: Date.now() - startedAt,
+        ...(result?.details ? { details: result.details } : {}),
+      },
+      timedOut: false,
     };
   } catch (error) {
     logComponentFailure(name, error);
     return {
-      name,
-      status: 'fail',
-      latencyMs: Date.now() - startedAt,
+      component: {
+        name,
+        status: 'fail',
+        latencyMs: Date.now() - startedAt,
+      },
+      timedOut: error instanceof ProbeTimeoutError,
     };
   }
 }
 
+// Probes that run on the private health pool. A timeout on any of them means a
+// health-pool connection stopped answering and must be evicted.
+const HEALTH_POOL_PROBES: ReadonlySet<ReadinessComponentName> = new Set([
+  'db',
+  'orders',
+  'printQueue',
+]);
+
 export async function checkDeepReadiness() {
-  const components = await Promise.all([
+  const outcomes = await Promise.all([
     checkComponent('db', async () => {
       await withTimeout(healthSql`select 1`, DB_HEALTH_TIMEOUT_MS, 'db');
     }),
@@ -175,6 +212,14 @@ export async function checkDeepReadiness() {
       };
     }),
   ]);
+
+  const components = outcomes.map((outcome) => outcome.component);
+  const wedged = outcomes
+    .filter((outcome) => outcome.timedOut && HEALTH_POOL_PROBES.has(outcome.component.name))
+    .map((outcome) => outcome.component.name);
+  // After every probe has settled, so the reset cannot fail a sibling probe
+  // that was still in flight on the retired pool.
+  if (wedged.length > 0) resetHealthPool(`timeout component=${wedged.join(',')}`);
 
   return {
     ok: components.every((component) => component.status === 'ok'),
