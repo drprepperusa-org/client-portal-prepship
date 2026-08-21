@@ -34,7 +34,6 @@ const requiredWatchdogTokens = [
   'RENDER_BASE_URL',
   '/health',
   '/health/ready',
-  '/health/deep',
   'WATCHDOG_ALERT_WEBHOOK_URL',
   'WATCHDOG_FAILURE_THRESHOLD',
   'WATCHDOG_RESTART_COOLDOWN_MS',
@@ -67,6 +66,47 @@ assert(
 assert(
   /max:\s*[3-9]/.test(healthRoute),
   `${healthRoutePath} health SQL pool must allow concurrent db/orders/printQueue checks`
+);
+
+// 2026-08-21: /health/ready returned 503 for hours while the watchdog reported
+// healthy, because it raced /health/ready against /health/deep and accepted
+// either passing. /health/ready is the canonical verdict; it is probed once and
+// a 503 is unhealthy on its own. The executable proof lives in
+// scripts/production-watchdog-runtime.mjs; these pin the source shape.
+assert(
+  !/checkHttp\([^)]*\/health\/deep/.test(watchdog),
+  `${watchdogPath} must not probe /health/deep (duplicate load on the private health pool)`
+);
+assert(
+  !/detailChecks|\.some\(\s*\(?\s*check|or \/health\/deep/.test(watchdog),
+  `${watchdogPath} must not accept an either/or readiness verdict`
+);
+assert(
+  /checkHttp\(\s*'Render \/health\/ready'/.test(watchdog),
+  `${watchdogPath} probes /health/ready as a named check`
+);
+assert(
+  /const failures = checks\.filter\(\(check\) => !check\.ok\)/.test(watchdog),
+  `${watchdogPath} treats every failed check, including /health/ready, as unhealthy`
+);
+assert(
+  packageJson.scripts?.['test:production-watchdog-runtime'] === 'node scripts/production-watchdog-runtime.mjs',
+  'package exposes the executable watchdog verdict fixture'
+);
+
+// The health pool must be evictable: a probe that times out leaves a connection
+// postgres.js would otherwise keep busy forever and pipeline later probes onto.
+assert(
+  /let healthSql = createHealthPool\(\)/.test(healthRoute) && /function resetHealthPool\(/.test(healthRoute),
+  `${healthRoutePath} health pool is replaceable and reset on probe timeout`
+);
+assert(
+  /retired\.end\(\{ timeout: 0 \}\)/.test(healthRoute),
+  `${healthRoutePath} resetHealthPool destroys the retired pool's connections`
+);
+assert(
+  packageJson.scripts?.['test:health-wedged-pool'] === 'tsx scripts/health-wedged-pool-runtime.ts',
+  'package exposes the wedged-pool readiness fixture'
 );
 
 assert(

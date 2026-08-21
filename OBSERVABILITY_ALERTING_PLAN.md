@@ -54,7 +54,7 @@ This started as a planning/control batch. Runtime implementation has now begun w
 
 ## Production Watchdog Alerting
 
-`npm run watchdog:production` emits one sanitized alert payload when the Vercel shell, Render `/health`, and Render `/health/ready` or `/health/deep` checks are unhealthy. The default behavior is alert-only. Automated Render recovery requires `WATCHDOG_ALLOW_RESTARTS=true` plus either `RENDER_DEPLOY_HOOK_URL` or `RENDER_API_KEY` and `RENDER_SERVICE_ID`.
+`npm run watchdog:production` emits one sanitized alert payload when the Vercel shell, Render `/health`, or Render `/health/ready` check is unhealthy. `/health/ready` is authoritative: a 503 is unhealthy on its own. The default behavior is alert-only. Automated Render recovery requires `WATCHDOG_ALLOW_RESTARTS=true` plus either `RENDER_DEPLOY_HOOK_URL` or `RENDER_API_KEY` and `RENDER_SERVICE_ID`.
 
 Alert fields:
 
@@ -69,7 +69,7 @@ Alert fields:
 | `threshold` | `WATCHDOG_FAILURE_THRESHOLD` value. |
 | `cooldownMs` | `WATCHDOG_RESTART_COOLDOWN_MS` value. |
 | `maxRestartsPerHour` | `WATCHDOG_MAX_RESTARTS_PER_HOUR` value. |
-| `failingChecks` | Failed logical checks, with `/health/ready` and `/health/deep` grouped as an either/or readiness check. |
+| `failingChecks` | Failed checks by name (`Vercel shell`, `Render /health`, `Render /health/ready`). |
 | `checks` | Sanitized check results with target host/path only, status, duration, and safe error string. |
 | `runbook` | Pointer to the Production Watchdog section in `OPERATIONAL_RUNBOOKS_AND_DR_PLAN.md`. |
 
