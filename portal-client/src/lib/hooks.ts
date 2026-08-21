@@ -206,6 +206,17 @@ export function useInventoryHistory(opts: { page?: number; pageSize?: number; sk
 }
 export const useIntegrations = () => useTokenQuery(['integrations'], portalApi.integrations);
 
+// CP-061 — Replace list + detail. Reads are scoped server-side; the list honors
+// the top-bar client switcher. All replacement truth is backend-derived.
+export function useReplacements() {
+  const { clientId } = usePortalFilters();
+  return useTokenQuery(['replacements', clientId ?? 'scope'], (t) =>
+    portalApi.replacements(t, clientId ?? undefined),
+  );
+}
+export const useReplacement = (id: number | null) =>
+  useTokenQuery(['replacement', id ?? 0], (t) => portalApi.replacement(t, id as number), id != null);
+
 // CP-029 — Returns list + detail. Mirrors useShipments/useOrder: the list honors
 // the top-bar client switcher and the on-page status/search/order filters; the
 // detail re-reads the single backend-owned return DTO.

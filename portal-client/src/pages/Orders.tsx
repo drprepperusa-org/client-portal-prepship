@@ -159,7 +159,20 @@ export default function Orders() {
     },
     { key: 'client', header: 'Client', defaultWidth: 130, render: (o) => <Chip accent={clientAccent(o.clientName)} dot={false}>{o.clientName ?? '—'}</Chip>, sortAccessor: (o) => o.clientName ?? '' },
     { key: 'status', header: 'Status', defaultWidth: 120, render: (o) => <OrderStatusBadge status={o.fulfillmentStatus} />, sortAccessor: (o) => o.fulfillmentStatus },
-    { key: 'order', header: 'Order #', defaultWidth: 130, render: (o) => <span className="font-semibold text-brand-700">{o.orderNumber ?? `#${o.id}`}</span>, sortAccessor: (o) => o.orderNumber ?? '' },
+    {
+      key: 'order',
+      header: 'Order #',
+      defaultWidth: 150,
+      // CP-061: REPLACE badge rendered from the backend-derived
+      // hasActiveReplacement flag only — never re-derived in the client.
+      render: (o) => (
+        <span className="flex items-center gap-1.5">
+          <span className="font-semibold text-brand-700">{o.orderNumber ?? `#${o.id}`}</span>
+          {o.hasActiveReplacement && <Chip accent="emerald" dot={false}>REPLACE</Chip>}
+        </span>
+      ),
+      sortAccessor: (o) => o.orderNumber ?? '',
+    },
     {
       key: 'items',
       header: 'Item Name',

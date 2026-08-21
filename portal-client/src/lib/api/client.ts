@@ -7,6 +7,7 @@ import { inboundApi } from './domains/inbound';
 import { inventoryApi } from './domains/inventory';
 import { ordersApi } from './domains/orders';
 import { returnsApi } from './domains/returns';
+import { replacementsApi } from './domains/replacements';
 import { shipmentsApi } from './domains/shipments';
 
 export const portalApi = {
@@ -16,6 +17,7 @@ export const portalApi = {
   ...shipmentsApi,
   ...inventoryApi,
   ...returnsApi,
+  ...replacementsApi,
   ...connectionsApi,
   ...inboundApi,
   ...analysisApi,
