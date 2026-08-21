@@ -3,7 +3,7 @@
 // predicate (same authority as every other portal surface). All reads are
 // gated on replacementsSchemaReady() and fail SOFT while the shared prod DB
 // lacks the PS-502 tables.
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import type { ClientPortalScope } from '../scope';
 import { rawOrderScopeForAlias } from '../predicates';
@@ -118,25 +118,49 @@ export async function getPortalReplacement(
   return { ...toRow(row), items: itemDtos };
 }
 
-// Badge fragment for the order read model. Emitted per order alias `o`:
-//   has_active_replacement — any replacement whose status <> 'cancelled'
-//   replacement_status     — status of the NEWEST non-cancelled replacement
-//   replacement_count      — count of non-cancelled replacements
-//   replacement_reference  — reference of the newest non-cancelled replacement
+// Badge selects for the order read model (drizzle .select fields). Emitted per
+// order row:
+//   hasActiveReplacement — any replacement whose status <> 'cancelled'
+//   replacementStatus    — status of the NEWEST non-cancelled replacement
+//   replacementCount     — count of non-cancelled replacements
+//   replacementReference — reference of the newest non-cancelled replacement
 //
 // Cancellation clears the badge on the next canonical read (CP-061 AC-7).
 // `rejected` currently KEEPS the badge with its status visible — the card
 // freezes only cancelled-clears; revisit when PS-502 freezes the semantics.
-export function orderReplacementBadgeLateralSql() {
-  return sql`
-    left join lateral (
-      select
-        count(*)::int                                   as replacement_count,
-        (array_agg(r.status order by r.requested_at desc, r.id desc))[1]    as replacement_status,
-        (array_agg(r.reference order by r.requested_at desc, r.id desc))[1] as replacement_reference
-      from replacements r
-      where r.order_id = o.id
-        and r.status <> 'cancelled'
-    ) order_replacements on true
-  `;
+//
+// `ready` MUST be replacementsSchemaReady(): while the shared prod DB lacks
+// the PS-502 tables, a subquery against them would 500 the entire Orders
+// surface — not-ready emits constants instead.
+export function orderReplacementBadgeSelects(ready: boolean, orderIdRef: SQL) {
+  if (!ready) {
+    return {
+      hasActiveReplacement: sql<boolean>`false`,
+      replacementStatus: sql<string | null>`null::text`,
+      replacementCount: sql<number>`0::int`,
+      replacementReference: sql<string | null>`null::text`,
+    };
+  }
+  return {
+    hasActiveReplacement: sql<boolean>`exists (
+      select 1 from replacements r
+      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+    )`,
+    replacementStatus: sql<string | null>`(
+      select r.status from replacements r
+      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+      order by r.requested_at desc, r.id desc
+      limit 1
+    )`,
+    replacementCount: sql<number>`(
+      select count(*)::int from replacements r
+      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+    )`,
+    replacementReference: sql<string | null>`(
+      select r.reference from replacements r
+      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+      order by r.requested_at desc, r.id desc
+      limit 1
+    )`,
+  };
 }

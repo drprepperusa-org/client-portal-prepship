@@ -12,6 +12,8 @@ import {
   orderSearchPredicate,
   visibleAwaitingOrdersPredicate,
 } from '../predicates';
+import { orderReplacementBadgeSelects } from './replacements';
+import { replacementsSchemaReady } from '../replacements-schema-readiness';
 import type { ClientPortalScope } from '../scope';
 
 /**
@@ -81,6 +83,9 @@ export async function listPortalOrders(
   opts: { page: number; pageSize: number; status?: string | null; clientId?: number | null; storeId?: number | null; search: string },
 ) {
   const { page, pageSize, status, clientId, storeId, search } = opts;
+  // CP-061: badge selects must be constants while the shared prod DB lacks the
+  // replacement tables — a live subquery there would 500 the whole list.
+  const replacementsReady = await replacementsSchemaReady();
   const where = and(
     orderScopePredicate(scope, { clientId, storeId }),
     activeClientPredicate(),
@@ -128,6 +133,9 @@ export async function listPortalOrders(
         where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
           and coalesce(s.voided, false) = true
       )`,
+      // CP-061: backend-derived REPLACE badge — the frontend renders these
+      // fields verbatim and never re-derives them from replacement rows.
+      ...orderReplacementBadgeSelects(replacementsReady, sql`${orders.id}`),
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -161,6 +169,10 @@ export async function listPortalOrders(
           canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
           activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
           activeShipmentCarrierCode: row.activeShipmentCarrierCode,
+          hasActiveReplacement: row.hasActiveReplacement,
+          replacementStatus: row.replacementStatus,
+          replacementCount: row.replacementCount,
+          replacementReference: row.replacementReference,
         },
         { includeFinancials: scope.canViewFinancials, includeWeight: scope.isGlobal },
       ),
@@ -175,6 +187,7 @@ export async function listPortalOrders(
 }
 
 export async function getPortalOrder(scope: ClientPortalScope, id: number) {
+  const replacementsReady = await replacementsSchemaReady();
   const [row] = await db
     .select({
       order: orders,
@@ -205,6 +218,9 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
         where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
           and coalesce(s.voided, false) = true
       )`,
+      // CP-061: backend-derived REPLACE badge — the frontend renders these
+      // fields verbatim and never re-derives them from replacement rows.
+      ...orderReplacementBadgeSelects(replacementsReady, sql`${orders.id}`),
     })
     .from(orders)
     .leftJoin(clients, eq(clients.id, orders.clientId))
@@ -226,6 +242,10 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
       activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
       activeShipmentCarrierCode: row.activeShipmentCarrierCode,
+      hasActiveReplacement: row.hasActiveReplacement,
+      replacementStatus: row.replacementStatus,
+      replacementCount: row.replacementCount,
+      replacementReference: row.replacementReference,
     },
     { includeFinancials: scope.canViewFinancials, includeWeight: scope.isGlobal },
   );
