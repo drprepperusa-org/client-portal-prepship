@@ -503,6 +503,59 @@ verbatim (no client-side ranking, revenue, units, or shipping math).
 | Top SKUs → SKU / Unit Count Last 30 Days | `dash.data.bySku[].units30` | `bySku[].units30` | `projectDashboardTopSkus` → `getSkuBreakdownFromOrderItems` (`total_qty`, set-based over `order_items`) — SAME query as the Analysis Top-SKUs table | order date |
 | Top SKUs → Avg Shipping Price | `dash.data.bySku[].avgShippingPrice` | `bySku[].avgShippingPrice` | canonical billed shipping (`billing_line_items`, `customer_billed`) ÷ charged units; financially gated | billing shipment/order allocation |
 
+#### CP-060 — Analysis SKU drawer shipping money
+
+The drawer shows one order-grain shipping figure and splits it by the service
+class of the label that carries it. Both halves come from ONE row set, so the
+split is a partition of the figure rather than a second measurement of it.
+
+**Owner:** PrepShip. **Source:** `shipmentCustomerShippingRateSql()` per
+shipment — the frozen `billing_line_items` shipping line for that shipment,
+falling back to PrepShip’s frozen `selected_rate_json` snapshot (ps-437 /
+ps-508 / ps-509 tuples). **Eligibility:** `shipmentIsCustomerShippingEligibleSql()`
+— not voided, not a return. **Event clock:** label / bill time.
+
+This is the SAME per-shipment value `orderCustomerShippingRateSql()` sums for
+the Orders list and the order-detail charge summary, so the drawer figure and
+the `Shipping` row one click away are the same number by construction. Before
+the CP-060 correction the drawer summed every `billing_line_items` shipping row
+by `order_id` instead, which counted money attached to voided or foreign
+shipments that the order surface excluded — two definitions of one customer
+money field, one click apart.
+
+| UI label | Frontend field | Backend DTO field | Canonical source / formula | Event clock |
+| --- | --- | --- | --- | --- |
+| Drawer row shipping | `o.shippingTotal` | `shippingTotal` | Σ `shipmentCustomerShippingRateSql()` over eligible shipments of the order, allocated `× qty / order_qty_total` | label / bill time |
+| Drawer row `std $…` | `o.shippingStandard` | `shippingStandard` | the same sum filtered to non-expedited `service_code` (`EXPEDITED_SERVICES`, PS-418 mirror) | label / bill time |
+| Drawer row `· exp $…` | `o.shippingExpedited` | `shippingExpedited` | the same sum filtered to expedited `service_code` | label / bill time |
+| Drawer row caption | `o.shippingMoneyState` | `shippingMoneyState` | `attributed` \| `pending` \| `external_label` \| `voided_only` — why a figure is or is not a number | shipment state / resolver |
+| Avg std shipping | `data.avgShippingStandard` | `avgShippingStandard` | Σ allocated standard money ÷ Σ units, over `attributed` orders with non-zero standard money | label / bill time |
+| Avg exp shipping | `data.avgShippingExpedited` | `avgShippingExpedited` | as above for expedited | label / bill time |
+
+Ownership rules established by CP-060:
+
+- `shippingTotal` is not an independent total. It is the canonical customer
+  shipping figure for the order, allocated across the SKU’s units. If it ever
+  disagrees with the order-detail `Shipping` row, one of the two stopped using
+  the shared resolver — that is the bug, not a rounding difference.
+- `shippingStandard + shippingExpedited = shippingTotal` holds structurally,
+  because the class columns are `filter (…)` partitions of the same sum. There
+  is no residual, and therefore nothing for the portal to explain away.
+- Money the canonical resolver does not recognise — a shipping line with no
+  `shipment_id`, or one pointing at a voided shipment or a shipment of another
+  order (no constraint prevents either) — is not the customer’s outbound
+  shipping money and is not shown. The order surface already excludes it.
+- `pending` is never rendered as "unbilled". An eligible label with no billing
+  line and no frozen snapshot yet is the same window the Orders DTO reports as
+  `customerShippingRatePending`; calling it unbilled would assert something the
+  order page contradicts.
+- The Analysis TABLE still exposes zero shipping fields (CP-035). This is a
+  drawer-only surface.
+- Return postage is billed as `return_postage`, not `shipping`, and return
+  labels are excluded by the shared eligibility predicate. The drawer figure is
+  outbound shipping only — it is not the customer’s total shipping spend on
+  the order.
+
 Ownership rules established by CP-021:
 
 - Dashboard Top-SKUs (ranking + per-SKU units + Avg Shipping Price) is a thin

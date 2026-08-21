@@ -29,17 +29,34 @@ const cpAnalysis = read('src/routes/client-portal/analysis.ts');
 const dashRm = read('src/lib/client-portal/read-models/dashboard.ts');
 const baseDash = read('src/routes/dashboard.ts');
 
-// 1. Both shared helpers accept a shippingBasis and, for customer_billed, sum the
-//    canonical billing_line_items shipping line.
+// 1. Both shared helpers accept a shippingBasis and, for customer_billed, take
+//    their money from the canonical billing_line_items shipping line.
 assert(/shippingBasis/.test(analysis), 'getSkuBreakdownFromOrderItems accepts shippingBasis');
 assert(/shippingBasis/.test(skuOrders), 'getSkuOrdersForSku accepts shippingBasis');
 assert(
   /billing_line_items[\s\S]{0,160}line_type\s*=\s*'shipping'/.test(analysis),
   'analysis customer_billed sums billing_line_items shipping',
 );
+// CP-060 correction: sku-orders no longer sums billing_line_items itself. It
+// delegates to the canonical per-shipment resolver — the same one the Orders
+// surface and the order-detail charge summary use — so the drawer figure cannot
+// drift from theirs. The requirement is unchanged (customer_billed money comes
+// from the canonical shipping billing line); only its owner moved. Following the
+// delegation keeps this guard pinned to the real source rather than to a
+// spelling in one file.
+const customerShippingRate = read('src/lib/client-portal/customer-shipping-rate.ts');
 assert(
-  /billing_line_items[\s\S]{0,160}line_type\s*=\s*'shipping'/.test(skuOrders),
-  'sku-orders customer_billed sums billing_line_items shipping',
+  /shipmentCustomerShippingRateSql/.test(skuOrders) &&
+    /customer-shipping-rate/.test(skuOrders),
+  'sku-orders customer_billed money comes from the canonical per-shipment resolver',
+);
+assert(
+  /billing_line_items[\s\S]{0,160}line_type\s*=\s*'shipping'/.test(customerShippingRate),
+  'the canonical resolver sums billing_line_items shipping',
+);
+assert(
+  !/from billing_line_items/i.test(skuOrders),
+  'sku-orders keeps no second billing_line_items shipping sum of its own',
 );
 
 // 2. Client consumers pass customer_billed (SKU table + SKU drawer in the route;

@@ -278,12 +278,16 @@ function OrderCombinationsTable({ rows, canCustomizeTables }: { rows: AnalysisOr
 }
 
 // Explicit money-state captions for orders whose shipping cannot be shown as a
-// number. attributed/partial with a positive total render the money instead.
+// number. An 'attributed' order renders the money instead — including $0.00,
+// which is an answer, not an absence.
+//
+// 'pending' is deliberately not the word "unbilled": the order has an eligible
+// label and PrepShip simply has not resolved its shipping money yet, which is
+// what the order detail page shows as Pending one click away.
 const SHIPPING_STATE_LABELS: Partial<Record<string, string>> = {
-  unbilled: 'unbilled',
+  pending: 'pending',
   external_label: 'external label',
   voided_only: 'label voided',
-  unattributed_legacy: 'legacy billing',
 };
 
 function SkuStat({ label, value }: { label: string; value: string }) {
@@ -387,10 +391,10 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
                   <p className="truncate text-xs text-ink-3">{o.ship_to_name ?? '—'} · {shortDate(o.order_date)}</p>
                 </div>
                 <span className="shrink-0 tnum text-xs text-ink-3">×{o.qty}</span>
-                {o.shippingTotal && Number(o.shippingTotal) > 0 ? (
+                {o.shippingTotal !== null ? (
                   <span className="shrink-0 text-right">
                     <span className="tnum text-xs font-medium text-ink-2">{money(Number(o.shippingTotal))}</span>
-                    {Number(o.shippingStandard ?? 0) > 0 && Number(o.shippingExpedited ?? 0) > 0 && (
+                    {o.shippingStandard !== null && o.shippingExpedited !== null && (
                       <span className="block tnum text-[10px] text-ink-3">
                         std {money(Number(o.shippingStandard))} · exp {money(Number(o.shippingExpedited))}
                       </span>

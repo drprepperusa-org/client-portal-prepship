@@ -146,6 +146,21 @@ export function customerSafeBillingLineSql(input: {
   )`;
 }
 
+/**
+ * Which shipments carry the customer's outbound shipping money: not voided,
+ * not a return. THE single definition — `orderCustomerShippingRateSql()` below
+ * and the Analysis SKU drawer read model (src/services/sku-orders.ts) both call
+ * this rather than spelling the predicate out, so the drawer can never drift
+ * from the order-grain value it must reconcile with. Renders unqualified
+ * `shipments.*`, so callers must select `from shipments` without an alias.
+ */
+export function shipmentIsCustomerShippingEligibleSql(): SQL {
+  return sql`(
+    coalesce(${shipments.voided}, false) = false
+    and coalesce(${shipments.isReturn}, false) = false
+  )`;
+}
+
 export function shipmentCustomerShippingRateSql(): SQL<string | null> {
   // Preserve the outer shipment qualifier inside the billing-line subquery.
   const correlatedShipmentId = sql`${shipments.id}`;
@@ -185,7 +200,6 @@ export function orderCustomerShippingRateSql(): SQL<string | null> {
     select sum((${shipmentCustomerShippingRateSql()})::numeric)::text
     from ${shipments}
     where ${shipments.orderId} = ${correlatedOrderId}
-      and coalesce(${shipments.voided}, false) = false
-      and coalesce(${shipments.isReturn}, false) = false
+      and ${shipmentIsCustomerShippingEligibleSql()}
   )`;
 }

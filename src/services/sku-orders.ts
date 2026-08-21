@@ -7,31 +7,62 @@
 // shipments / billing_line_items — it never writes, so it is safe under the
 // shipped/cancelled data lockdown (analytics reads are explicitly allowed).
 //
-// CP-060: shipping money is classified PER SHIPMENT. Every non-voided label is
+// CP-060: shipping money is classified PER SHIPMENT. Every eligible label is
 // classified standard/expedited by its own service code and carries its own
-// billed money via billing_line_items.shipment_id. Money that cannot be
-// attributed to a label (legacy lines with shipment_id NULL, voided-only or
-// external orders) is never given a class — it surfaces through an explicit
-// shipping_money_state instead. The pre-CP-060 model classified the ENTIRE
+// customer shipping money. The pre-CP-060 model classified the ENTIRE
 // order-grain sum by the newest label's service, which misclassified mixed
 // standard/expedited multi-label orders and disagreed with PrepShip's
 // per-shipment reporting (PS-418).
+//
+// CP-060 correction (Hermes 2026-08-21): the money and its class split must
+// come from ONE row set. The first cut summed the order total over
+// billing_line_items by order_id while summing the class split over shipments,
+// so a shipping line pointing at a voided shipment — or at a shipment of a
+// different order, which no constraint prevents — was counted in the total,
+// excluded from both classes, and still reported as fully 'attributed'.
+//
+// Both halves now come from the canonical owner: money per shipment is
+// shipmentCustomerShippingRateSql() (PrepShip's frozen billing line, falling
+// back to its frozen rate snapshot) over the shipments
+// shipmentIsCustomerShippingEligibleSql() admits. That is the exact per-shipment
+// value orderCustomerShippingRateSql() sums for the Orders surface and the order
+// detail charge summary, so the drawer total and the Shipping row a click away
+// cannot disagree — and every dollar in the total belongs to exactly one
+// shipment, hence exactly one class. total = standard + expedited is now
+// structural, not an invariant to be checked. Money the canonical owner does not
+// recognise (a billing line with no shipment, or one pointing at a voided or
+// foreign shipment) is not the customer's outbound shipping money and is not
+// shown here, exactly as the order surface already treats it.
 //
 // The query is parametrized by `orderScopeSql`: a raw predicate against the
 // orders table aliased as `o`. Callers pass their own tenant scope (operator
 // vs. client-portal) so visibility rules stay owned by the route, not here.
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
+import { shipments } from '../db/schema/shipments';
+import {
+  shipmentCustomerShippingRateSql,
+  shipmentIsCustomerShippingEligibleSql,
+} from '../lib/client-portal/customer-shipping-rate';
 import { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
 import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order-dedupe';
 
-export type ShippingMoneyState =
-  | 'attributed'
-  | 'partial_unattributed'
-  | 'unattributed_legacy'
-  | 'unbilled'
-  | 'external_label'
-  | 'voided_only';
+/**
+ * Why the order has, or has not, a shipping figure.
+ *
+ * - `attributed`    — the canonical resolver returned a value; total = std + exp.
+ * - `pending`       — an eligible label exists but PrepShip has neither billed it
+ *                     nor frozen a rate snapshot yet. Mirrors the Orders surface's
+ *                     `customerShippingRatePending`; never call this "unbilled",
+ *                     which the order detail page would immediately contradict.
+ * - `external_label`— shipped with no PrepShip shipment at all.
+ * - `voided_only`   — shipments exist, none eligible.
+ *
+ * The pre-correction `partial_unattributed` / `unattributed_legacy` states are
+ * gone: with one row set there is no residual to describe. `unbilled` is renamed
+ * `pending` for the reason above.
+ */
+export type ShippingMoneyState = 'attributed' | 'pending' | 'external_label' | 'voided_only';
 
 export type SkuOrderRow = {
   order_id: number;
@@ -150,36 +181,50 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     dailySales.push({ day, units: salesMap.get(day) ?? 0 });
   }
 
-  // CP-060 per-shipment money aggregate. One row per order:
-  //   - every NON-VOIDED label classified by ITS OWN service code
-  //   - customer money joined per label via billing_line_items.shipment_id
-  //   - house money computed per label with the same markup model as before
-  // Voided labels contribute nothing — including to classification, so a
-  // voided newest label can no longer classify the whole order.
+  // CP-060 per-shipment money aggregate. One row per order, over ONE row set:
+  // the shipments the canonical resolver admits. `customer_money` is the sum of
+  // the same per-shipment values orderCustomerShippingRateSql() sums, so it is
+  // the order's canonical customer shipping figure and the class columns are a
+  // partition of it. `is_exp` is total (coalesce + = ANY over a non-null array
+  // never yields NULL), so std + exp = the total for every non-null row, by
+  // construction rather than by invariant.
+  //
+  // `customer_money` is deliberately NOT coalesced to 0: NULL means the resolver
+  // has no answer yet for any eligible label, which is the `pending` state and
+  // is a different fact from a billed $0.00.
+  //
+  // The table is unaliased so the canonical fragments — which render
+  // `shipments.*` — resolve here. Return labels are excluded by the shared
+  // eligibility predicate; return postage is billed as `return_postage` and was
+  // never part of this figure.
   const labelsLateral = sql`
     left join lateral (
       select
         count(*)::int                                                       as active_label_count,
-        max(s.service_code)                                                 as service_code,
-        coalesce(sum(billed.amount) filter (where cls.is_exp), 0)::numeric  as exp_billed,
-        coalesce(sum(billed.amount) filter (where not cls.is_exp), 0)::numeric as std_billed,
-        coalesce(sum(billed.amount), 0)::numeric                            as attributed_billed,
-        coalesce(sum(house.amount) filter (where cls.is_exp), 0)::numeric   as exp_house,
-        coalesce(sum(house.amount) filter (where not cls.is_exp), 0)::numeric as std_house,
-        coalesce(sum(house.amount), 0)::numeric                             as house_billed
-      from shipments s
-      left join lateral (
-        select sum(b.total_cost)::numeric as amount
-        from billing_line_items b
-        where b.shipment_id = s.id and b.line_type = 'shipping'
-      ) billed on true
+        max(${shipments.serviceCode})                                       as service_code,
+        sum(money.amount)                                                   as customer_money,
+        coalesce(sum(money.amount) filter (where cls.is_exp), 0)::numeric   as customer_exp,
+        coalesce(sum(money.amount) filter (where not cls.is_exp), 0)::numeric as customer_std,
+        sum(house.amount)                                                   as house_money,
+        coalesce(sum(house.amount) filter (where cls.is_exp), 0)::numeric   as house_exp,
+        coalesce(sum(house.amount) filter (where not cls.is_exp), 0)::numeric as house_std
+      from ${shipments}
+      cross join lateral (
+        select (${shipmentCustomerShippingRateSql()})::numeric as amount
+      ) money
       left join settings pid_markup
-        on pid_markup.key = 'markup.' || coalesce(s.provider_account_id, s.label_provider, s.selected_pid)::text
+        on pid_markup.key = 'markup.' || coalesce(
+             ${shipments.providerAccountId}, ${shipments.labelProvider}, ${shipments.selectedPid}
+           )::text
       left join settings carrier_markup
-        on carrier_markup.key in ('markup.' || s.carrier_code, 'markup.' || lower(s.carrier_code))
+        on carrier_markup.key in (
+             'markup.' || ${shipments.carrierCode},
+             'markup.' || lower(${shipments.carrierCode})
+           )
       cross join lateral (
         select
-          (coalesce(s.cost, s.label_cost, 0) + coalesce(s.other_cost, 0))::numeric as base_cost,
+          (coalesce(${shipments.cost}, ${shipments.labelCost}, 0)
+            + coalesce(${shipments.otherCost}, 0))::numeric as base_cost,
           case
             when coalesce(pid_markup.value, carrier_markup.value) ~ '^\\s*\\{'
               then coalesce(pid_markup.value, carrier_markup.value)::jsonb
@@ -196,51 +241,48 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         end as amount
       ) house
       cross join lateral (
-        select lower(coalesce(s.service_code, '')) = ANY(${EXPEDITED_SERVICES_SQL}) as is_exp
+        select lower(coalesce(${shipments.serviceCode}, '')) = ANY(${EXPEDITED_SERVICES_SQL}) as is_exp
       ) cls
-      where s.order_id = o.id
-        and coalesce(s.voided, false) = false
+      where ${shipments.orderId} = o.id
+        and ${shipmentIsCustomerShippingEligibleSql()}
     ) labels on true
-    left join lateral (
-      select
-        coalesce(sum(b.total_cost), 0)::numeric                             as order_billed,
-        count(*) filter (where b.shipment_id is null)::int                  as unattributed_lines
-      from billing_line_items b
-      where b.order_id = o.id and b.line_type = 'shipping'
-    ) ob on true
     cross join lateral (
-      select exists (select 1 from shipments s2 where s2.order_id = o.id) as has_any_shipment
+      select exists (
+        select 1 from shipments s2
+        where s2.order_id = o.id
+          and coalesce(s2.is_return, false) = false
+      ) as has_any_shipment
     ) sh
   `;
 
-  // Basis switch. customer_billed: order total is the canonical billed sum and
-  // class money is only what attributes to a label. house_markup: per-label
-  // marked cost is both the total and the attributed money (no legacy lines).
+  // Basis switch. Both bases now take their total and their class split from the
+  // SAME per-shipment expression, so money_total = money_std + money_exp holds
+  // structurally in either. There is no separate "attributed" figure to compare
+  // against and no residual to explain, which is the whole point of the
+  // correction. (house_markup has no live caller; it is kept symmetrical so the
+  // two bases cannot diverge in shape.)
   const moneyColumns = customerBilled
     ? sql`
-        ob.order_billed                                                    as money_total,
-        labels.std_billed                                                  as money_std,
-        labels.exp_billed                                                  as money_exp,
-        labels.attributed_billed                                           as money_attributed,
-        ob.unattributed_lines                                              as money_unattr_lines,
+        labels.customer_money                                              as money_total,
+        labels.customer_std                                                as money_std,
+        labels.customer_exp                                                as money_exp,
       `
     : sql`
-        labels.house_billed                                                as money_total,
-        labels.std_house                                                   as money_std,
-        labels.exp_house                                                   as money_exp,
-        labels.house_billed                                                as money_attributed,
-        0::int                                                             as money_unattr_lines,
+        labels.house_money                                                 as money_total,
+        labels.house_std                                                   as money_std,
+        labels.house_exp                                                   as money_exp,
       `;
 
+  // Order matters. The shipment-shape branches come first because they explain
+  // an absent figure better than the money branches could; `pending` is reached
+  // only when an eligible label exists, which is what makes it honest.
   const stateCaseSql = sql`
     case
       when coalesce(r.active_label_count, 0) = 0 and not r.has_any_shipment
            and r.order_status = 'shipped' then 'external_label'
       when coalesce(r.active_label_count, 0) = 0 and r.has_any_shipment then 'voided_only'
-      when coalesce(r.money_total, 0) <= 0 then 'unbilled'
-      when coalesce(r.money_unattr_lines, 0) = 0 then 'attributed'
-      when coalesce(r.money_attributed, 0) > 0 then 'partial_unattributed'
-      else 'unattributed_legacy'
+      when r.money_total is null then 'pending'
+      else 'attributed'
     end
   `;
 
@@ -288,8 +330,6 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         max(money_total)                                                    as money_total,
         max(money_std)                                                      as money_std,
         max(money_exp)                                                      as money_exp,
-        max(money_attributed)                                               as money_attributed,
-        max(money_unattr_lines)                                             as money_unattr_lines,
         sku_key,
         max(sku)                                                            as sku,
         sum(qty)::int                                                       as qty
@@ -305,7 +345,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     ),
     classed as (
       select *,
-        (money_state in ('attributed', 'partial_unattributed'))            as attributable
+        (money_state = 'attributed')                                       as attributable
       from allocated
       where lower(sku) = lower(${sku})
     )
@@ -385,8 +425,6 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         max(money_total)                                                    as money_total,
         max(money_std)                                                      as money_std,
         max(money_exp)                                                      as money_exp,
-        max(money_attributed)                                               as money_attributed,
-        max(money_unattr_lines)                                             as money_unattr_lines,
         bool_or(externally_shipped_flag)                                    as externally_shipped_flag,
         sku_key,
         max(sku)                                                            as sku,
@@ -415,24 +453,22 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       unit_price,
       item_name,
       case
-        when money_state in ('attributed', 'partial_unattributed', 'unattributed_legacy')
-             and money_total > 0
+        when money_state = 'attributed'
           then (money_total / nullif(order_qty_total, 0))::text
         else null
       end as shipping_cost,
       case
-        when money_state in ('attributed', 'partial_unattributed', 'unattributed_legacy')
-             and money_total > 0
+        when money_state = 'attributed'
           then (money_total * qty / nullif(order_qty_total, 0))::text
         else null
       end as shipping_total,
       case
-        when money_state in ('attributed', 'partial_unattributed') and money_std > 0
+        when money_state = 'attributed' and money_std <> 0
           then (money_std * qty / nullif(order_qty_total, 0))::text
         else null
       end as shipping_standard,
       case
-        when money_state in ('attributed', 'partial_unattributed') and money_exp > 0
+        when money_state = 'attributed' and money_exp <> 0
           then (money_exp * qty / nullif(order_qty_total, 0))::text
         else null
       end as shipping_expedited,
