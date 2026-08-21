@@ -15,6 +15,7 @@ export interface PortalMe {
   canViewAudit: boolean;
   canReceiveInventory: boolean;
   canInspectReturns: boolean;
+  canRequestReplacements: boolean;
 }
 
 export interface PortalAuditLogRow {
