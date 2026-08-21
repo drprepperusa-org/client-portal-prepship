@@ -22,7 +22,10 @@ import net from 'node:net';
 // probe that times out must release/evict its connection instead of retaining
 // it for the next probe to land on.
 
-type Stall = { match: string; armed: boolean; socket: net.Socket | null; closed: boolean };
+// `armed` holds query fragments; the first connection to send a matching Parse
+// goes silent and the fragment is consumed, so arming N fragments wedges
+// exactly N distinct connections in one readiness round.
+type Stall = { armed: string[]; silenced: net.Socket[]; closed: number };
 
 function backendMessage(type: string, payload: Buffer = Buffer.alloc(0)): Buffer {
   const header = Buffer.alloc(5);
@@ -84,14 +87,15 @@ function startFakePostgres(stall: Stall): Promise<{ server: net.Server; port: nu
           const nameEnd = payload.indexOf(0);
           const queryEnd = payload.indexOf(0, nameEnd + 1);
           const query = payload.subarray(nameEnd + 1, queryEnd).toString('utf8');
-          if (stall.armed && query.includes(stall.match)) {
+          const armedIndex = stall.armed.findIndex((fragment) => query.includes(fragment));
+          if (armedIndex !== -1) {
             // From here on this connection never answers again, but the socket
             // stays open — the shape of a pooler that lost its backend.
-            stall.armed = false;
-            stall.socket = socket;
+            stall.armed.splice(armedIndex, 1);
+            stall.silenced.push(socket);
             silenced = true;
             socket.once('close', () => {
-              stall.closed = true;
+              stall.closed += 1;
             });
             continue;
           }
@@ -128,7 +132,7 @@ function startFakePostgres(stall: Stall): Promise<{ server: net.Server; port: nu
   });
 }
 
-const stall: Stall = { match: 'from orders', armed: false, socket: null, closed: false };
+const stall: Stall = { armed: [], silenced: [], closed: 0 };
 const fake = await startFakePostgres(stall);
 
 process.env.DATABASE_URL = `postgres://user:pass@127.0.0.1:${fake.port}/fake`;
@@ -160,11 +164,11 @@ assert.equal(round1.ok, true, `round 1 must be green on a healthy server: ${summ
 console.log(`ok: round 1 green (${summarize(round1)})`);
 
 // Round 2: the connection that receives the orders probe goes silent mid-flight.
-stall.armed = true;
+stall.armed = ['from orders'];
 const round2 = await checkDeepReadiness();
 const ordersRound2 = round2.components.find((c) => c.name === 'orders');
 assert.equal(ordersRound2?.status, 'fail', `round 2 orders probe must time out: ${summarize(round2)}`);
-assert.ok(stall.socket, 'the fake server must have silenced exactly one connection');
+assert.equal(stall.silenced.length, 1, 'the fake server must have silenced exactly one connection');
 console.log(`ok: round 2 orders probe timed out on the silenced connection (${summarize(round2)})`);
 
 // Round 3: the server is healthy for every other connection. The silenced one
@@ -190,10 +194,56 @@ console.log(`ok: round 3 answered in ${elapsedMs}ms`);
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert.equal(
   stall.closed,
-  true,
+  1,
   'a probe connection that timed out must be closed by the client, not retained in the pool',
 );
 console.log('ok: the wedged connection was closed by the client');
+
+// Round 4: TWO connections wedge in the same round. This reproduces the exact
+// production signature seen on 2026-08-20/21 — db ok in ~130ms, orders and
+// printQueue both failing at exactly the client budget, stable across every
+// probe for hours.
+//
+// Why that shape, and why it is stable: the health pool is max 3 and
+// checkDeepReadiness dispatches db, orders, printQueue in that order.
+// postgres.js hands each a separate connection while any is closed/idle, so
+// with two connections wedged in `busy` the single healthy one is always taken
+// by the first dispatch (db), and the remaining two probes are pipelined onto
+// the wedged connections, where they can never start — a pipelined query only
+// begins when the previous query's ReadyForQuery arrives. The healthy
+// connection cycles through idle_timeout and is re-established each round
+// (hence db's fast-but-not-instant latency); the wedged ones are never idle,
+// so idle_timeout never reclaims them.
+stall.armed = ['from orders', 'print_queue_orders'];
+const round4 = await checkDeepReadiness();
+const signature = round4.components
+  .filter((c) => ['db', 'orders', 'printQueue'].includes(c.name))
+  .map((c) => `${c.name}=${c.status}`)
+  .join(' ');
+assert.equal(
+  signature,
+  'db=ok orders=fail printQueue=fail',
+  `round 4 must reproduce the production signature, got: ${summarize(round4)}`,
+);
+assert.equal(stall.silenced.length, 3, 'two further connections must have gone silent');
+console.log(`ok: round 4 reproduced the production signature (${summarize(round4)})`);
+
+// Round 5: both wedged connections must be gone, not just one.
+const round5 = await checkDeepReadiness();
+assert.equal(
+  round5.ok,
+  true,
+  `round 5 must be green after a two-connection wedge: ${summarize(round5)}`,
+);
+console.log(`ok: round 5 green after the double stall (${summarize(round5)})`);
+
+await new Promise((resolve) => setTimeout(resolve, 50));
+assert.equal(
+  stall.closed,
+  3,
+  `every wedged connection must be closed by the client (closed ${stall.closed} of 3)`,
+);
+console.log('ok: both wedged connections from the double stall were closed');
 
 console.error = originalConsoleError;
 console.log('\nhealth wedged-pool runtime fixtures passed.');
