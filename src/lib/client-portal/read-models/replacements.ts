@@ -4,7 +4,7 @@
 // gated on replacementsSchemaReady() and fail SOFT while the shared prod DB
 // lacks the PS-502 tables.
 import { sql } from 'drizzle-orm';
-import { db } from '../../db/client';
+import { db } from '../../../db/client';
 import type { ClientPortalScope } from '../scope';
 import { rawOrderScopeForAlias } from '../predicates';
 import { replacementsSchemaReady } from '../replacements-schema-readiness';
@@ -109,7 +109,7 @@ export async function getPortalReplacement(
     where ri.replacement_id = ${row.id}
     order by ri.id asc
   `);
-  const itemDtos: PortalReplacementItem[] = items.map((item) => ({
+  const itemDtos: PortalReplacementItem[] = items.map((item: { id: number; sku: string; name: string | null; quantity: number }) => ({
     id: item.id,
     sku: item.sku,
     name: item.name,
