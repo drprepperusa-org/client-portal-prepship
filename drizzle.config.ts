@@ -28,6 +28,10 @@ export default defineConfig({
     './src/db/schema/fulfillment-outbox.ts',
     './src/db/schema/analytics-cache.ts',
     './src/db/schema/client-portal-audit-logs.ts',
+    // Read-only mirror of PS-502's tables. Listed so the throwaway integration
+    // database gets them; production ownership stays with PrepShip's migrations
+    // (0096-0101), which this repo does not apply.
+    './src/db/schema/replacements.ts',
   ],
   out: './drizzle',
   dialect: 'postgresql',

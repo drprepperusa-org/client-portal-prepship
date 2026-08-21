@@ -132,6 +132,34 @@ check(
   'package.json exposes test:client-portal-replacements-cp061',
 );
 
+// 7. CI executes the DB-backed suite. PR #18 claimed the nine scenarios ran in
+// CI while integration-tests.yml never invoked them (Hermes, 2026-08-21); a
+// suite that exists but is not run proves nothing at the reviewed SHA.
+const workflow = read('.github/workflows/integration-tests.yml');
+check(
+  workflow.includes('npm run test:client-portal-replacements-cp061:integration') &&
+    pkg.scripts?.['test:client-portal-replacements-cp061:integration'] ===
+      'tsx scripts/integration/client-portal-replacements-cp061.integration.ts',
+  'integration-tests.yml runs the DB-backed CP-061 suite',
+);
+check(
+  workflow.lastIndexOf('test:client-portal-replacements-cp061:integration') >
+    workflow.lastIndexOf('test:shopify-connect-integration'),
+  'the CP-061 suite runs last in the job (its fail-soft scenario drops the replacement tables)',
+);
+
+// The suite truncates replacement_items/replacements on its first line, so the
+// throwaway database must actually HAVE them. drizzle.config.ts lists schema
+// files explicitly rather than globbing, and CP-061 shipped the mirror in
+// schema/index.ts without adding it there — so drizzle-kit push never created
+// the tables and the suite failed on scenario 1 the first time CI ran it.
+// Exporting a schema file is not the same as pushing it.
+const drizzleConfig = read('drizzle.config.ts');
+check(
+  drizzleConfig.includes("'./src/db/schema/replacements.ts'"),
+  'drizzle.config.ts pushes the replacements schema so the test database has the tables',
+);
+
 if (failures > 0) {
   console.error(`\n✖ CP-061 guard: ${failures} failing check(s).`);
   process.exit(1);

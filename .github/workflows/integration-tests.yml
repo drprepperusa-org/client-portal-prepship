@@ -58,3 +58,7 @@ jobs:
         run: npm run test:client-portal-access-security:integration
       - name: Run shopify connect integration suite
         run: npm run test:shopify-connect-integration
+      # Last on purpose: its final fail-soft scenario DROPS the replacement
+      # tables, so nothing that needs them may run after it in this job.
+      - name: Run CP-061 replacements read-model and badge suite
+        run: npm run test:client-portal-replacements-cp061:integration
