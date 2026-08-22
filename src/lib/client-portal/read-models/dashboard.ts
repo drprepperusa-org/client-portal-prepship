@@ -45,7 +45,7 @@ export interface DashboardTopSkuRow {
   /**
    * CP-038: Avg shipping CHARGE per shipped unit for this SKU — the client's BILLED
    * shipping (billing_line_items, `customer_billed` basis) allocated over the
-   * shipped-with-charge unit denominator (`std_qty_total + exp_qty_total`), or `null`
+   * distinct charged-unit denominator (`charged_qty_total`), or `null`
    * when no shipped unit of this SKU carried a billed shipping charge (rendered "—").
    * Always `null` when the caller may not view financials (shipping is zeroed upstream).
    */
@@ -60,7 +60,12 @@ export function projectDashboardTopSkus(
 ): DashboardTopSkuRow[] {
   return rows.slice(0, limit).map((row) => {
     const billedShipping = Number(row.total_shipping ?? 0);
-    const chargedUnits = Number(row.std_qty_total ?? 0) + Number(row.exp_qty_total ?? 0);
+    // CP-060 AC-4: use the DISTINCT charged-unit count, not std + exp. Under
+    // per-shipment classification one order can carry both classes, so those two
+    // counts overlap and their sum double-counts a mixed order's units — which
+    // would silently DROP this average for exactly the mixed standard/expedited
+    // clients CP-060 exists to serve.
+    const chargedUnits = Number(row.charged_qty_total ?? 0);
     const hasShipping = billedShipping > 0 && chargedUnits > 0;
     return {
       sku: row.sku,

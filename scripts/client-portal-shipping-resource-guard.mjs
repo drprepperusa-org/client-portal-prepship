@@ -33,9 +33,21 @@ const baseDash = read('src/routes/dashboard.ts');
 //    their money from the canonical billing_line_items shipping line.
 assert(/shippingBasis/.test(analysis), 'getSkuBreakdownFromOrderItems accepts shippingBasis');
 assert(/shippingBasis/.test(skuOrders), 'getSkuOrdersForSku accepts shippingBasis');
+// CP-060 AC-4: the Analysis TABLE path no longer sums billing_line_items
+// itself either. Both analysis paths now consume ONE shared definition
+// (lib/client-portal/shipping-analysis-sql.ts), which resolves money per
+// eligible shipment through the canonical resolver. The CP-038 requirement is
+// unchanged — customer_billed money still comes from canonical billing lines —
+// but it is now satisfied one delegation deeper, and satisfied identically by
+// both surfaces, which is what AC-4 asked for.
+const sharedAnalysisSql = read('src/lib/client-portal/shipping-analysis-sql.ts');
 assert(
-  /billing_line_items[\s\S]{0,160}line_type\s*=\s*'shipping'/.test(analysis),
-  'analysis customer_billed sums billing_line_items shipping',
+  /shipping-analysis-sql/.test(analysis) && /eligibleShipmentMoneyLateralSql\(\)/.test(analysis),
+  'analysis customer_billed money comes from the shared per-shipment definition',
+);
+assert(
+  /shipmentCustomerShippingRateSql/.test(sharedAnalysisSql),
+  'the shared definition resolves money through the canonical per-shipment resolver',
 );
 // CP-060 correction: sku-orders no longer sums billing_line_items itself. It
 // delegates to the canonical per-shipment resolver — the same one the Orders
@@ -46,9 +58,8 @@ assert(
 // spelling in one file.
 const customerShippingRate = read('src/lib/client-portal/customer-shipping-rate.ts');
 assert(
-  /shipmentCustomerShippingRateSql/.test(skuOrders) &&
-    /customer-shipping-rate/.test(skuOrders),
-  'sku-orders customer_billed money comes from the canonical per-shipment resolver',
+  /shipping-analysis-sql/.test(skuOrders) && /eligibleShipmentMoneyLateralSql\(\)/.test(skuOrders),
+  'sku-orders customer_billed money comes from the same shared definition',
 );
 assert(
   /billing_line_items[\s\S]{0,160}line_type\s*=\s*'shipping'/.test(customerShippingRate),
@@ -60,14 +71,18 @@ assert(
 // It must never become a second source for the displayed class money. Pin the
 // property, not the absence of the table name.
 assert(
-  (skuOrders.match(/from billing_line_items/gi) || []).length === 1 &&
-    /\) inv on true/.test(skuOrders),
-  'sku-orders reads billing_line_items exactly once, as the reconciliation lateral',
+  (sharedAnalysisSql.match(/from billing_line_items/gi) || []).length === 1 &&
+    /\) inv on true/.test(sharedAnalysisSql),
+  'the shared definition reads billing_line_items exactly once, as the reconciliation lateral',
+);
+assert(
+  !/from billing_line_items/i.test(skuOrders) && !/from billing_line_items/i.test(analysis),
+  'neither analysis path keeps a billing_line_items shipping sum of its own',
 );
 assert(
   /labels\.customer_money\s+as money_total/.test(skuOrders) &&
-    /labels\.customer_std\s+as money_std/.test(skuOrders),
-  'the displayed customer_billed money still comes from the eligible-shipment resolver',
+    /labels\.customer_money\s+as money_total/.test(analysis),
+  'both paths take the displayed customer_billed money from the shared lateral',
 );
 
 // 2. Client consumers pass customer_billed (SKU table + SKU drawer in the route;
