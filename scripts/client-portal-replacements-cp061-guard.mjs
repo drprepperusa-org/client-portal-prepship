@@ -113,6 +113,38 @@ check(
   'order read model gates the badge selects on schema readiness',
 );
 
+// 5b. The badge means "non-terminal", and PS-502 owns which statuses those are.
+//
+// The predicate was `status <> 'cancelled'`, so a COMPLETED replacement kept a
+// live badge on the order forever. PS-502 froze the partition
+// (REPLACEMENT_TERMINAL_STATUSES = completed|rejected|cancelled,
+// prepship-v4 replacement-state-machine.ts:45-49) and the read model now
+// transcribes its negative. Pin the exact triple, that all four badge fields
+// use the SAME predicate (three of four would let hasActiveReplacement disagree
+// with replacementCount), and that the status vocabulary stays nine so a tenth
+// upstream status breaks the build instead of silently entering the badge.
+const badgeBlock = readModel.slice(readModel.indexOf('orderReplacementBadgeSelects'));
+const terminalPredicates =
+  badgeBlock.split("r.status not in ('completed', 'rejected', 'cancelled')").length - 1;
+check(
+  terminalPredicates === 4,
+  `all four badge fields use the frozen terminal predicate (found ${terminalPredicates}/4)`,
+);
+check(
+  !/statuss*<>s*'cancelled'/.test(readModel),
+  'the cancelled-only predicate is gone (it kept completed and rejected badged forever)',
+);
+check(
+  read('src/lib/client-portal/read-models/replacements.ts').includes('replacement-state-machine.ts'),
+  'the read model cites the upstream owner of the terminal set',
+);
+const replacementsContract = stripComments(read('src/lib/client-portal/contracts/replacements.ts'));
+const statuses = ['requested', 'review', 'approved', 'label_created', 'label_failed', 'shipped', 'completed', 'rejected', 'cancelled'];
+check(
+  statuses.every((status) => replacementsContract.includes(`'${status}'`)),
+  'the contract pins the nine-status PS-502 vocabulary',
+);
+
 // 6. Schema mirror redaction.
 const mirror = stripComments(read('src/db/schema/replacements.ts'));
 const forbiddenColumns = [
