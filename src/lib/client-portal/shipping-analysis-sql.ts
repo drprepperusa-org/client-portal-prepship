@@ -160,6 +160,43 @@ export function invoicedShippingLateralSql(): SQL {
 }
 
 /**
+ * The per-basis money columns, INCLUDING the reconciliation inputs the money
+ * state is computed from. Both live here together on purpose.
+ *
+ * The reconciliation compares what Billing CHARGES THE CUSTOMER against what the
+ * canonical resolver attributes. That comparison is only meaningful on the
+ * customer basis. `house_markup` is internal marked cost — a different money
+ * base entirely — so comparing it against customer invoices would manufacture a
+ * mismatch out of the ordinary difference between what we pay and what we
+ * charge. The house basis therefore reconciles against itself
+ * (`money_invoiced = house_money`, `money_odd_lines = 0`), which makes
+ * `billing_mismatch` unreachable there by construction.
+ *
+ * This used to be duplicated in the drawer while the table injected the customer
+ * reconciliation inputs unconditionally, so the same house-basis order could
+ * read `attributed` in one surface and `billing_mismatch` in the other
+ * (Hermes, CP-060, 2026-08-22). Keeping the switch beside the state case is what
+ * stops that recurring.
+ */
+export function moneyColumnsSql(basis: 'house_markup' | 'customer_billed'): SQL {
+  return basis === 'customer_billed'
+    ? sql`
+        labels.customer_money                                              as money_total,
+        labels.customer_std                                                as money_std,
+        labels.customer_exp                                                as money_exp,
+        inv.invoiced_shipping                                              as money_invoiced,
+        (inv.unattached_lines + inv.foreign_lines + inv.ineligible_lines)  as money_odd_lines,
+      `
+    : sql`
+        labels.house_money                                                 as money_total,
+        labels.house_std                                                   as money_std,
+        labels.house_exp                                                   as money_exp,
+        labels.house_money                                                 as money_invoiced,
+        0::int                                                             as money_odd_lines,
+      `;
+}
+
+/**
  * Two independent triggers, because a money delta alone is not enough:
  *
  *   1. ANY abnormal-lineage line exists. Its amount may be NEGATIVE, in which

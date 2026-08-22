@@ -80,9 +80,8 @@ assert(
   'neither analysis path keeps a billing_line_items shipping sum of its own',
 );
 assert(
-  /labels\.customer_money\s+as money_total/.test(skuOrders) &&
-    /labels\.customer_money\s+as money_total/.test(analysis),
-  'both paths take the displayed customer_billed money from the shared lateral',
+  skuOrders.includes('moneyColumnsSql(') && analysis.includes('moneyColumnsSql('),
+  'both paths take their displayed money from the shared basis switch',
 );
 
 // 2. Client consumers pass customer_billed (SKU table + SKU drawer in the route;

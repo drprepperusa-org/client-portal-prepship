@@ -54,6 +54,19 @@ jobs:
         run: npm run test:client-portal-returns-cp058:integration
       - name: Run CP-060 per-shipment shipping classification suite
         run: npm run test:client-portal-analysis-cp060:integration
+      # Cross-repo classification ownership. Runs the local half always; the
+      # upstream half only when PREPSHIP_CONTRACT_TOKEN is configured (prepship-v4
+      # is private, so the default GITHUB_TOKEN cannot read it). Without the
+      # secret this reports NOT ARMED rather than silently passing.
+      - name: Check PrepShip expedited-service classification parity
+        env:
+          PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+        run: |
+          if [ -n "$PREPSHIP_CONTRACT_TOKEN" ]; then
+            node scripts/prepship-expedited-parity.mjs
+          else
+            node scripts/prepship-expedited-parity.mjs --allow-unarmed
+          fi
       - name: Run CP-048 access security integration suite
         run: npm run test:client-portal-access-security:integration
       - name: Run shopify connect integration suite

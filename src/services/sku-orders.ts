@@ -51,6 +51,7 @@ import {
   eligibleShipmentMoneyLateralSql,
   hasOutboundShipmentLateralSql,
   invoicedShippingLateralSql,
+  moneyColumnsSql,
   shippingMoneyStateCaseSql,
 } from '../lib/client-portal/shipping-analysis-sql';
 import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order-dedupe';
@@ -218,27 +219,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     ${invoicedShippingLateralSql()}
   `;
 
-  // Basis switch. Both bases now take their total and their class split from the
-  // SAME per-shipment expression, so money_total = money_std + money_exp holds
-  // structurally in either. There is no separate "attributed" figure to compare
-  // against and no residual to explain, which is the whole point of the
-  // correction. (house_markup has no live caller; it is kept symmetrical so the
-  // two bases cannot diverge in shape.)
-  const moneyColumns = customerBilled
-    ? sql`
-        labels.customer_money                                              as money_total,
-        labels.customer_std                                                as money_std,
-        labels.customer_exp                                                as money_exp,
-        inv.invoiced_shipping                                              as money_invoiced,
-        (inv.unattached_lines + inv.foreign_lines + inv.ineligible_lines)  as money_odd_lines,
-      `
-    : sql`
-        labels.house_money                                                 as money_total,
-        labels.house_std                                                   as money_std,
-        labels.house_exp                                                   as money_exp,
-        labels.house_money                                                 as money_invoiced,
-        0::int                                                             as money_odd_lines,
-      `;
+  const moneyColumns = moneyColumnsSql(customerBilled ? 'customer_billed' : 'house_markup');
 
   const stateCaseSql = shippingMoneyStateCaseSql();
 
