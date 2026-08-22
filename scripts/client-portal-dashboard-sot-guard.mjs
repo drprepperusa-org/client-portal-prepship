@@ -56,13 +56,32 @@ const apiFlat = flat(api);
 const pkg = JSON.parse(read('package.json'));
 
 // ── 1. Shared canonical Top-SKUs read-model reusing the Analysis SKU query ──
+//
+// These assertions used to name dashboardTopSkus, which has NO runtime caller:
+// the operator route calls getSkuBreakdownFromOrderItems directly
+// (src/routes/dashboard.ts), and the customer Dashboard is served by
+// getClientPortalDashboardSummary via projectDashboardTopSkus. A guard pinning
+// an uncalled function certifies nothing about what customers actually see, and
+// would keep passing through any drift on the live path — which is how the
+// CP-060 divergence went unnoticed. Pin the projection the live path uses.
 assert(
-  /export async function dashboardTopSkus/.test(readModel),
-  'a shared backend read-model (dashboardTopSkus) owns the Dashboard Top-SKUs ranking',
+  /export function projectDashboardTopSkus/.test(readModel),
+  'the LIVE Dashboard Top-SKUs projection (projectDashboardTopSkus) is the pinned owner',
+);
+assert(
+  /bySku:\s*projectDashboardTopSkus\(/.test(readModel),
+  'the customer Dashboard summary is served by that projection, not a second implementation',
 );
 assert(
   readModel.includes('getSkuBreakdownFromOrderItems'),
-  'dashboardTopSkus reuses the CANONICAL Analysis SKU query (getSkuBreakdownFromOrderItems) — parity is structural, not a re-implementation',
+  'the Dashboard read-model reuses the canonical Analysis SKU query rather than re-implementing it',
+);
+// The Dashboard's shipping figure comes from the table path, which CP-060 did
+// NOT converge onto the per-shipment resolver. Until AC-4 is ruled on, the UI
+// must not assert the two surfaces share a source of truth.
+assert(
+  !/same SOT as Analysis/.test(read('portal-client/src/pages/Dashboard.tsx')),
+  'the Dashboard does not claim its shipping figure shares a source of truth with Analysis',
 );
 assert(
   analysis.includes('export async function getSkuBreakdownFromOrderItems'),
