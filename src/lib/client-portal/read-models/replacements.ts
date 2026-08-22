@@ -119,15 +119,33 @@ export async function getPortalReplacement(
 }
 
 // Badge selects for the order read model (drizzle .select fields). Emitted per
-// order row:
-//   hasActiveReplacement — any replacement whose status <> 'cancelled'
-//   replacementStatus    — status of the NEWEST non-cancelled replacement
-//   replacementCount     — count of non-cancelled replacements
-//   replacementReference — reference of the newest non-cancelled replacement
+// order row, all four over the SAME predicate so they cannot disagree:
+//   hasActiveReplacement — the order has a replacement in a NON-TERMINAL status
+//   replacementStatus    — status of the newest such replacement
+//   replacementCount     — how many there are
+//   replacementReference — reference of the newest such replacement
 //
-// Cancellation clears the badge on the next canonical read (CP-061 AC-7).
-// `rejected` currently KEEPS the badge with its status visible — the card
-// freezes only cancelled-clears; revisit when PS-502 freezes the semantics.
+// "Active" is not a Client Portal invention. PS-502 froze the partition:
+// REPLACEMENT_TERMINAL_STATUSES = ['completed', 'rejected', 'cancelled']
+// (prepship-v4 src/services/replacement-state-machine.ts:45-49, with
+// isReplacementTerminal() at :118-120 and ALLOWED_TRANSITIONS giving all three
+// empty outbound arrays). This predicate is the direct transcription of
+// !isReplacementTerminal(status) — the negative of the frozen set, not a
+// positive list of our own, so a tenth upstream status cannot silently change
+// what "active" means here. The nine legal statuses are pinned in
+// contracts/replacements.ts and by the CP-061 guard; the DB domain is
+// drizzle/0096_ps502_replacements.sql:70-73.
+//
+// This corrects a real defect. The predicate was `status <> 'cancelled'`, so a
+// COMPLETED replacement kept a live REPLACE badge on the order forever, and a
+// rejected one did too. It is invisible today only because the PS-502 tables
+// are absent from the shared production database and the readiness gate below
+// returns constants — the moment the operator lane runs, it would start
+// emitting permanently-stuck badges.
+//
+// Cancellation still clears the badge on the next canonical read (CP-061 AC-7);
+// completion and rejection now do the same, which is what the frozen state
+// machine says.
 //
 // `ready` MUST be replacementsSchemaReady(): while the shared prod DB lacks
 // the PS-502 tables, a subquery against them would 500 the entire Orders
@@ -144,21 +162,21 @@ export function orderReplacementBadgeSelects(ready: boolean, orderIdRef: SQL) {
   return {
     hasActiveReplacement: sql<boolean>`exists (
       select 1 from replacements r
-      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+      where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
     )`,
     replacementStatus: sql<string | null>`(
       select r.status from replacements r
-      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+      where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
       order by r.requested_at desc, r.id desc
       limit 1
     )`,
     replacementCount: sql<number>`(
       select count(*)::int from replacements r
-      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+      where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
     )`,
     replacementReference: sql<string | null>`(
       select r.reference from replacements r
-      where r.order_id = ${orderIdRef} and r.status <> 'cancelled'
+      where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
       order by r.requested_at desc, r.id desc
       limit 1
     )`,

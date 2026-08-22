@@ -181,7 +181,7 @@ await reset();
 }
 
 // ---------------------------------------------------------------------------
-console.log('\nScenario 5: rejected KEEPS the badge with its status (pending PS-502 freeze)');
+console.log('\nScenario 5: rejected is TERMINAL upstream, so it clears the badge');
 await reset();
 {
   const clientA = await seedClient('CP061 A');
@@ -189,8 +189,40 @@ await reset();
   const id = await seedReplacement(orderA, clientA, { reference: 'CP061-6-REPLACE' });
   await db.execute(rawSql`update replacements set status = 'rejected' where id = ${id}`);
   const badge = await orderBadge(orderA, scopeFor([clientA]));
-  equal(badge?.hasActiveReplacement, true, 'badge kept');
-  equal(badge?.replacementStatus, 'rejected', 'status visible');
+  // Was asserted as "badge kept" while PS-502's semantics were unfrozen. They
+  // are frozen now: rejected is in REPLACEMENT_TERMINAL_STATUSES
+  // (prepship-v4 replacement-state-machine.ts:45-49), so it clears.
+  equal(badge?.hasActiveReplacement, false, 'rejected clears the badge');
+  equal(badge?.replacementStatus, null, 'and takes its status with it');
+  equal(badge?.replacementCount, 0, 'and is not counted');
+  equal(badge?.replacementReference, null, 'and shows no reference');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nScenario 5b: completed is terminal too — the badge does not stick forever');
+await reset();
+{
+  const clientA = await seedClient('CP061 A');
+  const orderA = await seedOrder(clientA);
+  const id = await seedReplacement(orderA, clientA, { reference: 'CP061-5B-REPLACE' });
+  await db.execute(rawSql`update replacements set status = 'completed' where id = ${id}`);
+  const badge = await orderBadge(orderA, scopeFor([clientA]));
+  equal(badge?.hasActiveReplacement, false, 'a finished replacement is not an active one');
+  equal(badge?.replacementCount, 0, 'and is not counted');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nScenario 5c: shipped is NOT terminal — the badge stays up');
+await reset();
+{
+  const clientA = await seedClient('CP061 A');
+  const orderA = await seedOrder(clientA);
+  const id = await seedReplacement(orderA, clientA, { reference: 'CP061-5C-REPLACE' });
+  await db.execute(rawSql`update replacements set status = 'shipped' where id = ${id}`);
+  const badge = await orderBadge(orderA, scopeFor([clientA]));
+  equal(badge?.hasActiveReplacement, true, 'shipped is still in flight');
+  equal(badge?.replacementStatus, 'shipped', 'with its status visible');
+  equal(badge?.replacementReference, 'CP061-5C-REPLACE', 'and its reference');
 }
 
 // ---------------------------------------------------------------------------
