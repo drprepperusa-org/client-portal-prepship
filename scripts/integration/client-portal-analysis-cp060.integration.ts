@@ -573,6 +573,9 @@ await reset();
   });
   await db.insert(schema.orderItems).values({
     orderId: seeded.orderId,
+    // line_index defaults to 0 and (order_id, line_index) is unique, so a second
+    // item on the same order needs its own index.
+    lineIndex: 1,
     sku: 'CP060-SKU-B',
     name: 'Item CP060-SKU-B',
     quantity: '2',
