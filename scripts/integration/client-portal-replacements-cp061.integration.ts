@@ -263,7 +263,11 @@ await reset();
   const keys = Object.keys(detail ?? {}).sort().join(',');
   equal(
     keys,
-    ['clientId', 'clientName', 'id', 'itemCount', 'items', 'orderId', 'orderNumber', 'reason', 'reference', 'requestedAt', 'status'].sort().join(','),
+    // 'reason' is deliberately absent: PS-502 never declared the column
+    // customer-safe and ships no labels for its four codes, so the portal
+    // withholds it. Key-exactness is the point of this assertion — if reason
+    // reappears without an upstream disclosure, this fails.
+    ['clientId', 'clientName', 'id', 'itemCount', 'items', 'orderId', 'orderNumber', 'reference', 'requestedAt', 'status'].sort().join(','),
     'detail DTO keys are exactly the contract',
   );
 }
