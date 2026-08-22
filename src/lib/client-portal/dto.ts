@@ -217,9 +217,9 @@ export function toPortalOrderDto(
     /** CP-061: backend-derived REPLACE badge fields, supplied by the order
      *  read-model's readiness-gated badge selects. */
     hasActiveReplacement?: boolean;
-    replacementStatus?: string | null;
-    replacementCount?: number;
-    replacementReference?: string | null;
+    activeReplacementStatus?: string | null;
+    activeReplacementCount?: number;
+    activeReplacementReference?: string | null;
   },
   options: { includeFinancials?: boolean; includeWeight?: boolean } = {}
 ): PortalOrder & { carrierCode: null; serviceCode: null; shippingService: null } {
@@ -284,9 +284,9 @@ export function toPortalOrderDto(
     // CP-061: backend-derived REPLACE badge — rendered verbatim by the client,
     // never re-derived from replacement rows in React.
     hasActiveReplacement: row.hasActiveReplacement ?? false,
-    replacementStatus: row.replacementStatus ?? null,
-    replacementCount: row.replacementCount ?? 0,
-    replacementReference: row.replacementReference ?? null,
+    activeReplacementStatus: row.activeReplacementStatus ?? null,
+    activeReplacementCount: row.activeReplacementCount ?? 0,
+    activeReplacementReference: row.activeReplacementReference ?? null,
     orderDate: iso(row.orderDate),
     shipToName: row.shipToName,
     shipToLine1: shipToStr('street1'),

@@ -146,10 +146,9 @@ function ReplacementDrawer({ id, onClose }: { id: number | null; onClose: () => 
               <p className="mt-1 text-sm font-semibold text-ink">{detail.orderNumber ?? '—'}</p>
               <p className="text-xs text-ink-3">{detail.clientName ?? '—'}</p>
             </div>
-            <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">Reason</p>
-              <p className="mt-1 text-sm text-ink-2">{detail.reason}</p>
-            </div>
+            {/* No Reason panel: the field is withheld until PS-502 declares it
+                customer-safe and ships labels for its four codes. See
+                src/lib/client-portal/contracts/replacements.ts. */}
             <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-ink-3">
                 Items ({detail.items.length})

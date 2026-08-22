@@ -112,9 +112,9 @@ async function orderBadge(orderId: number, scope: ClientPortalScope) {
   const dto = page.data.find((o: { id: number }) => o.id === orderId) as
     | {
         hasActiveReplacement: boolean;
-        replacementStatus: string | null;
-        replacementCount: number;
-        replacementReference: string | null;
+        activeReplacementStatus: string | null;
+        activeReplacementCount: number;
+        activeReplacementReference: string | null;
       }
     | undefined;
   return dto;
@@ -161,9 +161,9 @@ await reset();
   await seedReplacement(orderA, clientA, { reference: 'CP061-4-REPLACE' });
   const badge = await orderBadge(orderA, scopeFor([clientA]));
   equal(badge?.hasActiveReplacement, true, 'hasActiveReplacement true');
-  equal(badge?.replacementStatus, 'requested', 'status passes through');
-  equal(badge?.replacementCount, 1, 'count 1');
-  equal(badge?.replacementReference, 'CP061-4-REPLACE', 'reference verbatim');
+  equal(badge?.activeReplacementStatus, 'requested', 'status passes through');
+  equal(badge?.activeReplacementCount, 1, 'count 1');
+  equal(badge?.activeReplacementReference, 'CP061-4-REPLACE', 'reference verbatim');
 }
 
 // ---------------------------------------------------------------------------
@@ -176,8 +176,8 @@ await reset();
   await db.execute(rawSql`update replacements set status = 'cancelled' where id = ${id}`);
   const badge = await orderBadge(orderA, scopeFor([clientA]));
   equal(badge?.hasActiveReplacement, false, 'badge cleared');
-  equal(badge?.replacementCount, 0, 'count 0');
-  equal(badge?.replacementReference, null, 'no reference');
+  equal(badge?.activeReplacementCount, 0, 'count 0');
+  equal(badge?.activeReplacementReference, null, 'no reference');
 }
 
 // ---------------------------------------------------------------------------
@@ -193,9 +193,9 @@ await reset();
   // are frozen now: rejected is in REPLACEMENT_TERMINAL_STATUSES
   // (prepship-v4 replacement-state-machine.ts:45-49), so it clears.
   equal(badge?.hasActiveReplacement, false, 'rejected clears the badge');
-  equal(badge?.replacementStatus, null, 'and takes its status with it');
-  equal(badge?.replacementCount, 0, 'and is not counted');
-  equal(badge?.replacementReference, null, 'and shows no reference');
+  equal(badge?.activeReplacementStatus, null, 'and takes its status with it');
+  equal(badge?.activeReplacementCount, 0, 'and is not counted');
+  equal(badge?.activeReplacementReference, null, 'and shows no reference');
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ await reset();
   await db.execute(rawSql`update replacements set status = 'completed' where id = ${id}`);
   const badge = await orderBadge(orderA, scopeFor([clientA]));
   equal(badge?.hasActiveReplacement, false, 'a finished replacement is not an active one');
-  equal(badge?.replacementCount, 0, 'and is not counted');
+  equal(badge?.activeReplacementCount, 0, 'and is not counted');
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +221,8 @@ await reset();
   await db.execute(rawSql`update replacements set status = 'shipped' where id = ${id}`);
   const badge = await orderBadge(orderA, scopeFor([clientA]));
   equal(badge?.hasActiveReplacement, true, 'shipped is still in flight');
-  equal(badge?.replacementStatus, 'shipped', 'with its status visible');
-  equal(badge?.replacementReference, 'CP061-5C-REPLACE', 'and its reference');
+  equal(badge?.activeReplacementStatus, 'shipped', 'with its status visible');
+  equal(badge?.activeReplacementReference, 'CP061-5C-REPLACE', 'and its reference');
 }
 
 // ---------------------------------------------------------------------------
@@ -235,9 +235,9 @@ await reset();
   await db.execute(rawSql`update replacements set requested_at = now() - interval '1 day' where reference = 'CP061-7-REPLACE'`);
   await seedReplacement(orderA, clientA, { reference: 'CP061-7-REPLACE-2', status: 'requested' });
   const badge = await orderBadge(orderA, scopeFor([clientA]));
-  equal(badge?.replacementCount, 2, 'count 2');
-  equal(badge?.replacementStatus, 'requested', 'newest status');
-  equal(badge?.replacementReference, 'CP061-7-REPLACE-2', 'newest reference, -2 suffix verbatim');
+  equal(badge?.activeReplacementCount, 2, 'count 2');
+  equal(badge?.activeReplacementStatus, 'requested', 'newest status');
+  equal(badge?.activeReplacementReference, 'CP061-7-REPLACE-2', 'newest reference, -2 suffix verbatim');
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +263,11 @@ await reset();
   const keys = Object.keys(detail ?? {}).sort().join(',');
   equal(
     keys,
-    ['clientId', 'clientName', 'id', 'itemCount', 'items', 'orderId', 'orderNumber', 'reason', 'reference', 'requestedAt', 'status'].sort().join(','),
+    // 'reason' is deliberately absent: PS-502 never declared the column
+    // customer-safe and ships no labels for its four codes, so the portal
+    // withholds it. Key-exactness is the point of this assertion — if reason
+    // reappears without an upstream disclosure, this fails.
+    ['clientId', 'clientName', 'id', 'itemCount', 'items', 'orderId', 'orderNumber', 'reference', 'requestedAt', 'status'].sort().join(','),
     'detail DTO keys are exactly the contract',
   );
 }
@@ -292,7 +296,7 @@ await reset();
   equal(detail, null, 'detail null without tables');
   const badge = await orderBadge(orderA, scopeFor([clientA]));
   equal(badge?.hasActiveReplacement, false, 'orders list still serves; badge false');
-  equal(badge?.replacementCount, 0, 'badge count 0');
+  equal(badge?.activeReplacementCount, 0, 'badge count 0');
 }
 
 // ---------------------------------------------------------------------------

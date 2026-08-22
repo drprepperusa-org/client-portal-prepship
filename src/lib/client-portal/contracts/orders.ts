@@ -26,10 +26,23 @@ export interface PortalOrder {
   orderStatus: string | null;
   fulfillmentStatus: PortalOrderFulfillmentStatus;
   /** CP-061: backend-derived REPLACE badge — render verbatim, never re-derive. */
+  /**
+   * REPLACE badge, backend-derived. Source: canonical `replacements` rows owned
+   * by PrepShip (PS-502). Event clock: `replacements.requested_at`. Formula: the
+   * order has a replacement whose status is NOT in PS-502's frozen terminal set
+   * (completed | rejected | cancelled — replacement-state-machine.ts:45-49);
+   * status/reference are the newest such row. Owner: PrepShip.
+   *
+   * Named `active*` on purpose. Upstream already owns `replacementCount` with a
+   * DIFFERENT meaning — an invoice-scoped count(distinct replacement_id) over
+   * billing_line_items (prepship-v4 billing-invoice-totals.ts:20) — and
+   * `replacementReference` as the label/shipment identity string. Two numbers of
+   * the same name meaning different things is what CLAUDE.md forbids.
+   */
   hasActiveReplacement: boolean;
-  replacementStatus: string | null;
-  replacementCount: number;
-  replacementReference: string | null;
+  activeReplacementStatus: string | null;
+  activeReplacementCount: number;
+  activeReplacementReference: string | null;
   orderDate: string | null;
   shipToName: string | null;
   shipToLine1: string | null;
