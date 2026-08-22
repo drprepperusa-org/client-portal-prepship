@@ -22,6 +22,31 @@ const { projectDashboardTopSkus } = await import(
   '../../src/lib/client-portal/read-models/dashboard'
 );
 
+/** Either surface on the operator/legacy house_markup basis. */
+function runHouseTable(clientId: number) {
+  return getSkuBreakdownFromOrderItems({
+    dateFrom: WINDOW.dateFrom,
+    dateTo: WINDOW.dateTo,
+    clientId,
+    limit: 50,
+    canViewFinancials: true,
+    shippingBasis: 'house_markup',
+    includeCancelled: false,
+    hideTestOrders: false,
+    includeOrderCombinations: false,
+  } as never) as Promise<{ rows: Array<Record<string, unknown>> }>;
+}
+
+function runHouseDrawer(clientId: number) {
+  return getSkuOrdersForSku({
+    sku: 'CP060-SKU',
+    canViewFinancials: true,
+    shippingBasis: 'house_markup',
+    orderScopeSql: rawSql`o.client_id = ${clientId}`,
+    ...WINDOW,
+  });
+}
+
 /** The Analysis TABLE owner, on the basis the client portal and Dashboard use. */
 function runTable(clientId: number) {
   return getSkuBreakdownFromOrderItems({
@@ -952,6 +977,60 @@ await reset();
   const row = table.rows.find((r) => String(r.sku).toLowerCase() === 'cp060-sku')!;
   money(String(row.total_shipping), 5, "only client A's money is visible");
   money(String(row.exp_total), 0, "client B's expedited money is invisible");
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 29: house_markup - table and drawer agree, and neither cries mismatch');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // The house basis is INTERNAL marked cost. Reconciling it against customer
+  // invoices would manufacture a mismatch out of the ordinary difference
+  // between what we pay and what we charge. Previously the table injected the
+  // customer reconciliation inputs regardless of basis, so this same order
+  // could read attributed in the drawer and billing_mismatch in the table
+  // (Hermes, CP-060, 2026-08-22).
+  //
+  // Seeded so the two bases genuinely disagree: a voided-and-billed label plus
+  // an unattached credit make the CUSTOMER side abnormal, while house cost is
+  // untouched by billing lineage.
+  const seeded = await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, billed: 5 },
+      { service: EXP, voided: true, billed: 20 },
+    ],
+    orderGrainBilled: 7,
+  });
+  void seeded;
+
+  const houseDrawer = await runHouseDrawer(clientId);
+  const houseTable = await runHouseTable(clientId);
+  const houseRow = houseTable.rows.find((r) => String(r.sku).toLowerCase() === 'cp060-sku')!;
+  const drawerRow = houseDrawer.orders[0]!;
+
+  check(
+    drawerRow.shipping_money_state !== 'billing_mismatch',
+    'house basis: the drawer does not compare internal cost against customer invoices',
+  );
+  equal(
+    Number(houseRow.mismatch_orders),
+    0,
+    'house basis: the table does not either - the divergence Hermes found is closed',
+  );
+  check(
+    Math.abs(Number(houseRow.total_shipping) - Number(drawerRow.shipping_total ?? 0)) < 0.005,
+    'house basis: table and drawer report the same money for the same order',
+  );
+
+  // And the customer basis on the SAME order still reports the mismatch, so the
+  // house exemption has not weakened customer-side detection.
+  const customerRow = (await run(clientId)).orders[0]!;
+  equal(
+    customerRow.shipping_money_state,
+    'billing_mismatch',
+    'customer basis on the same order still detects the abnormal lineage',
+  );
 }
 
 // ---------------------------------------------------------------------------

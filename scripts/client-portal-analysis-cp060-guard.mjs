@@ -33,27 +33,37 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-const CANONICAL_EXPEDITED = [
-  'ups_2nd_day_air', 'ups_2nd_day_air_am',
-  'ups_next_day_air', 'ups_next_day_air_saver', 'ups_next_day_air_early_am',
-  'ups_3_day_select',
-  'usps_priority_mail_express',
-  'fedex_2day', 'fedex_2day_am',
-  'fedex_express_saver',
-  'fedex_priority_overnight', 'fedex_standard_overnight', 'fedex_first_overnight',
-];
+// The expedited list is PrepShip's. This guard must not carry a third copy:
+// comparing the repo's copy against the guard's own copy proves only that two
+// hand-copies agree (Hermes, CP-060, 2026-08-22). Read the pinned contract,
+// which records the upstream repo, path, export and blob SHA it came from.
+const CONTRACT = JSON.parse(read('contracts/prepship-reporting-expedited-services.json'));
+const CANONICAL_EXPEDITED = CONTRACT.services;
 
 // 1. Shared module holds exactly the canonical list.
 const shippingClass = stripComments(read('src/lib/shipping-class.ts'));
-const arrayMatch = shippingClass.match(/EXPEDITED_SERVICES = \[([\s\S]*?)\]/);
-check(Boolean(arrayMatch), 'shipping-class.ts defines EXPEDITED_SERVICES');
-if (arrayMatch) {
-  const listed = [...arrayMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  check(
-    JSON.stringify([...listed].sort()) === JSON.stringify([...CANONICAL_EXPEDITED].sort()),
-    `shared list matches the 13 canonical PS-418 services (got ${listed.length})`,
-  );
-}
+check(
+  !/EXPEDITED_SERVICES\s*=\s*\[/.test(shippingClass),
+  'shipping-class.ts does not hand-copy the list; it reads the pinned contract',
+);
+check(
+  shippingClass.includes('EXPEDITED_SERVICES_CONTRACT_PATH'),
+  'shipping-class.ts sources the list from the pinned upstream contract',
+);
+check(
+  Array.isArray(CANONICAL_EXPEDITED) && CANONICAL_EXPEDITED.length === 13,
+  `the pinned contract carries the 13 canonical PS-418 services (got ${CANONICAL_EXPEDITED.length})`,
+);
+check(
+  Boolean(CONTRACT.upstream && CONTRACT.upstream.blobSha && CONTRACT.upstream.path),
+  'the contract records the upstream blob SHA and path it was pinned from',
+);
+check(
+  String(JSON.parse(read('package.json')).scripts['test:prepship-expedited-parity'] || '').includes(
+    'prepship-expedited-parity.mjs',
+  ),
+  'the cross-repo classification parity gate is registered',
+);
 
 // 2. Single definition across src/.
 function walk(dir, out = []) {
@@ -64,12 +74,12 @@ function walk(dir, out = []) {
   }
   return out;
 }
-const definitionFiles = walk('src').filter((path) =>
-  /EXPEDITED_SERVICES = \[/.test(stripComments(read(path))),
+const redeclared = walk('src').filter((file) =>
+  /EXPEDITED_SERVICES\s*=\s*\[/.test(stripComments(read(file))),
 );
 check(
-  definitionFiles.length === 1 && definitionFiles[0].replace(/\\/g, '/') === 'src/lib/shipping-class.ts',
-  `exactly one EXPEDITED_SERVICES definition, in shipping-class.ts (found: ${definitionFiles.join(', ') || 'none'})`,
+  redeclared.length === 0,
+  `no file in src/ redeclares the expedited list (found: ${redeclared.join(', ') || 'none'})`,
 );
 
 // 3. Both analysis paths consume ONE shipping-analysis definition.
@@ -98,6 +108,32 @@ check(
   shared.includes('shipmentIsCustomerShippingEligibleSql()'),
   'the shared module selects eligible shipments through the shared predicate',
 );
+
+// The reconciliation inputs are BASIS-SPECIFIC and live in the shared switch.
+// house_markup is internal marked cost; reconciling it against customer
+// invoices manufactures a mismatch out of the ordinary gap between what we pay
+// and what we charge. The table used to inject inv.* regardless of basis, so the
+// same house-basis order could read attributed in the drawer and
+// billing_mismatch in the table (Hermes, CP-060, 2026-08-22). Neither consumer
+// may name those inputs itself.
+check(
+  /export function moneyColumnsSql/.test(shared) &&
+    shared.includes('labels.house_money') &&
+    /as money_invoiced/.test(shared) &&
+    /0::int/.test(shared) &&
+    /as money_odd_lines/.test(shared),
+  'the shared basis switch neutralises customer reconciliation on the house basis',
+);
+for (const [name, consumer] of [['drawer', skuOrders], ['table', analysisRoute]]) {
+  check(
+    consumer.includes('moneyColumnsSql('),
+    `the ${name} path takes its money columns from the shared basis switch`,
+  );
+  check(
+    !/inv.invoiced_shipping/.test(consumer) && !/inv.unattached_lines/.test(consumer),
+    `the ${name} path does not inject reconciliation inputs outside the basis switch`,
+  );
+}
 
 // Both consumers, same definition.
 for (const [name, consumer] of [['drawer', skuOrders], ['table', analysisRoute]]) {

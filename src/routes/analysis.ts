@@ -13,6 +13,7 @@ import {
   eligibleShipmentMoneyLateralSql,
   hasOutboundShipmentLateralSql,
   invoicedShippingLateralSql,
+  moneyColumnsSql,
   shippingMoneyStateCaseSql,
 } from '../lib/client-portal/shipping-analysis-sql';
 
@@ -901,18 +902,9 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
   // CP-038's requirement is unchanged and now stronger: customer_billed money
   // still comes from canonical billing lines, but through the shared per-shipment
   // resolver rather than a second order-grain sum.
-  const customerBasis = q.shippingBasis === 'customer_billed';
-  const moneyColumns = customerBasis
-    ? sql`
-        labels.customer_money                                              as money_total,
-        labels.customer_std                                                as money_std,
-        labels.customer_exp                                                as money_exp,
-      `
-    : sql`
-        labels.house_money                                                 as money_total,
-        labels.house_std                                                   as money_std,
-        labels.house_exp                                                   as money_exp,
-      `;
+  const moneyColumns = moneyColumnsSql(
+    q.shippingBasis === 'customer_billed' ? 'customer_billed' : 'house_markup'
+  );
 
   const rows = await db.execute<SkuBreakdownRow>(sql`
     with item_rows as (
@@ -926,8 +918,6 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         sh.has_any_shipment                                                 as has_any_shipment,
         labels.active_label_count                                           as active_label_count,
         ${moneyColumns}
-        inv.invoiced_shipping                                               as money_invoiced,
-        (inv.unattached_lines + inv.foreign_lines + inv.ineligible_lines)   as money_odd_lines,
         case
           when coalesce(o.order_status, '') = 'awaiting_shipment'
             and ${rawVisibleAwaitingOrdersPredicateForAlias()}
