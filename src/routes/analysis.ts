@@ -9,7 +9,12 @@ import { rawVisibleAwaitingOrdersPredicateForAlias } from '../lib/client-portal/
 import { hasAppPermission } from '../middleware/auth';
 
 export { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
-import { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
+import {
+  eligibleShipmentMoneyLateralSql,
+  hasOutboundShipmentLateralSql,
+  invoicedShippingLateralSql,
+  shippingMoneyStateCaseSql,
+} from '../lib/client-portal/shipping-analysis-sql';
 
 const app = new Hono();
 
@@ -786,6 +791,22 @@ type SkuBreakdownRow = {
   ship_count_with_cost: number;
   total_qty: number;
   total_shipping: string;
+  /**
+   * CP-060 AC-4. Distinct units on orders whose shipping the resolver could
+   * attribute. NOT std_qty_total + exp_qty_total: under per-shipment
+   * classification one order can carry BOTH classes, so those two overlap and
+   * their sum double-counts a mixed order's units.
+   */
+  charged_qty_total: number;
+  /**
+   * What Billing charges for shipping on these orders (invoice definition:
+   * every 'shipping' line by order_id). Present so a consumer can see that the
+   * attributable figure is not the whole invoice rather than being quietly
+   * short. Financially gated with the rest.
+   */
+  invoiced_shipping: string;
+  /** Orders whose shipping money the resolver could not fully account for. */
+  mismatch_orders: number;
   // 2026-05-12: revenue + avg-selling-price feed the Analysis page's
   // new "Total Revenue" and "Avg Selling Price" columns. total_revenue
   // is summed server-side as SUM(unit_price × qty) across every non-
@@ -866,13 +887,32 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
       )`
     : sql``;
 
-  // CP-038: client portal passes 'customer_billed' to read the canonical billed shipping
-  // (billing_line_items) instead of the inline base_cost*(1+markup) re-derivation. `o` is
-  // the orders alias inside item_rows; the correlated billing subquery inherits its scope.
-  const shippingAmountExpr =
-    q.shippingBasis === 'customer_billed'
-      ? sql`coalesce((select sum(b.total_cost) from billing_line_items b where b.order_id = o.id and b.line_type = 'shipping'), 0)`
-      : sql`coalesce(ls.label_cost, 0)`;
+  // CP-060 AC-4: the table path now takes its shipping money and its class split
+  // from the SAME shared definition the SKU drawer uses
+  // (lib/client-portal/shipping-analysis-sql.ts), which resolves money per
+  // ELIGIBLE SHIPMENT via PrepShip's canonical resolver.
+  //
+  // What this replaces: an order-grain `billing_line_items` sum classified
+  // entirely by whichever label happened to be newest (`order by s.id desc
+  // limit 1`). That model put a mixed standard/expedited order wholly in one
+  // bucket, and it is the model the client Dashboard's "Avg Shipping Price" was
+  // still serving to customers while the drawer had already moved.
+  //
+  // CP-038's requirement is unchanged and now stronger: customer_billed money
+  // still comes from canonical billing lines, but through the shared per-shipment
+  // resolver rather than a second order-grain sum.
+  const customerBasis = q.shippingBasis === 'customer_billed';
+  const moneyColumns = customerBasis
+    ? sql`
+        labels.customer_money                                              as money_total,
+        labels.customer_std                                                as money_std,
+        labels.customer_exp                                                as money_exp,
+      `
+    : sql`
+        labels.house_money                                                 as money_total,
+        labels.house_std                                                   as money_std,
+        labels.house_exp                                                   as money_exp,
+      `;
 
   const rows = await db.execute<SkuBreakdownRow>(sql`
     with item_rows as (
@@ -882,9 +922,12 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         o.client_id                                                         as client_id,
         c.name                                                              as client_name,
         o.order_status                                                      as order_status,
-        coalesce(ls.service_code, o.service_code)                           as service_code,
-        ls.order_id                                                         as shipment_order_id,
-        ${shippingAmountExpr}                                               as label_cost,
+        coalesce(labels.service_code, o.service_code)                       as service_code,
+        sh.has_any_shipment                                                 as has_any_shipment,
+        labels.active_label_count                                           as active_label_count,
+        ${moneyColumns}
+        inv.invoiced_shipping                                               as money_invoiced,
+        (inv.unattached_lines + inv.foreign_lines + inv.ineligible_lines)   as money_odd_lines,
         case
           when coalesce(o.order_status, '') = 'awaiting_shipment'
             and ${rawVisibleAwaitingOrdersPredicateForAlias()}
@@ -901,36 +944,9 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
       from order_items oi
       join orders o on o.id = oi.order_id
       left join clients c on c.id = o.client_id
-      left join lateral (
-        select
-          s.order_id,
-          s.service_code,
-          case
-            when lower(cost_model.markup->>'type') in ('pct', 'percent')
-              then cost_model.base_cost * (1 + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0) / 100)
-            when lower(cost_model.markup->>'type') in ('amount', 'flat')
-              then cost_model.base_cost + coalesce(nullif(cost_model.markup->>'value', '')::numeric, 0)
-            else cost_model.base_cost
-          end as label_cost
-        from shipments s
-        left join settings pid_markup
-          on pid_markup.key = 'markup.' || coalesce(s.provider_account_id, s.label_provider, s.selected_pid)::text
-        left join settings carrier_markup
-          on carrier_markup.key in ('markup.' || s.carrier_code, 'markup.' || lower(s.carrier_code))
-        cross join lateral (
-          select
-            (coalesce(s.cost, s.label_cost, 0) + coalesce(s.other_cost, 0))::numeric as base_cost,
-            case
-              when coalesce(pid_markup.value, carrier_markup.value) ~ '^\\s*\\{'
-                then coalesce(pid_markup.value, carrier_markup.value)::jsonb
-              else null::jsonb
-            end as markup
-        ) cost_model
-        where s.order_id = o.id
-          and coalesce(s.voided, false) = false
-        order by s.id desc
-        limit 1
-      ) ls on true
+      ${eligibleShipmentMoneyLateralSql()}
+      ${hasOutboundShipmentLateralSql()}
+      ${invoicedShippingLateralSql()}
       where ${cancelledFilter}
         and o.order_date >= ${fromIso}::timestamptz
         and o.order_date <= ${toIso}::timestamptz
@@ -949,8 +965,13 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         max(client_name)                                                     as client_name,
         max(order_status)                                                    as order_status,
         max(service_code)                                                    as service_code,
-        max(shipment_order_id)                                               as shipment_order_id,
-        max(label_cost)                                                      as label_cost,
+        bool_or(has_any_shipment)                                            as has_any_shipment,
+        max(active_label_count)                                              as active_label_count,
+        max(money_total)                                                     as money_total,
+        max(money_std)                                                       as money_std,
+        max(money_exp)                                                       as money_exp,
+        max(money_invoiced)                                                  as money_invoiced,
+        max(money_odd_lines)                                                 as money_odd_lines,
         bool_or(is_awaiting_order)                                           as is_awaiting_order,
         sku_key,
         max(sku)                                                             as sku,
@@ -968,14 +989,10 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
         r.*,
         sum(qty) over (partition by r.order_id)::int                         as order_qty_total,
         case
-          when r.order_status = 'shipped' and r.shipment_order_id is null then true
+          when r.order_status = 'shipped' and not r.has_any_shipment then true
           else false
         end                                                                 as is_external,
-        case
-          when lower(coalesce(r.service_code, '')) = ANY(${EXPEDITED_SERVICES_SQL})
-            then 'exp'
-          else 'std'
-        end                                                                 as ship_class
+        ${shippingMoneyStateCaseSql()}                                       as money_state
       from order_sku_rows r
     ),
     sku_inventory as (
@@ -1011,17 +1028,23 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
       count(*)::int                                                             as orders,
       count(*) filter (where is_awaiting_order)::int                            as pending,
       count(*) filter (where is_external)::int                                   as ext_shipped,
-      count(*) filter (where not is_external and ship_class = 'std')::int         as std_orders,
-      count(*) filter (where not is_external and label_cost > 0 and ship_class = 'std')::int as std_ship_count,
-      coalesce(sum(label_cost * qty / nullif(order_qty_total, 0)) filter (where not is_external and label_cost > 0 and ship_class = 'std'), 0)::text as std_total,
-      coalesce(sum(qty) filter (where not is_external and label_cost > 0 and ship_class = 'std'), 0)::int as std_qty_total,
-      count(*) filter (where not is_external and ship_class = 'exp')::int         as exp_orders,
-      count(*) filter (where not is_external and label_cost > 0 and ship_class = 'exp')::int as exp_ship_count,
-      coalesce(sum(label_cost * qty / nullif(order_qty_total, 0)) filter (where not is_external and label_cost > 0 and ship_class = 'exp'), 0)::text as exp_total,
-      coalesce(sum(qty) filter (where not is_external and label_cost > 0 and ship_class = 'exp'), 0)::int as exp_qty_total,
-      count(*) filter (where not is_external and label_cost > 0)::int             as ship_count_with_cost,
+      count(*) filter (where money_state = 'attributed' and money_std <> 0)::int  as std_orders,
+      count(*) filter (where money_state = 'attributed' and money_std <> 0)::int  as std_ship_count,
+      coalesce(sum(money_std * qty / nullif(order_qty_total, 0)) filter (where money_state = 'attributed' and money_std <> 0), 0)::text as std_total,
+      coalesce(sum(qty) filter (where money_state = 'attributed' and money_std <> 0), 0)::int as std_qty_total,
+      count(*) filter (where money_state = 'attributed' and money_exp <> 0)::int  as exp_orders,
+      count(*) filter (where money_state = 'attributed' and money_exp <> 0)::int  as exp_ship_count,
+      coalesce(sum(money_exp * qty / nullif(order_qty_total, 0)) filter (where money_state = 'attributed' and money_exp <> 0), 0)::text as exp_total,
+      coalesce(sum(qty) filter (where money_state = 'attributed' and money_exp <> 0), 0)::int as exp_qty_total,
+      count(*) filter (where money_state = 'attributed' and coalesce(money_total, 0) <> 0)::int as ship_count_with_cost,
       sum(qty)::int                                                              as total_qty,
-      coalesce(sum(label_cost * qty / nullif(order_qty_total, 0)) filter (where not is_external and label_cost > 0), 0)::text as total_shipping,
+      coalesce(sum(money_total * qty / nullif(order_qty_total, 0)) filter (where money_state = 'attributed'), 0)::text as total_shipping,
+      -- Distinct charged units. std_qty_total and exp_qty_total OVERLAP under
+      -- per-shipment classification (one order can carry both classes), so their
+      -- sum double-counts a mixed order and must never be used as a denominator.
+      coalesce(sum(qty) filter (where money_state = 'attributed' and coalesce(money_total, 0) <> 0), 0)::int as charged_qty_total,
+      coalesce(sum(money_invoiced * qty / nullif(order_qty_total, 0)), 0)::text   as invoiced_shipping,
+      count(*) filter (where money_state = 'billing_mismatch')::int               as mismatch_orders,
       coalesce(sum(line_revenue), 0)::text                                       as total_revenue,
       coalesce(sum(order_selling_fee * qty / nullif(order_qty_total, 0)) filter (where not is_external and order_selling_fee > 0), 0)::text as total_selling_fee,
       (array_agg(sdj.daily_qty_map))[1]                                          as daily_qty_map

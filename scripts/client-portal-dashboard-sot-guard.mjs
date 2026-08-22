@@ -146,10 +146,19 @@ assert(
   readModel.includes('avgShippingPrice'),
   'Avg Shipping Price is computed in the backend read-model, not the frontend',
 );
+// CP-060 AC-4: the denominator is charged_qty_total, NOT std_qty_total +
+// exp_qty_total. Under per-shipment classification an order can carry both
+// classes, so those counts overlap and their sum double-counts a mixed order's
+// units — which would silently drop this average for exactly the mixed
+// standard/expedited clients CP-060 exists to serve.
 assert(
   readModelFlat.includes("shippingBasis: 'customer_billed'") &&
-    readModelFlat.includes('std_qty_total') && readModelFlat.includes('exp_qty_total'),
-  'Avg Shipping Price divides canonical customer-billed shipping by the Analysis charged-unit denominator',
+    readModelFlat.includes('charged_qty_total'),
+  'Avg Shipping Price divides canonical customer-billed shipping by the DISTINCT charged-unit denominator',
+);
+assert(
+  !/std_qty_total\s*\?\?\s*0\)\s*\+\s*Number\(row\.exp_qty_total/.test(readModelFlat),
+  'the Avg Shipping denominator does not add the overlapping per-class unit counts',
 );
 assert(
   !/shippingAmount/.test(readModel),

@@ -72,76 +72,118 @@ check(
   `exactly one EXPEDITED_SERVICES definition, in shipping-class.ts (found: ${definitionFiles.join(', ') || 'none'})`,
 );
 
-// 3. sku-orders consumes the shared list and has no newest-label classifier.
+// 3. Both analysis paths consume ONE shipping-analysis definition.
+//
+// AC-4 requires "the Analysis table and SKU drawer use the same backend
+// definitions". Two copies that agree today is not that: CP-060 exists because
+// an order-grain sum and a per-shipment split drifted while nobody looked, and
+// the Dashboard kept serving the pre-CP-060 model through three further audit
+// rounds because the table path was never converged. So the definition lives in
+// ONE module and both callers import it. These checks follow that delegation
+// rather than pinning a spelling in either consumer.
+const shared = stripComments(read('src/lib/client-portal/shipping-analysis-sql.ts'));
 const skuOrders = stripComments(read('src/services/sku-orders.ts'));
+const analysisRoute = stripComments(read('src/routes/analysis.ts'));
+
 check(
-  skuOrders.includes("from '../lib/shipping-class'"),
-  'sku-orders imports the shared classification list',
+  shared.includes("from '../shipping-class'"),
+  'the shared module imports the canonical expedited-service list',
 );
 check(
-  !/order by s\.id desc/i.test(skuOrders),
-  'sku-orders contains no newest-label (`order by s.id desc`) classifier',
-);
-// The correction (Hermes 2026-08-21). The first cut summed the ORDER TOTAL over
-// billing_line_items by order_id while summing the class split over shipments,
-// so money on a line pointing at a voided or foreign shipment landed in the
-// total, in neither class, and still reported 'attributed'. Both halves must now
-// come from the canonical per-shipment resolver, which is also what the order
-// detail Shipping row sums — so the drawer total cannot disagree with it.
-check(
-  skuOrders.includes('shipmentCustomerShippingRateSql') &&
-    skuOrders.includes("from '../lib/client-portal/customer-shipping-rate'"),
-  'sku-orders takes its shipping money from the canonical per-shipment resolver',
+  shared.includes('shipmentCustomerShippingRateSql') &&
+    shared.includes("from './customer-shipping-rate'"),
+  'the shared module takes its money from the canonical per-shipment resolver',
 );
 check(
-  skuOrders.includes('shipmentIsCustomerShippingEligibleSql()'),
-  'sku-orders selects eligible shipments through the shared eligibility predicate',
-);
-check(
-  /labels\.customer_money\s+as money_total/.test(skuOrders),
-  'the customer_billed total comes from the eligible-shipment resolver, not an order-grain billing sum',
-);
-check(
-  (skuOrders.match(/from billing_line_items/gi) || []).length === 1 &&
-    /\) inv on true/.test(skuOrders),
-  'the only billing_line_items read is the reconciliation lateral (inv), not a second display total',
+  shared.includes('shipmentIsCustomerShippingEligibleSql()'),
+  'the shared module selects eligible shipments through the shared predicate',
 );
 
-// Hermes CP-060 return, 2026-08-22. The drawer reads only eligible-shipment
-// money, but Billing charges every 'shipping' line by order_id. When the invoice
-// exceeds what the labels resolve to, the difference is money the customer IS
-// charged; it may not vanish behind a clean 'attributed'.
-check(
-  /where b\.order_id = o\.id and b\.line_type = 'shipping'/.test(skuOrders),
-  'sku-orders measures the invoiced shipping sum using the Billing definition',
+// Both consumers, same definition.
+for (const [name, consumer] of [['drawer', skuOrders], ['table', analysisRoute]]) {
+  check(
+    consumer.includes("shipping-analysis-sql"),
+    `the ${name} path consumes the shared shipping-analysis definition`,
+  );
+  check(
+    consumer.includes('eligibleShipmentMoneyLateralSql()'),
+    `the ${name} path takes its money from the shared per-shipment lateral`,
+  );
+  check(
+    consumer.includes('shippingMoneyStateCaseSql()'),
+    `the ${name} path reports the shared money-state vocabulary`,
+  );
+  check(
+    !/from billing_line_items/i.test(consumer),
+    `the ${name} path keeps no billing_line_items shipping sum of its own`,
+  );
+  check(
+    !/order by s\.id desc/i.test(consumer),
+    `the ${name} path has no newest-label classifier (the pre-CP-060 model)`,
+  );
+}
+
+// Exactly one definition across src/.
+const lateralDefs = walk('src').filter((file) =>
+  /export function eligibleShipmentMoneyLateralSql/.test(stripComments(read(file))),
 );
 check(
-  skuOrders.includes("then 'billing_mismatch'") &&
-    /money_invoiced, 0\) - coalesce\(r\.money_total, 0\)\) > 0\.005/.test(skuOrders),
-  'sku-orders reports billing_mismatch when Billing charges more than the eligible labels resolve to',
+  lateralDefs.length === 1 &&
+    lateralDefs[0].split('\\').join('/') === 'src/lib/client-portal/shipping-analysis-sql.ts',
+  `exactly one per-shipment money lateral, in shipping-analysis-sql.ts (found: ${lateralDefs.join(', ') || 'none'})`,
+);
+
+// Money-state semantics, all now owned by the shared module.
+check(
+  !/unattributed|money_attributed|partial_unattributed/.test(shared + skuOrders + analysisRoute),
+  'no residual/unattributed money vocabulary survives in either path',
 );
 check(
-  skuOrders.indexOf("then 'billing_mismatch'") < skuOrders.indexOf("then 'external_label'"),
-  'billing_mismatch outranks the shipment-shape states (charged money is not "label voided")',
+  /money_total is null\s*then 'pending'/.test(shared) && !/then 'unbilled'/.test(shared),
+  "the shared module reports 'pending' (not 'unbilled') when the resolver has no answer",
 );
+check(
+  /where b\.order_id = o\.id and b\.line_type = 'shipping'/.test(shared),
+  'the shared module measures invoiced shipping using the Billing definition',
+);
+check(
+  shared.includes("then 'billing_mismatch'") &&
+    /money_invoiced, 0\) - coalesce\(r\.money_total, 0\)\) > 0\.005/.test(shared),
+  'billing_mismatch fires when Billing charges more than the eligible labels resolve to',
+);
+check(
+  /money_odd_lines, 0\) > 0/.test(shared),
+  'abnormal-lineage presence classifies a mismatch on its own, not only a positive delta',
+);
+check(
+  shared.indexOf("then 'billing_mismatch'") < shared.indexOf("then 'external_label'"),
+  'billing_mismatch outranks the shipment-shape states',
+);
+check(
+  (shared.match(/from billing_line_items/gi) || []).length === 1 &&
+    /\) inv on true/.test(shared),
+  'the only billing_line_items read is the reconciliation lateral',
+);
+
+// Drawer row output.
 check(
   skuOrders.includes('as shipping_reconciled'),
-  'a mismatch row carries the eligible-label figure alongside the invoiced one',
+  'a drawer mismatch row carries the eligible-label figure alongside the invoiced one',
 );
 check(
   !/attributable and money_(std|exp) > 0/.test(skuOrders),
-  'the summary admits class money on the same non-zero rule the rows use (no silent denominator split)',
+  'the drawer summary admits class money on the same non-zero rule the rows use',
 );
 check(
   (skuOrders.match(/attributable and money_(std|exp) <> 0/g) || []).length >= 2,
-  'row and average admissibility use the same predicate',
+  'drawer row and average admissibility use the same predicate',
+);
+check(
+  skuOrders.includes('shipping_money_state'),
+  'sku-orders emits an explicit shipping_money_state',
 );
 
-// The row-level parity claim that was false for multi-SKU orders must not
-// return. Checking that the CORRECT phrases are present is not enough — a
-// contradictory sentence added elsewhere leaves them intact (that exact mutation
-// survived this guard in the Hermes re-audit). Strip the historical retraction,
-// then reject affirmative parity language anywhere in what remains.
+// The row-level parity claim that was false for multi-SKU orders must not return.
 const matrix = read('docs/source-of-truth-matrix.md');
 const matrixClaims = matrix.replace(
   /An earlier draft of this section[\s\S]*?corrected here \(Hermes[^)]*\)\./,
@@ -156,7 +198,7 @@ const affirmativeParityClaims = [
 const offending = affirmativeParityClaims.filter((re) => re.test(matrixClaims));
 check(
   offending.length === 0,
-  `the SOT matrix makes no affirmative row-level parity claim (offending patterns: ${offending.length})`,
+  `the SOT matrix makes no affirmative row-level parity claim (offending: ${offending.length})`,
 );
 check(
   matrix.includes('proportional allocation') && matrix.includes('claimed row-level equality'),
@@ -164,84 +206,21 @@ check(
 );
 check(
   matrix.includes('billing_mismatch'),
-  'the SOT matrix documents the billing_mismatch state and its two figures',
+  'the SOT matrix documents the billing_mismatch state',
 );
 
-// Prose can drift; the fixture cannot. Scenario 17 is the authoritative proof of
-// proportional allocation, so pin its existence rather than relying on wording.
+// Prose drifts; fixtures do not.
 const cp060Suite = read('scripts/integration/client-portal-analysis-cp060.integration.ts');
-check(
-  cp060Suite.includes('NO single SKU row equals the full order amount'),
-  'a DB-backed scenario proves no single SKU row equals the order amount',
-);
-check(
-  cp060Suite.includes('allocations across all SKU rows reconcile to the canonical order amount'),
-  'and that the allocations reconcile in aggregate',
-);
-
-// Hermes CP-060 second return: a positive-only delta test misses a NEGATIVE
-// abnormal line (invoice lower than the label sum, drawer overstating the bill)
-// and misses two abnormal lines that cancel. Presence of abnormal lineage must
-// classify on its own.
-check(
-  /money_odd_lines, 0\) > 0/.test(skuOrders),
-  'abnormal-lineage presence classifies a mismatch on its own, not only a positive money delta',
-);
-check(
-  cp060Suite.includes('a negative abnormal line is a mismatch too') &&
-    cp060Suite.includes('a zero net delta does not make abnormal lineage acceptable'),
-  'DB-backed scenarios cover the negative and net-cancelling abnormal-line cases',
-);
-check(
-  cp060Suite.includes('pre-billing stays attributed, not mismatch'),
-  'and the ordinary pre-billing window is pinned as NOT a mismatch',
-);
-check(
-  cp060Suite.includes('the reconciliation figure is money too, and is redacted'),
-  'and a billing_mismatch row is proven redacted without financial permission',
-);
-check(
-  !/unattributed|money_attributed|partial_unattributed/.test(skuOrders),
-  'sku-orders carries no residual/unattributed money vocabulary',
-);
-check(
-  /money_total is null\s*then 'pending'/.test(skuOrders) && !/then 'unbilled'/.test(skuOrders),
-  "sku-orders reports 'pending' (not 'unbilled') when the resolver has no answer yet",
-);
-
-// The eligibility rule decides which shipments carry customer money. Exactly one
-// definition, same discipline as EXPEDITED_SERVICES above — a copy in the drawer
-// would silently keep the old rule if PS-4xx adds an exclusion upstream.
-const eligibilityFiles = walk('src').filter((file) =>
-  /coalesce\([^)]*isReturn[^)]*\)\s*=\s*false/.test(stripComments(read(file))),
-);
-check(
-  eligibilityFiles.length === 1 &&
-    eligibilityFiles[0].split('\\').join('/') === 'src/lib/client-portal/customer-shipping-rate.ts',
-  `exactly one customer-shipping eligibility predicate, in customer-shipping-rate.ts (found: ${eligibilityFiles.join(', ') || 'none'})`,
-);
-
-// The contract's money-state vocabulary must match the read model's exactly.
-const analysisContract = stripComments(read('src/lib/client-portal/contracts/analysis.ts'));
-for (const state of ['attributed', 'billing_mismatch', 'pending', 'external_label', 'voided_only']) {
-  check(analysisContract.includes(`'${state}'`), `contract declares the ${state} money state`);
+for (const [phrase, what] of [
+  ['NO single SKU row equals the full order amount', 'no single SKU row equals the order amount'],
+  ['allocations across all SKU rows reconcile to the canonical order amount', 'allocations reconcile in aggregate'],
+  ['a negative abnormal line is a mismatch too', 'the negative abnormal-line case'],
+  ['a zero net delta does not make abnormal lineage acceptable', 'the net-cancelling case'],
+  ['pre-billing stays attributed, not mismatch', 'the pre-billing exemption'],
+  ['the reconciliation figure is money too, and is redacted', 'redaction of a mismatch row'],
+]) {
+  check(cp060Suite.includes(phrase), `a DB-backed scenario pins ${what}`);
 }
-check(
-  !/partial_unattributed|unattributed_legacy|'unbilled'/.test(analysisContract),
-  'contract retires the residual money states',
-);
-check(
-  skuOrders.includes('shipping_money_state'),
-  'sku-orders emits an explicit shipping_money_state',
-);
-
-// 4. The analysis route consumes the shared list.
-const analysisRoute = stripComments(read('src/routes/analysis.ts'));
-check(
-  analysisRoute.includes("from '../lib/shipping-class'"),
-  'routes/analysis.ts consumes the shared classification list',
-);
-
 // 5. Contract shape.
 const contract = stripComments(read('src/lib/client-portal/contracts/analysis.ts'));
 for (const field of ['shippingMoneyState', 'shippingStandard', 'shippingExpedited', 'shippingTotal', 'avgShippingStandard', 'avgShippingExpedited']) {

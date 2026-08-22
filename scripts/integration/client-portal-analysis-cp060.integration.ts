@@ -17,6 +17,25 @@ const { getSkuOrdersForSku } = await import('../../src/services/sku-orders');
 const { orderCustomerShippingRateSql } = await import(
   '../../src/lib/client-portal/customer-shipping-rate'
 );
+const { getSkuBreakdownFromOrderItems } = await import('../../src/routes/analysis');
+const { projectDashboardTopSkus } = await import(
+  '../../src/lib/client-portal/read-models/dashboard'
+);
+
+/** The Analysis TABLE owner, on the basis the client portal and Dashboard use. */
+function runTable(clientId: number) {
+  return getSkuBreakdownFromOrderItems({
+    dateFrom: WINDOW.dateFrom,
+    dateTo: WINDOW.dateTo,
+    clientId,
+    limit: 50,
+    canViewFinancials: true,
+    shippingBasis: 'customer_billed',
+    includeCancelled: false,
+    hideTestOrders: false,
+    includeOrderCombinations: false,
+  } as never) as Promise<{ rows: Array<Record<string, unknown>> }>;
+}
 
 let failures = 0;
 
@@ -829,6 +848,110 @@ await reset();
   equal(row.shipping_reconciled, null, 'the reconciliation figure is money too, and is redacted');
   equal(row.shipping_standard, null, 'std redacted');
   equal(row.shipping_cost, null, 'per-unit redacted');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 25: AC-4 - the TABLE splits a mixed order per shipment, like the drawer');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // Pre-CP-060 the table put the WHOLE order in one class, chosen by whichever
+  // label was newest. That model was still serving the client Dashboard.
+  await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, billed: 5 },
+      { service: EXP, billed: 20 },
+    ],
+  });
+
+  const drawer = await run(clientId);
+  const table = await runTable(clientId);
+  const row = table.rows.find((r) => String(r.sku).toLowerCase() === 'cp060-sku')!;
+
+  money(String(row.std_total), 5, 'table std_total is the standard label only');
+  money(String(row.exp_total), 20, 'table exp_total is the expedited label only');
+  money(String(row.total_shipping), 25, 'table total is both');
+  // The definitions are shared, so the two surfaces must agree in aggregate.
+  check(
+    Math.abs(Number(row.total_shipping) - Number(drawer.orders[0]!.shipping_total)) < 0.005,
+    'table and drawer report the same money for the same order (AC-4)',
+  );
+  check(
+    Math.abs(Number(row.std_total) - Number(drawer.orders[0]!.shipping_standard)) < 0.005,
+    'and the same standard split',
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 26: the charged-unit denominator does not double-count a mixed order');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // One order, 2 units, carrying BOTH classes. std_qty_total and exp_qty_total
+  // now OVERLAP (2 and 2); adding them would say 4 units and halve the
+  // Dashboard average for exactly the mixed clients CP-060 exists to serve.
+  await seedOrder({
+    clientId,
+    qty: 2,
+    labels: [
+      { service: STD, billed: 6 },
+      { service: EXP, billed: 18 },
+    ],
+  });
+  const table = await runTable(clientId);
+  const row = table.rows.find((r) => String(r.sku).toLowerCase() === 'cp060-sku')!;
+
+  equal(Number(row.std_qty_total), 2, 'std units counted');
+  equal(Number(row.exp_qty_total), 2, 'exp units counted - the SAME 2 units');
+  equal(
+    Number(row.charged_qty_total),
+    2,
+    'charged_qty_total counts them ONCE, unlike std + exp',
+  );
+
+  const [top] = projectDashboardTopSkus([row as never], 10);
+  money(String(top!.avgShippingPrice), 12, 'Dashboard average is 24.00 / 2 units, not / 4');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 27: a billing_mismatch order is excluded from table money and counted');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, billed: 5 },
+      { service: EXP, voided: true, billed: 20 },
+    ],
+  });
+  const table = await runTable(clientId);
+  const row = table.rows.find((r) => String(r.sku).toLowerCase() === 'cp060-sku')!;
+
+  money(String(row.total_shipping), 0, 'unattributable money is not counted as attributed');
+  money(String(row.std_total), 0, 'and gets no class');
+  equal(Number(row.mismatch_orders), 1, 'but the order IS counted as a mismatch');
+  money(String(row.invoiced_shipping), 25, 'and the invoiced figure stays visible');
+  equal(
+    Number(row.charged_qty_total),
+    0,
+    'a mismatch order contributes no charged units to the average',
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 28: tenant scope holds on the table path too');
+await reset();
+{
+  const clientA = await seedClient('CP060 Client A');
+  const clientB = await seedClient('CP060 Client B');
+  await seedOrder({ clientId: clientA, labels: [{ service: STD, billed: 5 }] });
+  await seedOrder({ clientId: clientB, labels: [{ service: EXP, billed: 50 }] });
+  const table = await runTable(clientA);
+  const row = table.rows.find((r) => String(r.sku).toLowerCase() === 'cp060-sku')!;
+  money(String(row.total_shipping), 5, "only client A's money is visible");
+  money(String(row.exp_total), 0, "client B's expedited money is invisible");
 }
 
 // ---------------------------------------------------------------------------
