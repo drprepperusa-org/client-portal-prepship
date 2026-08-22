@@ -700,6 +700,138 @@ await reset();
 }
 
 // ---------------------------------------------------------------------------
+console.log('\\nScenario 20: NEGATIVE unattached credit - the reverse mismatch');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // Hermes CP-060 second return. A positive-only delta test misses this: the
+  // invoice is LOWER than the label sum, so the drawer would show 5.00 under a
+  // clean attributed state while the customer is billed 2.00. Overstating the
+  // bill is the mirror of hiding part of it.
+  const seeded = await seedOrder({ clientId, labels: [{ service: STD, billed: 5 }] });
+  await db.insert(schema.billingLineItems).values({
+    clientId,
+    orderId: seeded.orderId,
+    orderNumber: seeded.orderNumber,
+    shipmentId: null,
+    lineType: 'shipping',
+    description: 'Unattached shipping credit',
+    qty: '1',
+    unitCost: '-3.00',
+    totalCost: '-3.00',
+  });
+  const row = (await run(clientId)).orders[0]!;
+  equal(row.shipping_money_state, 'billing_mismatch', 'a negative abnormal line is a mismatch too');
+  money(row.shipping_total, 2, 'the row shows what Billing actually charges');
+  money(row.shipping_reconciled, 5, 'and what the labels resolved to');
+  equal(row.shipping_standard, null, 'no class split while the lineage is abnormal');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 21: foreign-linked NEGATIVE line');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  const mine = await seedOrder({ clientId, labels: [{ service: STD, billed: 5 }] });
+  const other = await seedOrder({ clientId, sku: 'CP060-OTHER', labels: [{ service: EXP, billed: 40 }] });
+  await db.insert(schema.billingLineItems).values({
+    clientId,
+    orderId: mine.orderId,
+    orderNumber: mine.orderNumber,
+    shipmentId: other.shipmentIds[0]!,
+    lineType: 'shipping',
+    description: 'Foreign-linked credit',
+    qty: '1',
+    unitCost: '-2.00',
+    totalCost: '-2.00',
+  });
+  const result = await run(clientId);
+  const row = result.orders.find((o) => o.order_id === mine.orderId)!;
+  equal(row.shipping_money_state, 'billing_mismatch', 'foreign-linked negative money is disclosed');
+  money(row.shipping_total, 3, 'invoiced 5.00 - 2.00');
+  money(row.shipping_reconciled, 5, 'labels resolved 5.00');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 22: abnormal lines that NET TO ZERO still expose the lineage');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // +20 voided-linked and -20 unattached cancel, so both totals read 5.00 and
+  // every money delta is zero. Presence of abnormal lineage - not the net - is
+  // what makes this row unsafe to present as cleanly attributed.
+  const seeded = await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, billed: 5 },
+      { service: EXP, voided: true, billed: 20 },
+    ],
+  });
+  await db.insert(schema.billingLineItems).values({
+    clientId,
+    orderId: seeded.orderId,
+    orderNumber: seeded.orderNumber,
+    shipmentId: null,
+    lineType: 'shipping',
+    description: 'Offsetting correction',
+    qty: '1',
+    unitCost: '-20.00',
+    totalCost: '-20.00',
+  });
+  const row = (await run(clientId)).orders[0]!;
+  money(row.shipping_total, 5, 'the invoiced total happens to equal the label sum');
+  money(row.shipping_reconciled, 5, 'and so does the reconciled figure');
+  equal(
+    row.shipping_money_state,
+    'billing_mismatch',
+    'a zero net delta does not make abnormal lineage acceptable',
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 23: ordinary pre-billing window is NOT a mismatch');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // The regression this exemption exists for: a frozen snapshot with no Billing
+  // lines yet has zero abnormal lines and a negative delta. It must stay
+  // attributed, or every freshly-labelled order would cry mismatch.
+  await seedOrder({ clientId, labels: [{ service: STD, frozen: { cost: 4.1, customer: 5.5 } }] });
+  const row = (await run(clientId)).orders[0]!;
+  equal(row.shipping_money_state, 'attributed', 'pre-billing stays attributed, not mismatch');
+  money(row.shipping_total, 5.5, 'the frozen snapshot figure is shown');
+  money(row.shipping_standard, 5.5, 'and it keeps its class');
+  equal(row.shipping_reconciled, null, 'nothing to reconcile');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 24: canViewFinancials=false redacts a billing_mismatch row');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, billed: 5 },
+      { service: EXP, voided: true, billed: 20 },
+    ],
+  });
+  const result = await getSkuOrdersForSku({
+    sku: 'CP060-SKU',
+    canViewFinancials: false,
+    shippingBasis: 'customer_billed',
+    orderScopeSql: rawSql`o.client_id = ${clientId}`,
+    ...WINDOW,
+  });
+  const row = result.orders[0]!;
+  equal(row.shipping_money_state, 'billing_mismatch', 'the state survives redaction');
+  equal(row.shipping_total, null, 'invoiced money redacted');
+  equal(row.shipping_reconciled, null, 'the reconciliation figure is money too, and is redacted');
+  equal(row.shipping_standard, null, 'std redacted');
+  equal(row.shipping_cost, null, 'per-unit redacted');
+}
+
+// ---------------------------------------------------------------------------
 await pgClient.end({ timeout: 5 });
 
 if (failures > 0) {

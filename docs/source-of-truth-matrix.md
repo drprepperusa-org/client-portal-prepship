@@ -551,6 +551,14 @@ Ownership rules established by CP-060:
   order-detail `Shipping` row except when the SKU owns all units; what must hold
   is that the order's SKU rows sum to that figure. If the AGGREGATE disagrees,
   one of the two stopped using the shared resolver — that is the bug.
+- `billing_mismatch` fires on the PRESENCE of an abnormal-lineage line —
+  unattached, foreign-linked, or voided/return-linked — in either direction, and
+  separately when Billing simply charges more than the eligible labels resolve
+  to. Presence rather than net amount, because a NEGATIVE abnormal line makes the
+  invoice lower than the label sum (the drawer would overstate the customer's
+  bill), and two abnormal lines can cancel and leave both totals equal with the
+  lineage still wrong. The ordinary pre-billing window — a frozen snapshot with
+  no Billing lines yet — has no abnormal lines and stays `attributed`.
 - `billing_mismatch` exists because the portal does not own Billing. Invoice and
   billing summaries sum every `line_type = 'shipping'` row by `order_id`
   (`read-models/invoice-details.ts`, `services/billing-summaries.ts`), while this

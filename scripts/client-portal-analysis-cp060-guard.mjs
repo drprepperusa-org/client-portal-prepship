@@ -137,15 +137,68 @@ check(
   'row and average admissibility use the same predicate',
 );
 
-// The row-level parity claim that was false for multi-SKU orders must not return.
+// The row-level parity claim that was false for multi-SKU orders must not
+// return. Checking that the CORRECT phrases are present is not enough — a
+// contradictory sentence added elsewhere leaves them intact (that exact mutation
+// survived this guard in the Hermes re-audit). Strip the historical retraction,
+// then reject affirmative parity language anywhere in what remains.
 const matrix = read('docs/source-of-truth-matrix.md');
+const matrixClaims = matrix.replace(
+  /An earlier draft of this section[\s\S]*?corrected here \(Hermes[^)]*\)\./,
+  '',
+);
+const affirmativeParityClaims = [
+  /same number by construction/i,
+  /equals the (canonical )?order[- ](detail|shipping|amount)/i,
+  /(drawer|row)[^.]{0,60}(equals|equal to|identical to)[^.]{0,40}order[- ]detail/i,
+  /row[- ]level (equality|parity)\s+(holds|is guaranteed|applies)/i,
+];
+const offending = affirmativeParityClaims.filter((re) => re.test(matrixClaims));
+check(
+  offending.length === 0,
+  `the SOT matrix makes no affirmative row-level parity claim (offending patterns: ${offending.length})`,
+);
 check(
   matrix.includes('proportional allocation') && matrix.includes('claimed row-level equality'),
-  'the SOT matrix documents allocation semantics instead of asserting row-level equality',
+  'the SOT matrix documents allocation semantics and records the retraction',
 );
 check(
   matrix.includes('billing_mismatch'),
   'the SOT matrix documents the billing_mismatch state and its two figures',
+);
+
+// Prose can drift; the fixture cannot. Scenario 17 is the authoritative proof of
+// proportional allocation, so pin its existence rather than relying on wording.
+const cp060Suite = read('scripts/integration/client-portal-analysis-cp060.integration.ts');
+check(
+  cp060Suite.includes('NO single SKU row equals the full order amount'),
+  'a DB-backed scenario proves no single SKU row equals the order amount',
+);
+check(
+  cp060Suite.includes('allocations across all SKU rows reconcile to the canonical order amount'),
+  'and that the allocations reconcile in aggregate',
+);
+
+// Hermes CP-060 second return: a positive-only delta test misses a NEGATIVE
+// abnormal line (invoice lower than the label sum, drawer overstating the bill)
+// and misses two abnormal lines that cancel. Presence of abnormal lineage must
+// classify on its own.
+check(
+  /money_odd_lines, 0\) > 0/.test(skuOrders),
+  'abnormal-lineage presence classifies a mismatch on its own, not only a positive money delta',
+);
+check(
+  cp060Suite.includes('a negative abnormal line is a mismatch too') &&
+    cp060Suite.includes('a zero net delta does not make abnormal lineage acceptable'),
+  'DB-backed scenarios cover the negative and net-cancelling abnormal-line cases',
+);
+check(
+  cp060Suite.includes('pre-billing stays attributed, not mismatch'),
+  'and the ordinary pre-billing window is pinned as NOT a mismatch',
+);
+check(
+  cp060Suite.includes('the reconciliation figure is money too, and is redacted'),
+  'and a billing_mismatch row is proven redacted without financial permission',
 );
 check(
   !/unattributed|money_attributed|partial_unattributed/.test(skuOrders),
