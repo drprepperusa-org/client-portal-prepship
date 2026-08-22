@@ -36,7 +36,14 @@ const widthClass = (w: WidgetWidth) => (w === 'half' ? 'w-full lg:w-[calc(50%-0.
 // Compact formulas, mirroring the backend-owned math in
 // src/lib/client-portal/read-models/dashboard.ts -> dashboardTopSkus.
 const UNITS_TOOLTIP = 'Sum order_items quantity (order_items SOT, matches Analysis)';
-const AVG_SHIPPING_TOOLTIP = 'Canonical customer-billed shipping / charged units (same SOT as Analysis)';
+// Deliberately does NOT claim parity with the Analysis SKU drawer. CP-060 moved
+// the drawer onto the canonical per-shipment resolver (with explicit
+// billing_mismatch disclosure); this figure still comes from the order-grain
+// billing sum classified by the newest label. Until those definitions converge
+// — a scope question open with DJ under CP-060 AC-4 — the two numbers can
+// legitimately differ, and the UI must not tell the customer they share a source
+// of truth. Describe what this number IS; claim nothing about the other surface.
+const AVG_SHIPPING_TOOLTIP = 'Billed shipping on your orders in this period / units charged shipping';
 
 export default function Dashboard() {
   const { days } = usePortalFilters();
