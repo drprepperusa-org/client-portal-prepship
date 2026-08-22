@@ -72,6 +72,7 @@ const skuOrderFields = [
   'unit_price',
   'item_name',
   'shippingTotal',
+  'shippingReconciled',
   'shippingStandard',
   'shippingExpedited',
   'shippingMoneyState',
@@ -81,6 +82,11 @@ const skuOrderFields = [
 // including the retired std-only generics.
 const skuOrderApprovedSourceColumns = [
   'shipping_total',
+  // CP-060 (Hermes return 2026-08-22): on a billing_mismatch row shippingTotal
+  // carries the INVOICED figure and this carries what the eligible labels
+  // resolved to, so the customer can see both numbers rather than only the one
+  // that happens to be attributable.
+  'shipping_reconciled',
   'shipping_standard',
   'shipping_expedited',
   'shipping_money_state',
@@ -156,7 +162,8 @@ assert(
     skuOrderDtoBody.includes('shippingStandard: order.shipping_standard') &&
     skuOrderDtoBody.includes('shippingExpedited: order.shipping_expedited') &&
     skuOrderDtoBody.includes('shippingMoneyState: order.shipping_money_state') &&
-    skuOrderApprovedSourceColumns.length === 4,
+    skuOrderDtoBody.includes('shippingReconciled: order.shipping_reconciled') &&
+    skuOrderApprovedSourceColumns.length === 5,
   'SKU-order serializer maps only the approved per-class customer shipping fields',
 );
 

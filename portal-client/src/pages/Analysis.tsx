@@ -375,7 +375,11 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
 
       {/* Recent orders */}
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Recent orders ({data?.orders.length ?? 0})</p>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Recent orders ({data?.orders.length ?? 0})</p>
+        <p className="mb-3 text-[11px] text-ink-3">
+          Shipping shown is this SKU&rsquo;s allocated share of the order&rsquo;s outbound shipping,
+          split across the order&rsquo;s units. Return postage is not included.
+        </p>
         <div className="space-y-1.5">
           {(data?.orders ?? []).length === 0 && <p className="text-sm text-ink-3">No orders.</p>}
           {(data?.orders ?? []).slice(0, 40).map((o) => {
@@ -392,12 +396,25 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
                 </div>
                 <span className="shrink-0 tnum text-xs text-ink-3">×{o.qty}</span>
                 {o.shippingTotal !== null ? (
-                  <span className="shrink-0 text-right">
+                  <span
+                    className="shrink-0 text-right"
+                    title={
+                      o.shippingMoneyState === 'billing_mismatch'
+                        ? 'Billed shipping on this order includes an amount we cannot match to a current label. The billed figure is shown; it is not split by service.'
+                        : "This SKU's allocated share of the order's outbound shipping. Return postage is excluded."
+                    }
+                  >
                     <span className="tnum text-xs font-medium text-ink-2">{money(Number(o.shippingTotal))}</span>
-                    {o.shippingStandard !== null && o.shippingExpedited !== null && (
-                      <span className="block tnum text-[10px] text-ink-3">
-                        std {money(Number(o.shippingStandard))} · exp {money(Number(o.shippingExpedited))}
+                    {o.shippingMoneyState === 'billing_mismatch' ? (
+                      <span className="block text-[10px] text-amber-600">
+                        billed{o.shippingReconciled !== null && ` · ${money(Number(o.shippingReconciled))} matched to labels`}
                       </span>
+                    ) : (
+                      o.shippingStandard !== null && o.shippingExpedited !== null && (
+                        <span className="block tnum text-[10px] text-ink-3">
+                          std {money(Number(o.shippingStandard))} · exp {money(Number(o.shippingExpedited))}
+                        </span>
+                      )
                     )}
                   </span>
                 ) : (

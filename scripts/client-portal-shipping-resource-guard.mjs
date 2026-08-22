@@ -54,9 +54,20 @@ assert(
   /billing_line_items[\s\S]{0,160}line_type\s*=\s*'shipping'/.test(customerShippingRate),
   'the canonical resolver sums billing_line_items shipping',
 );
+// CP-060 second correction (Hermes 2026-08-22): sku-orders reads
+// billing_line_items again, but ONLY to measure what Billing charges so a
+// divergence from the eligible-label sum can be reported as `billing_mismatch`.
+// It must never become a second source for the displayed class money. Pin the
+// property, not the absence of the table name.
 assert(
-  !/from billing_line_items/i.test(skuOrders),
-  'sku-orders keeps no second billing_line_items shipping sum of its own',
+  (skuOrders.match(/from billing_line_items/gi) || []).length === 1 &&
+    /\) inv on true/.test(skuOrders),
+  'sku-orders reads billing_line_items exactly once, as the reconciliation lateral',
+);
+assert(
+  /labels\.customer_money\s+as money_total/.test(skuOrders) &&
+    /labels\.customer_std\s+as money_std/.test(skuOrders),
+  'the displayed customer_billed money still comes from the eligible-shipment resolver',
 );
 
 // 2. Client consumers pass customer_billed (SKU table + SKU drawer in the route;

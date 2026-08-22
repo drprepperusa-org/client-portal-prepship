@@ -290,8 +290,12 @@ await reset();
   // resolver does not see it and neither does the order detail Shipping row.
   // Presenting it here as the customer figure was the drift Hermes returned
   // this card for.
-  equal(row.shipping_money_state, 'pending', 'state pending - the label has no resolved money');
-  equal(row.shipping_total, null, 'the unattached line is NOT presented as the customer figure');
+  // A shipping line with no shipment is attached to no label, so the canonical
+  // resolver cannot classify it - but Billing still charges it, so it must be
+  // disclosed rather than silently dropped.
+  equal(row.shipping_money_state, 'billing_mismatch', 'unattached invoiced money is disclosed');
+  money(row.shipping_total, 12, 'the row shows the invoiced amount');
+  equal(row.shipping_reconciled, null, 'nothing was attributable to a label');
   equal(row.shipping_standard, null, 'no class guessed');
   equal(row.shipping_expedited, null, 'no class guessed for exp either');
   equal(result.shipCountExpedited, 0, 'excluded from exp average');
@@ -310,16 +314,12 @@ await reset();
   });
   const result = await run(clientId);
   const row = result.orders[0]!;
-  equal(row.shipping_money_state, 'attributed', 'state attributed - nothing is unexplained');
-  money(row.shipping_total, 5, 'total is the label money only, NOT label + unattached line');
-  money(row.shipping_standard, 5, 'std carries the whole total');
-  equal(row.shipping_expedited, null, 'no exp money');
-  check(
-    Math.abs(Number(row.shipping_total) - Number(row.shipping_standard ?? 0)) < 0.005,
-    'total equals standard + expedited (structural, not coincidental)',
-  );
-  equal(result.shipCountStandard, 1, 'order counted for std');
-  money(result.avgShippingStandard, 5, 'average uses the label money');
+  equal(row.shipping_money_state, 'billing_mismatch', 'the extra invoiced 3.00 is disclosed');
+  money(row.shipping_total, 8, 'the row shows the full invoiced amount');
+  money(row.shipping_reconciled, 5, 'of which 5.00 is attributable to the label');
+  equal(row.shipping_standard, null, 'no class split while money is unattributable');
+  equal(result.shipCountStandard, 0, 'mismatch rows stay out of the counts');
+  money(result.avgShippingStandard, 0, 'and out of the averages');
 }
 
 // ---------------------------------------------------------------------------
@@ -383,12 +383,17 @@ await reset();
   });
   const result = await run(clientId);
   const row = result.orders[0]!;
-  money(row.shipping_total, 5, 'voided label money is excluded from the total');
-  money(row.shipping_standard, 5, 'std money unchanged');
-  equal(row.shipping_expedited, null, 'the voided expedited label contributes nothing');
-  equal(row.shipping_money_state, 'attributed', 'state attributed, and it is now true');
-  equal(result.shipCountExpedited, 0, 'no expedited order counted');
-  money(result.avgShippingExpedited, 0, 'expedited average untouched');
+  // The $20 on the voided label is STILL INVOICED - invoice-details.ts and
+  // billing-summaries.ts sum every 'shipping' line by order_id. Reporting $5 and
+  // calling it 'attributed' would hide charged money behind a clean state.
+  equal(row.shipping_money_state, 'billing_mismatch', 'state billing_mismatch, not a clean attributed');
+  money(row.shipping_total, 25, 'the row shows what Billing charges');
+  money(row.shipping_reconciled, 5, 'and what the eligible labels actually account for');
+  equal(row.shipping_standard, null, 'unattributable money gets no class');
+  equal(row.shipping_expedited, null, 'and no expedited class either');
+  equal(result.shipCountStandard, 0, 'mismatch row excluded from the std count');
+  equal(result.shipCountExpedited, 0, 'and from the exp count');
+  money(result.avgShippingStandard, 0, 'and from the averages');
 }
 
 // ---------------------------------------------------------------------------
@@ -414,10 +419,12 @@ await reset();
   });
   const result = await run(clientId);
   const row = result.orders.find((o) => o.order_id === mine.orderId)!;
-  money(row.shipping_total, 5, 'the foreign-linked 99.00 never enters my total');
-  money(row.shipping_standard, 5, 'std money unchanged');
-  equal(row.shipping_expedited, null, 'a different order expedited label classifies nothing here');
-  equal(row.shipping_money_state, 'attributed', 'state attributed');
+  // The line belongs to MY order (b.order_id = mine) but points at another
+  // order's shipment. Billing charges it to me; the labels cannot account for it.
+  equal(row.shipping_money_state, 'billing_mismatch', 'foreign-linked money is disclosed, not dropped');
+  money(row.shipping_total, 104, 'the row shows the invoiced 5.00 + 99.00');
+  money(row.shipping_reconciled, 5, 'only 5.00 is attributable to my eligible labels');
+  equal(row.shipping_standard, null, 'no class is guessed for the unattributable part');
 }
 
 // ---------------------------------------------------------------------------
@@ -481,11 +488,13 @@ await reset();
     from ${schema.orders}
     where ${schema.orders.id} = ${seeded.orderId}
   `);
-  // The drawer allocates the order figure across the SKU units; this order has
-  // a single unit of a single SKU, so the two must match to the cent.
-  money(row.shipping_total, Number(canonical!.v), 'drawer total == canonical order shipping rate');
-  money(row.shipping_total, 5, 'and that figure is the eligible label only');
-  equal(row.shipping_expedited, null, 'voided expedited label excluded');
+  // This order has a single unit of a single SKU, so the SKU's allocation IS the
+  // whole order figure. That is the only case where row-level equality holds -
+  // Scenario 17 covers the multi-SKU case where it does not.
+  money(row.shipping_reconciled, Number(canonical!.v), 'reconciled figure == canonical order shipping rate');
+  money(row.shipping_reconciled, 5, 'and that figure is the eligible label only');
+  equal(row.shipping_money_state, 'billing_mismatch', 'the voided and unattached lines are invoiced, so disclosed');
+  money(row.shipping_total, 35, 'the invoiced sum is 5 + 20 voided + 3 unattached + 7 return-linked');
 }
 
 // ---------------------------------------------------------------------------
@@ -519,7 +528,9 @@ await reset();
   });
   const result = await run(clientId);
   const row = result.orders[0]!;
-  money(row.shipping_total, 5, 'return label money is not outbound shipping');
+  money(row.shipping_reconciled, 5, 'only the outbound label is attributable');
+  equal(row.shipping_money_state, 'billing_mismatch', 'the return-linked shipping line is invoiced, so disclosed');
+  money(row.shipping_total, 45, 'the row shows the invoiced 5 + 40');
   equal(row.shipping_expedited, null, 'return label classifies nothing');
   equal(result.shipCountExpedited, 0, 'no expedited order counted');
 }
@@ -539,8 +550,150 @@ await reset();
   });
   const result = await run(clientId);
   const row = result.orders[0]!;
-  equal(row.shipping_money_state, 'external_label', 'state external_label, not voided_only');
-  equal(row.shipping_total, null, 'return postage is not outbound shipping money');
+  // The order still has an invoiced 'shipping' line, so the mismatch state wins
+  // over the shipment-shape state - the customer is charged and must see it.
+  equal(row.shipping_money_state, 'billing_mismatch', 'charged money outranks the shape caption');
+  money(row.shipping_total, 9, 'the invoiced amount is shown');
+  equal(row.shipping_reconciled, null, 'no eligible outbound label to attribute it to');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 17: multi-SKU order - rows are allocations that RECONCILE, not copies');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // Hermes CP-060 return: the drawer row was documented as equal to the
+  // order-detail Shipping row. That is only true when the SKU owns every unit.
+  // Order: SKU A x1, SKU B x2, one std label billed 12.00.
+  const seeded = await seedOrder({
+    clientId,
+    sku: 'CP060-SKU',
+    qty: 1,
+    labels: [{ service: STD, billed: 12 }],
+  });
+  await db.insert(schema.orderItems).values({
+    orderId: seeded.orderId,
+    sku: 'CP060-SKU-B',
+    name: 'Item CP060-SKU-B',
+    quantity: '2',
+    unitPrice: '10.00',
+    orderStatus: 'shipped',
+    orderDate: NOW,
+    clientId,
+  });
+
+  const [canonical] = await db.execute<{ v: string | null }>(rawSql`
+    select (${orderCustomerShippingRateSql()})::text as v
+    from ${schema.orders}
+    where ${schema.orders.id} = ${seeded.orderId}
+  `);
+  money(canonical!.v as unknown as string, 12, 'canonical order shipping is 12.00');
+
+  const aRow = (await run(clientId)).orders[0]!;
+  const bResult = await getSkuOrdersForSku({
+    sku: 'CP060-SKU-B',
+    canViewFinancials: true,
+    shippingBasis: 'customer_billed',
+    orderScopeSql: rawSql`o.client_id = ${clientId}`,
+    ...WINDOW,
+  });
+  const bRow = bResult.orders[0]!;
+
+  money(aRow.shipping_total, 4, 'SKU A (1 of 3 units) receives one third');
+  money(bRow.shipping_total, 8, 'SKU B (2 of 3 units) receives two thirds');
+  check(
+    Math.abs(Number(aRow.shipping_total) + Number(bRow.shipping_total) - 12) < 0.005,
+    'allocations across all SKU rows reconcile to the canonical order amount',
+  );
+  check(
+    Math.abs(Number(aRow.shipping_standard) + Number(bRow.shipping_standard) - 12) < 0.005,
+    'standard allocations reconcile independently on the same basis',
+  );
+  check(
+    Math.abs(Number(aRow.shipping_total) - Number(canonical!.v)) > 0.005,
+    'and NO single SKU row equals the full order amount - the retracted claim',
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 18: average admission matches row display for zero and negative net');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  // Hermes CP-060 return: rows displayed class money when non-zero while the
+  // summary admitted only positive, so a net-negative row displayed and then
+  // vanished from both numerator and denominator.
+  // Order 1: net -3.00 standard (10.00 billed, 13.00 credited).
+  const neg = await seedOrder({ clientId, labels: [{ service: STD, billed: 10 }] });
+  await db.insert(schema.billingLineItems).values({
+    clientId,
+    orderId: neg.orderId,
+    orderNumber: neg.orderNumber,
+    shipmentId: neg.shipmentIds[0]!,
+    lineType: 'shipping',
+    description: 'Overcharge credit',
+    qty: '1',
+    unitCost: '-13.00',
+    totalCost: '-13.00',
+  });
+  // Order 2: net exactly 0.00 standard.
+  const zero = await seedOrder({ clientId, labels: [{ service: STD, billed: 6 }] });
+  await db.insert(schema.billingLineItems).values({
+    clientId,
+    orderId: zero.orderId,
+    orderNumber: zero.orderNumber,
+    shipmentId: zero.shipmentIds[0]!,
+    lineType: 'shipping',
+    description: 'Full refund',
+    qty: '1',
+    unitCost: '-6.00',
+    totalCost: '-6.00',
+  });
+  // Order 3: ordinary positive 9.00 standard.
+  await seedOrder({ clientId, labels: [{ service: STD, billed: 9 }] });
+
+  const result = await run(clientId);
+  const byTotal = new Map(result.orders.map((o) => [Number(o.shipping_total), o]));
+  const negRow = byTotal.get(-3)!;
+  const zeroRow = byTotal.get(0)!;
+
+  equal(negRow.shipping_money_state, 'attributed', 'a net-negative order is still fully attributed');
+  money(negRow.shipping_standard, -3, 'the row displays the negative net');
+  money(zeroRow.shipping_total, 0, 'a net-zero order shows 0.00, which is an answer');
+  equal(zeroRow.shipping_standard, null, 'zero carries no class amount to display');
+
+  // Contract: the average is a NET average over every displayed attributed row.
+  // -3 and +9 are displayed and admitted; the 0.00 row displays no class amount
+  // and is admitted by neither rule.
+  equal(result.shipCountStandard, 2, 'both displayed class rows are counted');
+  check(
+    Math.abs(Number(result.avgShippingStandard) - 3) < 0.005,
+    `net average over displayed rows ((-3 + 9) / 2 units) = 3.00 (got ${result.avgShippingStandard})`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\\nScenario 19: invoice sum equals the displayed figure when nothing is odd');
+await reset();
+{
+  const clientId = await seedClient('CP060 Client');
+  const seeded = await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, billed: 5 },
+      { service: EXP, billed: 20 },
+    ],
+  });
+  const [invoiced] = await db.execute<{ v: string }>(rawSql`
+    select coalesce(sum(total_cost), 0)::text as v
+    from billing_line_items
+    where order_id = ${seeded.orderId} and line_type = 'shipping'
+  `);
+  const row = (await run(clientId)).orders[0]!;
+  money(invoiced!.v, 25, 'the Billing definition sums to 25.00');
+  money(row.shipping_total, 25, 'and the drawer shows the same 25.00');
+  equal(row.shipping_money_state, 'attributed', 'no mismatch when every line is attributable');
+  equal(row.shipping_reconciled, null, 'no reconciliation figure needed');
 }
 
 // ---------------------------------------------------------------------------

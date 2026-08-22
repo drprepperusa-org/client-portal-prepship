@@ -515,29 +515,53 @@ falling back to PrepShip’s frozen `selected_rate_json` snapshot (ps-437 /
 ps-508 / ps-509 tuples). **Eligibility:** `shipmentIsCustomerShippingEligibleSql()`
 — not voided, not a return. **Event clock:** label / bill time.
 
-This is the SAME per-shipment value `orderCustomerShippingRateSql()` sums for
-the Orders list and the order-detail charge summary, so the drawer figure and
-the `Shipping` row one click away are the same number by construction. Before
-the CP-060 correction the drawer summed every `billing_line_items` shipping row
-by `order_id` instead, which counted money attached to voided or foreign
-shipments that the order surface excluded — two definitions of one customer
-money field, one click apart.
+The drawer and the order-detail `Shipping` row share ONE unallocated source:
+`shipmentCustomerShippingRateSql()` summed over the order's eligible shipments,
+which is exactly what `orderCustomerShippingRateSql()` sums for the Orders list
+and the charge summary. **A drawer row is a proportional allocation of that
+shared source, not the order figure itself** — `× qty / order_qty_total`. The
+rows of one order reconcile to the order amount in aggregate; an individual SKU
+row equals it only when that SKU owns every unit on the order.
+
+Stated as the invariant that actually holds: **Σ(SKU row allocations for an
+order) = the canonical order shipping amount**, and standard and expedited
+reconcile independently on the same basis. An earlier draft of this section
+claimed row-level equality ("the same number by construction"); that was false
+for multi-SKU orders and is corrected here (Hermes, CP-060 return 2026-08-22).
+
+Before the CP-060 correction the drawer summed every `billing_line_items`
+shipping row by `order_id` instead, which counted money attached to voided or
+foreign shipments that the order surface excluded — two definitions of one
+customer money field, one click apart.
 
 | UI label | Frontend field | Backend DTO field | Canonical source / formula | Event clock |
 | --- | --- | --- | --- | --- |
-| Drawer row shipping | `o.shippingTotal` | `shippingTotal` | Σ `shipmentCustomerShippingRateSql()` over eligible shipments of the order, allocated `× qty / order_qty_total` | label / bill time |
+| Drawer row shipping | `o.shippingTotal` | `shippingTotal` | Σ `shipmentCustomerShippingRateSql()` over eligible shipments of the order, allocated `× qty / order_qty_total`. On `billing_mismatch` this is instead the INVOICED sum (Σ every `line_type='shipping'` line by `order_id`), same allocation | label / bill time |
+| Drawer row `… matched to labels` | `o.shippingReconciled` | `shippingReconciled` | on `billing_mismatch` only: the eligible-label sum, allocated the same way, so the invoiced figure is reconcilable; null otherwise | label / bill time |
 | Drawer row `std $…` | `o.shippingStandard` | `shippingStandard` | the same sum filtered to non-expedited `service_code` (`EXPEDITED_SERVICES`, PS-418 mirror) | label / bill time |
 | Drawer row `· exp $…` | `o.shippingExpedited` | `shippingExpedited` | the same sum filtered to expedited `service_code` | label / bill time |
-| Drawer row caption | `o.shippingMoneyState` | `shippingMoneyState` | `attributed` \| `pending` \| `external_label` \| `voided_only` — why a figure is or is not a number | shipment state / resolver |
-| Avg std shipping | `data.avgShippingStandard` | `avgShippingStandard` | Σ allocated standard money ÷ Σ units, over `attributed` orders with non-zero standard money | label / bill time |
+| Drawer row caption | `o.shippingMoneyState` | `shippingMoneyState` | `attributed` \| `billing_mismatch` \| `pending` \| `external_label` \| `voided_only` — why a figure is or is not a number, and which definition produced it | shipment state / resolver |
+| Avg std shipping | `data.avgShippingStandard` | `avgShippingStandard` | Σ allocated standard money ÷ Σ units, over `attributed` rows whose standard money is non-zero — the SAME admissibility rule the row renderer uses, so a displayed row cannot be silently absent from the denominator. Net of credits; `billing_mismatch` rows are excluded because their money is not attributable to a class | label / bill time |
 | Avg exp shipping | `data.avgShippingExpedited` | `avgShippingExpedited` | as above for expedited | label / bill time |
 
 Ownership rules established by CP-060:
 
-- `shippingTotal` is not an independent total. It is the canonical customer
-  shipping figure for the order, allocated across the SKU’s units. If it ever
-  disagrees with the order-detail `Shipping` row, one of the two stopped using
-  the shared resolver — that is the bug, not a rounding difference.
+- `shippingTotal` is not an independent total. It is a proportional allocation
+  of the canonical customer shipping figure for the order. It does NOT equal the
+  order-detail `Shipping` row except when the SKU owns all units; what must hold
+  is that the order's SKU rows sum to that figure. If the AGGREGATE disagrees,
+  one of the two stopped using the shared resolver — that is the bug.
+- `billing_mismatch` exists because the portal does not own Billing. Invoice and
+  billing summaries sum every `line_type = 'shipping'` row by `order_id`
+  (`read-models/invoice-details.ts`, `services/billing-summaries.ts`), while this
+  figure sums only eligible shipments. `voidLabelV2` leaves billing rows in place
+  when it voids a shipment, and no constraint ties a line's `shipment_id` to its
+  own order, so the invoice can legitimately exceed the label sum. When it does,
+  the row shows the INVOICED amount, carries `shippingReconciled` beside it, is
+  withheld from the class split, and is excluded from the averages. A display
+  resolver cannot make charged money stop being the customer's money by
+  declining to look at it. CP owns no remedy here: CP-059A retired this repo's
+  billing writer, so preventing the lines is PrepShip's to do.
 - `shippingStandard + shippingExpedited = shippingTotal` holds structurally,
   because the class columns are `filter (…)` partitions of the same sum. There
   is no residual, and therefore nothing for the portal to explain away.
