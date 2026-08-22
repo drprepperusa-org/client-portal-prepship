@@ -61,6 +61,7 @@ export function toClientAnalysisSkuOrderDto(order: ClientAnalysisSkuOrderSource)
     unit_price: order.unit_price,
     item_name: order.item_name,
     shippingTotal: order.shipping_total,
+    shippingReconciled: order.shipping_reconciled,
     shippingStandard: order.shipping_standard,
     shippingExpedited: order.shipping_expedited,
     shippingMoneyState: order.shipping_money_state,

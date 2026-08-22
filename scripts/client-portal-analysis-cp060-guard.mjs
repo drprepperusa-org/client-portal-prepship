@@ -98,8 +98,54 @@ check(
   'sku-orders selects eligible shipments through the shared eligibility predicate',
 );
 check(
-  !/from billing_line_items/i.test(skuOrders),
-  'sku-orders no longer sums billing_line_items itself (no order-grain shipping total)',
+  /labels\.customer_money\s+as money_total/.test(skuOrders),
+  'the customer_billed total comes from the eligible-shipment resolver, not an order-grain billing sum',
+);
+check(
+  (skuOrders.match(/from billing_line_items/gi) || []).length === 1 &&
+    /\) inv on true/.test(skuOrders),
+  'the only billing_line_items read is the reconciliation lateral (inv), not a second display total',
+);
+
+// Hermes CP-060 return, 2026-08-22. The drawer reads only eligible-shipment
+// money, but Billing charges every 'shipping' line by order_id. When the invoice
+// exceeds what the labels resolve to, the difference is money the customer IS
+// charged; it may not vanish behind a clean 'attributed'.
+check(
+  /where b\.order_id = o\.id and b\.line_type = 'shipping'/.test(skuOrders),
+  'sku-orders measures the invoiced shipping sum using the Billing definition',
+);
+check(
+  skuOrders.includes("then 'billing_mismatch'") &&
+    /money_invoiced, 0\) - coalesce\(r\.money_total, 0\)\) > 0\.005/.test(skuOrders),
+  'sku-orders reports billing_mismatch when Billing charges more than the eligible labels resolve to',
+);
+check(
+  skuOrders.indexOf("then 'billing_mismatch'") < skuOrders.indexOf("then 'external_label'"),
+  'billing_mismatch outranks the shipment-shape states (charged money is not "label voided")',
+);
+check(
+  skuOrders.includes('as shipping_reconciled'),
+  'a mismatch row carries the eligible-label figure alongside the invoiced one',
+);
+check(
+  !/attributable and money_(std|exp) > 0/.test(skuOrders),
+  'the summary admits class money on the same non-zero rule the rows use (no silent denominator split)',
+);
+check(
+  (skuOrders.match(/attributable and money_(std|exp) <> 0/g) || []).length >= 2,
+  'row and average admissibility use the same predicate',
+);
+
+// The row-level parity claim that was false for multi-SKU orders must not return.
+const matrix = read('docs/source-of-truth-matrix.md');
+check(
+  matrix.includes('proportional allocation') && matrix.includes('claimed row-level equality'),
+  'the SOT matrix documents allocation semantics instead of asserting row-level equality',
+);
+check(
+  matrix.includes('billing_mismatch'),
+  'the SOT matrix documents the billing_mismatch state and its two figures',
 );
 check(
   !/unattributed|money_attributed|partial_unattributed/.test(skuOrders),
@@ -124,7 +170,7 @@ check(
 
 // The contract's money-state vocabulary must match the read model's exactly.
 const analysisContract = stripComments(read('src/lib/client-portal/contracts/analysis.ts'));
-for (const state of ['attributed', 'pending', 'external_label', 'voided_only']) {
+for (const state of ['attributed', 'billing_mismatch', 'pending', 'external_label', 'voided_only']) {
   check(analysisContract.includes(`'${state}'`), `contract declares the ${state} money state`);
 }
 check(

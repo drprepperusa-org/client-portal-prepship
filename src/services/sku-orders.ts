@@ -26,13 +26,21 @@
 // back to its frozen rate snapshot) over the shipments
 // shipmentIsCustomerShippingEligibleSql() admits. That is the exact per-shipment
 // value orderCustomerShippingRateSql() sums for the Orders surface and the order
-// detail charge summary, so the drawer total and the Shipping row a click away
-// cannot disagree — and every dollar in the total belongs to exactly one
-// shipment, hence exactly one class. total = standard + expedited is now
-// structural, not an invariant to be checked. Money the canonical owner does not
-// recognise (a billing line with no shipment, or one pointing at a voided or
-// foreign shipment) is not the customer's outbound shipping money and is not
-// shown here, exactly as the order surface already treats it.
+// detail charge summary, so the two share ONE unallocated source, and every
+// dollar in it belongs to exactly one shipment and therefore exactly one class.
+// total = standard + expedited is structural, not an invariant to be checked.
+//
+// A drawer ROW is a proportional allocation of that source across the order's
+// units (× qty / order_qty_total). It does NOT equal the order-detail Shipping
+// row unless the SKU owns every unit; what holds is that an order's SKU rows
+// SUM to it. An earlier comment here claimed row-level equality — false for
+// multi-SKU orders, corrected per Hermes 2026-08-22.
+//
+// Second correction from the same review: money the canonical resolver does not
+// recognise is still money Billing charges. Invoice surfaces sum every
+// 'shipping' line by order_id, so an invoice can exceed the eligible-label sum.
+// Rather than quietly omitting the difference, the read model detects it and
+// reports 'billing_mismatch' — see the inv lateral below.
 //
 // The query is parametrized by `orderScopeSql`: a raw predicate against the
 // orders table aliased as `o`. Callers pass their own tenant scope (operator
@@ -51,6 +59,13 @@ import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order
  * Why the order has, or has not, a shipping figure.
  *
  * - `attributed`    — the canonical resolver returned a value; total = std + exp.
+ * - `billing_mismatch` — Billing charges MORE shipping than the order's eligible
+ *                     labels resolve to, so the drawer cannot attribute all of
+ *                     the customer's money. The row shows the INVOICED figure
+ *                     (they are charged it) with no class split, and is excluded
+ *                     from the class averages. Never let this render as a clean
+ *                     `attributed`: a display resolver cannot make charged money
+ *                     stop being customer money by declining to look at it.
  * - `pending`       — an eligible label exists but PrepShip has neither billed it
  *                     nor frozen a rate snapshot yet. Mirrors the Orders surface's
  *                     `customerShippingRatePending`; never call this "unbilled",
@@ -62,7 +77,12 @@ import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order
  * gone: with one row set there is no residual to describe. `unbilled` is renamed
  * `pending` for the reason above.
  */
-export type ShippingMoneyState = 'attributed' | 'pending' | 'external_label' | 'voided_only';
+export type ShippingMoneyState =
+  | 'attributed'
+  | 'billing_mismatch'
+  | 'pending'
+  | 'external_label'
+  | 'voided_only';
 
 export type SkuOrderRow = {
   order_id: number;
@@ -77,6 +97,8 @@ export type SkuOrderRow = {
   item_name: string | null;
   shipping_cost: string | null;
   shipping_total: string | null;
+  /** On `billing_mismatch`, what the eligible labels DID resolve to; else null. */
+  shipping_reconciled: string | null;
   shipping_standard: string | null;
   shipping_expedited: string | null;
   shipping_money_state: ShippingMoneyState;
@@ -253,6 +275,45 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
           and coalesce(s2.is_return, false) = false
       ) as has_any_shipment
     ) sh
+    left join lateral (
+      -- What Billing actually charges for shipping on this order: EXACTLY the
+      -- definition the invoice and billing summaries use
+      -- (read-models/invoice-details.ts, services/billing-summaries.ts) — every
+      -- 'shipping' line by order_id, with no shipment-validity filter.
+      --
+      -- This is NOT a competing figure to display. It exists so the drawer can
+      -- tell when the canonical outbound figure and the invoice disagree. A
+      -- display resolver cannot make charged money stop being the customer's
+      -- money by declining to look at it (Hermes, CP-060 return, 2026-08-22):
+      -- voidLabelV2 leaves billing rows in place when it voids a shipment, and
+      -- no constraint ties a line's shipment_id to its own order, so an invoice
+      -- can legitimately exceed the sum of the order's eligible labels.
+      --
+      -- The per-cause counts are OPERATOR diagnostics. They are deliberately not
+      -- projected to the client: "voided-linked" would disclose internal
+      -- shipment structure to a customer who can act on none of it. The client
+      -- sees the money and one neutral state.
+      select
+        coalesce(sum(b.total_cost), 0)::numeric                              as invoiced_shipping,
+        count(*) filter (where b.shipment_id is null)::int                   as unattached_lines,
+        count(*) filter (
+          where b.shipment_id is not null
+            and not exists (
+              select 1 from shipments sx
+              where sx.id = b.shipment_id and sx.order_id = o.id
+            )
+        )::int                                                               as foreign_lines,
+        count(*) filter (
+          where exists (
+            select 1 from shipments sy
+            where sy.id = b.shipment_id
+              and sy.order_id = o.id
+              and (coalesce(sy.voided, false) = true or coalesce(sy.is_return, false) = true)
+          )
+        )::int                                                               as ineligible_lines
+      from billing_line_items b
+      where b.order_id = o.id and b.line_type = 'shipping'
+    ) inv on true
   `;
 
   // Basis switch. Both bases now take their total and their class split from the
@@ -266,18 +327,34 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         labels.customer_money                                              as money_total,
         labels.customer_std                                                as money_std,
         labels.customer_exp                                                as money_exp,
+        inv.invoiced_shipping                                              as money_invoiced,
+        (inv.unattached_lines + inv.foreign_lines + inv.ineligible_lines)  as money_odd_lines,
       `
     : sql`
         labels.house_money                                                 as money_total,
         labels.house_std                                                   as money_std,
         labels.house_exp                                                   as money_exp,
+        labels.house_money                                                 as money_invoiced,
+        0::int                                                             as money_odd_lines,
       `;
 
-  // Order matters. The shipment-shape branches come first because they explain
-  // an absent figure better than the money branches could; `pending` is reached
-  // only when an eligible label exists, which is what makes it honest.
+  // Fires only when Billing charges MORE shipping than the order's eligible
+  // labels resolve to. The reverse gap is the ordinary pre-billing window — the
+  // frozen snapshot is ahead of generation — and is `pending`/`attributed`, not
+  // a defect. Money the customer is charged and the drawer cannot attribute is
+  // the case that must never render as a clean `attributed`.
+  const billingMismatchSql = sql`
+    (coalesce(r.money_invoiced, 0) - coalesce(r.money_total, 0)) > 0.005
+  `;
+
+  // Order matters. `billing_mismatch` outranks the shipment-shape branches: an
+  // order with every label voided but $20 still invoiced is not adequately
+  // described as "label voided" when the customer is being charged. The shape
+  // branches then explain an absent figure better than the money branches could;
+  // `pending` is reached only when an eligible label exists.
   const stateCaseSql = sql`
     case
+      when ${billingMismatchSql} then 'billing_mismatch'
       when coalesce(r.active_label_count, 0) = 0 and not r.has_any_shipment
            and r.order_status = 'shipped' then 'external_label'
       when coalesce(r.active_label_count, 0) = 0 and r.has_any_shipment then 'voided_only'
@@ -330,6 +407,8 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         max(money_total)                                                    as money_total,
         max(money_std)                                                      as money_std,
         max(money_exp)                                                      as money_exp,
+        max(money_invoiced)                                                 as money_invoiced,
+        max(money_odd_lines)                                                as money_odd_lines,
         sku_key,
         max(sku)                                                            as sku,
         sum(qty)::int                                                       as qty
@@ -350,26 +429,26 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       where lower(sku) = lower(${sku})
     )
     select
-      count(*) filter (where attributable and money_std > 0)::int          as std_ship_count,
-      count(*) filter (where attributable and money_exp > 0)::int          as exp_ship_count,
+      count(*) filter (where attributable and money_std <> 0)::int          as std_ship_count,
+      count(*) filter (where attributable and money_exp <> 0)::int          as exp_ship_count,
       coalesce(sum(money_std * qty / nullif(order_qty_total, 0)) filter (
-        where attributable and money_std > 0
+        where attributable and money_std <> 0
       ), 0)::text as std_shipping_total,
       coalesce(sum(money_exp * qty / nullif(order_qty_total, 0)) filter (
-        where attributable and money_exp > 0
+        where attributable and money_exp <> 0
       ), 0)::text as exp_shipping_total,
       coalesce(
         sum(money_std * qty / nullif(order_qty_total, 0)) filter (
-          where attributable and money_std > 0
+          where attributable and money_std <> 0
         )
-        / nullif(sum(qty) filter (where attributable and money_std > 0), 0),
+        / nullif(sum(qty) filter (where attributable and money_std <> 0), 0),
         0
       )::text as avg_std_shipping,
       coalesce(
         sum(money_exp * qty / nullif(order_qty_total, 0)) filter (
-          where attributable and money_exp > 0
+          where attributable and money_exp <> 0
         )
-        / nullif(sum(qty) filter (where attributable and money_exp > 0), 0),
+        / nullif(sum(qty) filter (where attributable and money_exp <> 0), 0),
         0
       )::text as avg_exp_shipping
     from classed
@@ -425,6 +504,8 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         max(money_total)                                                    as money_total,
         max(money_std)                                                      as money_std,
         max(money_exp)                                                      as money_exp,
+        max(money_invoiced)                                                 as money_invoiced,
+        max(money_odd_lines)                                                as money_odd_lines,
         bool_or(externally_shipped_flag)                                    as externally_shipped_flag,
         sku_key,
         max(sku)                                                            as sku,
@@ -455,13 +536,27 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       case
         when money_state = 'attributed'
           then (money_total / nullif(order_qty_total, 0))::text
+        when money_state = 'billing_mismatch'
+          then (money_invoiced / nullif(order_qty_total, 0))::text
         else null
       end as shipping_cost,
+      -- On a mismatch this is the INVOICED figure, not the resolver's. The
+      -- customer is charged it; hiding it behind a caption would be the same
+      -- omission this correction exists to remove. shipping_money_state says
+      -- which of the two definitions produced the number, and the class split
+      -- is withheld because unattributable money has no honest class.
       case
         when money_state = 'attributed'
           then (money_total * qty / nullif(order_qty_total, 0))::text
+        when money_state = 'billing_mismatch'
+          then (money_invoiced * qty / nullif(order_qty_total, 0))::text
         else null
       end as shipping_total,
+      case
+        when money_state = 'billing_mismatch'
+          then (money_total * qty / nullif(order_qty_total, 0))::text
+        else null
+      end as shipping_reconciled,
       case
         when money_state = 'attributed' and money_std <> 0
           then (money_std * qty / nullif(order_qty_total, 0))::text
@@ -489,6 +584,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         shipping_total: null,
         shipping_standard: null,
         shipping_expedited: null,
+        shipping_reconciled: null,
       }));
 
   return {
