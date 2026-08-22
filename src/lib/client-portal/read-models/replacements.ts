@@ -24,7 +24,6 @@ type RawRow = {
   client_id: number | null;
   client_name: string | null;
   status: string;
-  reason: string;
   item_count: number;
   requested_at: string | null;
 };
@@ -38,7 +37,6 @@ function toRow(row: RawRow): PortalReplacementRow {
     clientId: row.client_id,
     clientName: row.client_name,
     status: row.status,
-    reason: row.reason,
     itemCount: Number(row.item_count ?? 0),
     requestedAt: row.requested_at,
   };
@@ -63,7 +61,6 @@ export async function listPortalReplacements(
       o.client_id,
       c.name as client_name,
       r.status,
-      r.reason,
       (select count(*)::int from replacement_items ri where ri.replacement_id = r.id) as item_count,
       r.requested_at
     from replacements r
@@ -92,7 +89,6 @@ export async function getPortalReplacement(
       o.client_id,
       c.name as client_name,
       r.status,
-      r.reason,
       (select count(*)::int from replacement_items ri where ri.replacement_id = r.id) as item_count,
       r.requested_at
     from replacements r
@@ -121,9 +117,9 @@ export async function getPortalReplacement(
 // Badge selects for the order read model (drizzle .select fields). Emitted per
 // order row, all four over the SAME predicate so they cannot disagree:
 //   hasActiveReplacement — the order has a replacement in a NON-TERMINAL status
-//   replacementStatus    — status of the newest such replacement
-//   replacementCount     — how many there are
-//   replacementReference — reference of the newest such replacement
+//   activeReplacementStatus    — status of the newest such replacement
+//   activeReplacementCount     — how many there are
+//   activeReplacementReference — reference of the newest such replacement
 //
 // "Active" is not a Client Portal invention. PS-502 froze the partition:
 // REPLACEMENT_TERMINAL_STATUSES = ['completed', 'rejected', 'cancelled']
@@ -154,9 +150,9 @@ export function orderReplacementBadgeSelects(ready: boolean, orderIdRef: SQL) {
   if (!ready) {
     return {
       hasActiveReplacement: sql<boolean>`false`,
-      replacementStatus: sql<string | null>`null::text`,
-      replacementCount: sql<number>`0::int`,
-      replacementReference: sql<string | null>`null::text`,
+      activeReplacementStatus: sql<string | null>`null::text`,
+      activeReplacementCount: sql<number>`0::int`,
+      activeReplacementReference: sql<string | null>`null::text`,
     };
   }
   return {
@@ -164,17 +160,17 @@ export function orderReplacementBadgeSelects(ready: boolean, orderIdRef: SQL) {
       select 1 from replacements r
       where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
     )`,
-    replacementStatus: sql<string | null>`(
+    activeReplacementStatus: sql<string | null>`(
       select r.status from replacements r
       where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
       order by r.requested_at desc, r.id desc
       limit 1
     )`,
-    replacementCount: sql<number>`(
+    activeReplacementCount: sql<number>`(
       select count(*)::int from replacements r
       where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
     )`,
-    replacementReference: sql<string | null>`(
+    activeReplacementReference: sql<string | null>`(
       select r.reference from replacements r
       where r.order_id = ${orderIdRef} and r.status not in ('completed', 'rejected', 'cancelled')
       order by r.requested_at desc, r.id desc

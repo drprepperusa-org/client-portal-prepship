@@ -115,9 +115,9 @@ const orderRow = {
   fulfillmentStatus: 'in_transit',
   // CP-061: backend-derived badge fields — the UI renders these verbatim.
   hasActiveReplacement: true,
-  replacementStatus: 'requested',
-  replacementCount: 1,
-  replacementReference: '200014902407643-REPLACE',
+  activeReplacementStatus: 'requested',
+  activeReplacementCount: 1,
+  activeReplacementReference: '200014902407643-REPLACE',
   orderDate: '2026-07-16T11:59:00.000Z',
   shipToName: 'E2E Customer',
   shipToLine1: null,
@@ -681,7 +681,11 @@ test('CP-061: /replace lists canonical rows and opens the detail drawer', async 
   await page.getByText('200014902407643-REPLACE').click();
   const drawer = page.getByRole('dialog', { name: '200014902407643-REPLACE' });
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByText('Arrived damaged')).toBeVisible();
+  // The request reason is deliberately NOT rendered: PS-502 has never declared
+  // replacements.reason customer-safe and ships no labels for its four codes,
+  // so the portal withholds it rather than asserting a disclosure upstream did
+  // not make. See src/lib/client-portal/contracts/replacements.ts.
+  await expect(drawer.getByText('Arrived damaged')).toHaveCount(0);
   await expect(drawer.getByText('E2E-SKU')).toBeVisible();
   // Staff (admin) sees the capability-gated create action.
   await expect(page.getByRole('button', { name: 'Request replacement' })).toBeVisible();

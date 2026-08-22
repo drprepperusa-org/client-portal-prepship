@@ -87,7 +87,7 @@ check(
   'replacement contract exposes no operator/internal fields',
 );
 check(
-  ['hasActiveReplacement', 'replacementStatus', 'replacementCount', 'replacementReference'].every(
+  ['hasActiveReplacement', 'activeReplacementStatus', 'activeReplacementCount', 'activeReplacementReference'].every(
     (key) => contract.includes(key),
   ),
   'contract defines the four backend-derived badge fields',
@@ -121,7 +121,7 @@ check(
 // prepship-v4 replacement-state-machine.ts:45-49) and the read model now
 // transcribes its negative. Pin the exact triple, that all four badge fields
 // use the SAME predicate (three of four would let hasActiveReplacement disagree
-// with replacementCount), and that the status vocabulary stays nine so a tenth
+// with activeReplacementCount), and that the status vocabulary stays nine so a tenth
 // upstream status breaks the build instead of silently entering the badge.
 const badgeBlock = readModel.slice(readModel.indexOf('orderReplacementBadgeSelects'));
 const terminalPredicates =

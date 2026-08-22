@@ -30,8 +30,21 @@ export interface PortalReplacementRow {
   clientId: number | null;
   clientName: string | null;
   status: PortalReplacementStatus | string;
-  /** Customer-safe request reason (operator notes are internal and absent). */
-  reason: string;
+  // `reason` is deliberately NOT exposed.
+  //
+  // PS-502 froze a four-value vocabulary for it — damaged | wrong_item |
+  // lost_in_transit | other (prepship-v4 replacement-create-command.ts:59) —
+  // but that is a SERVICE-LAYER invariant only. The column is bare
+  // `reason text not null` with no CHECK (drizzle/0096_ps502_replacements.sql:35),
+  // the HTTP route accepts any non-empty string, upstream has never declared the
+  // value customer-safe, and it ships no display labels for the four codes.
+  //
+  // This contract previously asserted "customer-safe request reason". PrepShip
+  // never said that, so it was OUR claim rather than a rendered truth — the
+  // unsourced business truth the shadow-renderer law forbids. Withholding until
+  // PS-502 constrains the column and states the disclosure is the honest
+  // position; upstream's own customer-adjacent return read model omits
+  // `returns.reason` in the same way.
   /** Count of replacement_items lines. */
   itemCount: number;
   requestedAt: string | null;
@@ -52,7 +65,7 @@ export interface PortalReplacementDetail extends PortalReplacementRow {
  * verbatim and never re-derives them from replacement rows. */
 export interface OrderReplacementBadge {
   hasActiveReplacement: boolean;
-  replacementStatus: string | null;
-  replacementCount: number;
-  replacementReference: string | null;
+  activeReplacementStatus: string | null;
+  activeReplacementCount: number;
+  activeReplacementReference: string | null;
 }
