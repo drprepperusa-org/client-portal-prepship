@@ -59,13 +59,17 @@ import { walmartDirectDuplicateSuppressionPredicate } from '../lib/walmart-order
  * Why the order has, or has not, a shipping figure.
  *
  * - `attributed`    — the canonical resolver returned a value; total = std + exp.
- * - `billing_mismatch` — Billing charges MORE shipping than the order's eligible
- *                     labels resolve to, so the drawer cannot attribute all of
- *                     the customer's money. The row shows the INVOICED figure
- *                     (they are charged it) with no class split, and is excluded
- *                     from the class averages. Never let this render as a clean
- *                     `attributed`: a display resolver cannot make charged money
- *                     stop being customer money by declining to look at it.
+ * - `billing_mismatch` — the order carries shipping money the canonical resolver
+ *                     cannot account for: either a line of abnormal lineage
+ *                     exists (unattached, foreign-linked, voided/return-linked)
+ *                     in EITHER direction, or Billing simply charges more than
+ *                     the eligible labels resolve to. The row shows the INVOICED
+ *                     figure (they are charged it) with no class split, and is
+ *                     excluded from the class averages. Never let this render as
+ *                     a clean `attributed`: a display resolver cannot make
+ *                     charged money stop being customer money by declining to
+ *                     look at it — and a NEGATIVE abnormal line overstates the
+ *                     customer's bill just as surely as a positive one hides it.
  * - `pending`       — an eligible label exists but PrepShip has neither billed it
  *                     nor frozen a rate snapshot yet. Mirrors the Orders surface's
  *                     `customerShippingRatePending`; never call this "unbilled",
@@ -289,10 +293,12 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       -- no constraint ties a line's shipment_id to its own order, so an invoice
       -- can legitimately exceed the sum of the order's eligible labels.
       --
-      -- The per-cause counts are OPERATOR diagnostics. They are deliberately not
-      -- projected to the client: "voided-linked" would disclose internal
-      -- shipment structure to a customer who can act on none of it. The client
-      -- sees the money and one neutral state.
+      -- The per-cause counts DRIVE classification (see billingMismatchSql): any
+      -- abnormal-lineage line makes the row a mismatch regardless of which way
+      -- the money nets. Their individual causes stay internal — telling a
+      -- customer "voided-linked" discloses internal shipment structure they can
+      -- act on none of — so the client sees the two amounts and one neutral
+      -- state, never the cause breakdown.
       select
         coalesce(sum(b.total_cost), 0)::numeric                              as invoiced_shipping,
         count(*) filter (where b.shipment_id is null)::int                   as unattached_lines,
@@ -338,13 +344,29 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
         0::int                                                             as money_odd_lines,
       `;
 
-  // Fires only when Billing charges MORE shipping than the order's eligible
-  // labels resolve to. The reverse gap is the ordinary pre-billing window — the
-  // frozen snapshot is ahead of generation — and is `pending`/`attributed`, not
-  // a defect. Money the customer is charged and the drawer cannot attribute is
-  // the case that must never render as a clean `attributed`.
+  // Two independent triggers, because a money delta alone is not enough
+  // (Hermes, CP-060 second return 2026-08-22):
+  //
+  //   1. ANY abnormal-lineage line exists. An unattached, foreign-linked or
+  //      voided/return-linked line is a line the canonical resolver cannot see.
+  //      Its amount may be NEGATIVE, in which case the invoice is LOWER than the
+  //      label sum and a delta test aimed at overbilling misses it entirely —
+  //      the mirror of the defect this state was added to fix. An active $5
+  //      label plus an unattached -$3 credit bills the customer $2 while the
+  //      resolver says $5. Two abnormal lines can also cancel (+$20 voided-linked,
+  //      -$20 unattached) and leave the totals equal with the lineage still wrong.
+  //      Presence, not net amount, is the honest signal.
+  //   2. Billing charges more than the eligible labels resolve to, even with no
+  //      individually abnormal line.
+  //
+  // The ordinary pre-billing window is deliberately NOT a mismatch: a frozen
+  // snapshot with no Billing lines yet has zero abnormal lines and a negative
+  // delta, so it stays `pending`/`attributed`.
   const billingMismatchSql = sql`
-    (coalesce(r.money_invoiced, 0) - coalesce(r.money_total, 0)) > 0.005
+    (
+      coalesce(r.money_odd_lines, 0) > 0
+      or (coalesce(r.money_invoiced, 0) - coalesce(r.money_total, 0)) > 0.005
+    )
   `;
 
   // Order matters. `billing_mismatch` outranks the shipment-shape branches: an

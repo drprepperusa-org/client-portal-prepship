@@ -46,13 +46,21 @@ export interface AnalysisBreakdown {
  * the order-detail charge summary use. Event clock: label/bill time.
  * Owner: PrepShip.
  *
- * `billing_mismatch` means Billing charges more shipping than the order's
- * eligible labels resolve to. Invoice and billing summaries sum EVERY
+ * `billing_mismatch` means the order carries shipping money the canonical
+ * resolver cannot account for. Invoice and billing summaries sum EVERY
  * `line_type = 'shipping'` row by order_id; this figure sums only the canonical
  * eligible shipments. `voidLabelV2` leaves billing rows in place when it voids a
  * shipment, and no constraint ties a line's shipment_id to its own order, so the
- * two can legitimately disagree. In that state `shippingTotal` is the INVOICED
- * amount and `shippingReconciled` is what the labels accounted for.
+ * two can legitimately disagree.
+ *
+ * It fires on the PRESENCE of an abnormal-lineage line in either direction, not
+ * merely on a positive money gap: a negative unattached credit makes the invoice
+ * LOWER than the label sum, which would otherwise display a figure higher than
+ * the customer is billed. Two abnormal lines can also cancel out and leave the
+ * totals equal with the lineage still wrong.
+ *
+ * In that state `shippingTotal` is the INVOICED amount and `shippingReconciled`
+ * is what the labels accounted for.
  *
  * `pending` replaces the former `unbilled`: an eligible label exists but the
  * resolver has no answer yet, exactly the window the Orders DTO reports as
