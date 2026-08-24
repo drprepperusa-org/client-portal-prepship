@@ -142,6 +142,9 @@ const ps508Contract = new RegExp([
   "'hugrab_shipping_rate_override',\\s*",
   "'house_next_best_customer_rate'\\s*\\)",
   "[\\s\\S]*customerShippingMoneyPolicyVersion' = 'ps-508-v1'",
+  // Suffix parity with Billing's decision owner (Hermes PS-508 re-audit): a ps-508 tuple
+  // without billingDescriptionSuffix is HELD by Billing and must not read as settled here.
+  "[\\s\\S]*billingDescriptionSuffix'\\) = 'string'",
   "[\\s\\S]*not \\([\\s\\S]*\\? 'customerShippingMoneyCaptureSource'",
 ].join(''));
 const ps509Contract = new RegExp([
@@ -150,6 +153,9 @@ const ps509Contract = new RegExp([
   "'hugrab_shipping_rate_override'\\s*\\)",
   "[\\s\\S]*rateCostSource' = 'shipstation_sync_receipt_cost'",
   "[\\s\\S]*customerShippingMoneyPolicyVersion' = 'ps-509-v1'",
+  // Same suffix parity for the sync-ingress lane — the writer always emits it, but the
+  // PORTAL contract must fail closed on a malformed tuple exactly as Billing does.
+  "[\\s\\S]*billingDescriptionSuffix'\\) = 'string'",
   "[\\s\\S]*\\? 'customerShippingMoneyCaptureSource'",
   "[\\s\\S]*customerShippingMoneyCaptureSource'",
   "[\\s\\S]*= 'shipstation_sync_ingestion'",

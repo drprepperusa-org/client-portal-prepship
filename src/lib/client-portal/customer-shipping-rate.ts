@@ -27,7 +27,15 @@ function frozenCustomerShippingTupleHasValidMoneySql(): SQL {
   `;
 }
 
-/** PS-437 return/replacement tuple. Kept as the return-only compatibility gate. */
+/**
+ * PS-437 return/replacement tuple — the HISTORICAL lane, arbitrated 2026-08-24 (Hermes PS-508
+ * re-audit): these tuples intentionally lack billingDescriptionSuffix because they predate the
+ * eighth field and are billed by the return/replacement billers, which never flow through
+ * PrepShip's ordinary-outbound decision owner. The suffix is therefore deliberately NOT
+ * required here. If PrepShip's ordinary Billing ever encounters a suffix-less ps-437 tuple it
+ * fails CLOSED to review — that boundary belongs to Billing, and this lane must not widen to
+ * cover it. Only ps-508/ps-509 (below) mirror Billing's suffix-required contract.
+ */
 function frozenCustomerShippingTupleIsValidSql(): SQL {
   return sql`(${frozenCustomerShippingTupleHasValidMoneySql()})
     and ${shipments.selectedRateJson}->>'customerRateSource' in (
@@ -72,6 +80,11 @@ function frozenSyncIngressCustomerShippingTupleIsValidSql(): SQL {
     )
     and ${shipments.selectedRateJson}->>'rateCostSource' = 'shipstation_sync_receipt_cost'
     and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-509-v1'
+    -- PS-508 re-audit round 2: Billing's decision owner requires the suffix for EVERY tuple it
+    -- bills, ps-509 included. The normal ingress writer always emits it, but a malformed or
+    -- hand-written tuple without it would be HELD by Billing — so it must not read as settled
+    -- money here either. Same fail-closed contract as the ps-508 lane above.
+    and jsonb_typeof(${shipments.selectedRateJson}->'billingDescriptionSuffix') = 'string'
     and coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
       ? 'customerShippingMoneyCaptureSource'
     and ${shipments.selectedRateJson}->>'customerShippingMoneyCaptureSource'
