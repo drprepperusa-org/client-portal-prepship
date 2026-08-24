@@ -52,6 +52,11 @@ function frozenOutboundPurchaseCustomerShippingTupleIsValidSql(): SQL {
     )
     and ${shipments.selectedRateJson}->>'rateCostSource' = 'label_final_cost'
     and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-508-v1'
+    -- PS-508 contract parity (Hermes re-audit 2026-08-24, correction 5): Billing fails a
+    -- ps-508-v1 tuple CLOSED to review when billingDescriptionSuffix is absent, because the
+    -- suffix is part of the duplicate-suppression key. The Portal must not display as the
+    -- customer rate a tuple Billing would hold, so it enforces the same requirement.
+    and jsonb_typeof(${shipments.selectedRateJson}->'billingDescriptionSuffix') = 'string'
     and not (
       coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
         ? 'customerShippingMoneyCaptureSource'

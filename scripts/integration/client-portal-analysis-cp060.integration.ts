@@ -108,6 +108,10 @@ function frozenRate(cost: number, customer: number) {
     shippingMarginPct: null,
     customerRateSource: 'realized_customer_shipping_rate',
     rateCostSource: 'label_final_cost',
+    // The production writer always emits the suffix (labels.ts freeze). A suffix-less
+    // fixture previously passed here while Billing would HOLD the same tuple — the exact
+    // Portal/Billing contract divergence the Hermes re-audit flagged (correction 5).
+    billingDescriptionSuffix: ' (10%)',
     customerShippingMoneyPolicyVersion: 'ps-508-v1',
   };
 }
