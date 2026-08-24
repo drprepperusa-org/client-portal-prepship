@@ -95,8 +95,9 @@ function frozenSyncIngressCustomerShippingTupleIsValidSql(): SQL {
  * PS-437 is deliberately ABSENT from this non-return union (Hermes PS-508 round-3, P4).
  * The only writers of ps-437 tuples are the return freeze (isReturn=true shipments, covered by
  * the return-lane projection) and the replacement freeze — and PS-502's replacement tables do
- * not exist in production yet, so the legitimate non-return ps-437 display population is ZERO
- * rows today. Accepting the version here would let any suffix-less ps-437 tuple on an ordinary
+ * not exist in production yet, so source topology implies a zero legitimate non-return ps-437
+ * display population (UNVERIFIED against the production catalog — no runtime readback was in
+ * scope; the claim is structural, not measured). Accepting the version here would let any suffix-less ps-437 tuple on an ordinary
  * shipment read as settled money with no relational proof it belongs to the replacement lane.
  * When PS-502 lands, reintroduce the branch WITH that proof, e.g.
  *   exists (select 1 from replacements r where r.replacement_shipment_id = shipments.id)

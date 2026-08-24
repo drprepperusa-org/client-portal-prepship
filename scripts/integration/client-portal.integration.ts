@@ -221,6 +221,7 @@ async function insertCp046PendingFixture(clientId: number): Promise<void> {
 async function insertCustomerShippingSnapshotCase(
   name: string,
   selectedRateJson: Record<string, unknown> | null,
+  opts: { isReturn?: boolean } = {},
 ) {
   const [client] = await db
     .insert(schema.clients)
@@ -248,6 +249,7 @@ async function insertCustomerShippingSnapshotCase(
       carrierCode: 'stamps_com',
       selectedRateJson,
       voided: false,
+      isReturn: opts.isReturn ?? false,
     })
     .returning();
   return { client: client!, order: order!, shipment: shipment! };
@@ -332,13 +334,26 @@ async function main(): Promise<number> {
     rateCostSource: 'label_final_cost',
     customerShippingMoneyPolicyVersion: 'ps-437-v1',
   };
+  // Hermes PS-508 round-4 (P4 lane boundary): ps-437's only non-return writer is the
+  // replacement freeze, and PS-502's tables are not applied in production — so the non-return
+  // union no longer accepts ps-437 at all. This fixture used to expect 6.77 here; that was the
+  // exact unsafe case the boundary removes. The return-lane case below proves ps-437 money is
+  // still projected where it legitimately lives.
   const snapshotCase = await insertCustomerShippingSnapshotCase('snapshot', frozenTuple);
   const [snapshotRow] = await db
     .select({ projected: shippingRateSql.projectedCustomerShippingRateSql() })
     .from(schema.shipments)
     .where(drizzleEq(schema.shipments.id, snapshotCase.shipment.id));
-  eq(moneyOrNull(snapshotRow?.projected), 6.77,
-    'projectedCustomerShippingRateSql reads the frozen customer amount');
+  eq(moneyOrNull(snapshotRow?.projected), null,
+    'a NON-return ps-437 tuple projects null (no relational replacement-lane proof)');
+
+  const returnCase = await insertCustomerShippingSnapshotCase('return-lane', frozenTuple, { isReturn: true });
+  const [returnRow] = await db
+    .select({ projected: shippingRateSql.projectedCustomerShippingRateSql() })
+    .from(schema.shipments)
+    .where(drizzleEq(schema.shipments.id, returnCase.shipment.id));
+  eq(moneyOrNull(returnRow?.projected), 6.77,
+    'the SAME ps-437 tuple on a RETURN shipment still projects the frozen amount');
 
   const missingCase = await insertCustomerShippingSnapshotCase('missing', null);
   const [missingRow] = await db
