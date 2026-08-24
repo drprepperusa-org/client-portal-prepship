@@ -168,11 +168,20 @@ const workflowFence = new RegExp([
   '[\\s\\S]*ps-509-v1',
 ].join(''));
 
-assert.match(
-  outboundProjection,
-  /customerShippingMoneyPolicyVersion' = 'ps-437-v1'/,
-  'ordinary outbound reads the historical ps-437 tuple',
-);
+// Hermes PS-508 round-3 (P4): the non-return branch must NOT accept ps-437. Its only
+// non-return writer is the replacement freeze, whose tables do not exist in production yet,
+// so a bare version check would surface suffix-less tuples with no relational lane proof.
+// The return arm (before the isReturn=false marker) keeps ps-437 — slice past it first.
+{
+  const falseMarker = 'coalesce("shipments"."isReturn", false) = false';
+  const outboundBranch = outboundProjection.slice(outboundProjection.indexOf(falseMarker));
+  assert.ok(outboundBranch.length > 0, 'outbound projection carries the isReturn=false branch');
+  assert.doesNotMatch(
+    outboundBranch,
+    /ps-437-v1/,
+    'the non-return branch must not accept ps-437 without relational replacement-lane proof',
+  );
+}
 assert.match(
   outboundProjection,
   ps508Contract,

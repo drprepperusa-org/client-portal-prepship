@@ -1079,6 +1079,39 @@ await reset();
 }
 
 // ---------------------------------------------------------------------------
+console.log('\nScenario 31: a non-return ps-437 tuple is never counted (no relational lane proof)');
+await reset();
+{
+  // Hermes PS-508 round-3 (P4): ps-437's only non-return writer is the replacement freeze,
+  // whose tables do not exist in production yet. A bare version match would surface such a
+  // tuple as settled money with no proof it belongs to the replacement lane — so the
+  // non-return union excludes ps-437 entirely, even when the tuple is otherwise pristine.
+  const clientId = await seedClient('CP060 Client');
+  const valid437: Record<string, unknown> = {
+    selectedRateCost: 10,
+    cShippingRateAmount: 44.44,
+    shippingMarginAmount: 34.44,
+    shippingMarginPct: null,
+    customerRateSource: 'realized_customer_shipping_rate',
+    rateCostSource: 'label_final_cost',
+    customerShippingMoneyPolicyVersion: 'ps-437-v1',
+    billingDescriptionSuffix: ' (10%)',
+  };
+  await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, frozenRaw: valid437 },
+      { service: EXP, billed: 20 },
+    ],
+  });
+  const result = await run(clientId);
+  equal(result.orders.length, 1, 'one drawer row');
+  const row = result.orders[0]!;
+  money(row.shipping_total, 20, 'ONLY the billed line counts; the non-return ps-437 tuple is rejected');
+  equal(row.shipping_standard, null, 'the ps-437 tuple contributed nothing');
+}
+
+// ---------------------------------------------------------------------------
 await pgClient.end({ timeout: 5 });
 
 if (failures > 0) {
