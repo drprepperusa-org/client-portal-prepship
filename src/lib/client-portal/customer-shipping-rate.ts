@@ -118,7 +118,9 @@ function frozenCustomerShippingAmountSql(): SQL {
  * Compatibility name retained for callers. This reads only PrepShip's
  * explicit, policy-versioned shipment snapshot and never derives customer
  * money from cost or billing config. Return labels remain ps-437-only;
- * ordinary outbound labels accept the canonical ps-437/508/509 contracts.
+ * ordinary outbound labels accept the ps-508/ps-509 contracts ONLY — ps-437 is the
+ * return/replacement lane and is deliberately absent from the non-return union (see the
+ * P4 note above); reintroducing it requires relational replacement-lane proof.
  */
 export function projectedCustomerShippingRateSql(): SQL<string | null> {
   return sql`case
