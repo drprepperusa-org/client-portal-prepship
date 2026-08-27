@@ -237,6 +237,7 @@
     "test:full-site-certification": "node scripts/run-full-site-certification.mjs",
     "test:client-portal-returns-cp058": "tsx scripts/client-portal-returns-cp058-guard.mjs",
     "test:cp-058:browser": "playwright test web/e2e/client-portal-ui.spec.js -g \"CP-058\" --reporter=line",
+    "test:cp-061:browser": "playwright test web/e2e/client-portal-ui.spec.js -g \"CP-061\" --reporter=line",
     "test:cp-059a-writer-retirement": "tsx scripts/ps-cp-059a-writer-retirement-guard.ts",
     "test:client-portal-analysis-cp060:integration": "tsx scripts/integration/client-portal-analysis-cp060.integration.ts",
     "test:client-portal-analysis-cp060": "node scripts/client-portal-analysis-cp060-guard.mjs",
