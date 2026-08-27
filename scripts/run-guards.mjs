@@ -19,9 +19,27 @@ const binDir = path.join(process.cwd(), 'node_modules', '.bin');
 const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}` };
 
 // Needs a browser / live network / credentials / a database / a built bundle → runs
-// elsewhere. `^test:guards` excludes THIS runner's own entries so it never recurses.
-// `bundle-redaction` (CP-038) needs portal-client/dist → runs in test:full-site-certification.
-const DENY = /(^test:guards|:browser|smoke|integration|web-bundle-budget|bundle-redaction|^test:status:|:live$|-live$|direct-carrier-labels|shipstation-label-url|marketplace-reconciliation|shipstation-awaiting-parity|client-portal-replacement-reason-parity)/;
+// elsewhere. One fragment per line: as a single literal this passed 240 characters the
+// moment the parity entry was added, and a denial list is exactly the kind of thing that
+// reads better one entry at a time. The alternation, the capturing group and the absence
+// of flags are unchanged, so the matching behaviour is identical.
+const DENY_PATTERNS = [
+  '^test:guards',                   // THIS runner's own entries, so it never recurses
+  ':browser',
+  'smoke',
+  'integration',
+  'web-bundle-budget',
+  'bundle-redaction',               // CP-038 needs portal-client/dist → full-site-certification
+  '^test:status:',
+  ':live$',
+  '-live$',
+  'direct-carrier-labels',
+  'shipstation-label-url',
+  'marketplace-reconciliation',
+  'shipstation-awaiting-parity',
+  'client-portal-replacement-reason-parity', // CP-061 parity needs the prepship-v4 checkout
+];
+const DENY = new RegExp(`(${DENY_PATTERNS.join('|')})`);
 
 const guards = scripts
   .filter((s) => /^(test|guard):/.test(s))
