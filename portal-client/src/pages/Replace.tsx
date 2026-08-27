@@ -8,12 +8,12 @@ import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { QueryState } from '@/components/ui/QueryState';
-import { TextInput, TextArea } from '@/components/ui/Inputs';
+import { TextInput } from '@/components/ui/Inputs';
 import { useToast } from '@/components/ui/Toast';
 import { portalApi } from '@/lib/api';
 import type { Accent } from '@/lib/accents';
 import { useAuth } from '@/auth';
-import { useMe, useReplacement, useReplacements } from '@/lib/hooks';
+import { useMe, useReplacement, useReplacements, useReplacementReasonContract } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
 
 /**
@@ -43,12 +43,28 @@ function statusMeta(status: string): { label: string; accent: Accent } {
   return STATUS_META[status] ?? { label: status, accent: 'violet' };
 }
 
+// CP-061 — reason labels come ONLY from the validated PS-502 contract; the UI keeps no local
+// code->label map. An unresolved code, or an unavailable contract, renders neutrally — never raw.
+function useReasonLabels(): Map<string, string> {
+  const q = useReplacementReasonContract();
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of q.data?.data?.reasons ?? []) map.set(entry.code, entry.label);
+    return map;
+  }, [q.data]);
+}
+
+function reasonLabelFrom(reasonCode: string | null, labels: Map<string, string>): string | null {
+  return reasonCode && labels.has(reasonCode) ? (labels.get(reasonCode) as string) : null;
+}
+
 export default function Replace() {
   const q = useReplacements();
   const me = useMe();
   const [openId, setOpenId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const rows = useMemo(() => q.data?.data ?? [], [q.data]);
+  const labels = useReasonLabels();
   const canRequest = me.data?.canRequestReplacements ?? false;
 
   return (
@@ -89,6 +105,7 @@ export default function Replace() {
             <div className="space-y-1.5">
               {rows.map((row) => {
                 const meta = statusMeta(row.status);
+                const reasonLabel = reasonLabelFrom(row.reasonCode, labels);
                 return (
                   <button
                     key={row.id}
@@ -98,7 +115,8 @@ export default function Replace() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-brand-700">{row.reference}</p>
                       <p className="truncate text-xs text-ink-3">
-                        {row.orderNumber ?? '—'} · {row.clientName ?? '—'} · {shortDate(row.requestedAt)}
+                        {row.orderNumber ?? '—'} · {row.clientName ?? '—'}
+                        {reasonLabel ? ` · ${reasonLabel}` : ''} · {shortDate(row.requestedAt)}
                       </p>
                     </div>
                     <span className="shrink-0 tnum text-xs text-ink-3">
@@ -113,7 +131,7 @@ export default function Replace() {
         )}
       </QueryState>
 
-      <ReplacementDrawer id={openId} onClose={() => setOpenId(null)} />
+      <ReplacementDrawer id={openId} onClose={() => setOpenId(null)} labels={labels} />
       {canRequest && (
         <ReplacementCreateModal
           open={createOpen}
@@ -128,7 +146,7 @@ export default function Replace() {
   );
 }
 
-function ReplacementDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
+function ReplacementDrawer({ id, onClose, labels }: { id: number | null; onClose: () => void; labels: Map<string, string> }) {
   const q = useReplacement(id);
   const detail = q.data?.data;
   const meta = detail ? statusMeta(detail.status) : null;
@@ -146,9 +164,14 @@ function ReplacementDrawer({ id, onClose }: { id: number | null; onClose: () => 
               <p className="mt-1 text-sm font-semibold text-ink">{detail.orderNumber ?? '—'}</p>
               <p className="text-xs text-ink-3">{detail.clientName ?? '—'}</p>
             </div>
-            {/* No Reason panel: the field is withheld until PS-502 declares it
-                customer-safe and ships labels for its four codes. See
-                src/lib/client-portal/contracts/replacements.ts. */}
+            <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">Reason</p>
+              {/* Label from the validated PS-502 contract only; a redacted (null) code renders
+                  neutrally, never the raw stored value. */}
+              <p className="mt-1 text-sm text-ink">
+                {reasonLabelFrom(detail.reasonCode, labels) ?? 'Reason unavailable'}
+              </p>
+            </div>
             <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-ink-3">
                 Items ({detail.items.length})
@@ -185,6 +208,11 @@ function ReplacementCreateModal({
 }) {
   const { accessToken } = useAuth();
   const toast = useToast();
+  // The reason dropdown is populated ONLY from the validated PS-502 contract; there is no local
+  // fallback. When it is unavailable (feature off / malformed), the request action is disabled.
+  const reasonQ = useReplacementReasonContract();
+  const reasonOptions = reasonQ.data?.data?.reasons ?? [];
+  const reasonContractReady = !reasonQ.isError && reasonOptions.length > 0;
   const [orderId, setOrderId] = useState('');
   const [reason, setReason] = useState('');
   const [items, setItems] = useState<DraftItem[]>([{ sku: '', quantity: '1' }]);
@@ -197,8 +225,12 @@ function ReplacementCreateModal({
       toast.error('Order required', 'Enter the internal order id for the replacement.');
       return;
     }
-    if (!reason.trim()) {
-      toast.error('Reason required', 'Say why this replacement is needed.');
+    if (!reasonContractReady) {
+      toast.error('Reasons unavailable', 'Replacements are not available right now. Contact your account manager.');
+      return;
+    }
+    if (!reason) {
+      toast.error('Reason required', 'Choose a reason for the replacement.');
       return;
     }
     const cleanItems = items
@@ -212,7 +244,8 @@ function ReplacementCreateModal({
     try {
       await portalApi.createReplacement(accessToken, {
         orderId: orderIdNum,
-        reason: reason.trim(),
+        // The canonical reason CODE, not the label — PrepShip's create command validates it.
+        reason,
         items: cleanItems,
       });
       toast.success('Replacement requested', 'The request was forwarded to PrepShip.');
@@ -244,14 +277,33 @@ function ReplacementCreateModal({
           placeholder="e.g. 1321"
           inputMode="numeric"
         />
-        <TextArea
-          label="Reason"
-          required
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Why is a replacement needed?"
-          rows={3}
-        />
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-ink-2">
+            Reason <span className="text-rose-500">*</span>
+          </label>
+          {reasonContractReady ? (
+            <select
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="focus-ring w-full rounded-glass-sm border border-slate-300 bg-white px-3 py-2 text-sm text-ink"
+            >
+              <option value="" disabled>
+                Select a reason…
+              </option>
+              {reasonOptions.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="rounded-glass-sm bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+              {reasonQ.isLoading
+                ? 'Loading reasons…'
+                : 'Replacements are not available right now. Contact your account manager.'}
+            </p>
+          )}
+        </div>
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Items</p>
           {items.map((item, index) => (
@@ -293,7 +345,7 @@ function ReplacementCreateModal({
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={() => void submit()} disabled={saving}>
+          <Button onClick={() => void submit()} disabled={saving || !reasonContractReady || !reason}>
             {saving ? 'Requesting…' : 'Request replacement'}
           </Button>
         </div>

@@ -10,6 +10,12 @@
 // or money identity exists on this surface.
 
 import type { PortalReplacementReasonCode } from '../replacement-reason';
+// Re-exported for the frontend (which imports contracts via @client-portal-contracts): the reason
+// contract shape it renders. Type-only, so no backend validation code enters the client bundle.
+export type {
+  ReplacementReasonContract,
+  ReplacementReasonContractEntry,
+} from '../replacement-reason';
 
 /** Canonical PS-502 lifecycle vocabulary (prepship-v4 replacement-state-machine.ts). */
 export type PortalReplacementStatus =

@@ -138,6 +138,29 @@ check(
   `no reason label is hardcoded in a replacement-aware source file (offenders: ${labelOffenders.join(', ') || 'none'})`,
 );
 
+// ── Source (frontend): render from the contract, submit the code, no fallback formatting ──
+const page = stripComments(read('portal-client/src/pages/Replace.tsx'));
+check(
+  page.includes('useReplacementReasonContract') &&
+    page.includes('reasonOptions.map') &&
+    page.includes('opt.code') &&
+    page.includes('opt.label') &&
+    page.includes('reasonLabelFrom'),
+  'the Replace page fetches the contract, renders its labels, and lists codes as option values',
+);
+check(
+  page.includes('row.reasonCode') && page.includes('detail.reasonCode'),
+  'the list and detail render from reasonCode (the redacted canonical code)',
+);
+check(
+  !page.includes('reason.trim()') && !page.includes('TextArea'),
+  'the create form submits the selected code, not free-typed reason text',
+);
+check(
+  !/replace\(\s*['"`]_['"`]/.test(page) && !/replace\(\s*\/_/.test(page) && !/titleCase|toTitle/i.test(page),
+  'no underscore-replacement or title-casing reason fallback exists in the page',
+);
+
 // ── package.json wiring ───────────────────────────────────────────────────────────────────
 const pkg = JSON.parse(read('package.json'));
 check(
