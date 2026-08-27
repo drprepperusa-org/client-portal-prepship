@@ -8,6 +8,7 @@ import { db } from '../../../db/client';
 import type { ClientPortalScope } from '../scope';
 import { rawOrderScopeForAlias } from '../predicates';
 import { replacementsSchemaReady } from '../replacements-schema-readiness';
+import { toReasonCode } from '../replacement-reason';
 import type {
   PortalReplacementDetail,
   PortalReplacementItem,
@@ -24,6 +25,7 @@ type RawRow = {
   client_id: number | null;
   client_name: string | null;
   status: string;
+  reason: string | null;
   item_count: number;
   requested_at: string | null;
 };
@@ -37,6 +39,9 @@ function toRow(row: RawRow): PortalReplacementRow {
     clientId: row.client_id,
     clientName: row.client_name,
     status: row.status,
+    // Raw reason redacted to a canonical code (or null) — a non-canonical/legacy free-text
+    // value never crosses; the frontend renders the label from the PS-502 contract.
+    reasonCode: toReasonCode(row.reason),
     itemCount: Number(row.item_count ?? 0),
     requestedAt: row.requested_at,
   };
@@ -61,6 +66,7 @@ export async function listPortalReplacements(
       o.client_id,
       c.name as client_name,
       r.status,
+      r.reason,
       (select count(*)::int from replacement_items ri where ri.replacement_id = r.id) as item_count,
       r.requested_at
     from replacements r
@@ -89,6 +95,7 @@ export async function getPortalReplacement(
       o.client_id,
       c.name as client_name,
       r.status,
+      r.reason,
       (select count(*)::int from replacement_items ri where ri.replacement_id = r.id) as item_count,
       r.requested_at
     from replacements r

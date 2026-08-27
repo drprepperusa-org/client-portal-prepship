@@ -12,6 +12,7 @@ import {
   getPortalReplacement,
   listPortalReplacements,
 } from '../../lib/client-portal/read-models/replacements';
+import { validateReasonContract } from '../../lib/client-portal/replacement-reason';
 
 const app = new Hono();
 
@@ -23,6 +24,69 @@ app.get('/replacements', async (c) => {
   const data = await listPortalReplacements(scope, { clientId, storeId });
   await recordPortalAudit('portal.replacements.list', scope, { clientId, storeId, rows: data.length });
   return c.json({ data });
+});
+
+// CP-061 — the customer-safe reason contract, proxied from PS-502. The frontend renders these
+// labels (never a local map) for both the request form and the list/detail reason display. It
+// forwards the caller's bearer like the create proxy, validates the upstream response, and FAILS
+// CLOSED (never invents a label) on an unknown version or malformed body. Available to any
+// authenticated client — the reason label on list/detail needs it, not just the create action.
+// Declared before the numeric `/:id{[0-9]+}` route; "reason-contract" cannot match that pattern.
+app.get('/replacements/reason-contract', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+
+  const authorization = c.req.header('authorization');
+  if (!authorization) return c.json({ error: 'Missing bearer token' }, 401);
+  if (!env.PREPSHIP_API_URL) {
+    return c.json(
+      {
+        error: 'Replacements are not configured. Set PREPSHIP_API_URL on the Client Portal API.',
+        code: 'prep_ship_replacements_unavailable',
+      },
+      503,
+    );
+  }
+
+  let upstream: Response;
+  try {
+    const baseUrl = env.PREPSHIP_API_URL.replace(/\/+$/, '');
+    upstream = await fetch(`${baseUrl}/replacements/reason-contract`, {
+      method: 'GET',
+      headers: { authorization, accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    console.error(
+      '[client-portal] replacement reason-contract unavailable:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    return c.json({ error: 'PrepShip is unavailable. Please retry.', code: 'prep_ship_unavailable' }, 502);
+  }
+
+  const payload = await upstream.json().catch(() => ({}));
+
+  // Upstream refusal (e.g. 403 REPLACEMENTS_DISABLED while the surface is dark) passes through
+  // verbatim, so the frontend keeps the reason UI unavailable rather than inventing labels.
+  if (!upstream.ok) {
+    return c.json(payload as Record<string, unknown>, upstream.status as never);
+  }
+
+  // A 200 with an unrecognised version or an incomplete/malformed map is an upstream fault, not a
+  // client one — fail CLOSED rather than pass garbage a renderer might misread as labels.
+  const contract = validateReasonContract(payload);
+  if (!contract) {
+    return c.json(
+      {
+        error: 'Replacement reason contract is unavailable or invalid.',
+        code: 'replacement_reason_contract_invalid',
+      },
+      502,
+    );
+  }
+
+  await recordPortalAudit('portal.replacements.reason_contract', scope, { version: contract.version });
+  return c.json({ data: contract });
 });
 
 app.get('/replacements/:id{[0-9]+}', async (c) => {
