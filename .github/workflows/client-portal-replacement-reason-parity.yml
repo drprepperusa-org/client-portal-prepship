@@ -24,7 +24,7 @@ on:
 # inputs, so the parity job binds this SHA explicitly rather than drifting to a moving branch.
 # Re-point this to prepshipv4-stable once the provider commit is merged there.
 env:
-  PREPSHIP_REASON_CONTRACT_REF: c49540e7df04740674380b54a6bc84c1ae759eb9
+  PREPSHIP_REASON_CONTRACT_REF: b1ed1c816041a57fbc7e28d98c5c19ce1f825629
 
 jobs:
   parity:

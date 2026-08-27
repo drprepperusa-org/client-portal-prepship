@@ -263,11 +263,14 @@ await reset();
   const keys = Object.keys(detail ?? {}).sort().join(',');
   equal(
     keys,
-    // 'reason' is deliberately absent: PS-502 never declared the column
-    // customer-safe and ships no labels for its four codes, so the portal
-    // withholds it. Key-exactness is the point of this assertion — if reason
-    // reappears without an upstream disclosure, this fails.
-    ['clientId', 'clientName', 'id', 'itemCount', 'items', 'orderId', 'orderNumber', 'reference', 'requestedAt', 'status'].sort().join(','),
+    // The raw 'reason' column is still deliberately absent. What changed is that
+    // PS-502 now publishes a versioned code/label contract (replacement-request-v1,
+    // GET /replacements/reason-contract), so the portal discloses the canonical CODE
+    // as 'reasonCode' — redacted to null by toReasonCode whenever the stored value is
+    // not one of the four, so raw free text never crosses. Key-exactness remains the
+    // point of this assertion: if the raw column, a label, or any other reason-shaped
+    // key reappears without an upstream disclosure, this fails.
+    ['clientId', 'clientName', 'id', 'itemCount', 'items', 'orderId', 'orderNumber', 'reasonCode', 'reference', 'requestedAt', 'status'].sort().join(','),
     'detail DTO keys are exactly the contract',
   );
 }
