@@ -243,6 +243,7 @@
     "test:prepship-expedited-parity": "node scripts/prepship-expedited-parity.mjs --allow-unarmed",
     "test:client-portal-replacements-cp061:integration": "tsx scripts/integration/client-portal-replacements-cp061.integration.ts",
     "test:client-portal-replacement-reason": "tsx scripts/client-portal-replacement-reason-guard.ts",
+    "test:client-portal-replacement-reason-parity": "tsx scripts/integration/client-portal-replacement-reason-parity.ts",
     "test:client-portal-replacements-cp061": "node scripts/client-portal-replacements-cp061-guard.mjs"
   },
   "dependencies": {

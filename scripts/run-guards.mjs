@@ -21,7 +21,7 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
 // Needs a browser / live network / credentials / a database / a built bundle → runs
 // elsewhere. `^test:guards` excludes THIS runner's own entries so it never recurses.
 // `bundle-redaction` (CP-038) needs portal-client/dist → runs in test:full-site-certification.
-const DENY = /(^test:guards|:browser|smoke|integration|web-bundle-budget|bundle-redaction|^test:status:|:live$|-live$|direct-carrier-labels|shipstation-label-url|marketplace-reconciliation|shipstation-awaiting-parity)/;
+const DENY = /(^test:guards|:browser|smoke|integration|web-bundle-budget|bundle-redaction|^test:status:|:live$|-live$|direct-carrier-labels|shipstation-label-url|marketplace-reconciliation|shipstation-awaiting-parity|client-portal-replacement-reason-parity)/;
 
 const guards = scripts
   .filter((s) => /^(test|guard):/.test(s))

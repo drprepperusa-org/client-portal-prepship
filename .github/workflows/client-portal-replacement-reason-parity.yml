@@ -1,0 +1,46 @@
+# CP-061 — reason-contract cross-repo parity lane.
+#
+# Proves the REAL PrepShip provider (prepship-v4 GET /replacements/reason-contract output) passes
+# the REAL Client Portal consumer validator, at explicit pinned SHAs. The CP-only guard suite
+# cannot run this (it needs the prepship-v4 checkout), so it lives in its own dispatchable lane and
+# is excluded from run-guards.mjs. Both repos are laid out as siblings so the parity script can
+# import ../../../prepship-v4.
+name: CP-061 reason-contract parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      prepship_ref:
+        description: prepship-v4 git ref (branch, tag, or SHA) to prove parity against
+        required: true
+        default: prepshipv4-stable
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Client Portal (consumer)
+        uses: actions/checkout@v4
+        with:
+          path: client-portal-prepship
+
+      - name: Check out PrepShip (provider) as a sibling
+        uses: actions/checkout@v4
+        with:
+          repository: drprepperusa-org/prepship-v4
+          ref: ${{ inputs.prepship_ref }}
+          path: prepship-v4
+          token: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install focused dependencies
+        run: |
+          npm ci --prefix client-portal-prepship
+          npm ci --prefix prepship-v4
+
+      - name: Reason-contract parity (binds both SHAs)
+        working-directory: client-portal-prepship
+        run: npm run test:client-portal-replacement-reason-parity
