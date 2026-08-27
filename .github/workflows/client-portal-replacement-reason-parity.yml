@@ -22,9 +22,13 @@ on:
 
 # The provider head this consumer was proven against. On a pull_request there are no dispatch
 # inputs, so the parity job binds this SHA explicitly rather than drifting to a moving branch.
-# Re-point this to prepshipv4-stable once the provider commit is merged there.
+#
+# This is now the INTEGRATED prepshipv4-stable SHA: merge commit 6d767547 of PS #37, which
+# carries the approved provider product commit 5580a968. It is deliberately an exact SHA and
+# not the branch name — parity must prove this consumer against one immutable provider head,
+# and prepshipv4-stable moves. Bump it if a later provider change alters the contract.
 env:
-  PREPSHIP_REASON_CONTRACT_REF: b1ed1c816041a57fbc7e28d98c5c19ce1f825629
+  PREPSHIP_REASON_CONTRACT_REF: 6d7675475fbbff0c3e49b63070fd3bf047c07c51
 
 jobs:
   parity:
