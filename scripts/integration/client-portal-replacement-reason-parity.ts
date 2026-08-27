@@ -16,6 +16,8 @@
  */
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
+// CP's own consumer validator lives inside CP's rootDir — a normal static import is correct here.
+import { validateReasonContract } from '../../src/lib/client-portal/replacement-reason';
 
 process.env.VERCEL = '1';
 process.env.NODE_ENV = 'test';
@@ -27,12 +29,19 @@ process.env.SUPABASE_JWT_SECRET = 'ps502-parity-jwt-not-real';
 process.env.REPLACEMENTS_ENABLED = 'true';
 process.env.REPLACEMENTS_LABEL_ENABLED = 'false';
 
-const [{ getReplacementReasonContract }, { validateReasonContract }] = await Promise.all([
-  // The real PrepShip provider (sibling checkout) — the exact value its route serialises.
-  import('../../../prepship-v4/src/services/replacement-reason-contract'),
-  // The real Client Portal consumer validator.
-  import('../../src/lib/client-portal/replacement-reason'),
-]);
+// Local mirror of the PS-502 provider surface. The parity assertions below are what actually keep
+// this in sync with PS; this local type only lets CP's own strict typecheck stay green WITHOUT
+// pulling PS's source tree into CP's program.
+type ProviderReasonContract = { version: string; reasons: Array<{ code: string; label: string }> };
+type ProviderModule = { getReplacementReasonContract: () => ProviderReasonContract };
+
+// Assembled at runtime, deliberately NOT a bare string literal: a literal specifier makes CP's
+// ordinary `tsc` statically resolve it and drag the entire PS source tree into CP's program
+// (TS6059/rootDir with a sibling present, TS2307 without one). tsx resolves this sibling .ts and
+// PS's own deps at run time — resolution is identical to the static specifier
+// '../../../prepship-v4/src/services/replacement-reason-contract', relative to THIS file.
+const PS_CONTRACT_SPECIFIER = ['..', '..', '..', 'prepship-v4', 'src', 'services', 'replacement-reason-contract'].join('/');
+const { getReplacementReasonContract } = (await import(PS_CONTRACT_SPECIFIER)) as ProviderModule;
 
 function gitSha(dir: string): string {
   try {
@@ -89,8 +98,8 @@ const negatives: Array<[string, unknown]> = [
   ['version changed', mutate((c) => { c.version = 'replacement-request-v2'; })],
   ['a code removed', mutate((c) => { c.reasons.pop(); })],
   ['an extra non-canonical code added', mutate((c) => { c.reasons.push({ code: 'nonsense', label: 'X' }); })],
-  ['a label blanked', mutate((c) => { c.reasons[0].label = ''; })],
-  ['a label made non-string', mutate((c) => { c.reasons[0].label = 123; })],
+  ['a label blanked', mutate((c) => { c.reasons[0]!.label = ''; })],
+  ['a label made non-string', mutate((c) => { c.reasons[0]!.label = 123; })],
   ['malformed payload', 'not-a-contract'],
 ];
 check(
