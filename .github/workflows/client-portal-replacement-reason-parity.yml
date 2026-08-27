@@ -14,6 +14,17 @@ on:
         description: prepship-v4 git ref (branch, tag, or SHA) to prove parity against
         required: true
         default: prepshipv4-stable
+  # Hermes ruling 2026-08-27: dispatch-only was not enough. This workflow is not on main, so it
+  # could not be dispatched before the merge, which left the cross-repo parity claim without any
+  # hosted run. A PR into main now executes it against the pinned provider head below.
+  pull_request:
+    branches: [main]
+
+# The provider head this consumer was proven against. On a pull_request there are no dispatch
+# inputs, so the parity job binds this SHA explicitly rather than drifting to a moving branch.
+# Re-point this to prepshipv4-stable once the provider commit is merged there.
+env:
+  PREPSHIP_REASON_CONTRACT_REF: c49540e7df04740674380b54a6bc84c1ae759eb9
 
 jobs:
   parity:
@@ -28,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: drprepperusa-org/prepship-v4
-          ref: ${{ inputs.prepship_ref }}
+          ref: ${{ inputs.prepship_ref || env.PREPSHIP_REASON_CONTRACT_REF }}
           path: prepship-v4
           token: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
 

@@ -55,3 +55,9 @@ jobs:
 
       - name: Static guard suite
         run: npm run test:guards
+
+      # Hermes ruling 2026-08-27: run-guards.mjs denies every `:browser` script, so the CP-061
+      # reason-contract UI proof had no hosted lane at all. Chromium is already installed above;
+      # this runs the browser assertions in the same job rather than on a workstation.
+      - name: CP-061 reason-contract browser proof
+        run: npm run test:cp-061:browser
