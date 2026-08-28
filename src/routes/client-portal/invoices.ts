@@ -11,6 +11,7 @@ import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
 import { portalInvoiceDetails, portalInvoiceDetailCount, portalInvoicePeriodSummary, portalInvoiceSummary } from '../../lib/client-portal/read-models/invoice-details';
+import { portalCanonicalInvoiceEvents } from '../../lib/client-portal/read-models/canonical-invoice-events';
 import { parsePage, parsePageSize, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
@@ -37,6 +38,13 @@ app.get('/invoice-details', async (c) => {
   if (range instanceof Response) return range;
   const clientId = requestedClientId(c);
 
+  // CP-059: row grain now comes from PrepShip's canonical billing events, not from a portal
+  // GROUP BY. The caller's own bearer is forwarded so PrepShip re-authorizes exactly the scope
+  // this route already checked — the portal does not mint or widen authority here.
+  const authorization = c.req.header('authorization');
+  if (!authorization) return c.json({ error: 'Missing bearer token' }, 401);
+  const requestId = c.req.header('x-request-id') ?? undefined;
+
   // Paged mode (portal drill-in): page + pageSize present → return a slice
   // plus pagination totals, so the table never renders thousands of rows.
   if (c.req.query('page')) {
@@ -46,21 +54,35 @@ app.get('/invoice-details', async (c) => {
     // (before pagination) — the read-model validates/ignores unknown keys.
     const sortBy = c.req.query('sortBy');
     const sortDir = c.req.query('sortDir');
-    const [rows, total] = await Promise.all([
-      portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive, page, pageSize, sortBy, sortDir }),
-      portalInvoiceDetailCount(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive }),
-    ]);
-    await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length, page });
+    const result = await portalCanonicalInvoiceEvents(scope, authorization, {
+      clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive, page, pageSize, sortBy, sortDir,
+    }, requestId);
+    if (!result.ok) {
+      await recordPortalAudit('portal.invoice_details.failed', scope, { clientId, reason: result.code });
+      return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
+    }
+    await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: result.rows.length, page });
     return c.json({
-      data: rows,
+      data: result.rows,
       billingVisible: true,
-      pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+      // `total` counts EVENT rows. An order with an outbound and two returns contributes 3;
+      // the previous order-grain count reported 1 and disagreed with what the grid showed.
+      pagination: {
+        page, pageSize, total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / pageSize)),
+      },
     });
   }
 
-  const rows = await portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
-  await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: rows.length });
-  return c.json({ data: rows, billingVisible: true });
+  const result = await portalCanonicalInvoiceEvents(scope, authorization, {
+    clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive,
+  }, requestId);
+  if (!result.ok) {
+    await recordPortalAudit('portal.invoice_details.failed', scope, { clientId, reason: result.code });
+    return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
+  }
+  await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: result.rows.length });
+  return c.json({ data: result.rows, billingVisible: true });
 });
 
 // Per-client billing rollup, aggregated in SQL with no row cap — the Billing
@@ -133,7 +155,18 @@ app.get('/invoice', async (c) => {
     scopeRestricted: scope.isRestricted,
   });
   const row = summary.clients[0];
-  const details = await portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
+  // CP-059 AC-6: the printable invoice is a SECOND serializer of the same event rows. It must
+  // read the identical canonical contract as the grid — a print surface that regroups by order
+  // while the grid shows events is exactly the parity failure this card exists to remove.
+  const printAuthorization = c.req.header('authorization');
+  if (!printAuthorization) return c.text('Missing bearer token', 401);
+  const detailResult = await portalCanonicalInvoiceEvents(scope, printAuthorization, {
+    clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive,
+  }, c.req.header('x-request-id') ?? undefined);
+  // Fail closed. A printable invoice that silently renders zero rows because upstream was
+  // unavailable is a document a customer could reasonably treat as a statement of no activity.
+  if (!detailResult.ok) return c.text(detailResult.error, detailResult.status as 401 | 403 | 502 | 503);
+  const details = detailResult.rows;
   // qty is a display count and is always summed from the rendered detail rows.
   const orderedQty = details.reduce((n, detail) => n + Number(detail.qty ?? 0), 0);
   // CP-024: the printable invoice's MONEY totals (amount due + section totals)

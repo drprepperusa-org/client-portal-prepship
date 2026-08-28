@@ -1,4 +1,4 @@
-import type { portalInvoiceDetails } from './read-models/invoice-details';
+import type { BillingInvoiceDetailRow } from './contracts/billing';
 
 /**
  * Printable invoice HTML renderer (extracted from routes/client-portal.ts).
@@ -34,7 +34,18 @@ export interface InvoiceTotals {
   grandTotal: number;
 }
 
-type InvoiceDetailRows = Awaited<ReturnType<typeof portalInvoiceDetails>>;
+/**
+ * CP-059: typed against the CUSTOMER-SAFE contract, not inferred from the SQL read model.
+ *
+ * The previous `Awaited<ReturnType<typeof portalInvoiceDetails>>` inherited every column that
+ * query happened to select — including `carrierCode`, which AC-7 forbids in customer-facing
+ * output. It was never rendered, so nothing leaked, but the print surface was one careless
+ * template line away from leaking it and the type would not have objected.
+ *
+ * Typing against `BillingInvoiceDetailRow` means the allowlist is the only way a field can
+ * reach this renderer at all.
+ */
+type InvoiceDetailRows = BillingInvoiceDetailRow[];
 
 const invoicePrintStyles = `
     * { box-sizing: border-box; }
