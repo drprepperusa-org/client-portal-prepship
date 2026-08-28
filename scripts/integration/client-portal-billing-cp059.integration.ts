@@ -65,9 +65,9 @@ async function main(): Promise<void> {
   // have proved the join against a shape production does not have.
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
   await db.execute(rawSql`
-    insert into order_items (order_id, sku, name, order_status) values
-      (9001, 'SKU-A', 'Widget A', 'shipped'),
-      (9001, 'SKU-B', 'Widget B', 'shipped')
+    insert into order_items (order_id, line_index, sku, name, order_status) values
+      (9001, 0, 'SKU-A', 'Widget A', 'shipped'),
+      (9001, 1, 'SKU-B', 'Widget B', 'shipped')
   `);
 
   const range = { dateFrom: '2026-08-01', dateTo: '2026-09-01' };
