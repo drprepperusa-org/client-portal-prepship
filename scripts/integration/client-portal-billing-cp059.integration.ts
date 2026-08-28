@@ -40,9 +40,15 @@ const scope = {
 
 let fixtureSeq = 0;
 const canonical = (over: Record<string, unknown> = {}) => ({
-  // Producer-issued identity. Required by the boundary, and distinct per row unless a test
-  // overrides it — two rows sharing an identity would collide as React keys.
-  canonicalEventId: `evt-${(fixtureSeq += 1).toString().padStart(4, '0')}`,
+  // Producer-issued identity, DERIVED FROM THE EVENT — not from a call counter.
+  //
+  // This first used a sequence number, which made identity depend on the order the fixture
+  // happened to build its rows. The reversed-input test then compared two runs whose rows had
+  // different identities and failed for a reason that had nothing to do with the code under
+  // test. Real producer identity is content-derived and stable: the same event yields the same
+  // id however it arrives. The fixture has to behave the same way or it is not modelling the
+  // producer, it is modelling itself.
+  canonicalEventId: `evt-${String(over.displayReference ?? over.orderId ?? (fixtureSeq += 1))}`,
   clientId: 7, clientName: 'Acme', orderId: 9001, orderNumber: '9001',
   returnId: null, rowType: 'Outbound', displayReference: '9001',
   destination: 'Domestic', hasReturnPostageLine: false, hasReturnProcessingLine: false,
@@ -441,18 +447,47 @@ async function main(): Promise<void> {
   if (printedRows.length !== producerRows.length) {
     throw new Error(`expected ${producerRows.length} printed rows, got ${printedRows.length}`);
   }
-  for (const [index, row] of producerRows.entries()) {
-    const printedRow = printedRows[index] ?? '';
-    const cells = [...printedRow.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => (m[1] ?? '').trim());
-    // Column 13 is Return Postage, 12 is Return Processing (invoice-html.ts row template).
-    if (row.hasReturnPostageLine === false && cells[13] !== '&mdash;') {
-      throw new Error(`row ${index}: an absent postage line printed ${cells[13]} instead of blank`);
-    }
-    if (row.hasReturnProcessingLine === false && cells[12] !== '&mdash;') {
-      throw new Error(`row ${index}: an absent processing line printed ${cells[12]} instead of blank`);
-    }
+  // COUNTED, not zipped by index. The read model orders rows by canonical identity, so the
+  // rendered order is not the fixture order — comparing producerRows[i] against printedRows[i]
+  // would be checking unrelated rows against each other and could pass or fail for reasons that
+  // have nothing to do with the code under test. Several producer rows also share a null
+  // displayReference, so the rendered rows cannot be matched back by label either.
+  //
+  // What IS order-independent: how many rows have an absent fee, and how many blank cells the
+  // document contains. If any absent line printed money, the blank count drops below the
+  // expected one.
+  //
+  // Column 13 is Return Postage and 12 is Return Processing (invoice-html.ts row template).
+  const cellsOfPrintedRow = (chunk: string) =>
+    [...chunk.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => (m[1] ?? '').trim());
+  const expectedBlankPostage = producerRows.filter((r) => r.hasReturnPostageLine === false).length;
+  const expectedBlankProcessing = producerRows.filter((r) => r.hasReturnProcessingLine === false).length;
+  const printedCells = printedRows.map(cellsOfPrintedRow);
+  const blankPostage = printedCells.filter((cells) => cells[13] === '&mdash;').length;
+  const blankProcessing = printedCells.filter((cells) => cells[12] === '&mdash;').length;
+
+  // Setup check: the fixture must actually contain absent fees, or the counts below are trivially
+  // satisfied and prove nothing.
+  if (expectedBlankPostage === 0 || expectedBlankProcessing === 0) {
+    throw new Error('the producer fixture no longer contains absent return fees — this check is vacuous');
   }
-  ok('the printable invoice renders every producer row with no fabricated return money');
+  if (blankPostage !== expectedBlankPostage) {
+    throw new Error(
+      `expected ${expectedBlankPostage} blank postage cells, found ${blankPostage} — `
+      + 'an absent return line printed money',
+    );
+  }
+  if (blankProcessing !== expectedBlankProcessing) {
+    throw new Error(
+      `expected ${expectedBlankProcessing} blank processing cells, found ${blankProcessing} — `
+      + 'an absent return line printed money',
+    );
+  }
+  // And the real amounts still print: the both-fees return carries 7.73 / 3.00.
+  if (!printedHtml.includes('$7.73') || !printedHtml.includes('$3.00')) {
+    throw new Error('the real return amounts must still print — this must not pass by blanking everything');
+  }
+  ok(`the printable invoice blanks all ${expectedBlankPostage} absent postage lines while real amounts still print`);
 
   await db.execute(rawSql`delete from clients where id = 7907`);
 
