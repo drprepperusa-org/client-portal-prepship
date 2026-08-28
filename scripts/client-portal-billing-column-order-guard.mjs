@@ -41,9 +41,14 @@ const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
 const invoiceRoute = read('src/routes/client-portal/invoices.ts');
 const pkg = JSON.parse(read('package.json'));
 
+// CP-059 renamed 'Order #' to 'Reference' and inserted Type and Destination after it. The
+// reference is now the canonical displayReference — '1234', '1234-RETURN', '1234-RETURN-2' —
+// not an order number, so the old label named a column that no longer exists.
 const detailLabels = [
   'Billing / Activity Date',
-  'Order #',
+  'Reference',
+  'Type',
+  'Destination',
   'SKU(s)',
   'Qty',
   'Pick & Pack',

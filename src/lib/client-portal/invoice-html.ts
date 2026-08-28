@@ -167,6 +167,18 @@ export function renderPortalInvoiceHtml(input: {
   const { clientName, dateFrom, dateTo, invoiceTotals, details, truncated } = input;
   const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
   const moneyOrDash = (value: unknown) => (Number(value ?? 0) > 0 ? money(value) : '&mdash;');
+  /**
+   * CP-059 AC-5 — return money, where "no line" and "a $0.00 line" are different facts.
+   *
+   * moneyOrDash above renders BOTH as a dash, because it tests `> 0`. That is fine for a
+   * column that is always billed and wrong here: a customer reading a printed invoice cannot
+   * tell a fee that was never charged from one charged at zero, and the two have different
+   * consequences when they query it.
+   *
+   * Presence comes from upstream, never from the amount.
+   */
+  const returnMoney = (present: boolean | null | undefined, value: unknown) =>
+    present === false ? '&mdash;' : money(value);
   const periodFrom = longDate(dateFrom);
   const periodTo = longDate(dateTo);
   const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -182,7 +194,9 @@ export function renderPortalInvoiceHtml(input: {
       return `
       <tr>
         <td>${billingActivityDate(detail)}</td>
-        <td class="order-link">${escHtml(detail.orderNumber ?? detail.orderId ?? '')}</td>
+        <td class="order-link">${escHtml(detail.displayReference ?? detail.orderNumber ?? detail.orderId ?? '')}</td>
+        <td>${escHtml(detail.rowType ?? '')}</td>
+        <td>${escHtml(detail.destination ?? '')}</td>
         <td class="mono item-name">${escHtml(skus)}</td>
         <td class="num">${Number(detail.qty ?? 0)}</td>
         <td class="num">${money(detail.pickpackTotal)}</td>
@@ -191,8 +205,8 @@ export function renderPortalInvoiceHtml(input: {
         <td>${escHtml(detail.boxSize ?? '')}</td>
         <td class="num">${moneyOrDash(detail.shippingTotal)}</td>
         <td class="num">${moneyOrDash(detail.storageTotal)}</td>
-        <td class="num">${moneyOrDash(detail.returnProcessingTotal)}</td>
-        <td class="num">${moneyOrDash(detail.returnPostageTotal)}</td>
+        <td class="num">${returnMoney(detail.hasReturnProcessingLine, detail.returnProcessingTotal)}</td>
+        <td class="num">${returnMoney(detail.hasReturnPostageLine, detail.returnPostageTotal)}</td>
         <td class="num bold">${money(detail.rowTotal)}</td>
       </tr>`;
     })
@@ -228,16 +242,16 @@ export function renderPortalInvoiceHtml(input: {
   ${truncNote}
   <table>
     <thead><tr>
-      <th>Billing / Activity Date</th><th>Order #</th><th>SKU(s)</th><th class="num">Qty</th>
+      <th>Billing / Activity Date</th><th>Reference</th><th>Type</th><th>Destination</th><th>SKU(s)</th><th class="num">Qty</th>
       <th class="num">Pick &amp; Pack</th><th class="num">Addl Units</th>
       <th class="num">Box Charge</th><th>Box Size</th><th class="num">Shipping</th>
       <th class="num">Storage</th><th class="num">Return Processing</th><th class="num">Return Postage</th>
       <th class="num">Fulfillment Fee</th>
     </tr></thead>
-    <tbody>${detailRows || '<tr><td colspan="13">No billable order rows found for this period.</td></tr>'}</tbody>
+    <tbody>${detailRows || '<tr><td colspan="15">No billable order rows found for this period.</td></tr>'}</tbody>
     <tfoot>
       <tr>
-        <td colspan="3">${invoiceTotals.orderCount} orders</td>
+        <td colspan="5">${invoiceTotals.orderCount} orders</td>
         <td class="num">${invoiceTotals.qty}</td>
         <td class="num">${money(invoiceTotals.pickPackTotal)}</td>
         <td class="num">${money(invoiceTotals.additionalTotal)}</td>

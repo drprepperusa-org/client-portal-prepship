@@ -3,9 +3,13 @@ import type { BillingInvoiceDetailRow } from '@/lib/api';
 // Excel (.xlsx) export for the per-client invoice line items. Column set and
 // order mirror the billing line-items table (client-safe fields only — no
 // carrier / selected rate / shipping margin):
-//   Billing / Activity Date | Order # | SKU(s) | Qty | Pick & Pack | Addl Units |
-//   Box Charge | Box Size | Shipping | Storage | Return Processing |
-//   Return Postage | Fulfillment Fee
+//   Billing / Activity Date | Reference | Type | Destination | SKU(s) | Qty |
+//   Pick & Pack | Addl Units | Box Charge | Box Size | Shipping | Storage |
+//   Return Processing | Return Postage | Fulfillment Fee
+// CP-059: this comment said "Order #" until the column-order guard passed on it while the
+// real HEADERS array had already changed — the guard matches raw file text, so a stale
+// comment kept it green. Keep this line in step with HEADERS below, or the guard is
+// reading prose instead of the contract.
 // Money cells are written as real numbers (2-decimal format) so Excel can sum
 // and pivot them; the final row is a bold totals row. write-excel-file is
 // loaded via dynamic import so the writer only ships when Export is clicked.
