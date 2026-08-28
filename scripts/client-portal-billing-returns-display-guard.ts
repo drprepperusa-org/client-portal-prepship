@@ -108,14 +108,17 @@ const baseRow = {
 } as unknown as BillingInvoiceDetailRow;
 
 const rows = [
-  // (a) an outbound with no return activity at all
+  // (a) an outbound with no return activity — THE PRODUCER'S REAL ABSENT SHAPE, `false + 0`.
+  //     This fixture said `false + null` until review found that PrepShip never emits null
+  //     (billing-detail-row-sot.ts:281). A serializer that blanks on null but prints on 0 would
+  //     have passed the old fixture and fabricated $0.00 on every outbound row in production.
   { ...baseRow, displayReference: 'REF-A', rowType: 'Outbound', destination: 'Domestic',
     returnId: null, hasReturnPostageLine: false, hasReturnProcessingLine: false,
-    returnPostageTotal: null, returnProcessingTotal: null },
+    returnPostageTotal: 0, returnProcessingTotal: 0 },
   // (b) a return whose postage line EXISTS and is genuinely 0.00
   { ...baseRow, displayReference: 'REF-B', rowType: 'Return', destination: 'Domestic',
     returnId: 501, hasReturnPostageLine: true, hasReturnProcessingLine: false,
-    returnPostageTotal: '0', returnProcessingTotal: null },
+    returnPostageTotal: '0', returnProcessingTotal: 0 },
   // (c) a return with real amounts on both lines
   { ...baseRow, displayReference: 'REF-C', rowType: 'Return', destination: 'International',
     returnId: 502, hasReturnPostageLine: true, hasReturnProcessingLine: true,
@@ -125,7 +128,7 @@ const rows = [
   //     thing standing between a contract slip and a charge that was never billed.
   { ...baseRow, displayReference: 'REF-D', rowType: 'Return', destination: 'Domestic',
     returnId: 503, hasReturnPostageLine: null, hasReturnProcessingLine: undefined,
-    returnPostageTotal: null, returnProcessingTotal: null },
+    returnPostageTotal: 4.5, returnProcessingTotal: 4.5 },
 ] as unknown as BillingInvoiceDetailRow[];
 
 // -- 5a. Printable invoice HTML ---------------------------------------------------------------
@@ -161,7 +164,7 @@ const DASH = '&mdash;';
 
 check(
   htmlCells('REF-A')[HTML_POSTAGE] === DASH && htmlCells('REF-A')[HTML_PROCESSING] === DASH,
-  'HTML: an outbound with NO return activity prints blank return cells, not $0.00',
+  'HTML: the producer absent shape (false + 0) prints BLANK, never the 0 it carries',
 );
 check(
   htmlCells('REF-B')[HTML_POSTAGE] === '$0.00',
@@ -177,7 +180,7 @@ check(
 );
 check(
   htmlCells('REF-D')[HTML_POSTAGE] === DASH && htmlCells('REF-D')[HTML_PROCESSING] === DASH,
-  'HTML: NULL/undefined presence prints blank — only an explicit true renders money',
+  'HTML: NULL/undefined presence prints blank even with money attached — only true renders',
 );
 
 // -- 5b. Spreadsheet cells --------------------------------------------------------------------
@@ -193,7 +196,7 @@ const cell = (rowIndex: number, col: number) => dataRows[rowIndex]?.[col] as { t
 
 check(
   cell(0, postageCol)?.type === String && cell(0, postageCol)?.value === '',
-  'XLSX: an absent return-postage line is a BLANK string cell, never a numeric 0',
+  'XLSX: the producer absent shape (false + 0) is a BLANK cell, never the 0 it carries',
 );
 check(
   cell(1, postageCol)?.type === Number && cell(1, postageCol)?.value === 0,
@@ -205,7 +208,7 @@ check(
 );
 check(
   cell(3, postageCol)?.type === String && cell(3, processingCol)?.type === String,
-  'XLSX: NULL/undefined presence is blank, not a fabricated 0 that a spreadsheet would sum',
+  'XLSX: NULL/undefined presence is blank even carrying 4.50 — presence decides, not the amount',
 );
 
 // The totals row must line up under its headings. A shifted totals row still adds up, which is
@@ -215,9 +218,13 @@ check(
   totals.length === header.length,
   `XLSX: the totals row has one cell per column (${totals.length} vs ${header.length})`,
 );
+// 0 + 0 + 7.73 + 4.50. The totals row sums AMOUNTS, ignoring presence — which is correct
+// precisely because the producer emits 0 for an absent fee rather than null: an absent line
+// contributes nothing to the total while still being blanked in its own cell. Had the producer
+// emitted null, num() would coerce it to 0 anyway; the distinction lives in presence, not here.
 check(
-  (totals[postageCol] as { value?: unknown })?.value === 7.73,
-  'XLSX: the return-postage total lands under the Return Postage heading',
+  (totals[postageCol] as { value?: unknown })?.value === 12.23,
+  'XLSX: the return-postage total sums amounts under its own heading; absent rows add their 0',
 );
 
 // -- 6. package.json wiring -------------------------------------------------------------------

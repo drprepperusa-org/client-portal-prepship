@@ -44,9 +44,13 @@ const canonical = (over: Record<string, unknown> = {}) => ({
   shippingTotal: 6.1,
   storageTotal: 0,
   adjustmentTotal: 0,
-  returnPostageTotal: null,
-  returnProcessingTotal: null,
-  returnTotal: null,
+  // PrepShip emits a NUMBER here, always. An absent fee is `false + 0`, not `false + null`
+  // (billing-detail-row-sot.ts:281 assigns `isReturnPostageLine ? lineTotal : 0`, and the DTO
+  // types these as `number`). Every fixture in this repo used null, which is why a validator
+  // that rejected `false + <number>` passed every lane while rejecting all of production.
+  returnPostageTotal: 0,
+  returnProcessingTotal: 0,
+  returnTotal: 0,
   grandTotal: 8.6,
   shipDate: '2026-08-01',
   actualActivityDate: '2026-08-01',
@@ -89,12 +93,17 @@ ok('allowlist discards internal rate/cost/provider/markup/payload/audit/PII fiel
 
 // --- 2. absent money stays absent. THE AC-5 INVARIANT. ---------------------------------------
 
+// THE PRODUCER'S ABSENT SHAPE. This is what PrepShip actually sends for a row with no
+// postage line: presence false, amount numeric 0. It must be ACCEPTED.
 const absent = toCanonicalBillingEventRow(canonical({
   rowType: 'Return', returnId: 55, displayReference: '1234-RETURN',
-  hasReturnPostageLine: false, returnPostageTotal: null,
+  hasReturnPostageLine: false, returnPostageTotal: 0,
 }))!;
-assert.equal(absent.returnPostageTotal, null, 'an absent return-postage amount must stay null');
-assert.notEqual(absent.returnPostageTotal, 0, 'absent must never become 0');
+assert.ok(absent, 'the producer absent shape (false + 0) must be accepted, not rejected');
+assert.equal(absent.hasReturnPostageLine, false, 'presence is carried through as issued');
+// The amount is carried verbatim. It is NOT the signal — presence is — so the portal neither
+// nulls it nor reads meaning into it.
+assert.equal(absent.returnPostageTotal, 0, 'the amount is carried verbatim, meaning nothing on its own');
 
 const explicitZero = toCanonicalBillingEventRow(canonical({
   rowType: 'Return', returnId: 56, displayReference: '1234-RETURN',
@@ -230,26 +239,51 @@ for (const [missing, row] of [
 }
 ok('a row missing any mandatory identity/classification/presence fact is rejected');
 
-// Presence and amount must agree. Rendering either side of a contradiction picks a winner
-// between two upstream facts that disagree, which the portal is not entitled to do.
+// PRESENCE IS THE ONLY SIGNAL — the regression pins for the break review found.
+//
+// The validator used to reject `present: false` carrying a number, calling it a
+// contradiction. It is not a contradiction; it is the producer's normal output for every
+// outbound row and every processing-only return. Rejecting it 502'd the whole endpoint.
+for (const [label, fixture] of [
+  ['an outbound row (no return activity at all)',
+    canonical({ hasReturnPostageLine: false, returnPostageTotal: 0,
+      hasReturnProcessingLine: false, returnProcessingTotal: 0 })],
+  ['a processing-only return: postage absent as 0, processing real',
+    canonical({ rowType: 'Return', returnId: 88, hasReturnPostageLine: false, returnPostageTotal: 0,
+      hasReturnProcessingLine: true, returnProcessingTotal: 3.5 })],
+  ['a postage-only return: processing absent as 0',
+    canonical({ rowType: 'Return', returnId: 89, hasReturnPostageLine: true, returnPostageTotal: 7.73,
+      hasReturnProcessingLine: false, returnProcessingTotal: 0 })],
+] as const) {
+  assert.ok(
+    toCanonicalBillingEventRow(fixture),
+    `${label} is the producer's normal shape and MUST be accepted`,
+  );
+}
+ok("false + 0 is accepted on every row shape — the producer's absent fee is not a contradiction");
+
+// A real $0.00 fee is still distinguishable from an absent one, and both are accepted. The
+// difference lives entirely in the presence flag, which is the point of AC-5.
+const realZero = toCanonicalBillingEventRow(canonical({
+  rowType: 'Return', returnId: 90, hasReturnPostageLine: true, returnPostageTotal: 0,
+}))!;
+const absentZero = toCanonicalBillingEventRow(canonical({
+  rowType: 'Return', returnId: 91, hasReturnPostageLine: false, returnPostageTotal: 0,
+}))!;
+assert.ok(realZero && absentZero, 'both zero-amount forms are accepted');
+assert.equal(realZero.returnPostageTotal, absentZero.returnPostageTotal, 'the AMOUNTS are identical');
+assert.notEqual(
+  realZero.hasReturnPostageLine, absentZero.hasReturnPostageLine,
+  'and only the presence flag separates them — so nullability can carry no meaning',
+);
+ok('a real $0.00 fee and an absent fee have the SAME amount; only presence separates them');
+
+// The one contradiction still rejected: claiming a fee exists while withholding its value.
 assert.equal(
   toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: true, returnPostageTotal: null })),
-  null, 'present=true with no amount is a contradiction and must be rejected',
+  null, 'present=true with no amount cannot be rendered honestly and must be rejected',
 );
-assert.equal(
-  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: false, returnPostageTotal: 7.73 })),
-  null, 'present=false with money attached is a contradiction and must be rejected',
-);
-// Both consistent forms still survive — this must not pass by rejecting everything.
-assert.ok(
-  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: false, returnPostageTotal: null })),
-  'absent-and-null is consistent and must be ACCEPTED',
-);
-assert.ok(
-  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: true, returnPostageTotal: 0 })),
-  'present-with-explicit-zero is consistent and must be ACCEPTED',
-);
-ok('presence and amount must agree; both consistent forms still accepted');
+ok('present=true with a missing amount is still rejected');
 
 // And one malformed row poisons the WHOLE response — skipping it would silently drop a billing
 // event and show a shorter invoice than the customer was billed for.
@@ -266,7 +300,7 @@ globalThis.fetch = originalFetch;
 // A checks/checks report is a tautology: it prints whatever ran and can never fail. Pinning the
 // expected count means deleting a block fails the guard instead of quietly shrinking it, which
 // is how a guard rots into a green no-op.
-const EXPECTED_CHECKS = 10;
+const EXPECTED_CHECKS = 12;
 assert.equal(
   checks, EXPECTED_CHECKS,
   `expected ${EXPECTED_CHECKS} checks to run; ${checks} did - a check was removed or skipped`,

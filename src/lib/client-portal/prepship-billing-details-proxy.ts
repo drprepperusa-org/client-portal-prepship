@@ -168,13 +168,34 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
     return null;
   }
 
-  // Presence and amount must agree. `present: true` with no amount, or `present: false` with
-  // money attached, is an upstream contradiction — rendering either one picks a winner between
-  // two facts that disagree, and the portal is not entitled to choose.
+  /*
+   * PRESENCE IS THE ONLY SIGNAL. The amount's nullability means nothing.
+   *
+   * An earlier version of this function also required presence and amount to "agree": it
+   * rejected `present: false` carrying any number. That was read off this repository's own
+   * fixtures rather than off the producer, and it was wrong in the most expensive possible way.
+   *
+   * PrepShip types `returnPostageTotal` as `number` (not `number | null`) and assigns it
+   * `isReturnPostageLine ? lineTotal : 0` — billing-detail-row-sot.ts:281 — so the ABSENT case
+   * is `hasReturnPostageLine: false` with a numeric `0`, never null. That is the shape of
+   * every outbound row and of every processing-only return. The rule therefore rejected
+   * essentially the entire result set, and because one bad row fails the whole response, the
+   * Billing detail endpoint would have returned 502 for every request in production.
+   *
+   * It went unnoticed because every fixture in this repo used `false + null` — a shape the
+   * producer never emits. Green lanes against an invented contract prove nothing about the real
+   * one. The fixtures now use `false + 0`, which is what PrepShip actually sends.
+   *
+   * What still holds: presence decides rendering (`present === true` renders money, anything
+   * else blanks), so an absent fee and a real $0.00 fee stay distinguishable — AC-5 — without
+   * the amount's nullability carrying any meaning at all.
+   *
+   * The one contradiction still rejected is `present: true` with no amount: claiming a fee
+   * exists while withholding its value cannot be rendered honestly, and PrepShip never emits it
+   * (a present line always carries its numeric lineTotal).
+   */
   if (row.hasReturnPostageLine === true && asNumber(row.returnPostageTotal) === null) return null;
-  if (row.hasReturnPostageLine === false && asNumber(row.returnPostageTotal) !== null) return null;
   if (row.hasReturnProcessingLine === true && asNumber(row.returnProcessingTotal) === null) return null;
-  if (row.hasReturnProcessingLine === false && asNumber(row.returnProcessingTotal) !== null) return null;
 
   const out: Record<string, unknown> = {
     clientId: asInteger(row.clientId),

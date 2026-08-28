@@ -43,7 +43,10 @@ const canonical = (over: Record<string, unknown> = {}) => ({
   destination: 'Domestic', hasReturnPostageLine: false, hasReturnProcessingLine: false,
   pickpackTotal: 2.5, additionalTotal: 0, packageTotal: 0, shippingTotal: 6.1,
   storageTotal: 0, adjustmentTotal: 0,
-  returnPostageTotal: null, returnProcessingTotal: null, returnTotal: null,
+  // PrepShip emits numbers, never null: an absent fee is `false + 0`. See
+  // billing-detail-row-sot.ts:281. Fixtures used to say null, which hid a validator that
+  // rejected the producer's real output.
+  returnPostageTotal: 0, returnProcessingTotal: 0, returnTotal: 0,
   grandTotal: 8.6, shipDate: '2026-08-01', actualActivityDate: '2026-08-01',
   billingEffectiveDate: '2026-08-01', billingPolicyVersion: 'ps-437-v1',
   rolledFromWeekend: false, recipientName: 'A Customer', boxSize: 'Small',
@@ -115,13 +118,15 @@ async function main(): Promise<void> {
 
   // --- 3. absent stays absent, through the real read model ---------------------------------
   const secondReturn = first.rows.find((r) => r.displayReference === '9001-RETURN-2')!;
-  if (secondReturn.returnPostageTotal !== null) {
-    throw new Error(`absent return postage must stay null, got ${secondReturn.returnPostageTotal}`);
+  // The producer's absent shape survives the whole read model. The AMOUNT is 0 and carries no
+  // meaning; PRESENCE is what says the fee does not exist.
+  if (Number(secondReturn.returnPostageTotal) !== 0) {
+    throw new Error(`the absent-fee amount is carried verbatim, got ${secondReturn.returnPostageTotal}`);
   }
   if (secondReturn.hasReturnPostageLine !== false) {
     throw new Error('fee presence must be carried from upstream, not inferred');
   }
-  ok('an absent return-postage amount stays null after enrichment, sort and mapping');
+  ok('the producer absent shape (false + 0) survives enrichment, sort and mapping intact');
 
   // --- 4. REVERSED INPUT ORDER YIELDS IDENTICAL OUTPUT -------------------------------------
   // The matrix asks for this explicitly: if input order could change the result, the portal
