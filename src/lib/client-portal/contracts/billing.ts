@@ -87,6 +87,32 @@ export interface BillingInvoiceDetailRow {
   returnPostageTotal?: number | string | null;
   returnProcessingTotal?: number | string | null;
   rowTotal?: number | string | null;
+
+  // ── CP-059: canonical event-row facts, all issued by PrepShip ──────────────
+  /**
+   * Relational return identity. Null on an outbound row.
+   *
+   * This is the React key for a Return row and the navigation target. NEVER parse it out of
+   * displayReference: the display string is a label, and treating a label as a key is how a
+   * Return ends up opening the outbound shipment because the order id happened to match.
+   */
+  returnId?: number | string | null;
+  /** 'Outbound' | 'Return'. Decided by PrepShip; the portal never classifies. */
+  rowType?: 'Outbound' | 'Return' | null;
+  /** e.g. 1234, 1234-RETURN, 1234-RETURN-2. Rendered verbatim, never minted locally. */
+  displayReference?: string | null;
+  /** 'Domestic' | 'International' | 'Needs Review'. No portal country/territory comparison. */
+  destination?: 'Domestic' | 'International' | 'Needs Review' | null;
+  /**
+   * Fee PRESENCE, which is not the same fact as fee AMOUNT.
+   *
+   * A missing return-postage line renders blank/Pending; an explicit zero line renders 0.00.
+   * The old read model coalesced absent money to 0 and erased that distinction entirely.
+   */
+  hasReturnPostageLine?: boolean | null;
+  hasReturnProcessingLine?: boolean | null;
+  /** The Return row's own total, owned upstream — not re-summed from its parts. */
+  returnTotal?: number | string | null;
 }
 
 export interface BillingLastGenerated {
