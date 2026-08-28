@@ -63,7 +63,19 @@ async function main(): Promise<void> {
   // real table's NOT NULL columns went unsupplied — the run failed on `order_status`. Seeding
   // against the real schema is the point of an integration test; a hand-rolled table would
   // have proved the join against a shape production does not have.
+  // Parent orders first: order_items.orderId is NOT NULL with an FK to orders.id. Read from
+  // src/db/schema/order-items.ts and orders.ts rather than inferred — three CI runs were spent
+  // discovering this schema one constraint at a time (missing order_status, then the unique
+  // (orderId, lineIndex), then this FK), which is what guessing a schema costs.
+  //
+  // orders needs only id and orderNumber; every other column defaults.
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
+  await db.execute(rawSql`delete from orders where id in (9001, 9002)`);
+  await db.execute(rawSql`
+    insert into orders (id, order_number) values
+      (9001, '9001'),
+      (9002, '9002')
+  `);
   await db.execute(rawSql`
     insert into order_items (order_id, line_index, sku, name, order_status) values
       (9001, 0, 'SKU-A', 'Widget A', 'shipped'),
@@ -160,6 +172,7 @@ async function main(): Promise<void> {
   ok('pagination yields 2 + 1 across 3 events, no duplicates, total stays the event count');
 
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
+  await db.execute(rawSql`delete from orders where id in (9001, 9002)`);
   console.log(`\nPASS CP-059 canonical billing integration — ${checks}/${checks} checks`);
 }
 
