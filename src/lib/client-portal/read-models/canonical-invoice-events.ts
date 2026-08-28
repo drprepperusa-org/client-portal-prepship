@@ -102,6 +102,35 @@ function stableKey(row: CanonicalBillingEventRow): string {
   return `${row.orderId ?? ''}|${row.returnId ?? ''}|${row.rowType ?? ''}`;
 }
 
+/**
+ * Deterministic whole-set ordering, applied BEFORE any slicing.
+ *
+ * Exported so it can be executed directly. The behaviour under guard here — a whitelisted key,
+ * nulls last, a stable relational tiebreak, and the sort covering the FULL filtered set rather
+ * than the visible page — used to be asserted by matching SQL text in the order-grain read
+ * model, which the detail path no longer calls. A guard reading an unreached implementation is
+ * a guard reading nothing.
+ *
+ * Unknown or absent keys fall through to the tiebreak alone, which is a total order, so an
+ * unrecognised sort never randomises the grid.
+ */
+export function orderCanonicalEvents(
+  rows: readonly CanonicalBillingEventRow[],
+  sortBy?: string | null,
+  sortDir?: string | null,
+): CanonicalBillingEventRow[] {
+  const all = [...rows];
+  const key = sortBy && SORTABLE.has(sortBy) ? sortBy : null;
+  const dir: 1 | -1 = String(sortDir).toLowerCase() === 'desc' ? -1 : 1;
+  all.sort((a, b) => {
+    const primary = key ? compareRows(a, b, key, dir) : 0;
+    return primary !== 0 ? primary : stableKey(a).localeCompare(stableKey(b));
+  });
+  return all;
+}
+
+export const CANONICAL_SORTABLE_KEYS: readonly string[] = [...SORTABLE];
+
 export type CanonicalInvoiceEventsResult =
   | { ok: true; rows: BillingInvoiceDetailRow[]; total: number }
   | { ok: false; status: number; error: string; code: string };
@@ -132,15 +161,8 @@ export async function portalCanonicalInvoiceEvents(
   );
   if (!upstream.ok) return upstream;
 
-  const all = [...upstream.rows];
-
   // Deterministic order before any slicing.
-  const key = input.sortBy && SORTABLE.has(input.sortBy) ? input.sortBy : null;
-  const dir: 1 | -1 = String(input.sortDir).toLowerCase() === 'desc' ? -1 : 1;
-  all.sort((a, b) => {
-    const primary = key ? compareRows(a, b, key, dir) : 0;
-    return primary !== 0 ? primary : stableKey(a).localeCompare(stableKey(b));
-  });
+  const all = orderCanonicalEvents(upstream.rows, input.sortBy, input.sortDir);
 
   const total = all.length;
 

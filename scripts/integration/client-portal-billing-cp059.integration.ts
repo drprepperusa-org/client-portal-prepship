@@ -12,12 +12,14 @@
  * No production data. No billing regeneration. No network beyond the stub.
  */
 import { sql as rawSql } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { setupTestEnv } from './guard';
 
 setupTestEnv();
 process.env.PREPSHIP_API_URL ??= 'http://canonical.test';
 
 const { db, sql: pgClient } = await import('../../src/db/client');
+const invoicesApp = (await import('../../src/routes/client-portal/invoices')).default;
 const { portalCanonicalInvoiceEvents } = await import(
   '../../src/lib/client-portal/read-models/canonical-invoice-events'
 );
@@ -171,9 +173,152 @@ async function main(): Promise<void> {
   if (new Set(seen).size !== 3) throw new Error(`pages must not duplicate or drop rows: ${seen.join('|')}`);
   ok('pagination yields 2 + 1 across 3 events, no duplicates, total stays the event count');
 
+  // --- 7. ROUTE-LEVEL PROOF ----------------------------------------------------------------
+  // Sections 1-6 call the read model directly, which leaves the HTTP layer unproven. Bearer
+  // forwarding, scope denial and what actually reaches the wire are all decided in the handler
+  // above the boundary — and a boundary that is correct in isolation can still be bypassed by
+  // the route that calls it. These checks drive the real Hono app through app.request().
+  await db.execute(rawSql`delete from clients where id = 7907`);
+  await db.execute(rawSql`insert into clients (id, name) values (7907, 'CP059 Route Client')`);
+
+  const upstream = { calls: 0, url: '', authorization: null as string | null };
+  const stubCapturing = (payload: unknown, status = 200) => {
+    upstream.calls = 0;
+    upstream.url = '';
+    upstream.authorization = null;
+    globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+      upstream.calls += 1;
+      upstream.url = typeof input === 'string' ? input : String((input as { url?: string })?.url ?? input);
+      upstream.authorization = new Headers(init?.headers ?? {}).get('authorization');
+      return new Response(JSON.stringify(payload), {
+        status, headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+  };
+
+  const mount = (vars: Record<string, unknown>) => {
+    const harness = new Hono();
+    harness.use('*', async (c, next) => {
+      for (const [key, value] of Object.entries(vars)) c.set(key as never, value as never);
+      await next();
+    });
+    harness.route('/', invoicesApp);
+    return harness;
+  };
+  const RANGE = 'dateFrom=2026-08-01&dateTo=2026-09-01';
+  const financials = {
+    userId: 'cp059-route', email: 'route@cp059.test', role: 'client',
+    permissions: ['financials:read'], clientIds: [7907], storeIds: [],
+  };
+  const BEARER = 'Bearer cp059-caller-token';
+
+  // 7a. The caller bearer is forwarded verbatim, and nothing internal reaches the wire.
+  stubCapturing({ data: [canonical({
+    selectedRate: 9.99, bestRate: 8.88, labelCost: 4.44, carrierCode: 'usps',
+    providerAccountId: 'acct_live_123', markupPct: 0.35, customerEmail: 'pii@example.com',
+  })] });
+  const forwarded = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (forwarded.status !== 200) throw new Error(`expected 200, got ${forwarded.status}`);
+  if (upstream.authorization !== BEARER) {
+    throw new Error(`the caller bearer must be forwarded verbatim, got ${upstream.authorization}`);
+  }
+  const forwardedBody = await forwarded.text();
+  for (const leak of ['selectedRate', 'bestRate', 'labelCost', 'carrierCode',
+    'providerAccountId', 'markupPct', 'acct_live_123', 'pii@example.com']) {
+    if (forwardedBody.includes(leak)) throw new Error(`${leak} reached the wire`);
+  }
+  ok('the route forwards the caller bearer verbatim and ships no internal rate/cost/provider/PII field');
+
+  // 7b. No bearer, no upstream call. The portal must not substitute an identity of its own.
+  stubCapturing({ data: [canonical()] });
+  const noBearer = await mount(financials).request(`/invoice-details?clientId=7907&${RANGE}`);
+  if (noBearer.status !== 401) throw new Error(`missing bearer must be 401, got ${noBearer.status}`);
+  if (upstream.calls !== 0) throw new Error('an unauthenticated request must never reach upstream');
+  ok('a request with no bearer is 401 and never reaches PrepShip');
+
+  // 7c. No scope at all is denied outright, before any billing read.
+  stubCapturing({ data: [canonical()] });
+  const noScope = await mount({ userId: 'nobody', permissions: [], clientIds: [], storeIds: [] })
+    .request(`/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } });
+  if (noScope.status !== 403) throw new Error(`an unscoped caller must be 403, got ${noScope.status}`);
+  if (upstream.calls !== 0) throw new Error('an unscoped request must never reach upstream');
+  ok('a caller with no client/store scope is 403 and never reaches PrepShip');
+
+  // 7d. Scoped, but without financials:read. Billing is invisible, not merely unrendered.
+  stubCapturing({ data: [canonical()] });
+  const noFinancials = await mount({ ...financials, permissions: [] })
+    .request(`/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } });
+  const noFinancialsBody = await noFinancials.json() as { billingVisible?: boolean; data?: unknown[] };
+  if (noFinancialsBody.billingVisible !== false) throw new Error('billingVisible must be false');
+  if ((noFinancialsBody.data ?? []).length !== 0) throw new Error('no rows without financials:read');
+  if (upstream.calls !== 0) throw new Error('a caller without financials:read must never reach upstream');
+  ok('a scoped caller without financials:read gets billingVisible=false and no upstream call');
+
+  // 7e. A malformed row inside a 200 envelope fails the ROUTE, not just the boundary helper.
+  // This is the counterexample review found: an empty object used to become an all-null row
+  // that reached the serializers and printed a fabricated $0.00.
+  stubCapturing({ data: [canonical(), {}, canonical({ rowType: 'Return', returnId: 501 })] });
+  const malformed = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (malformed.status !== 502) throw new Error(`a malformed row must fail the route, got ${malformed.status}`);
+  const malformedBody = await malformed.json() as { code?: string; data?: unknown[] };
+  if (!String(malformedBody.code).includes('contract_mismatch')) {
+    throw new Error(`expected a contract mismatch code, got ${malformedBody.code}`);
+  }
+  if (malformedBody.data !== undefined) throw new Error('an error response must carry no rows');
+  ok('a malformed upstream row fails /invoice-details with contract_mismatch and zero rows');
+
+  // 7f. The printable invoice is the SECOND serializer. An absent return line must render
+  // blank there too — the grid showing a dash while the printed invoice shows $0.00 for the
+  // same row is the parity failure this card exists to remove.
+  stubCapturing({ data: [
+    canonical({ rowType: 'Return', returnId: 700, displayReference: '9001-RETURN',
+      hasReturnPostageLine: false, returnPostageTotal: null,
+      hasReturnProcessingLine: true, returnProcessingTotal: 3.5,
+      returnTotal: 3.5, grandTotal: 3.5 }),
+  ] });
+  const printed = await mount(financials).request(
+    `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (printed.status !== 200) throw new Error(`printable invoice expected 200, got ${printed.status}`);
+  const html = await printed.text();
+  if (!html.includes('9001-RETURN')) throw new Error('the printable invoice must render the Return row');
+  if (!html.includes('$3.50')) throw new Error('a real 3.50 processing fee must print');
+  ok('the printable invoice renders the canonical Return row and its real 3.50 processing fee');
+
+  // The absent postage cell must not have become money. Scope the search to the itemized rows
+  // rather than the whole document: the totals block legitimately prints $0.00 for categories
+  // with no activity, so a document-wide search would fail for the wrong reason and prove
+  // nothing about the row itself.
+  const itemizedRows = (html.match(/<tbody>[\s\S]*?<\/tbody>/) ?? [''])[0];
+  if (itemizedRows === '') throw new Error('could not locate the itemized rows — the check must not pass vacuously');
+  if (itemizedRows.includes('$0.00')) {
+    throw new Error('an absent return-postage line must not print as $0.00 in the itemized row');
+  }
+  ok('the absent postage line prints blank in the itemized row, never a fabricated $0.00');
+
+  // 7g. And the printable invoice fails closed on the same malformed row.
+  stubCapturing({ data: [canonical(), {}] });
+  const printedBad = await mount(financials).request(
+    `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (printedBad.status !== 502) {
+    throw new Error(`a malformed row must fail the printable invoice, got ${printedBad.status}`);
+  }
+  ok('the printable invoice fails closed on a malformed row rather than printing a partial statement');
+
+  await db.execute(rawSql`delete from clients where id = 7907`);
+
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
   await db.execute(rawSql`delete from orders where id in (9001, 9002)`);
-  console.log(`\nPASS CP-059 canonical billing integration — ${checks}/${checks} checks`);
+  const EXPECTED_CHECKS = 14;
+  if (checks !== EXPECTED_CHECKS) {
+    throw new Error(`expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
+  }
+  console.log(`\nPASS CP-059 canonical billing integration — ${checks}/${EXPECTED_CHECKS} checks`);
 }
 
 try {

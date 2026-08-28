@@ -177,8 +177,12 @@ export function renderPortalInvoiceHtml(input: {
    *
    * Presence comes from upstream, never from the amount.
    */
+  // `present === false` was the only blanking branch, so a null or missing presence flag fell
+  // through to money(null) and printed $0.00 on a customer's invoice. The boundary now
+  // rejects such a row outright, but the serializer must not be the thing standing between
+  // a contract slip and a fabricated charge: only an explicit `true` renders money.
   const returnMoney = (present: boolean | null | undefined, value: unknown) =>
-    present === false ? '&mdash;' : money(value);
+    present === true ? money(value) : '&mdash;';
   const periodFrom = longDate(dateFrom);
   const periodTo = longDate(dateTo);
   const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });

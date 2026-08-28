@@ -106,10 +106,18 @@ ok('absent money stays null; an explicit 0.00 line stays 0 — the two remain di
 
 // --- 3. identity and classification are rendered, never derived ------------------------------
 
-const unknownType = toCanonicalBillingEventRow(canonical({ rowType: 'Refund' }))!;
-assert.equal(unknownType.rowType, null, 'an unrecognised rowType becomes null, never passed through');
-const unknownDest = toCanonicalBillingEventRow(canonical({ destination: 'Somewhere' }))!;
-assert.equal(unknownDest.destination, null, 'an unrecognised destination becomes null, never guessed');
+// An unrecognised vocabulary value is now REJECTED outright, not nulled. The earlier version
+// nulled it, which was still wrong-but-safer than passing it through — until the null reached
+// the serializers, where a null presence flag printed a fabricated $0.00. Rejecting is the only
+// answer that keeps every downstream surface honest.
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ rowType: 'Refund' })), null,
+  'an unrecognised rowType is rejected, never passed through and never nulled into a row',
+);
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ destination: 'Somewhere' })), null,
+  'an unrecognised destination is rejected, never guessed',
+);
 
 const needsReview = toCanonicalBillingEventRow(canonical({ destination: 'Needs Review' }))!;
 assert.equal(needsReview.destination, 'Needs Review', "'Needs Review' is a real value, not an error");
@@ -200,4 +208,68 @@ assert.equal(moneyRow.returnTotal, 10.73, 'the return total arrives owned by the
 // is that the issued total is carried through untouched.
 ok('7.73 + 3.00 -> a backend-issued 10.73 carried verbatim, not re-summed locally');
 
-console.log(`\nPASS CP-059 canonical billing guard — ${checks}/${checks} checks`);
+// --- 8. MALFORMED ROWS FAIL CLOSED. The counterexample review found. --------------------------
+
+// `{}` used to be accepted and become an all-null row. That row then reached the serializers,
+// where `present === false ? dash : money(value)` read NULL presence as "present" and printed
+// money(null) — a fabricated $0.00 on a printed invoice and in XLSX, while the grid showed a
+// dash for the same row. An upstream contract mismatch rendered as customer billing activity.
+assert.equal(toCanonicalBillingEventRow({}), null, 'an empty object is not a canonical row');
+
+for (const [missing, row] of [
+  ['orderId', canonical({ orderId: null })],
+  ['rowType', canonical({ rowType: undefined })],
+  ['destination', canonical({ destination: undefined })],
+  ['hasReturnPostageLine', canonical({ hasReturnPostageLine: null })],
+  ['hasReturnProcessingLine', canonical({ hasReturnProcessingLine: undefined })],
+] as const) {
+  assert.equal(
+    toCanonicalBillingEventRow(row), null,
+    `a row missing ${missing} must be rejected, not turned into an all-null row`,
+  );
+}
+ok('a row missing any mandatory identity/classification/presence fact is rejected');
+
+// Presence and amount must agree. Rendering either side of a contradiction picks a winner
+// between two upstream facts that disagree, which the portal is not entitled to do.
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: true, returnPostageTotal: null })),
+  null, 'present=true with no amount is a contradiction and must be rejected',
+);
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: false, returnPostageTotal: 7.73 })),
+  null, 'present=false with money attached is a contradiction and must be rejected',
+);
+// Both consistent forms still survive — this must not pass by rejecting everything.
+assert.ok(
+  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: false, returnPostageTotal: null })),
+  'absent-and-null is consistent and must be ACCEPTED',
+);
+assert.ok(
+  toCanonicalBillingEventRow(canonical({ hasReturnPostageLine: true, returnPostageTotal: 0 })),
+  'present-with-explicit-zero is consistent and must be ACCEPTED',
+);
+ok('presence and amount must agree; both consistent forms still accepted');
+
+// And one malformed row poisons the WHOLE response — skipping it would silently drop a billing
+// event and show a shorter invoice than the customer was billed for.
+stubUpstream({ data: [canonical(), {}, canonical()] });
+const withMalformed = await fetchCanonicalBillingDetails('Bearer t', { dateFrom: '2026-08-01', dateTo: '2026-09-01' });
+assert.equal(withMalformed.ok, false, 'one malformed row must fail the whole response');
+if (!withMalformed.ok) {
+  assert.match(withMalformed.code, /contract_mismatch/, 'and name it a contract mismatch');
+}
+ok('a single malformed row inside a valid envelope rejects the response, never a partial invoice');
+
+globalThis.fetch = originalFetch;
+
+// A checks/checks report is a tautology: it prints whatever ran and can never fail. Pinning the
+// expected count means deleting a block fails the guard instead of quietly shrinking it, which
+// is how a guard rots into a green no-op.
+const EXPECTED_CHECKS = 10;
+assert.equal(
+  checks, EXPECTED_CHECKS,
+  `expected ${EXPECTED_CHECKS} checks to run; ${checks} did - a check was removed or skipped`,
+);
+console.log('');
+console.log(`PASS CP-059 canonical billing guard - ${checks}/${EXPECTED_CHECKS} checks`);

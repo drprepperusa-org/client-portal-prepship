@@ -28,9 +28,9 @@ const MONEY_FORMAT = '#,##0.00';
  * Presence is decided upstream (`hasReturn*Line`), never inferred from the amount.
  */
 const moneyCellOrBlank = (present: boolean | null | undefined, value: unknown) =>
-  present === false
-    ? { type: String, value: '' }
-    : { type: Number, value: num(value), format: MONEY_FORMAT };
+  present === true
+    ? { type: Number, value: num(value), format: MONEY_FORMAT }
+    : { type: String, value: '' };
 
 const HEADERS = [
   'Billing / Activity Date',
@@ -60,12 +60,24 @@ function slugify(name: string): string {
   return slug || 'client';
 }
 
-export async function exportInvoiceExcel(
-  rows: BillingInvoiceDetailRow[],
-  opts: { clientName: string; from: string; to: string; includeClient?: boolean },
-): Promise<void> {
-  const { default: writeXlsxFile } = await import('write-excel-file');
+export type InvoiceExcelCell =
+  | null
+  | { type: typeof String; value: string; wrap?: boolean; fontWeight?: 'bold' }
+  | { type: typeof Number; value: number; format?: string; fontWeight?: 'bold' }
+  | { value: string; fontWeight: 'bold' };
 
+/**
+ * CP-059 — the sheet, built and returned rather than written.
+ *
+ * The download is a side effect; the CELLS are the contract. Keeping them in a pure function
+ * means a guard can assert what an absent return line actually produces, instead of matching
+ * the source text of the function that produces it. A regex over this file cannot tell the
+ * difference between a blank cell and a fabricated 0.00 — running it can.
+ */
+export function buildInvoiceExcelSheet(
+  rows: BillingInvoiceDetailRow[],
+  opts: { includeClient?: boolean } = {},
+): { sheet: InvoiceExcelCell[][]; widths: number[] } {
   // A whole-range export can span multiple clients (admin, no client filter);
   // prepend a Client column then so each line stays attributable.
   const includeClient = opts.includeClient ?? false;
@@ -131,7 +143,17 @@ export async function exportInvoiceExcel(
     { type: Number, value: sum((r) => r.rowTotal), format: MONEY_FORMAT, ...bold },
   ];
 
-  await writeXlsxFile([header, ...dataRows, totalsRow], {
+  return { sheet: [header, ...dataRows, totalsRow] as InvoiceExcelCell[][], widths };
+}
+
+/** Writes the sheet the builder above produced. No cell decisions live here. */
+export async function exportInvoiceExcel(
+  rows: BillingInvoiceDetailRow[],
+  opts: { clientName: string; from: string; to: string; includeClient?: boolean },
+): Promise<void> {
+  const { default: writeXlsxFile } = await import('write-excel-file');
+  const { sheet, widths } = buildInvoiceExcelSheet(rows, { includeClient: opts.includeClient });
+  await writeXlsxFile(sheet, {
     columns: widths.map((width) => ({ width })),
     sheet: 'Invoice',
     fileName: `invoice-${slugify(opts.clientName)}-${opts.from}-${opts.to}.xlsx`,

@@ -141,6 +141,41 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
   const row = input as Record<string, unknown>;
 
+  /*
+   * MANDATORY FACTS. A row missing any of these is NOT a canonical billing event and is
+   * rejected outright — the caller then fails the whole response.
+   *
+   * An earlier version returned an all-null row for any object at all, including `{}`. That
+   * looked like validation and was not: the null row flowed through to the serializers, where
+   * `present === false ? dash : money(value)` treated NULL presence as "present" and printed
+   * `money(null)` — a fabricated `$0.00` on a printed invoice and in the XLSX, while the grid
+   * showed a dash for the same row. So an upstream contract mismatch rendered as customer
+   * billing activity, the three surfaces disagreed, and the boundary still claimed fail-closed.
+   *
+   * Each field below is stamped unconditionally by PrepShip's canonical row builder —
+   * `classifyDestinationCountry` always returns one of the three destinations ('Needs Review'
+   * is a real answer, not an absent one), and both presence flags are set from the line type.
+   * Requiring them cannot reject a well-formed production row.
+   */
+  const orderId = asInteger(row.orderId);
+  const rowTypeValid = typeof row.rowType === 'string' && ROW_TYPES.includes(row.rowType);
+  const destinationValid = typeof row.destination === 'string' && DESTINATIONS.includes(row.destination);
+  const postagePresenceValid = typeof row.hasReturnPostageLine === 'boolean';
+  const processingPresenceValid = typeof row.hasReturnProcessingLine === 'boolean';
+
+  if (orderId === null || !rowTypeValid || !destinationValid
+    || !postagePresenceValid || !processingPresenceValid) {
+    return null;
+  }
+
+  // Presence and amount must agree. `present: true` with no amount, or `present: false` with
+  // money attached, is an upstream contradiction — rendering either one picks a winner between
+  // two facts that disagree, and the portal is not entitled to choose.
+  if (row.hasReturnPostageLine === true && asNumber(row.returnPostageTotal) === null) return null;
+  if (row.hasReturnPostageLine === false && asNumber(row.returnPostageTotal) !== null) return null;
+  if (row.hasReturnProcessingLine === true && asNumber(row.returnProcessingTotal) === null) return null;
+  if (row.hasReturnProcessingLine === false && asNumber(row.returnProcessingTotal) !== null) return null;
+
   const out: Record<string, unknown> = {
     clientId: asInteger(row.clientId),
     orderId: asInteger(row.orderId),
@@ -250,10 +285,25 @@ export async function fetchCanonicalBillingDetails(
     };
   }
 
+  // A malformed row fails the WHOLE response. Skipping it would silently drop a billing event
+  // and show the customer a shorter invoice than they were billed for — quietly losing a line
+  // is worse than showing an error, because nobody can tell it happened.
   const rows: CanonicalBillingEventRow[] = [];
-  for (const entry of raw) {
+  for (const [index, entry] of raw.entries()) {
     const row = toCanonicalBillingEventRow(entry);
-    if (row) rows.push(row);
+    if (!row) {
+      console.error(
+        `[client-portal] canonical billing row ${index} failed contract validation; `
+        + 'rejecting the response rather than rendering a partial invoice',
+      );
+      return {
+        ok: false,
+        status: 502,
+        code: 'prep_ship_billing_contract_mismatch',
+        error: 'PrepShip billing details returned a row that does not match the expected contract.',
+      };
+    }
+    rows.push(row);
   }
   return { ok: true, rows };
 }
