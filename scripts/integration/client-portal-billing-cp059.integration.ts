@@ -57,16 +57,17 @@ const stub = (rows: unknown[]) => {
 async function main(): Promise<void> {
   // Seed enrichment for 9001 ONLY. 9002 is deliberately left without item rows so the
   // enrichment-miss case is exercised against a real join rather than a mocked one.
-  await db.execute(rawSql`
-    create table if not exists order_items (
-      id serial primary key, order_id integer not null, sku text, name text
-    )
-  `);
+  //
+  // No `create table if not exists` here. The migrated table already exists in this harness,
+  // so that statement was a silent no-op that made the insert LOOK schema-complete while the
+  // real table's NOT NULL columns went unsupplied — the run failed on `order_status`. Seeding
+  // against the real schema is the point of an integration test; a hand-rolled table would
+  // have proved the join against a shape production does not have.
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
   await db.execute(rawSql`
-    insert into order_items (order_id, sku, name) values
-      (9001, 'SKU-A', 'Widget A'),
-      (9001, 'SKU-B', 'Widget B')
+    insert into order_items (order_id, sku, name, order_status) values
+      (9001, 'SKU-A', 'Widget A', 'shipped'),
+      (9001, 'SKU-B', 'Widget B', 'shipped')
   `);
 
   const range = { dateFrom: '2026-08-01', dateTo: '2026-09-01' };
