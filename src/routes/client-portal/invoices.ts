@@ -10,7 +10,11 @@ import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/b
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
-import { portalInvoiceDetails, portalInvoiceDetailCount, portalInvoicePeriodSummary, portalInvoiceSummary } from '../../lib/client-portal/read-models/invoice-details';
+// CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails and
+// portalInvoiceDetailCount are no longer called from here. They are left in the read model
+// because other callers still use them; importing them here would leave a dead reference that
+// makes the order-grain path look reachable from production when it is not.
+import { portalInvoicePeriodSummary, portalInvoiceSummary } from '../../lib/client-portal/read-models/invoice-details';
 import { portalCanonicalInvoiceEvents } from '../../lib/client-portal/read-models/canonical-invoice-events';
 import { parsePage, parsePageSize, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
