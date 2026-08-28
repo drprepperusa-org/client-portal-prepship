@@ -233,28 +233,75 @@ export function buildInvoiceLineColumns(
     },
     {
       key: 'order',
-      header: 'Order #',
+      header: 'Reference',
+      defaultWidth: 150,
+      // CP-059 AC-1. The reference is rendered VERBATIM from the backend — "1234",
+      // "1234-RETURN", "1234-RETURN-2" — and never assembled here. The portal has no suffix
+      // rule and must not acquire one: a locally minted "-RETURN" would be a second owner of
+      // return identity, disagreeing with billing the moment upstream changes.
+      //
+      // Navigation keys on rowType, NOT on orderId. A Return shares its orderId with the
+      // outbound, so routing by orderId opens the OUTBOUND shipment drawer from a Return —
+      // showing a customer a different shipment's money. Returns stay non-clickable until a
+      // dedicated return surface exists. Wrong navigation is worse than none.
+      render: (row) => {
+        const isReturn = row.rowType === 'Return';
+        const label = row.displayReference
+          ?? row.orderNumber
+          ?? (row.orderId ? `#${row.orderId}` : '—');
+        if (isReturn || row.orderId == null) {
+          return (
+            <span
+              className="min-h-11 font-semibold text-ink-2 sm:min-h-8"
+              title={isReturn ? 'Return activity for this order' : undefined}
+            >
+              {label}
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              onShipmentSelect({
+                orderId: Number(row.orderId),
+                orderNumber: row.orderNumber ?? null,
+                shippingTotal: row.shippingTotal ?? null,
+              });
+            }}
+            className="focus-ring min-h-11 cursor-pointer font-semibold text-brand-700 hover:underline sm:min-h-8"
+            title="View shipment information"
+            aria-label={`View shipment information for order ${row.orderNumber ?? row.orderId ?? ''}`}
+          >
+            {label}
+          </button>
+        );
+      },
+      // Sorts the LABEL. Sorting cannot change which rows exist or how they group.
+      sortAccessor: (row) => row.displayReference ?? row.orderNumber ?? '',
+    },
+    {
+      key: 'rowType',
+      header: 'Type',
+      defaultWidth: 100,
+      // Rendered as issued. The portal never infers Outbound vs Return from a reference
+      // string, a line type, or the mere presence of return money.
+      render: (row) => <span className="text-ink-2">{row.rowType ?? '—'}</span>,
+      sortAccessor: (row) => row.rowType ?? '',
+    },
+    {
+      key: 'destination',
+      header: 'Destination',
       defaultWidth: 130,
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => {
-            if (row.orderId == null) return;
-            onShipmentSelect({
-              orderId: Number(row.orderId),
-              orderNumber: row.orderNumber ?? null,
-              shippingTotal: row.shippingTotal ?? null,
-            });
-          }}
-          disabled={row.orderId == null}
-          className="focus-ring min-h-11 cursor-pointer font-semibold text-brand-700 hover:underline disabled:cursor-default disabled:no-underline sm:min-h-8"
-          title="View shipment information"
-          aria-label={`View shipment information for order ${row.orderNumber ?? row.orderId ?? ''}`}
-        >
-          {row.orderNumber ?? (row.orderId ? `#${row.orderId}` : '—')}
-        </button>
-      ),
-      sortAccessor: (row) => row.orderNumber ?? '',
+      // CP-059 AC-2/AC-3. Backend classification ONLY — no country or territory comparison
+      // here. PrepShip already normalises every US state, DC, APO/FPO/DPO and the territories
+      // (PR/GU/VI/AS/MP/UM) to Domestic, and a Return inherits its OUTBOUND's classification
+      // rather than the US address its parcel is physically travelling to.
+      //
+      // 'Needs Review' is a real value, not an error state. A column can say "we don't know",
+      // and saying it beats guessing Domestic.
+      render: (row) => <span className="text-ink-2">{row.destination ?? '—'}</span>,
+      sortAccessor: (row) => row.destination ?? '',
     },
     {
       key: 'sku',

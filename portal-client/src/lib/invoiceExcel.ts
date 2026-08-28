@@ -13,9 +13,26 @@ import type { BillingInvoiceDetailRow } from '@/lib/api';
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const MONEY_FORMAT = '#,##0.00';
 
+/**
+ * CP-059 AC-5 — a money cell that keeps "absent" distinct from "zero".
+ *
+ * `num()` collapses null to 0, which is correct for a column that is always billed and wrong
+ * for return money, where "no return-postage line yet" and "a return-postage line of $0.00"
+ * are different commercial facts. In a spreadsheet a fabricated 0.00 is indistinguishable
+ * from a real one and will be summed, filtered and reconciled as though it were real.
+ *
+ * Presence is decided upstream (`hasReturn*Line`), never inferred from the amount.
+ */
+const moneyCellOrBlank = (present: boolean | null | undefined, value: unknown) =>
+  present === false
+    ? { type: String, value: '' }
+    : { type: Number, value: num(value), format: MONEY_FORMAT };
+
 const HEADERS = [
   'Billing / Activity Date',
-  'Order #',
+  'Reference',
+  'Type',
+  'Destination',
   'SKU(s)',
   'Qty',
   'Pick & Pack',
@@ -29,7 +46,7 @@ const HEADERS = [
   'Fulfillment Fee',
 ] as const;
 
-const COLUMN_WIDTHS = [12, 10, 28, 6, 12, 11, 10, 12, 10, 10, 15, 13, 14];
+const COLUMN_WIDTHS = [12, 14, 10, 13, 28, 6, 12, 11, 10, 12, 10, 10, 15, 13, 14];
 
 function slugify(name: string): string {
   const slug = name
@@ -65,7 +82,12 @@ export async function exportInvoiceExcel(
   const dataRows = rows.map((r) => [
     ...clientCol({ type: String, value: r.clientName ?? '' }),
     { type: String, value: billingActivityDate(r) },
-    { type: String, value: r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
+    // Reference/Type/Destination render exactly as the grid and printable invoice do — AC-6
+    // is one contract across every serializer, so a value that is blank on screen is blank
+    // here too. The reference is never assembled locally.
+    { type: String, value: r.displayReference ?? r.orderNumber ?? (r.orderId != null ? `#${r.orderId}` : '') },
+    { type: String, value: r.rowType ?? '' },
+    { type: String, value: r.destination ?? '' },
     { type: String, value: r.skus ?? r.itemNames ?? '', wrap: true },
     { type: Number, value: num(r.qty) },
     { type: Number, value: num(r.pickpackTotal), format: MONEY_FORMAT },
@@ -74,8 +96,8 @@ export async function exportInvoiceExcel(
     { type: String, value: r.boxSize ?? '' },
     { type: Number, value: num(r.shippingTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.storageTotal), format: MONEY_FORMAT },
-    { type: Number, value: num(r.returnProcessingTotal), format: MONEY_FORMAT },
-    { type: Number, value: num(r.returnPostageTotal), format: MONEY_FORMAT },
+    moneyCellOrBlank(r.hasReturnProcessingLine, r.returnProcessingTotal),
+    moneyCellOrBlank(r.hasReturnPostageLine, r.returnPostageTotal),
     { type: Number, value: num(r.rowTotal), format: MONEY_FORMAT },
   ]);
 
@@ -85,6 +107,12 @@ export async function exportInvoiceExcel(
   const totalsRow = [
     ...clientCol(null),
     { type: String, value: 'Total', ...bold },
+    // One null per non-numeric column between the label and Qty: Reference, Type,
+    // Destination, SKU(s). Adding a column without adding its null here silently shifts every
+    // money total one cell left — the numbers stay correct and land under the wrong headings,
+    // which is the worst kind of spreadsheet bug because it still adds up.
+    null,
+    null,
     null,
     null,
     { type: Number, value: sum((r) => r.qty), ...bold },
