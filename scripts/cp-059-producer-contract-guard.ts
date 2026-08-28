@@ -28,6 +28,9 @@ process.env.NODE_ENV ??= 'test';
 const { toCanonicalBillingEventRow, fetchCanonicalBillingDetails } =
   await import('../src/lib/client-portal/prepship-billing-details-proxy.js');
 const { renderPortalInvoiceHtml } = await import('../src/lib/client-portal/invoice-html.js');
+const { toPortalDetailRow } = await import(
+  '../src/lib/client-portal/read-models/canonical-invoice-events.js'
+);
 const { buildInvoiceExcelSheet } = await import('../portal-client/src/lib/invoiceExcel.js');
 
 let checks = 0;
@@ -96,6 +99,34 @@ assert.notEqual(
 );
 ok('two storage rows that the old key collapsed are separated by the producer identity');
 
+// --- 2b. THE PROJECTION. The last step before the wire, and it drops what it does not name. ---
+//
+// The boundary validated the identity, the sort used it and the React key read it — and the
+// projection that builds the served DTO simply did not list it, so the frontend received rows
+// with no identity and fell back to the very key the identity exists to replace. No static guard
+// could see it, because the projection was inline in a database-bound function. It is exported
+// now, so this runs it.
+const projected = accepted.map((row) => toPortalDetailRow(row as never));
+for (const [index, row] of projected.entries()) {
+  assert.equal(
+    typeof (row as { canonicalEventId?: unknown }).canonicalEventId, 'string',
+    `row ${index} lost its canonicalEventId in the projection — the DTO reaches the frontend `
+    + 'with no identity, and two orderless storage rows become one',
+  );
+}
+const projectedIds = projected.map((r) => String((r as { canonicalEventId?: unknown }).canonicalEventId));
+assert.equal(new Set(projectedIds).size, projectedIds.length, 'identities must stay distinct through the projection');
+ok('the served DTO carries a distinct identity for every row — the projection drops nothing');
+
+// The projection is an allowlist, so it must also still drop what it should.
+for (const forbidden of ['totalCost', 'lineTypes', 'margin', 'selectedRate', 'billingBadges']) {
+  assert.ok(
+    !(forbidden in (projected[0] as Record<string, unknown>)),
+    `${forbidden} must not survive the projection onto a customer surface`,
+  );
+}
+ok('the projection still drops internal fields — it is an allowlist, not a spread');
+
 // --- 3. no producer row renders fabricated money ---------------------------------------------
 
 const html = renderPortalInvoiceHtml({
@@ -144,7 +175,7 @@ assert.ok(whole.ok, `the full producer payload must not fail the response bounda
 assert.equal(whole.rows.length, accepted.length, 'every producer row survives the response boundary');
 ok('the entire producer payload passes the response boundary in one piece');
 
-const EXPECTED_CHECKS = 8;
+const EXPECTED_CHECKS = 10;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log('');
 console.log(`PASS CP-059 producer contract guard - ${checks}/${EXPECTED_CHECKS} checks`);

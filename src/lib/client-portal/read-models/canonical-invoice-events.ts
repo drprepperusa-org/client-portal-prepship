@@ -179,9 +179,37 @@ export async function portalCanonicalInvoiceEvents(
   const orderIds = [...new Set(slice.map((r) => r.orderId).filter((id): id is number => typeof id === 'number'))];
   const enrichment = await itemTextByOrderId(orderIds);
 
-  const rows: BillingInvoiceDetailRow[] = slice.map((row) => {
-    const extra = row.orderId === null ? undefined : enrichment.get(row.orderId);
+  const rows: BillingInvoiceDetailRow[] = slice.map((row) => toPortalDetailRow(
+    row,
+    row.orderId === null ? undefined : enrichment.get(row.orderId),
+  ));
+
+  return { ok: true, rows, total };
+}
+
+/**
+ * Project one canonical event row into the DTO the portal serves.
+ *
+ * Exported so it can be EXECUTED by a guard. It was inline, and being inline is how
+ * `canonicalEventId` came to be silently dropped here: the boundary validated and carried the
+ * identity, the sort used it, the React key read it — and this projection, which is the last
+ * thing between all of that and the wire, simply did not list it. Every static guard stayed
+ * green because none of them could reach this code, and the frontend fell back to the very key
+ * the identity exists to replace.
+ *
+ * An explicit allowlist is the right shape here — it is what keeps internal fields off a
+ * customer surface — but it means every field must be named, and a field nobody names is a field
+ * silently dropped.
+ */
+export function toPortalDetailRow(
+  row: CanonicalBillingEventRow,
+  extra?: { itemNames: string | null; skus: string | null },
+): BillingInvoiceDetailRow {
+  {
     return {
+      // Producer-issued identity. Without it the frontend cannot tell two orderless storage
+      // rows apart, which is the whole reason it exists.
+      canonicalEventId: (row as { canonicalEventId?: string | null }).canonicalEventId ?? null,
       clientId: row.clientId ?? undefined,
       clientName: row.clientName,
       orderId: row.orderId,
@@ -215,7 +243,5 @@ export async function portalCanonicalInvoiceEvents(
       hasReturnPostageLine: row.hasReturnPostageLine,
       hasReturnProcessingLine: row.hasReturnProcessingLine,
     };
-  });
-
-  return { ok: true, rows, total };
+  }
 }

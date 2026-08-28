@@ -68,6 +68,16 @@ export const MUTATIONS: readonly Mutation[] = [
     to: "  return `${row.orderId ?? ''}|${row.returnId ?? ''}|${row.rowType ?? ''}`;",
   },
 
+  {
+    // The bug that shipped in this very PR: the projection is an allowlist, and a field nobody
+    // names is a field silently dropped. Only CI caught it, because the projection was inline in
+    // a database-bound function and no static guard could reach it.
+    label: 'identity: the served DTO projection drops canonicalEventId (frontend loses all identity)',
+    file: EVENTS, guard: CONTRACT,
+    from: "      canonicalEventId: (row as { canonicalEventId?: string | null }).canonicalEventId ?? null,\n",
+    to: '',
+  },
+
   // ---- producer-guaranteed money ----
   {
     label: 'money: stop requiring the producer-guaranteed totals, so a row with no grandTotal prints $0.00',
