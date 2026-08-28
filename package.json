@@ -248,7 +248,9 @@
     "test:client-portal-replacements-cp061": "node scripts/client-portal-replacements-cp061-guard.mjs",
     "test:cp-059-canonical-billing-render": "tsx scripts/cp-059-canonical-billing-guard.ts",
     "test:client-portal-billing-cp059:integration": "tsx scripts/integration/client-portal-billing-cp059.integration.ts",
-    "test:cp-059-billing:browser": "playwright test web/e2e/client-portal-cp059-billing.spec.js --reporter=line"
+    "test:cp-059-billing:browser": "playwright test web/e2e/client-portal-cp059-billing.spec.js --reporter=line",
+    "test:cp-059-producer-contract": "tsx scripts/cp-059-producer-contract-guard.ts",
+    "test:cp-059-mutations": "tsx scripts/cp-059-mutation-harness.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

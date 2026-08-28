@@ -62,6 +62,14 @@ export interface BillingInvoiceTotals {
 }
 
 export interface BillingInvoiceDetailRow {
+  /**
+   * CP-059 — producer-issued identity for this billing event, opaque and stable.
+   *
+   * The ONLY identity that works for every row shape. An outbound row can be keyed on orderId
+   * and a Return on returnId, but a storage line has neither, so consumer-side keys collapsed
+   * and two storage lines became the same row. Never derive this locally.
+   */
+  canonicalEventId?: string | null;
   clientId?: number;
   clientName?: string | null;
   orderId?: number | null;

@@ -11,6 +11,7 @@
  *
  * No production data. No billing regeneration. No network beyond the stub.
  */
+import { readFileSync } from 'node:fs';
 import { sql as rawSql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { setupTestEnv } from './guard';
@@ -37,7 +38,11 @@ const scope = {
   isRestricted: false,
 } as unknown as Parameters<typeof portalCanonicalInvoiceEvents>[0];
 
+let fixtureSeq = 0;
 const canonical = (over: Record<string, unknown> = {}) => ({
+  // Producer-issued identity. Required by the boundary, and distinct per row unless a test
+  // overrides it — two rows sharing an identity would collide as React keys.
+  canonicalEventId: `evt-${(fixtureSeq += 1).toString().padStart(4, '0')}`,
   clientId: 7, clientName: 'Acme', orderId: 9001, orderNumber: '9001',
   returnId: null, rowType: 'Outbound', displayReference: '9001',
   destination: 'Domestic', hasReturnPostageLine: false, hasReturnProcessingLine: false,
@@ -315,11 +320,145 @@ async function main(): Promise<void> {
   }
   ok('the printable invoice fails closed on a malformed row rather than printing a partial statement');
 
+  // --- 8. PRODUCER SHAPES AT THE ROUTE ------------------------------------------------------
+  // Sections 1-7 use hand-written rows. These use the rows PrepShip actually generates, read
+  // from the committed producer fixture, driven through the real HTTP handler. Two outages came
+  // from shapes this repository had never seen; this is where they would now surface.
+  const producerFixture = JSON.parse(
+    readFileSync('fixtures/cp-059-producer-billing-rows.json', 'utf8'),
+  ) as { producerSha: string; shapes: Array<{ name: string; rows: Array<Record<string, unknown>> }> };
+  const producerRows = producerFixture.shapes.flatMap((s) => s.rows);
+  const shapeRows = (prefix: string) => {
+    const shape = producerFixture.shapes.find((s) => s.name.startsWith(prefix));
+    if (!shape) throw new Error(`producer fixture is missing the shape: ${prefix}`);
+    return shape.rows;
+  };
+
+  // 8a. ORDERLESS STORAGE SURVIVES THE ROUTE. Requiring orderId 502'd any period with storage.
+  stubCapturing({ data: shapeRows('ORDERLESS storage line') });
+  const storageResponse = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (storageResponse.status !== 200) {
+    throw new Error(`an orderless storage row must not fail the route, got ${storageResponse.status}`);
+  }
+  const storageBody = await storageResponse.json() as { data?: Array<Record<string, unknown>> };
+  if ((storageBody.data ?? []).length !== 1) {
+    throw new Error(`the storage row must render, got ${(storageBody.data ?? []).length} rows`);
+  }
+  const storageRow = (storageBody.data ?? [])[0] ?? {};
+  if (storageRow.orderId !== null) throw new Error('the storage row keeps its null orderId');
+  ok('an ORDERLESS storage row survives /invoice-details instead of 502ing the period');
+
+  // 8b. TWO storage rows stay distinct, and stay distinct under REVERSED input. Under the old
+  // key both were '||Outbound' and their order fell to however the input happened to arrive.
+  const twoStorage = shapeRows('TWO orderless storage');
+  stubCapturing({ data: twoStorage });
+  const forward = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  stubCapturing({ data: [...twoStorage].reverse() });
+  const reverse = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  const idsOf = async (res: Response) => {
+    const body = await res.json() as { data?: Array<Record<string, unknown>> };
+    return (body.data ?? []).map((r) => String(r.canonicalEventId));
+  };
+  const forwardIds = await idsOf(forward);
+  const reverseIds = await idsOf(reverse);
+  if (forwardIds.length !== 2) throw new Error(`expected 2 storage rows, got ${forwardIds.length}`);
+  if (new Set(forwardIds).size !== 2) {
+    throw new Error(`two storage rows collapsed to one identity: ${forwardIds.join(' ')}`);
+  }
+  if (forwardIds.join('|') !== reverseIds.join('|')) {
+    throw new Error(`reversed input changed the order: ${forwardIds.join('|')} vs ${reverseIds.join('|')}`);
+  }
+  ok('two orderless storage rows stay distinct and keep their order under reversed input');
+
+  // 8c. A row missing producer-guaranteed money fails the ROUTE. Accepting one printed a
+  // plausible $0.00 invoice line for an amount nobody had computed.
+  const noMoney = { ...producerRows[0] };
+  delete noMoney.grandTotal;
+  stubCapturing({ data: [producerRows[0], noMoney] });
+  const missingMoney = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (missingMoney.status !== 502) {
+    throw new Error(`a row missing grandTotal must fail the route, got ${missingMoney.status}`);
+  }
+  const missingBody = await missingMoney.json() as { code?: string; data?: unknown };
+  if (!String(missingBody.code).includes('contract_mismatch')) {
+    throw new Error(`expected a contract mismatch, got ${missingBody.code}`);
+  }
+  if (missingBody.data !== undefined) throw new Error('a failed response carries no rows');
+  ok('a row missing producer-guaranteed money fails the route rather than printing $0.00');
+
+  // 8d. NO PARTIAL OUTPUT anywhere. The printable invoice must fail too, not print the good row.
+  stubCapturing({ data: [producerRows[0], noMoney] });
+  const partialPrint = await mount(financials).request(
+    `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (partialPrint.status !== 502) {
+    throw new Error(`the printable invoice must fail closed too, got ${partialPrint.status}`);
+  }
+  ok('the printable invoice fails closed on the same row — no partial statement');
+
+  // 8e. THE WHOLE producer fixture renders through the route, and nothing internal leaks.
+  stubCapturing({ data: producerRows });
+  const wholeFixture = await mount(financials).request(
+    `/invoice-details?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (wholeFixture.status !== 200) {
+    throw new Error(`the full producer payload must render, got ${wholeFixture.status}`);
+  }
+  const wholeText = await wholeFixture.text();
+  const whole = JSON.parse(wholeText) as { data?: Array<Record<string, unknown>> };
+  if ((whole.data ?? []).length !== producerRows.length) {
+    throw new Error(`expected ${producerRows.length} rows, got ${(whole.data ?? []).length}`);
+  }
+  for (const leak of ['selectedRate', 'bestRate', 'labelCost', 'carrierCode', 'providerAccountId',
+    'markupPct', 'totalCost', 'lineTypes', 'margin']) {
+    if (wholeText.includes(`"${leak}"`)) throw new Error(`${leak} reached the wire`);
+  }
+  const wholeIds = (whole.data ?? []).map((r) => String(r.canonicalEventId));
+  if (new Set(wholeIds).size !== wholeIds.length) {
+    throw new Error('the route returned duplicate event identities — React keys would collide');
+  }
+  ok(`all ${producerRows.length} producer rows render with distinct identities and no internal field on the wire`);
+
+  // 8f. The printable invoice renders the whole producer fixture without fabricating money.
+  stubCapturing({ data: producerRows });
+  const printedAll = await mount(financials).request(
+    `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
+  );
+  if (printedAll.status !== 200) {
+    throw new Error(`the printable invoice must render the producer fixture, got ${printedAll.status}`);
+  }
+  const printedHtml = await printedAll.text();
+  const printedBody = (printedHtml.match(/<tbody>[\s\S]*?<\/tbody>/) ?? [''])[0];
+  const printedRows = printedBody.split('</tr>').filter((c) => c.includes('<td'));
+  if (printedRows.length !== producerRows.length) {
+    throw new Error(`expected ${producerRows.length} printed rows, got ${printedRows.length}`);
+  }
+  for (const [index, row] of producerRows.entries()) {
+    const printedRow = printedRows[index] ?? '';
+    const cells = [...printedRow.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => (m[1] ?? '').trim());
+    // Column 13 is Return Postage, 12 is Return Processing (invoice-html.ts row template).
+    if (row.hasReturnPostageLine === false && cells[13] !== '&mdash;') {
+      throw new Error(`row ${index}: an absent postage line printed ${cells[13]} instead of blank`);
+    }
+    if (row.hasReturnProcessingLine === false && cells[12] !== '&mdash;') {
+      throw new Error(`row ${index}: an absent processing line printed ${cells[12]} instead of blank`);
+    }
+  }
+  ok('the printable invoice renders every producer row with no fabricated return money');
+
   await db.execute(rawSql`delete from clients where id = 7907`);
 
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
   await db.execute(rawSql`delete from orders where id in (9001, 9002)`);
-  const EXPECTED_CHECKS = 14;
+  const EXPECTED_CHECKS = 20;
   if (checks !== EXPECTED_CHECKS) {
     throw new Error(`expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   }

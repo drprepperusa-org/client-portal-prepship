@@ -95,11 +95,17 @@ function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, k
 /**
  * Stable tiebreak so pagination cannot drop or duplicate a row between pages.
  *
- * Uses relational identity — orderId then returnId — never `displayReference`. Two rows can
- * legitimately share a label; they cannot share (orderId, returnId).
+ * Uses the producer-issued canonicalEventId. The previous key was
+ * `orderId|returnId|rowType`, which is a total order for outbound rows and Returns but
+ * collapses to `||Outbound` for every ORDERLESS storage line — so two storage lines tied
+ * completely, their order fell to whatever the input happened to be, and a row could move
+ * between pages on refetch. PrepShip issues an identity that covers every shape; the portal
+ * uses it rather than reconstructing one.
+ *
+ * Never `displayReference`: two rows can legitimately share a label.
  */
 function stableKey(row: CanonicalBillingEventRow): string {
-  return `${row.orderId ?? ''}|${row.returnId ?? ''}|${row.rowType ?? ''}`;
+  return String((row as { canonicalEventId?: unknown }).canonicalEventId ?? '');
 }
 
 /**

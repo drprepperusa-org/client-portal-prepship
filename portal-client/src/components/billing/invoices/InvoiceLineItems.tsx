@@ -98,7 +98,15 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
           //
           // returnId is the discriminator because it is the relational fact. displayReference
           // is deliberately NOT used: it is a label, and two rows may legitimately share one.
-          rowKey={(row) => `${row.orderId}-${row.rowType ?? 'Outbound'}-${row.returnId ?? 'none'}`}
+          rowKey={(row) => (
+        // CP-059: the backend-issued event identity. The previous key was built from
+        // orderId/rowType/returnId, which is `null-Outbound-none` for EVERY orderless storage
+        // line — React then treats several distinct billing events as one row and reuses the
+        // wrong DOM node. Falling back only when the field is absent keeps older cached
+        // responses rendering rather than throwing.
+        row.canonicalEventId
+          ?? `${row.orderId}-${row.rowType ?? 'Outbound'}-${row.returnId ?? 'none'}`
+      )}
           allowColumnCustomization={props.canCustomizeTables}
           sort={props.sort}
           onSortChange={props.onSortChange}

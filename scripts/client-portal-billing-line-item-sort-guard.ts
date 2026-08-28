@@ -54,7 +54,14 @@ const pkg = JSON.parse(read('package.json'));
 
 // -- 1. EXECUTABLE: the ordering the detail route actually reaches -----------------------------
 type Row = Parameters<typeof orderCanonicalEvents>[0][number];
+let identitySeq = 0;
 const row = (over: Record<string, unknown>) => ({
+  // Producer-issued identity. Distinct per fixture row unless a test overrides it, because that
+  // is what PrepShip guarantees and what the tiebreak now depends on.
+  // Derived from displayReference so the fallback order is READABLE in the assertions below
+  // (an 'A' row sorts before a 'B' row). Tests that need two rows to share a label pass an
+  // explicit canonicalEventId instead, which is exactly what the producer would do.
+  canonicalEventId: `evt-${String(over.displayReference ?? (identitySeq += 1))}`,
   clientId: 7, clientName: 'Acme', orderId: 1, orderNumber: '1', returnId: null,
   rowType: 'Outbound', displayReference: '1', destination: 'Domestic',
   hasReturnPostageLine: false, hasReturnProcessingLine: false,
@@ -146,10 +153,16 @@ check(
 // Both returns deliberately carry the SAME displayReference. A label can repeat; only
 // (orderId, returnId) is unique. A tiebreak keyed on the label would tie these two completely
 // and let input order decide, which is how a row moves between pages and is dropped.
+// Two returns deliberately share a displayReference — a label CAN repeat. The producer issues a
+// distinct canonicalEventId for each regardless, which is the whole reason identity is its job
+// and not the consumer's: nothing visible on these two rows tells them apart.
 const tied = [
-  row({ orderId: 9, returnId: 2, rowType: 'Return', displayReference: '9-RETURN', grandTotal: 5 }),
-  row({ orderId: 9, returnId: null, rowType: 'Outbound', displayReference: '9', grandTotal: 5 }),
-  row({ orderId: 9, returnId: 1, rowType: 'Return', displayReference: '9-RETURN', grandTotal: 5 }),
+  row({ orderId: 9, returnId: 2, rowType: 'Return', displayReference: '9-RETURN',
+    canonicalEventId: 'evt-r2', grandTotal: 5 }),
+  row({ orderId: 9, returnId: null, rowType: 'Outbound', displayReference: '9',
+    canonicalEventId: 'evt-out', grandTotal: 5 }),
+  row({ orderId: 9, returnId: 1, rowType: 'Return', displayReference: '9-RETURN',
+    canonicalEventId: 'evt-r1', grandTotal: 5 }),
 ];
 const identity = (rows: readonly Row[]) =>
   rows.map((r) => {
@@ -165,6 +178,36 @@ check(
 check(
   new Set(tiedOnce).size === tied.length,
   'two returns sharing one label stay separable — the tiebreak uses (orderId, returnId), not the label',
+);
+
+// THE STORAGE CASE. Two ORDERLESS rows: no orderId, no returnId, same rowType. Under the old
+// tiebreak — orderId|returnId|rowType — both keyed to '||Outbound' and tied completely, so their
+// order fell to however the input arrived and a row could move between pages on refetch. Only
+// the producer identity separates them.
+const storage = [
+  row({ orderId: null, returnId: null, displayReference: null, canonicalEventId: 'storage-b', grandTotal: 25 }),
+  row({ orderId: null, returnId: null, displayReference: null, canonicalEventId: 'storage-a', grandTotal: 25 }),
+];
+const storageIds = (rows: readonly Row[]) =>
+  rows.map((r) => String((r as { canonicalEventId?: unknown }).canonicalEventId));
+// Setup check: the OLD key really did collapse these two. Without this the next assertion could
+// pass for a trivial reason and prove nothing.
+const legacyKeys = storage.map((r) => {
+  const x = r as { orderId: unknown; returnId: unknown; rowType: unknown };
+  return `${x.orderId ?? ''}|${x.returnId ?? ''}|${x.rowType ?? ''}`;
+});
+check(
+  legacyKeys[0] === legacyKeys[1],
+  'setup: the old orderId|returnId|rowType key collapses two orderless storage rows',
+);
+check(
+  storageIds(orderCanonicalEvents(storage, 'grandTotal', 'asc')).join('|')
+    === storageIds(orderCanonicalEvents([...storage].reverse(), 'grandTotal', 'asc')).join('|'),
+  'two ORDERLESS storage rows keep a deterministic order regardless of input order',
+);
+check(
+  new Set(storageIds(orderCanonicalEvents(storage, 'grandTotal', 'asc'))).size === 2,
+  'and they stay distinct — the producer identity is what separates them',
 );
 
 // -- 2. Route threads sort intent into the canonical read model --------------------------------
@@ -216,7 +259,7 @@ check(
   'package exposes test:billing-line-item-sort-pagination',
 );
 
-const EXPECTED_CHECKS = 18;
+const EXPECTED_CHECKS = 21;
 if (checks !== EXPECTED_CHECKS) {
   console.error(`FAIL expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   failed = true;

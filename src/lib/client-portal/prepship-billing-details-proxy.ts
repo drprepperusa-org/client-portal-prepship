@@ -90,6 +90,16 @@ const ALLOWED_STRING_FIELDS = [
   'billingEffectiveDate', 'billingPolicyVersion', 'recipientName', 'boxSize', 'displayQty',
 ] as const;
 
+/**
+ * The money fields PrepShip declares `: number` (never optional) on BillingDetailRowDto.
+ * Derived from the producer's own type declarations — not from this repository's contract file,
+ * whose fields are all optional, and not from an assumption about what "should" be present.
+ */
+const REQUIRED_NUMBER_FIELDS = [
+  'pickpackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal',
+  'storageTotal', 'adjustmentTotal', 'grandTotal',
+] as const;
+
 const ALLOWED_NUMBER_FIELDS = [
   'pickpackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal', 'storageTotal',
   'adjustmentTotal', 'returnPostageTotal', 'returnProcessingTotal', 'returnTotal', 'grandTotal',
@@ -157,14 +167,47 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
    * is a real answer, not an absent one), and both presence flags are set from the line type.
    * Requiring them cannot reject a well-formed production row.
    */
-  const orderId = asInteger(row.orderId);
   const rowTypeValid = typeof row.rowType === 'string' && ROW_TYPES.includes(row.rowType);
   const destinationValid = typeof row.destination === 'string' && DESTINATIONS.includes(row.destination);
   const postagePresenceValid = typeof row.hasReturnPostageLine === 'boolean';
   const processingPresenceValid = typeof row.hasReturnProcessingLine === 'boolean';
 
-  if (orderId === null || !rowTypeValid || !destinationValid
-    || !postagePresenceValid || !processingPresenceValid) {
+  /*
+   * IDENTITY, not orderId.
+   *
+   * This used to require a non-null `orderId`. PrepShip emits STORAGE lines with
+   * `orderId: null, orderNumber: null` (billing.ts:2360) — a deliberate contract its own
+   * `rowKey` handles explicitly. Requiring orderId therefore rejected every storage row, and
+   * since one rejected row fails the whole response, any period containing storage billing
+   * returned 502. That is the same mistake as the `false + 0` rule: the consumer demanding a
+   * shape the producer never promised.
+   *
+   * `canonicalEventId` is what actually identifies an event row, for every shape including the
+   * orderless ones. PrepShip derives it from the same key it files the aggregate under and
+   * publishes it opaque. The portal consumes it and never derives identity itself — not from
+   * displayReference, description, amount or row index.
+   */
+  const canonicalEventId = typeof row.canonicalEventId === 'string' && row.canonicalEventId.length > 0
+    ? row.canonicalEventId
+    : null;
+
+  /*
+   * PRODUCER-GUARANTEED MONEY.
+   *
+   * These seven are declared `: number` on BillingDetailRowDto and commented there as "always
+   * present, always numbers (the PS-369 FE contract)". A row missing them is not a billing event
+   * — and accepting one was customer-visible: the serializers read `Number(value ?? 0)`, so a
+   * row with no grandTotal printed a plausible $0.00 invoice line for money nobody had computed.
+   *
+   * The three RETURN totals are deliberately absent from this list. They are declared
+   * `?: number` — optional — on the producer DTO, and requiring them would be the consumer
+   * asserting a stricter contract than the producer publishes, which is exactly how the last two
+   * outages happened. Their presence is governed by the presence flags below instead.
+   */
+  const moneyValid = REQUIRED_NUMBER_FIELDS.every((field) => asNumber(row[field]) !== null);
+
+  if (canonicalEventId === null || !rowTypeValid || !destinationValid
+    || !postagePresenceValid || !processingPresenceValid || !moneyValid) {
     return null;
   }
 
@@ -199,6 +242,9 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
 
   const out: Record<string, unknown> = {
     clientId: asInteger(row.clientId),
+    // Producer-issued. The portal carries it verbatim and never mints one.
+    canonicalEventId,
+    // Null for a storage line, which has no order. That is a real shape, not a missing value.
     orderId: asInteger(row.orderId),
     // Relational return identity is kept in whatever scalar form upstream issued it.
     returnId: typeof row.returnId === 'number' || typeof row.returnId === 'string'

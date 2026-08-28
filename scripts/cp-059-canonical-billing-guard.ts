@@ -28,6 +28,9 @@ const ok = (label: string) => { checks += 1; console.log(`ok   ${label}`); };
 
 /** One canonical row as PrepShip issues it, with overrides. */
 const canonical = (over: Record<string, unknown> = {}) => ({
+  // Producer-issued identity. Required now: it is the only thing that identifies an ORDERLESS
+  // storage row, and a row without it cannot be keyed, sorted or paginated safely.
+  canonicalEventId: 'aaaabbbbccccdddd',
   clientId: 7,
   clientName: 'Acme',
   orderId: 1234,
@@ -217,6 +220,40 @@ assert.equal(moneyRow.returnTotal, 10.73, 'the return total arrives owned by the
 // is that the issued total is carried through untouched.
 ok('7.73 + 3.00 -> a backend-issued 10.73 carried verbatim, not re-summed locally');
 
+// --- 7b. IDENTITY AND GUARANTEED MONEY ARE MANDATORY -----------------------------------------
+
+// A row with no producer identity cannot be keyed, sorted or paginated — two of them would
+// render as one. It is not a canonical event row.
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ canonicalEventId: undefined })), null,
+  'a row with no canonicalEventId must be rejected',
+);
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ canonicalEventId: '' })), null,
+  'an empty canonicalEventId is not an identity',
+);
+ok('a row without a producer-issued identity is rejected');
+
+// The seven totals PrepShip declares `: number`. A row missing one is not a billing event, and
+// accepting it was customer-visible: money(null) prints $0.00 for an amount nobody computed.
+for (const field of ['pickpackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal',
+  'storageTotal', 'adjustmentTotal', 'grandTotal']) {
+  assert.equal(
+    toCanonicalBillingEventRow(canonical({ [field]: undefined })), null,
+    `a row missing the producer-guaranteed ${field} must be rejected, not printed as $0.00`,
+  );
+}
+// The three RETURN totals are optional on the producer DTO, so they must NOT be required —
+// requiring them would be the consumer inventing a stricter contract than the producer publishes.
+for (const field of ['returnPostageTotal', 'returnProcessingTotal', 'returnTotal']) {
+  assert.ok(
+    toCanonicalBillingEventRow(canonical({ [field]: undefined, hasReturnPostageLine: false,
+      hasReturnProcessingLine: false })),
+    `${field} is optional on the producer DTO and must NOT be required`,
+  );
+}
+ok('the seven guaranteed totals are required; the three optional return totals are not');
+
 // --- 8. MALFORMED ROWS FAIL CLOSED. The counterexample review found. --------------------------
 
 // `{}` used to be accepted and become an all-null row. That row then reached the serializers,
@@ -226,7 +263,10 @@ ok('7.73 + 3.00 -> a backend-issued 10.73 carried verbatim, not re-summed locall
 assert.equal(toCanonicalBillingEventRow({}), null, 'an empty object is not a canonical row');
 
 for (const [missing, row] of [
-  ['orderId', canonical({ orderId: null })],
+  // NOT orderId. PrepShip emits storage lines with orderId null by design, so requiring it
+  // rejected every storage row and 502'd any period containing storage billing. Identity comes
+  // from canonicalEventId, which covers the orderless shapes too.
+  ['canonicalEventId', canonical({ canonicalEventId: null })],
   ['rowType', canonical({ rowType: undefined })],
   ['destination', canonical({ destination: undefined })],
   ['hasReturnPostageLine', canonical({ hasReturnPostageLine: null })],
@@ -300,7 +340,7 @@ globalThis.fetch = originalFetch;
 // A checks/checks report is a tautology: it prints whatever ran and can never fail. Pinning the
 // expected count means deleting a block fails the guard instead of quietly shrinking it, which
 // is how a guard rots into a green no-op.
-const EXPECTED_CHECKS = 12;
+const EXPECTED_CHECKS = 14;
 assert.equal(
   checks, EXPECTED_CHECKS,
   `expected ${EXPECTED_CHECKS} checks to run; ${checks} did - a check was removed or skipped`,
