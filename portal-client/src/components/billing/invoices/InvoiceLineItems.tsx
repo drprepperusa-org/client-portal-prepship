@@ -88,7 +88,17 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
           tableId="invoices-lines"
           columns={lineColumns}
           rows={props.lineItems}
-          rowKey={(row) => `${row.orderId}-${row.orderNumber}`}
+          // CP-059: keyed on RELATIONAL EVENT identity, not the order.
+          //
+          // `${orderId}-${orderNumber}` was unique while every order produced one row. At event
+          // grain an outbound and its returns all share that pair, so three rows arrived as key
+          // "4242-4242" — React warns about duplicate keys and may duplicate or omit children,
+          // which on a billing table means a customer sees the wrong money against the wrong
+          // reference. The browser proof caught this as a console error.
+          //
+          // returnId is the discriminator because it is the relational fact. displayReference
+          // is deliberately NOT used: it is a label, and two rows may legitimately share one.
+          rowKey={(row) => `${row.orderId}-${row.rowType ?? 'Outbound'}-${row.returnId ?? 'none'}`}
           allowColumnCustomization={props.canCustomizeTables}
           sort={props.sort}
           onSortChange={props.onSortChange}
