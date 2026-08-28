@@ -67,10 +67,14 @@ assert(
 );
 
 // ── Route passes the sort params through ──
+// CP-059 replaced the order-grain read model with canonical event rows, so this pins
+// portalCanonicalInvoiceEvents instead. The BEHAVIOUR under guard is unchanged and still
+// enforced: the route reads sortBy/sortDir from the query and threads them into the read model,
+// rather than letting the browser sort a page-sized slice.
 assert(
   route.includes("const sortBy = c.req.query('sortBy')") &&
     route.includes("const sortDir = c.req.query('sortDir')") &&
-    route.includes('portalInvoiceDetails(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive, page, pageSize, sortBy, sortDir })'),
+    /portalCanonicalInvoiceEvents\(scope, authorization, \{[\s\S]{0,240}sortBy, sortDir,/.test(route),
   '/invoice-details paged mode reads sortBy/sortDir and passes them to the read-model',
 );
 

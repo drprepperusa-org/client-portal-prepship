@@ -129,9 +129,18 @@ assert(
   /'Return Postage'/.test(excel) && /'Return Processing'/.test(excel),
   'the Excel export header includes Return Postage + Return Processing',
 );
+// CP-059 AC-5. This used to pin `num(r.returnPostageTotal)` — but num() collapses null to 0,
+// which is exactly the coercion that made an absent return line indistinguishable from a real
+// $0.00 one in the export. The check is now STRONGER, not merely updated: it requires the
+// presence-aware cell AND forbids the raw num() coercion coming back on either return column.
 assert(
-  /num\(r\.returnPostageTotal\)/.test(excel) && /num\(r\.returnProcessingTotal\)/.test(excel),
-  'the Excel data rows include the return totals',
+  /moneyCellOrBlank\(r\.hasReturnPostageLine, r\.returnPostageTotal\)/.test(excel) &&
+    /moneyCellOrBlank\(r\.hasReturnProcessingLine, r\.returnProcessingTotal\)/.test(excel),
+  'the Excel data rows include the return totals, keyed on upstream fee presence',
+);
+assert(
+  !/num\(r\.returnPostageTotal\)/.test(excel) && !/num\(r\.returnProcessingTotal\)/.test(excel),
+  'return money must NOT go through num(), which would render an absent line as a fabricated 0.00',
 );
 assert(
   /sum\(\(r\) => r\.returnPostageTotal\)/.test(excel) && /sum\(\(r\) => r\.returnProcessingTotal\)/.test(excel),

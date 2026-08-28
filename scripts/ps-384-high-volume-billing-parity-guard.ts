@@ -61,10 +61,15 @@ check('Billing footer consumes backend summary totals instead of reducing visibl
     /return value/.test(totalsBlock) &&
     !/summary\.reduce/.test(totalsBlock));
 
-check('detail endpoint returns a paginated slice plus full grouped-row count',
-  /portalInvoiceDetails\(scope, \{ clientId, dateFrom: range\.fromUtc, dateTo: range\.toUtcExclusive, page, pageSize, sortBy, sortDir \}\)/.test(routes) &&
-    /portalInvoiceDetailCount\(scope, \{ clientId, dateFrom: range\.fromUtc, dateTo: range\.toUtcExclusive \}\)/.test(routes) &&
-    /pagination: \{ page, pageSize, total, totalPages/.test(routes));
+// CP-059: the slice and its total now come from ONE canonical call rather than a separate
+// read + count pair. The property PS-384 protects is unchanged — a page must ship with the
+// count of the FULL filtered set, so the footer and pagination cannot disagree with the grid.
+// What changed is what is being counted: EVENT rows, not distinct orders. An order with an
+// outbound and two returns is 3, and the old grouped count reported 1.
+check('detail endpoint returns a paginated slice plus full event-row count',
+  /portalCanonicalInvoiceEvents\(scope, authorization, \{[\s\S]{0,240}page, pageSize, sortBy, sortDir,/.test(routes) &&
+    /total: result\.total/.test(routes) &&
+    /totalPages: Math\.max\(1, Math\.ceil\(result\.total \/ pageSize\)\)/.test(routes));
 
 check('detail read model caps only the visible/unpaginated detail path, not summary truth',
   /limit \$\{input\.pageSize \?\? \(input\.clientId \? 5000 : 1000\)\}/.test(detailBlock));
