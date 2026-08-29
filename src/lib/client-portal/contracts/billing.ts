@@ -69,7 +69,7 @@ export interface BillingInvoiceDetailRow {
    * and a Return on returnId, but a storage line has neither, so consumer-side keys collapsed
    * and two storage lines became the same row. Never derive this locally.
    */
-  canonicalEventId?: string | null;
+  canonicalEventId: string;
   clientId?: number;
   clientName?: string | null;
   orderId?: number | null;
@@ -121,6 +121,16 @@ export interface BillingInvoiceDetailRow {
   hasReturnProcessingLine?: boolean | null;
   /** The Return row's own total, owned upstream — not re-summed from its parts. */
   returnTotal?: number | string | null;
+  /**
+   * PS-512 — replacement money, aggregated onto the related outbound row by the producer.
+   *
+   * Carried so the itemized view can reconcile to the invoice total. Before PS-512 these
+   * rendered as $0.00 and the visible lines did not add up to what the customer was billed.
+   */
+  replacePostageTotal?: number | string | null;
+  replacePickPackTotal?: number | string | null;
+  /** Manual billing adjustment. Carried, not re-derived. */
+  adjustmentTotal?: number | string | null;
 }
 
 export interface BillingLastGenerated {

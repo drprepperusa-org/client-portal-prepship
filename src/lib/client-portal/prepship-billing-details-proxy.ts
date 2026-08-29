@@ -42,6 +42,18 @@ export type CanonicalBillingDestination = 'Domestic' | 'International' | 'Needs 
  * an upstream might add later, and it silently fails open the first time it guesses wrong.
  */
 export interface CanonicalBillingEventRow {
+  /**
+   * Producer-issued event identity. REQUIRED, not optional.
+   *
+   * Typed as a plain `string` on purpose. It was absent from this interface while the runtime
+   * validation already required it, so every consumer reached it through a cast — and the DTO
+   * projection then dropped it entirely without the compiler noticing. A mutation test caught
+   * that after the fact; the type system should have caught it at the keystroke.
+   *
+   * Exactly 32 lowercase hex characters, validated at the boundary against
+   * CANONICAL_EVENT_ID_PATTERN. Nothing downstream may derive, mint or default it.
+   */
+  canonicalEventId: string;
   // Identity — relational, issued upstream.
   clientId: number | null;
   clientName: string | null;
@@ -70,6 +82,9 @@ export interface CanonicalBillingEventRow {
   returnPostageTotal: number | null;
   returnProcessingTotal: number | null;
   returnTotal: number | null;
+  /** PS-512 — replacement money, aggregated onto the related outbound row by the producer. */
+  replacePostageTotal: number | null;
+  replacePickPackTotal: number | null;
   grandTotal: number | null;
 
   // Dates and presentation-safe descriptors.
@@ -102,12 +117,18 @@ const REQUIRED_NUMBER_FIELDS = [
 
 const ALLOWED_NUMBER_FIELDS = [
   'pickpackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal', 'storageTotal',
-  'adjustmentTotal', 'returnPostageTotal', 'returnProcessingTotal', 'returnTotal', 'grandTotal',
+  'adjustmentTotal', 'returnPostageTotal', 'returnProcessingTotal', 'returnTotal',
+  // PS-512. Optional on the producer DTO, like the return totals — allowlisted so the money can
+  // reach a customer surface, never required, since not every row has replacement activity.
+  'replacePostageTotal', 'replacePickPackTotal', 'grandTotal',
 ] as const;
 
 const ALLOWED_BOOLEAN_FIELDS = [
   'hasReturnPostageLine', 'hasReturnProcessingLine', 'rolledFromWeekend',
 ] as const;
+
+/** The exact identity format PrepShip publishes: 32 lowercase hex characters. */
+const CANONICAL_EVENT_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 const ROW_TYPES: readonly string[] = ['Outbound', 'Return'];
 const DESTINATIONS: readonly string[] = ['Domestic', 'International', 'Needs Review'];
@@ -136,7 +157,11 @@ function asBoolean(value: unknown): boolean | null {
 
 function asInteger(value: unknown): number | null {
   const parsed = asNumber(value);
-  return parsed === null ? null : Math.trunc(parsed);
+  if (parsed === null) return null;
+  // A fractional relational id is not a rounding problem, it is a WRONG id. Truncating 42.9 to
+  // 42 silently points the row — and any enrichment or drill-in built on it — at a different
+  // order. This boundary exists to fail closed on contract drift, so it rejects.
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 /**
@@ -187,7 +212,11 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
    * publishes it opaque. The portal consumes it and never derives identity itself — not from
    * displayReference, description, amount or row index.
    */
-  const canonicalEventId = typeof row.canonicalEventId === 'string' && row.canonicalEventId.length > 0
+  // The producer publishes exactly 32 lowercase hex characters. Checking only for a non-empty
+  // string accepted "x", which is not an identity from this producer and would sail through to
+  // the React keys. A contract gate that accepts anything shaped vaguely right is not a gate.
+  const canonicalEventId = typeof row.canonicalEventId === 'string'
+    && CANONICAL_EVENT_ID_PATTERN.test(row.canonicalEventId)
     ? row.canonicalEventId
     : null;
 
@@ -204,9 +233,34 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
    * asserting a stricter contract than the producer publishes, which is exactly how the last two
    * outages happened. Their presence is governed by the presence flags below instead.
    */
-  const moneyValid = REQUIRED_NUMBER_FIELDS.every((field) => asNumber(row[field]) !== null);
+  // FINITE JSON NUMBERS, not coercible strings. asNumber() happily turns "3.00" into 3, which
+  // is numerically safe and contractually wrong: the producer declares these as `number`, so a
+  // string arriving here is contract drift and this boundary exists to fail closed on exactly
+  // that. NaN and Infinity are rejected for the same reason.
+  const moneyValid = REQUIRED_NUMBER_FIELDS.every((field) => {
+    const value = row[field];
+    return typeof value === 'number' && Number.isFinite(value);
+  });
 
-  if (canonicalEventId === null || !rowTypeValid || !destinationValid
+  // Client identity. PrepShip stamps it on every generated row; silently erasing it to null
+  // would detach a billing line from the client it belongs to on a multi-client export.
+  const clientId = asInteger(row.clientId);
+
+  /*
+   * A PRESENT relational id must be a real integer.
+   *
+   * `asInteger` returns null for 42.9, which is safer than the truncation it replaced but still
+   * wrong here: orderId is legitimately null on a storage row, so a fractional id would quietly
+   * become an ORDERLESS row rather than being refused. A row would then enrich, sort and render
+   * as something it is not.
+   *
+   * So absence and malformity are separated. Null and undefined are fine — that is storage.
+   * Anything present that is not an integer is contract drift and fails closed.
+   */
+  const orderIdPresent = row.orderId !== null && row.orderId !== undefined;
+  const orderIdValid = !orderIdPresent || asInteger(row.orderId) !== null;
+
+  if (canonicalEventId === null || clientId === null || !orderIdValid || !rowTypeValid || !destinationValid
     || !postagePresenceValid || !processingPresenceValid || !moneyValid) {
     return null;
   }
@@ -241,7 +295,7 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
   if (row.hasReturnProcessingLine === true && asNumber(row.returnProcessingTotal) === null) return null;
 
   const out: Record<string, unknown> = {
-    clientId: asInteger(row.clientId),
+    clientId,
     // Producer-issued. The portal carries it verbatim and never mints one.
     canonicalEventId,
     // Null for a storage line, which has no order. That is a real shape, not a missing value.
@@ -372,5 +426,33 @@ export async function fetchCanonicalBillingDetails(
     }
     rows.push(row);
   }
+
+  /*
+   * IDENTITIES MUST BE UNIQUE ACROSS THE RESPONSE.
+   *
+   * Per-row validation cannot see this: each duplicate is individually well-formed. But two rows
+   * sharing an identity give duplicate React keys, an incomplete sort tiebreak, ambiguous
+   * pagination, and reused DOM nodes on a billing surface — the customer sees one row where two
+   * charges exist. That is the collision the identity was introduced to remove, so accepting it
+   * here would defeat the entire mechanism.
+   */
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const id = String((row as { canonicalEventId?: unknown }).canonicalEventId ?? '');
+    if (seen.has(id)) {
+      console.error(
+        '[client-portal] canonical billing rows share an event identity; rejecting the response '
+        + 'rather than rendering two charges as one row',
+      );
+      return {
+        ok: false,
+        status: 502,
+        code: 'prep_ship_billing_contract_mismatch',
+        error: 'PrepShip billing details returned duplicate canonical event identities.',
+      };
+    }
+    seen.add(id);
+  }
+
   return { ok: true, rows };
 }

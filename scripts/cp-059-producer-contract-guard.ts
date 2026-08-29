@@ -32,6 +32,7 @@ const { toPortalDetailRow } = await import(
   '../src/lib/client-portal/read-models/canonical-invoice-events.js'
 );
 const { buildInvoiceExcelSheet } = await import('../portal-client/src/lib/invoiceExcel.js');
+const { invoiceRowKey } = await import('../portal-client/src/lib/invoiceRows.js');
 
 let checks = 0;
 const ok = (label: string) => { checks += 1; console.log(`ok   ${label}`); };
@@ -127,6 +128,33 @@ for (const forbidden of ['totalCost', 'lineTypes', 'margin', 'selectedRate', 'bi
 }
 ok('the projection still drops internal fields — it is an allowlist, not a spread');
 
+// The projection must also carry the MONEY CATEGORIES, or a real charge disappears from the
+// itemized view while still sitting in the total — the PS-512 defect, one layer down.
+for (const field of ['adjustmentTotal', 'replacePostageTotal', 'replacePickPackTotal']) {
+  assert.ok(
+    field in (projected[0] as Record<string, unknown>),
+    `${field} must survive the projection — a category dropped here cannot reconcile to the total`,
+  );
+}
+const replacementProjected = projected.filter(
+  (r) => Number((r as Record<string, unknown>).replacePostageTotal ?? 0) > 0,
+);
+assert.ok(
+  replacementProjected.length > 0,
+  'the producer fixture must contain real replacement money that survives the projection',
+);
+ok('the projection carries adjustment and replacement money, with real non-zero amounts present');
+
+// The React key is the producer identity, executed rather than eyeballed in a browser.
+const storageProjected = projected.filter((r) => (r as Record<string, unknown>).orderId === null);
+assert.ok(storageProjected.length >= 2, 'need at least two orderless rows to prove the key separates them');
+const keys = storageProjected.map((r) => invoiceRowKey(r as never));
+assert.equal(new Set(keys).size, keys.length, 'two orderless storage rows must get DIFFERENT React keys');
+for (const key of keys) {
+  assert.match(String(key), /^[0-9a-f]{32}$/, 'the React key is the producer identity, not a locally assembled string');
+}
+ok('the React key separates two orderless storage rows and is the producer identity verbatim');
+
 // --- 3. no producer row renders fabricated money ---------------------------------------------
 
 const html = renderPortalInvoiceHtml({
@@ -175,7 +203,7 @@ assert.ok(whole.ok, `the full producer payload must not fail the response bounda
 assert.equal(whole.rows.length, accepted.length, 'every producer row survives the response boundary');
 ok('the entire producer payload passes the response boundary in one piece');
 
-const EXPECTED_CHECKS = 10;
+const EXPECTED_CHECKS = 12;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log('');
 console.log(`PASS CP-059 producer contract guard - ${checks}/${EXPECTED_CHECKS} checks`);

@@ -105,7 +105,7 @@ function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, k
  * Never `displayReference`: two rows can legitimately share a label.
  */
 function stableKey(row: CanonicalBillingEventRow): string {
-  return String((row as { canonicalEventId?: unknown }).canonicalEventId ?? '');
+  return row.canonicalEventId;
 }
 
 /**
@@ -209,7 +209,7 @@ export function toPortalDetailRow(
     return {
       // Producer-issued identity. Without it the frontend cannot tell two orderless storage
       // rows apart, which is the whole reason it exists.
-      canonicalEventId: (row as { canonicalEventId?: string | null }).canonicalEventId ?? null,
+      canonicalEventId: row.canonicalEventId,
       clientId: row.clientId ?? undefined,
       clientName: row.clientName,
       orderId: row.orderId,
@@ -234,6 +234,12 @@ export function toPortalDetailRow(
       returnPostageTotal: row.returnPostageTotal,
       returnProcessingTotal: row.returnProcessingTotal,
       returnTotal: row.returnTotal,
+      // PS-512 + adjustment. Named explicitly, because this projection is an allowlist and a
+      // field nobody names is a field silently dropped — which is precisely how the event
+      // identity went missing here once already.
+      replacePostageTotal: row.replacePostageTotal,
+      replacePickPackTotal: row.replacePickPackTotal,
+      adjustmentTotal: row.adjustmentTotal,
       rowTotal: row.grandTotal,
       // Canonical event identity.
       returnId: row.returnId,

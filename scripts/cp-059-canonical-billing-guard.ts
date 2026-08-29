@@ -26,11 +26,26 @@ const { toCanonicalBillingEventRow, fetchCanonicalBillingDetails } =
 let checks = 0;
 const ok = (label: string) => { checks += 1; console.log(`ok   ${label}`); };
 
+/** A deterministic 32-hex identity for a fixture row, shaped like the producer's. */
+const hex32 = (seed: string) => seed
+  .split('')
+  .map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
+  .join('')
+  .padEnd(32, '0')
+  .slice(0, 32);
+
 /** One canonical row as PrepShip issues it, with overrides. */
 const canonical = (over: Record<string, unknown> = {}) => ({
   // Producer-issued identity. Required now: it is the only thing that identifies an ORDERLESS
   // storage row, and a row without it cannot be keyed, sorted or paginated safely.
-  canonicalEventId: 'aaaabbbbccccdddd',
+  // 32 lowercase hex — the exact format the producer publishes. A 16-character value is no
+  // longer accepted, and the fixture must not be the thing that keeps a loose check alive.
+  //
+  // DERIVED FROM THE ROW, not a counter. The producer's identity is content-derived and stable,
+  // so a fixture keyed on call order would make identity depend on the order the test happened
+  // to build its rows — which already broke the reversed-input case in the integration suite
+  // once. Distinct per row, because duplicates now reject the whole response.
+  canonicalEventId: hex32(String(over.displayReference ?? over.returnId ?? over.orderId ?? 'base')),
   clientId: 7,
   clientName: 'Acme',
   orderId: 1234,
@@ -254,6 +269,70 @@ for (const field of ['returnPostageTotal', 'returnProcessingTotal', 'returnTotal
 }
 ok('the seven guaranteed totals are required; the three optional return totals are not');
 
+// --- 7c. THE MALFORMED SHAPES REVIEW GOT PAST THE BOUNDARY ------------------------------------
+// Each of these was accepted at the previous SHA and reached a customer surface.
+
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ canonicalEventId: 'x' })), null,
+  'a non-empty string is not an identity — the producer publishes exactly 32 lowercase hex',
+);
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ canonicalEventId: 'AAAABBBBCCCCDDDDEEEEFFFF00001111' })), null,
+  'uppercase hex is not the published format',
+);
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ canonicalEventId: 'aaaabbbbccccddddeeeeffff0000111' })), null,
+  '31 characters is not the published format',
+);
+ok('only the exact 32-lowercase-hex identity format is accepted');
+
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ orderId: 42.9 })), null,
+  'a fractional relational id must be REJECTED, not truncated to a different order',
+);
+assert.ok(toCanonicalBillingEventRow(canonical({ orderId: 42 })), 'a real integer id still passes');
+assert.ok(
+  toCanonicalBillingEventRow(canonical({ orderId: null, canonicalEventId: hex32('storage-1') })),
+  'a null orderId is a real storage shape and must still pass',
+);
+ok('a fractional relational id is rejected rather than silently truncated');
+
+for (const field of ['pickpackTotal', 'grandTotal', 'shippingTotal']) {
+  assert.equal(
+    toCanonicalBillingEventRow(canonical({ [field]: '3.00' })), null,
+    `${field} is declared a number by the producer; a numeric STRING is contract drift`,
+  );
+  assert.equal(
+    toCanonicalBillingEventRow(canonical({ [field]: Number.NaN })), null,
+    `${field} must be a FINITE number`,
+  );
+}
+ok('required totals must be finite JSON numbers, not coercible strings or NaN');
+
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ clientId: undefined })), null,
+  'a row with no client identity must not be silently detached from its client',
+);
+ok('client identity is required, not erased to null');
+
+// DUPLICATE IDENTITIES fail the WHOLE response. Per-row validation cannot see this: each
+// duplicate is individually well-formed, yet two rows sharing an identity render as one.
+stubUpstream({ data: [
+  canonical({ displayReference: 'A', canonicalEventId: hex32('same') }),
+  canonical({ displayReference: 'B', canonicalEventId: hex32('same') }),
+] });
+const dupes = await fetchCanonicalBillingDetails('Bearer t', { dateFrom: '2026-08-01', dateTo: '2026-09-01' });
+assert.equal(dupes.ok, false, 'two rows sharing an identity must fail the whole response');
+if (!dupes.ok) assert.match(dupes.code, /contract_mismatch/, 'and name it a contract mismatch');
+// The same two rows with distinct identities must succeed, so this cannot pass by rejecting all.
+stubUpstream({ data: [
+  canonical({ displayReference: 'A', canonicalEventId: hex32('a') }),
+  canonical({ displayReference: 'B', canonicalEventId: hex32('b') }),
+] });
+const distinct = await fetchCanonicalBillingDetails('Bearer t', { dateFrom: '2026-08-01', dateTo: '2026-09-01' });
+assert.ok(distinct.ok, 'distinct identities must still succeed');
+ok('duplicate event identities reject the response; distinct ones still succeed');
+
 // --- 8. MALFORMED ROWS FAIL CLOSED. The counterexample review found. --------------------------
 
 // `{}` used to be accepted and become an all-null row. That row then reached the serializers,
@@ -340,7 +419,7 @@ globalThis.fetch = originalFetch;
 // A checks/checks report is a tautology: it prints whatever ran and can never fail. Pinning the
 // expected count means deleting a block fails the guard instead of quietly shrinking it, which
 // is how a guard rots into a green no-op.
-const EXPECTED_CHECKS = 14;
+const EXPECTED_CHECKS = 19;
 assert.equal(
   checks, EXPECTED_CHECKS,
   `expected ${EXPECTED_CHECKS} checks to run; ${checks} did - a check was removed or skipped`,

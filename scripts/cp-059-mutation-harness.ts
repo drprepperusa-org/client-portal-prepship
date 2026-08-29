@@ -30,6 +30,7 @@ const PROXY = 'src/lib/client-portal/prepship-billing-details-proxy.ts';
 const HTML = 'src/lib/client-portal/invoice-html.ts';
 const XLSX = 'portal-client/src/lib/invoiceExcel.ts';
 const EVENTS = 'src/lib/client-portal/read-models/canonical-invoice-events.ts';
+const ROWS = 'portal-client/src/lib/invoiceRows.ts';
 
 const CONTRACT = 'scripts/cp-059-producer-contract-guard.ts';
 const BOUNDARY = 'scripts/cp-059-canonical-billing-guard.ts';
@@ -48,8 +49,8 @@ export const MUTATIONS: readonly Mutation[] = [
   {
     label: 'REGRESSION: require a non-null orderId again (rejects every orderless storage row)',
     file: PROXY, guard: CONTRACT,
-    from: '  if (canonicalEventId === null || !rowTypeValid || !destinationValid',
-    to: '  if (asInteger(row.orderId) === null || canonicalEventId === null || !rowTypeValid || !destinationValid',
+    from: '  if (canonicalEventId === null || clientId === null || !orderIdValid || !rowTypeValid || !destinationValid',
+    to: '  if (asInteger(row.orderId) === null ||canonicalEventId === null || clientId === null || !orderIdValid || !rowTypeValid || !destinationValid',
   },
 
   // ---- identity ----
@@ -58,13 +59,13 @@ export const MUTATIONS: readonly Mutation[] = [
     // BOUNDARY, not CONTRACT: every row in the producer fixture already carries an identity, so
     // the contract guard cannot see this break. The boundary guard asserts the rejection directly.
     file: PROXY, guard: BOUNDARY,
-    from: '  if (canonicalEventId === null || !rowTypeValid || !destinationValid',
-    to: '  if (!rowTypeValid || !destinationValid',
+    from: 'canonicalEventId === null || clientId === null ||',
+    to: 'clientId === null ||',
   },
   {
     label: 'identity: sort tiebreak goes back to orderId|returnId|rowType, collapsing storage rows',
     file: EVENTS, guard: SORT,
-    from: "  return String((row as { canonicalEventId?: unknown }).canonicalEventId ?? '');",
+    from: '  return row.canonicalEventId;',
     to: "  return `${row.orderId ?? ''}|${row.returnId ?? ''}|${row.rowType ?? ''}`;",
   },
 
@@ -74,7 +75,56 @@ export const MUTATIONS: readonly Mutation[] = [
     // a database-bound function and no static guard could reach it.
     label: 'identity: the served DTO projection drops canonicalEventId (frontend loses all identity)',
     file: EVENTS, guard: CONTRACT,
-    from: "      canonicalEventId: (row as { canonicalEventId?: string | null }).canonicalEventId ?? null,\n",
+    from: '      canonicalEventId: row.canonicalEventId,\n',
+    to: '',
+  },
+
+  {
+    label: 'identity: accept any non-empty string as an identity (so "x" passes)',
+    file: PROXY, guard: BOUNDARY,
+    from: "    && CANONICAL_EVENT_ID_PATTERN.test(row.canonicalEventId)\n",
+    to: '',
+  },
+  {
+    label: 'identity: allow duplicate canonicalEventId across one response (two charges, one row)',
+    file: PROXY, guard: BOUNDARY,
+    from: '    if (seen.has(id)) {',
+    to: '    if (false) {',
+  },
+  {
+    label: 'identity: React key falls back to the collapsing orderId/rowType/returnId key',
+    file: ROWS, guard: CONTRACT,
+    from: 'export const invoiceRowKey = (row: BillingInvoiceDetailRow): string => row.canonicalEventId;',
+    to: 'export const invoiceRowKey = (row: BillingInvoiceDetailRow): string => String(row.orderId) + String(row.rowType);',
+  },
+  {
+    label: 'ids: truncate a fractional relational id instead of rejecting it (42.9 -> 42)',
+    file: PROXY, guard: BOUNDARY,
+    from: '  return Number.isInteger(parsed) ? parsed : null;',
+    to: '  return Math.trunc(parsed);',
+  },
+  {
+    label: 'money: accept a numeric STRING for a producer-declared number field',
+    file: PROXY, guard: BOUNDARY,
+    from: '    return typeof value === \'number\' && Number.isFinite(value);',
+    to: '    return asNumber(value) !== null;',
+  },
+  {
+    label: 'scope: stop requiring clientId, silently detaching a line from its client',
+    file: PROXY, guard: BOUNDARY,
+    from: 'clientId === null || !orderIdValid ||',
+    to: '',
+  },
+  {
+    label: 'projection: drop adjustmentTotal from the served DTO',
+    file: EVENTS, guard: CONTRACT,
+    from: '      adjustmentTotal: row.adjustmentTotal,\n',
+    to: '',
+  },
+  {
+    label: 'PS-512: replacement money dropped from the served DTO, so it renders as nothing',
+    file: EVENTS, guard: CONTRACT,
+    from: '      replacePostageTotal: row.replacePostageTotal,\n',
     to: '',
   },
 
@@ -82,8 +132,8 @@ export const MUTATIONS: readonly Mutation[] = [
   {
     label: 'money: stop requiring the producer-guaranteed totals, so a row with no grandTotal prints $0.00',
     file: PROXY, guard: BOUNDARY,
-    from: '  const moneyValid = REQUIRED_NUMBER_FIELDS.every((field) => asNumber(row[field]) !== null);',
-    to: '  const moneyValid = true;',
+    from: '  const moneyValid = REQUIRED_NUMBER_FIELDS.every((field) => {',
+    to: '  const moneyValid = true; void ((field: string) => {',
   },
   {
     label: 'money: drop grandTotal from the required list (the field the fabricated zero came from)',
