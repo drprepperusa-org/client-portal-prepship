@@ -344,6 +344,19 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   if (pathname === '/api/client-portal/inventory-history') {
     return { data: [], pagination: emptyPagination };
   }
+  if (pathname === '/api/client-portal/replacements/reason-contract') {
+    return {
+      data: {
+        version: 'replacement-request-v1',
+        reasons: [
+          { code: 'damaged', label: 'Damaged' },
+          { code: 'wrong_item', label: 'Wrong item' },
+          { code: 'lost_in_transit', label: 'Lost in transit' },
+          { code: 'other', label: 'Other' },
+        ],
+      },
+    };
+  }
   if (pathname === '/api/client-portal/replacements') {
     return {
       data: [{
@@ -354,7 +367,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
         clientId: 1,
         clientName: 'Walmart - DJC',
         status: 'requested',
-        reason: 'Arrived damaged',
+        reasonCode: 'damaged',
         itemCount: 1,
         requestedAt: '2026-07-16T12:30:00.000Z',
       }],
@@ -370,7 +383,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
         clientId: 1,
         clientName: 'Walmart - DJC',
         status: 'requested',
-        reason: 'Arrived damaged',
+        reasonCode: 'damaged',
         itemCount: 1,
         requestedAt: '2026-07-16T12:30:00.000Z',
         items: [{ id: 1, sku: 'E2E-SKU', name: 'E2E product', quantity: 1 }],
@@ -678,14 +691,15 @@ test('CP-061: /replace lists canonical rows and opens the detail drawer', async 
   await page.goto(`${baseUrl}/replace`);
   await expect(page.getByText('200014902407643-REPLACE')).toBeVisible();
   await expect(page.getByText('1 item', { exact: true })).toBeVisible();
+  // CP-061 reason: the list shows the customer-safe LABEL from the PS-502 contract
+  // (reasonCode 'damaged' -> 'Damaged'), never the raw code.
+  await expect(page.getByText('Damaged').first()).toBeVisible();
   await page.getByText('200014902407643-REPLACE').click();
   const drawer = page.getByRole('dialog', { name: '200014902407643-REPLACE' });
   await expect(drawer).toBeVisible();
-  // The request reason is deliberately NOT rendered: PS-502 has never declared
-  // replacements.reason customer-safe and ships no labels for its four codes,
-  // so the portal withholds it rather than asserting a disclosure upstream did
-  // not make. See src/lib/client-portal/contracts/replacements.ts.
-  await expect(drawer.getByText('Arrived damaged')).toHaveCount(0);
+  // The reason renders as the contract label; the raw code 'damaged' never appears.
+  await expect(drawer.getByText('Damaged', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('damaged', { exact: true })).toHaveCount(0);
   await expect(drawer.getByText('E2E-SKU')).toBeVisible();
   // Staff (admin) sees the capability-gated create action.
   await expect(page.getByRole('button', { name: 'Request replacement' })).toBeVisible();
@@ -697,6 +711,87 @@ test('CP-061: client_user sees no create action on /replace', async ({ page }) =
   await page.goto(`${baseUrl}/replace`);
   await expect(page.getByText('200014902407643-REPLACE')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Request replacement' })).toHaveCount(0);
+});
+
+test('CP-061 reason: a redacted (null) reason shows "Reason unavailable", never raw', async ({ page }) => {
+  const errors = await setupPortal(page);
+  // A redacted reasonCode (the backend nulled a raw/legacy value). Neither the code nor a seeded
+  // raw string may reach the DOM — the UI shows only the neutral "Reason unavailable".
+  const nulled = {
+    id: 7,
+    reference: '200014902407643-REPLACE',
+    orderId: 101,
+    orderNumber: '200014902407643',
+    clientId: 1,
+    clientName: 'Walmart - DJC',
+    status: 'requested',
+    reasonCode: null,
+    itemCount: 1,
+    requestedAt: '2026-07-16T12:30:00.000Z',
+  };
+  await page.route('**/api/client-portal/replacements', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [nulled] }) });
+  });
+  await page.route('**/api/client-portal/replacements/7', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { ...nulled, items: [{ id: 1, sku: 'E2E-SKU', name: 'E2E product', quantity: 1 }] } }),
+    });
+  });
+  await page.goto(`${baseUrl}/replace`);
+  await page.getByText('200014902407643-REPLACE').click();
+  const drawer = page.getByRole('dialog', { name: '200014902407643-REPLACE' });
+  await expect(drawer.getByText('Reason unavailable')).toBeVisible();
+  await expect(page.getByText('Customer says box smelled odd')).toHaveCount(0);
+  await expect(page.getByText('damaged', { exact: true })).toHaveCount(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-061 reason: the create form submits the canonical code, not the label', async ({ page }) => {
+  const errors = await setupPortal(page);
+  let createBody = null;
+  await page.route('**/api/client-portal/replacements', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    createBody = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: 8 } }) });
+  });
+  await page.goto(`${baseUrl}/replace`);
+  await page.getByRole('button', { name: 'Request replacement' }).click();
+  const modal = page.getByRole('dialog', { name: 'Request replacement' });
+  await expect(modal).toBeVisible();
+  // The reason is a select of contract LABELS whose values are canonical codes.
+  await expect(modal.getByRole('option', { name: 'Lost in transit' })).toBeAttached();
+  await modal.getByPlaceholder('e.g. 1321').fill('1321');
+  await modal.locator('select').selectOption('lost_in_transit');
+  await modal.getByLabel('SKU').fill('SKU-1');
+  await modal.getByLabel('Qty').fill('1');
+  await modal.getByRole('button', { name: 'Request replacement' }).click();
+  await expect.poll(() => (createBody ? createBody.reason : null)).toBe('lost_in_transit');
+  expect(createBody.reason).not.toBe('Lost in transit');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-061 reason: an unavailable contract disables the request with safe copy', async ({ page }) => {
+  await setupPortal(page);
+  // Upstream refusal (feature off) passes through as a non-200 — no options, no fallback labels.
+  await page.route('**/api/client-portal/replacements/reason-contract', async (route) => {
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'The replacements surface is not enabled', code: 'REPLACEMENTS_DISABLED' }),
+    });
+  });
+  await page.goto(`${baseUrl}/replace`);
+  await page.getByRole('button', { name: 'Request replacement' }).click();
+  const modal = page.getByRole('dialog', { name: 'Request replacement' });
+  await expect(modal).toBeVisible();
+  // Safe explanatory copy, no reason <select>, submit disabled, and no label leaks as an option.
+  await expect(modal.getByText(/not available right now/i)).toBeVisible();
+  await expect(modal.locator('select')).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: 'Request replacement' })).toBeDisabled();
+  await expect(modal.getByText('Lost in transit')).toHaveCount(0);
 });
 
 test('client can rename a Shopify connection without changing provider identity', async ({ page }) => {

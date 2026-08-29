@@ -216,6 +216,10 @@ export function useReplacements() {
 }
 export const useReplacement = (id: number | null) =>
   useTokenQuery(['replacement', id ?? 0], (t) => portalApi.replacement(t, id as number), id != null);
+// CP-061 — the customer-safe reason contract (codes + labels). The CP proxy validates it; the UI
+// renders only these labels and never a local map.
+export const useReplacementReasonContract = () =>
+  useTokenQuery(['replacement-reason-contract'], (t) => portalApi.replacementReasonContract(t));
 
 // CP-029 — Returns list + detail. Mirrors useShipments/useOrder: the list honors
 // the top-bar client switcher and the on-page status/search/order filters; the

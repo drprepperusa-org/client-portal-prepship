@@ -1,0 +1,61 @@
+# CP-061 — reason-contract cross-repo parity lane.
+#
+# Proves the REAL PrepShip provider (prepship-v4 GET /replacements/reason-contract output) passes
+# the REAL Client Portal consumer validator, at explicit pinned SHAs. The CP-only guard suite
+# cannot run this (it needs the prepship-v4 checkout), so it lives in its own dispatchable lane and
+# is excluded from run-guards.mjs. Both repos are laid out as siblings so the parity script can
+# import ../../../prepship-v4.
+name: CP-061 reason-contract parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      prepship_ref:
+        description: prepship-v4 git ref (branch, tag, or SHA) to prove parity against
+        required: true
+        default: prepshipv4-stable
+  # Hermes ruling 2026-08-27: dispatch-only was not enough. This workflow is not on main, so it
+  # could not be dispatched before the merge, which left the cross-repo parity claim without any
+  # hosted run. A PR into main now executes it against the pinned provider head below.
+  pull_request:
+    branches: [main]
+
+# The provider head this consumer was proven against. On a pull_request there are no dispatch
+# inputs, so the parity job binds this SHA explicitly rather than drifting to a moving branch.
+#
+# This is now the INTEGRATED prepshipv4-stable SHA: merge commit 6d767547 of PS #37, which
+# carries the approved provider product commit 5580a968. It is deliberately an exact SHA and
+# not the branch name — parity must prove this consumer against one immutable provider head,
+# and prepshipv4-stable moves. Bump it if a later provider change alters the contract.
+env:
+  PREPSHIP_REASON_CONTRACT_REF: 6d7675475fbbff0c3e49b63070fd3bf047c07c51
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Client Portal (consumer)
+        uses: actions/checkout@v4
+        with:
+          path: client-portal-prepship
+
+      - name: Check out PrepShip (provider) as a sibling
+        uses: actions/checkout@v4
+        with:
+          repository: drprepperusa-org/prepship-v4
+          ref: ${{ inputs.prepship_ref || env.PREPSHIP_REASON_CONTRACT_REF }}
+          path: prepship-v4
+          token: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install focused dependencies
+        run: |
+          npm ci --prefix client-portal-prepship
+          npm ci --prefix prepship-v4
+
+      - name: Reason-contract parity (binds both SHAs)
+        working-directory: client-portal-prepship
+        run: npm run test:client-portal-replacement-reason-parity
