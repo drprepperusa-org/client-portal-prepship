@@ -187,9 +187,12 @@ function serverSources(dir: string, acc: string[] = []): string[] {
 
 // Discovered, not hardcoded, so a NEW surface that totals return_postage is caught
 // the day it is added instead of inheriting an exemption from this list.
-const returnPostageReaders = serverSources('src').filter((file) =>
-  /line_type = 'return_postage'/.test(fs.readFileSync(file, 'utf8')),
-);
+const returnPostageReaders = serverSources('src').filter((file) => {
+  const source = fs.readFileSync(file, 'utf8');
+  // Either the legacy hand-listed spelling or the CP-059 shared registry.
+  return /line_type = 'return_postage'/.test(source)
+    || /returnPostageLineTypes/.test(source);
+});
 // Vacuity guard: the three known read surfaces are billing-summaries.ts,
 // read-models/invoice-details.ts and reporting-metrics.ts. If this count drops,
 // the loop below stopped covering a surface and must be re-examined, not relaxed.

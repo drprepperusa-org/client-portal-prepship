@@ -1,4 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
+import {
+  RETURN_POSTAGE_LINE_TYPES,
+  RETURN_PROCESSING_LINE_TYPES,
+} from '../../../services/billing-line-types';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderItems } from '../../../db/schema/order-items';
@@ -12,6 +16,17 @@ import {
   BILLING_POLICY_WEEKEND_ROLLFORWARD,
   billingLineEffectiveDaySql,
 } from '../../../services/billing-effective-day';
+
+
+// CP-059 — the return vocabulary is owned upstream (services/billing-line-types.ts).
+// Hand-listing a spelling here is what left the legacy aliases out of the return buckets
+// while their money stayed in the row total.
+const returnPostageLineTypes = sql.join(
+  RETURN_POSTAGE_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
+);
+const returnProcessingLineTypes = sql.join(
+  RETURN_PROCESSING_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
+);
 
 const invoiceEffectiveDay = billingLineEffectiveDaySql(
   sql`b.billing_effective_date`,
@@ -81,8 +96,8 @@ export async function portalInvoiceSummary(
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
-      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as returnpostage_total,
-      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as returnprocessing_total,
+      coalesce(sum(case when lower(b.line_type) in (${returnPostageLineTypes}) then b.total_cost else 0 end), 0)::text as returnpostage_total,
+      coalesce(sum(case when lower(b.line_type) in (${returnProcessingLineTypes}) then b.total_cost else 0 end), 0)::text as returnprocessing_total,
       coalesce(sum(b.total_cost), 0)::text as row_total
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
@@ -175,8 +190,8 @@ export async function portalInvoicePeriodSummary(
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
-      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as returnpostage_total,
-      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as returnprocessing_total,
+      coalesce(sum(case when lower(b.line_type) in (${returnPostageLineTypes}) then b.total_cost else 0 end), 0)::text as returnpostage_total,
+      coalesce(sum(case when lower(b.line_type) in (${returnProcessingLineTypes}) then b.total_cost else 0 end), 0)::text as returnprocessing_total,
       coalesce(sum(b.total_cost), 0)::text as row_total
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
@@ -329,8 +344,8 @@ export async function portalInvoiceDetails(
       coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
       coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
-      coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as returnpostage_total,
-      coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as returnprocessing_total,
+      coalesce(sum(case when lower(b.line_type) in (${returnPostageLineTypes}) then b.total_cost else 0 end), 0)::text as returnpostage_total,
+      coalesce(sum(case when lower(b.line_type) in (${returnProcessingLineTypes}) then b.total_cost else 0 end), 0)::text as returnprocessing_total,
       coalesce(sum(b.total_cost), 0)::text as row_total
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id

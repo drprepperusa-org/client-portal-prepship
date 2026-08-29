@@ -1,5 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { RETURN_LINE_TYPES } from './billing-line-types';
+import {
+  RETURN_LINE_TYPES,
+  RETURN_POSTAGE_LINE_TYPES,
+  RETURN_PROCESSING_LINE_TYPES,
+} from './billing-line-types';
 import { db } from '../db/client';
 import { billingLineEffectiveDaySql } from './billing-effective-day';
 import { customerSafeBillingLineSql } from '../lib/client-portal/customer-shipping-rate';
@@ -514,6 +518,15 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         and period_to = ${toDay}::date
     `);
 
+    // CP-059 AC-6. Bound from services/billing-line-types.ts so the producer's vocabulary is
+    // transcribed once. Hand-listing 'return_postage' here is what made a legacy return_label
+    // row report $0.00 return postage while the producer reported 5.25.
+    const returnPostageLineTypes = sql.join(
+      RETURN_POSTAGE_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
+    );
+    const returnProcessingLineTypes = sql.join(
+      RETURN_PROCESSING_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
+    );
     const returnLineTypes = sql.join(
       RETURN_LINE_TYPES.map((lineType) => sql`${lineType}`),
       sql`, `,
@@ -552,9 +565,9 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::numeric(14, 2) as shipping_total,
         coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::numeric(14, 2) as storage_total,
         -- CP-031: return line-type totals materialized for the summary byType.
-        coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::numeric(14, 2) as return_postage_total,
-        coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::numeric(14, 2) as return_processing_total,
-        coalesce(sum(case when b.line_type in (${returnLineTypes}) then b.total_cost else 0 end), 0)::numeric(14, 2) as return_total,
+        coalesce(sum(case when lower(b.line_type) in (${returnPostageLineTypes}) then b.total_cost else 0 end), 0)::numeric(14, 2) as return_postage_total,
+        coalesce(sum(case when lower(b.line_type) in (${returnProcessingLineTypes}) then b.total_cost else 0 end), 0)::numeric(14, 2) as return_processing_total,
+        coalesce(sum(case when lower(b.line_type) in (${returnLineTypes}) then b.total_cost else 0 end), 0)::numeric(14, 2) as return_total,
         coalesce(sum(case when b.line_type = 'billing_adjustment' then b.total_cost else 0 end), 0)::numeric(14, 2) as adjustment_total,
         coalesce(sum(case when b.line_type = 'replace_postage' then b.total_cost else 0 end), 0)::numeric(14, 2) as replace_postage_total,
         coalesce(sum(case when b.line_type = 'replace_pick_pack' then b.total_cost else 0 end), 0)::numeric(14, 2) as replace_pick_pack_total,

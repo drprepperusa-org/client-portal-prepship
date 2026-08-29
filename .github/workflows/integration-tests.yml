@@ -63,6 +63,19 @@ jobs:
       # upstream half only when PREPSHIP_CONTRACT_TOKEN is configured (prepship-v4
       # is private, so the default GITHUB_TOKEN cannot read it). Without the
       # secret this reports NOT ARMED rather than silently passing.
+      # CP-059. The RETURN line-type vocabulary is owned upstream; a spelling present there
+      # and missing here drops return money out of the return bucket while leaving it inside
+      # grand_total. Same arming rule as the expedited gate above: without the secret this
+      # reports NOT ARMED rather than silently passing.
+      - name: Check PrepShip return line-type vocabulary parity
+        env:
+          PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+        run: |
+          if [ -n "$PREPSHIP_CONTRACT_TOKEN" ]; then
+            node scripts/prepship-return-vocabulary-parity.mjs
+          else
+            node scripts/prepship-return-vocabulary-parity.mjs --allow-unarmed
+          fi
       - name: Check PrepShip expedited-service classification parity
         env:
           PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}

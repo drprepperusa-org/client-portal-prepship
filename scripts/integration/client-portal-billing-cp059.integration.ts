@@ -24,6 +24,8 @@ const invoicesApp = (await import('../../src/routes/client-portal/invoices')).de
 const { portalCanonicalInvoiceEvents } = await import(
   '../../src/lib/client-portal/read-models/canonical-invoice-events'
 );
+const { billingSummary } = await import('../../src/services/billing-summaries');
+const { refreshBillingSummaryMetrics } = await import('../../src/services/reporting-metrics');
 
 let checks = 0;
 const ok = (label: string) => { checks += 1; console.log(`ok   ${label}`); };
@@ -508,7 +510,119 @@ async function main(): Promise<void> {
 
   await db.execute(rawSql`delete from order_items where order_id in (9001, 9002)`);
   await db.execute(rawSql`delete from orders where id in (9001, 9002)`);
-  const EXPECTED_CHECKS = 20;
+  // -------------------------------------------------------------------------------------
+  // CP-059 AC-6 — the canonical return total against a REAL database.
+  //
+  // Review found RETURN_LINE_TYPES covering only 'return_postage' and 'return_processing_fee',
+  // so the summary computed return_total = $0.00 for the producer's legacy bare-return shape
+  // while grand_total carried the money. The browser proof could not catch this: it stubs a
+  // detail DTO that already contains returnTotal, so it proves the GRID renders a correct
+  // upstream value, not that either SQL authority produces one.
+  //
+  // This inserts the exact counterexample and reads it back through the real query.
+  console.log('\nScenario: a bare `return` line funds the canonical return total');
+  {
+    const CLIENT = 7908;
+    const FROM = '2026-08-01T00:00:00.000Z';
+    const TO = '2026-09-01T00:00:00.000Z';
+    await db.execute(rawSql`delete from billing_line_items where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
+    await db.execute(rawSql`insert into clients (id, name) values (${CLIENT}, 'CP059 Return Vocab')`);
+    await db.execute(rawSql`
+      insert into billing_line_items
+        (client_id, line_type, description, qty, unit_cost, total_cost, ship_date, billing_effective_date)
+      values
+        (${CLIENT}, 'return', 'Legacy bare return line', 1, 5.50, 5.50, ${FROM}::timestamptz, ${FROM}::timestamptz)
+    `);
+
+    const summaryInput = {
+      clientId: CLIENT, dateFrom: FROM, dateTo: TO,
+      scopeClientIds: null, scopeStoreIds: null, scopeRestricted: false,
+    };
+    const summary = await billingSummary(summaryInput as never);
+    const row = summary.clients.find((c) => c.clientId === CLIENT);
+    if (!row) throw new Error('the seeded client must appear in the billing summary');
+    if (Number(row.returnTotal) !== 5.5) {
+      throw new Error(
+        `a bare 'return' line must fund returnTotal: expected 5.50, got ${row.returnTotal}. `
+        + 'This is the exact defect review found — the line type was missing from RETURN_LINE_TYPES.',
+      );
+    }
+    if (Number(row.grandTotal) !== 5.5) {
+      throw new Error(`grandTotal must still be 5.50, got ${row.grandTotal}`);
+    }
+    // Both NAMED parts stay zero. That is the point: returnTotal cannot be derived from them,
+    // because this row funds the total while leaving both at 0.00.
+    if (Number(row.returnPostageTotal) !== 0 || Number(row.returnProcessingTotal) !== 0) {
+      throw new Error(
+        `a bare return line must leave both named parts at 0.00, got postage ${row.returnPostageTotal} `
+        + `/ processing ${row.returnProcessingTotal}`,
+      );
+    }
+    ok('a bare `return` line produces returnTotal 5.50 with both named parts at 0.00');
+
+    // Item 4: the materialized metrics path must agree with the query above. Both read the same
+    // registry; if they ever disagree, a customer's return money changes depending on whether
+    // the summary happened to answer from cache.
+    await refreshBillingSummaryMetrics(new Date(FROM), new Date(TO));
+    const materializedRows = await db.execute<{ return_total: string; grand_total: string }>(rawSql`
+      select return_total, grand_total
+      from billing_summary_metrics
+      where client_id = ${CLIENT}
+        and period_from = ${FROM}::date
+        and period_to = ${TO}::date
+    `);
+    const materialized = materializedRows[0];
+    if (!materialized) throw new Error('the metrics refresh must materialize a row for the seeded client');
+    if (Number(materialized.return_total) !== 5.5) {
+      throw new Error(
+        `the materialized metrics path must agree: expected return_total 5.50, got ${materialized.return_total}`,
+      );
+    }
+    if (Number(materialized.return_total) !== Number(row.returnTotal)) {
+      throw new Error(
+        `metrics and non-metrics paths disagree: ${materialized.return_total} vs ${row.returnTotal}`,
+      );
+    }
+    ok('the materialized metrics path agrees with the summary query on the same data');
+
+    // The legacy PROCESSING alias is return money and is attributed the way the producer
+    // attributes it. The legacy POSTAGE alias (return_label) is deliberately asserted as
+    // EXCLUDED: CP-059 extended the customer-safety gate to cover it, so an unvalidated legacy
+    // postage line is kept out of customer money exactly as 'return_postage' is. Adding it to
+    // the postage aggregate without that gate would have opened a bypass.
+    await db.execute(rawSql`
+      insert into billing_line_items
+        (client_id, line_type, description, qty, unit_cost, total_cost, ship_date, billing_effective_date)
+      values
+        (${CLIENT}, 'return_processing', 'Legacy processing alias', 1, 2.75, 2.75, ${FROM}::timestamptz, ${FROM}::timestamptz),
+        (${CLIENT}, 'return_label', 'Legacy postage alias, no validated tuple', 1, 5.25, 5.25, ${FROM}::timestamptz, ${FROM}::timestamptz)
+    `);
+    const withAliases = await billingSummary(summaryInput as never);
+    const aliasRow = withAliases.clients.find((c) => c.clientId === CLIENT);
+    if (!aliasRow) throw new Error('the seeded client must still appear');
+    if (Number(aliasRow.returnProcessingTotal) !== 2.75) {
+      throw new Error(
+        `the legacy 'return_processing' alias must count as return processing: got ${aliasRow.returnProcessingTotal}`,
+      );
+    }
+    if (Number(aliasRow.returnPostageTotal) !== 0) {
+      throw new Error(
+        `an unvalidated legacy 'return_label' line must be gated out of customer money like `
+        + `'return_postage' is: got ${aliasRow.returnPostageTotal}`,
+      );
+    }
+    if (Number(aliasRow.returnTotal) !== 8.25) {
+      throw new Error(`returnTotal must be 5.50 + 2.75 = 8.25, got ${aliasRow.returnTotal}`);
+    }
+    ok('legacy return aliases are counted and gated the way the producer and the safety rule say');
+
+    await db.execute(rawSql`delete from billing_line_items where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from billing_summary_metrics where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
+  }
+
+  const EXPECTED_CHECKS = 23;
   if (checks !== EXPECTED_CHECKS) {
     throw new Error(`expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   }

@@ -19,6 +19,11 @@
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import {
+  RETURN_LINE_TYPES,
+  RETURN_POSTAGE_LINE_TYPES,
+  RETURN_PROCESSING_LINE_TYPES,
+} from '../src/services/billing-line-types';
 import { readFileSync } from 'node:fs';
 
 process.env.PREPSHIP_API_URL ??= 'http://canonical.test';
@@ -75,6 +80,68 @@ assert.equal(
   + 'or regenerated without updating the hash. Either way these rows are no longer the producer\'s output.',
 );
 ok('the committed producer rows match their recorded contentHash (unmodified since generation)');
+
+/*
+ * RETURN VOCABULARY COVERAGE.
+ *
+ * The registry in services/billing-line-types.ts decides which line types count as return money
+ * in BOTH summary authorities. Its first version was built by grepping this repo for
+ * `line_type = '...'`, which finds only the spellings we currently WRITE — so it missed
+ * `return`, `return_label` and `return_processing`, and the canonical return total it defined
+ * computed $0.00 for the exact legacy shape it was introduced to fix.
+ *
+ * The producer's vocabulary is the authority, and the hash-enforced fixture is the copy of it we
+ * hold. Read the vocabulary OUT of the fixture rather than restating it: a return type added
+ * upstream then turns this guard red instead of silently zeroing a customer's return money.
+ */
+const producerReturnTypes = new Set<string>();
+for (const shape of fixture.shapes) {
+  for (const row of shape.rows as ReadonlyArray<{ lineTypes?: readonly string[] }>) {
+    for (const lineType of row.lineTypes ?? []) {
+      if (/return/.test(lineType)) producerReturnTypes.add(lineType);
+    }
+  }
+}
+assert.ok(producerReturnTypes.size > 0, 'the fixture must carry return line types to check against');
+const registered = new Set<string>(RETURN_LINE_TYPES);
+const unregistered = [...producerReturnTypes].filter((lineType) => !registered.has(lineType)).sort();
+assert.deepEqual(
+  unregistered, [],
+  `RETURN_LINE_TYPES does not cover every return line type the producer emits: ${unregistered.join(', ')}. `
+  + 'Any type missing here is return money that both summary authorities silently total as $0.00.',
+);
+ok(`the return registry covers all ${producerReturnTypes.size} producer return line types`);
+
+/*
+ * And the GROUPING matches the producer's own attribution, not just the membership. Getting
+ * `return_label` into the registry but filing it under processing would keep returnTotal right
+ * while making both named parts wrong.
+ */
+const POSTAGE = new Set<string>(RETURN_POSTAGE_LINE_TYPES);
+const PROCESSING = new Set<string>(RETURN_PROCESSING_LINE_TYPES);
+for (const shape of fixture.shapes) {
+  for (const row of shape.rows as ReadonlyArray<{
+    lineTypes?: readonly string[];
+    returnTotal?: number; returnPostageTotal?: number; returnProcessingTotal?: number;
+  }>) {
+    const types = (row.lineTypes ?? []).filter((lineType) => /return/.test(lineType));
+    if (types.length !== 1) continue;
+    const [lineType] = types;
+    const total = Number(row.returnTotal ?? 0);
+    if (total === 0) continue;
+    const postage = Number(row.returnPostageTotal ?? 0);
+    const processing = Number(row.returnProcessingTotal ?? 0);
+    if (POSTAGE.has(lineType)) {
+      assert.equal(postage, total, `producer files '${lineType}' as POSTAGE (${shape.name})`);
+    } else if (PROCESSING.has(lineType)) {
+      assert.equal(processing, total, `producer files '${lineType}' as PROCESSING (${shape.name})`);
+    } else {
+      assert.equal(postage, 0, `'${lineType}' is BARE return money, not postage (${shape.name})`);
+      assert.equal(processing, 0, `'${lineType}' is BARE return money, not processing (${shape.name})`);
+    }
+  }
+}
+ok('each return line type is grouped the way the producer attributes it');
 assert.ok(fixture.shapes.length >= 11, `expected at least 11 producer shapes, got ${fixture.shapes.length}`);
 console.log(`     producer SHA ${fixture.producerSha}, ${fixture.shapes.length} shapes`);
 ok('the committed producer fixture records its provenance and covers every known shape');
@@ -357,7 +424,7 @@ assert.ok(whole.ok, `the full producer payload must not fail the response bounda
 assert.equal(whole.rows.length, accepted.length, 'every producer row survives the response boundary');
 ok('the entire producer payload passes the response boundary in one piece');
 
-const EXPECTED_CHECKS = 16;
+const EXPECTED_CHECKS = 18;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log('');
 console.log(`PASS CP-059 producer contract guard - ${checks}/${EXPECTED_CHECKS} checks`);

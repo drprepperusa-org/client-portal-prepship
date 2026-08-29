@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { RETURN_POSTAGE_LINE_TYPES } from '../../services/billing-line-types';
 import { orders } from '../../db/schema/orders';
 import { returns } from '../../db/schema/returns';
 import { shipments } from '../../db/schema/shipments';
@@ -120,17 +121,29 @@ export function validatedReturnCustomerShippingRateSql(): SQL<string | null> {
 }
 
 /**
- * Historical `return_postage` lines are customer-safe only when their linked
- * return alias and shipment tuple both prove the same canonical amount. Other
- * billing line types pass through unchanged.
+ * Return-postage lines are customer-safe only when their linked return alias and
+ * shipment tuple both prove the same canonical amount. Other billing line types
+ * pass through unchanged.
+ *
+ * CP-059: gated on EVERY return-postage spelling, not just the modern one. The
+ * producer also emits the legacy `return_label` alias as return postage, and
+ * naming only `return_postage` here meant a legacy line reached customer money
+ * surfaces WITHOUT the tuple validation its modern equivalent has to pass — a
+ * bypass that widens the moment return_label is added to the postage aggregate.
+ * The spellings come from services/billing-line-types.ts so the safety gate and
+ * the aggregates cannot disagree about what return postage is.
  */
+const returnPostageLineTypes = () => sql.join(
+  RETURN_POSTAGE_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
+);
+
 export function customerSafeBillingLineSql(input: {
   lineType: SQL;
   shipmentId: SQL;
   totalCost: SQL;
 }): SQL {
   return sql`(
-    coalesce(${input.lineType}, '') <> 'return_postage'
+    coalesce(${input.lineType}, '') not in (${returnPostageLineTypes()})
     or exists (
       select 1
       from ${shipments}

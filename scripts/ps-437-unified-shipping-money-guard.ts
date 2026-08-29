@@ -128,8 +128,29 @@ for (const [name, source] of [
 // generator's warn-and-skip: a historical return_postage row reaches a customer only
 // when the return alias and the shipment's frozen tuple prove the same amount to the
 // cent — otherwise it is withheld as reconciliation work, never re-derived from cost.
-assert.match(sqlProjection, /coalesce\(\$\{input\.lineType\}, ''\) <> 'return_postage'/,
-  'unproven return_postage lines are withheld, not recalculated');
+// CP-059: repointed from the SPELLING to the DELEGATION. This used to pin the literal
+// `<> 'return_postage'`, which meant the gate covered only the modern spelling — the
+// producer also emits the legacy `return_label` alias as return postage, so an
+// unvalidated legacy line reached customer money without the tuple check its modern
+// equivalent has to pass. The gate now reads the shared registry, and this asserts
+// that delegation plus the registry's coverage, which is strictly stronger than the
+// old literal: it cannot be satisfied by gating one spelling and leaking another.
+assert.match(
+  sqlProjection,
+  /coalesce\(\$\{input\.lineType\}, ''\) not in \(\$\{returnPostageLineTypes\(\)\}\)/,
+  'unproven return-postage lines are withheld via the shared registry, not recalculated',
+);
+{
+  const registry = read('src/services/billing-line-types.ts');
+  const postage = registry.match(/RETURN_POSTAGE_LINE_TYPES\s*=\s*\[([\s\S]*?)\]/);
+  const spellings = postage ? [...postage[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
+  for (const spelling of ['return_postage', 'return_label']) {
+    assert.ok(
+      spellings.includes(spelling),
+      `the customer-safety gate must cover the '${spelling}' return-postage spelling`,
+    );
+  }
+}
 // A gate no read model calls protects nothing, so the consumer is asserted too.
 assert.match(summaries, /import \{ customerSafeBillingLineSql \} from/,
   'billing summaries import the customer-safe return_postage gate');

@@ -42,6 +42,7 @@ const XLSX = 'portal-client/src/lib/invoiceExcel.ts';
 const EVENTS = 'src/lib/client-portal/read-models/canonical-invoice-events.ts';
 const ROWS = 'portal-client/src/lib/invoiceRows.ts';
 const GRID = 'portal-client/src/components/billing/invoiceColumns.tsx';
+const TYPES = 'src/services/billing-line-types.ts';
 
 const CONTRACT = 'scripts/cp-059-producer-contract-guard.ts';
 const BOUNDARY = 'scripts/cp-059-canonical-billing-guard.ts';
@@ -49,9 +50,41 @@ const DISPLAY = 'scripts/client-portal-billing-returns-display-guard.ts';
 const SORT = 'scripts/client-portal-billing-line-item-sort-guard.ts';
 /** Not a tsx script — see Mutation.command. */
 const BROWSER = 'npm run test:cp-059-billing:browser';
+/** Not a tsx script either — the cross-repo vocabulary gate. */
+const VOCAB_PARITY = 'node scripts/prepship-return-vocabulary-parity.mjs';
+const VOCAB_PARITY_COMMAND = ['node', 'scripts/prepship-return-vocabulary-parity.mjs', '--allow-unarmed'] as const;
 const BROWSER_COMMAND = ['npm', 'run', 'test:cp-059-billing:browser'] as const;
 
 export const MUTATIONS: readonly Mutation[] = [
+  {
+    label: 'VOCAB PARITY: file return_label under processing instead of postage',
+    file: TYPES, guard: VOCAB_PARITY, command: VOCAB_PARITY_COMMAND,
+    from: "export const RETURN_POSTAGE_LINE_TYPES = ['return_postage', 'return_label'] as const;",
+    to: "export const RETURN_POSTAGE_LINE_TYPES = ['return_postage'] as const as readonly ['return_postage', 'return_label'];",
+  },
+  // ---- the return vocabulary itself ----
+  //
+  // Review found RETURN_LINE_TYPES covering only the two MODERN spellings, so the canonical
+  // return total computed /usr/bin/bash.00 for the legacy shapes it existed to fix. Each removal below is
+  // that defect, one line type at a time.
+  {
+    label: 'VOCAB: drop the bare return type (the legacy shape that funds returnTotal alone)',
+    file: TYPES, guard: CONTRACT,
+    from: "export const RETURN_BARE_LINE_TYPES = ['return'] as const;",
+    to: "export const RETURN_BARE_LINE_TYPES = [] as const as readonly ['return'];",
+  },
+  {
+    label: 'VOCAB: drop the legacy return_label postage alias',
+    file: TYPES, guard: CONTRACT,
+    from: "export const RETURN_POSTAGE_LINE_TYPES = ['return_postage', 'return_label'] as const;",
+    to: "export const RETURN_POSTAGE_LINE_TYPES = ['return_postage'] as const as readonly ['return_postage', 'return_label'];",
+  },
+  {
+    label: 'VOCAB: drop the legacy return_processing alias',
+    file: TYPES, guard: CONTRACT,
+    from: "export const RETURN_PROCESSING_LINE_TYPES = ['return_processing_fee', 'return_processing'] as const;",
+    to: "export const RETURN_PROCESSING_LINE_TYPES = ['return_processing_fee'] as const as readonly ['return_processing_fee', 'return_processing'];",
+  },
   {
     label: 'FIXTURE: hand-edit a producer amount without regenerating (contentHash must catch it)',
     file: 'fixtures/cp-059-producer-billing-rows.json', guard: CONTRACT,
