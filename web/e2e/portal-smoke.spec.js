@@ -92,21 +92,31 @@ test('login form exposes sign-in affordances and no self-signup', async ({ page 
 });
 
 test('forgot password requests a production-compatible Supabase recovery link', async ({ page }) => {
-  let recoveryRequest;
-  await page.route('**/auth/v1/recover?**', async (route) => {
-    recoveryRequest = route.request();
+  // Supabase mails the recovery link from POST /auth/v1/recover?redirect_to=...
+  // ('?' is a literal in Playwright globs, so this pins the query form.) One
+  // pattern for both the stub and the wait, so the two can never drift apart.
+  const recoverEndpoint = '**/auth/v1/recover?**';
+  await page.route(recoverEndpoint, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
   await page.goto(`${baseUrl}/login`);
   await page.getByRole('button', { name: 'Forgot password?' }).click();
   await expect(page).toHaveURL(/\/forgot-password$/);
+  // The URL flips on history.pushState, which lands before React commits the
+  // route swap - on a cold dev server that gap is wide enough to matter. Wait
+  // for the recovery form itself, or the fill below goes into the outgoing
+  // login email field and the email-gated submit button never enables.
+  await expect(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible();
   await page.getByPlaceholder('you@company.com').fill('client@example.com');
+
+  // Arm the wait before the click: what this test certifies is the recovery
+  // request Supabase receives, not how fast the confirmation paints.
+  const recoveryRequest = page.waitForRequest(recoverEndpoint);
   await page.getByRole('button', { name: 'Send recovery email' }).click();
 
+  expect((await recoveryRequest).url()).toContain(encodeURIComponent(`${baseUrl}/reset-password`));
   await expect(page.getByText(/password recovery email has been sent/i)).toBeVisible();
-  expect(recoveryRequest).toBeTruthy();
-  expect(recoveryRequest.url()).toContain(encodeURIComponent(`${baseUrl}/reset-password`));
 });
 
 test('reset-password without a Supabase recovery session fails closed', async ({ page }) => {
