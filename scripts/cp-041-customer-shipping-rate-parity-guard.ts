@@ -142,6 +142,9 @@ const ps508Contract = new RegExp([
   "'hugrab_shipping_rate_override',\\s*",
   "'house_next_best_customer_rate'\\s*\\)",
   "[\\s\\S]*customerShippingMoneyPolicyVersion' = 'ps-508-v1'",
+  // Suffix parity with Billing's decision owner (Hermes PS-508 re-audit): a ps-508 tuple
+  // without billingDescriptionSuffix is HELD by Billing and must not read as settled here.
+  "[\\s\\S]*billingDescriptionSuffix'\\) = 'string'",
   "[\\s\\S]*not \\([\\s\\S]*\\? 'customerShippingMoneyCaptureSource'",
 ].join(''));
 const ps509Contract = new RegExp([
@@ -150,6 +153,9 @@ const ps509Contract = new RegExp([
   "'hugrab_shipping_rate_override'\\s*\\)",
   "[\\s\\S]*rateCostSource' = 'shipstation_sync_receipt_cost'",
   "[\\s\\S]*customerShippingMoneyPolicyVersion' = 'ps-509-v1'",
+  // Same suffix parity for the sync-ingress lane — the writer always emits it, but the
+  // PORTAL contract must fail closed on a malformed tuple exactly as Billing does.
+  "[\\s\\S]*billingDescriptionSuffix'\\) = 'string'",
   "[\\s\\S]*\\? 'customerShippingMoneyCaptureSource'",
   "[\\s\\S]*customerShippingMoneyCaptureSource'",
   "[\\s\\S]*= 'shipstation_sync_ingestion'",
@@ -162,11 +168,20 @@ const workflowFence = new RegExp([
   '[\\s\\S]*ps-509-v1',
 ].join(''));
 
-assert.match(
-  outboundProjection,
-  /customerShippingMoneyPolicyVersion' = 'ps-437-v1'/,
-  'ordinary outbound reads the historical ps-437 tuple',
-);
+// Hermes PS-508 round-3 (P4): the non-return branch must NOT accept ps-437. Its only
+// non-return writer is the replacement freeze, whose tables do not exist in production yet,
+// so a bare version check would surface suffix-less tuples with no relational lane proof.
+// The return arm (before the isReturn=false marker) keeps ps-437 — slice past it first.
+{
+  const falseMarker = 'coalesce("shipments"."isReturn", false) = false';
+  const outboundBranch = outboundProjection.slice(outboundProjection.indexOf(falseMarker));
+  assert.ok(outboundBranch.length > 0, 'outbound projection carries the isReturn=false branch');
+  assert.doesNotMatch(
+    outboundBranch,
+    /ps-437-v1/,
+    'the non-return branch must not accept ps-437 without relational replacement-lane proof',
+  );
+}
 assert.match(
   outboundProjection,
   ps508Contract,

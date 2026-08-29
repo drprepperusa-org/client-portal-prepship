@@ -108,6 +108,10 @@ function frozenRate(cost: number, customer: number) {
     shippingMarginPct: null,
     customerRateSource: 'realized_customer_shipping_rate',
     rateCostSource: 'label_final_cost',
+    // The production writer always emits the suffix (labels.ts freeze). A suffix-less
+    // fixture previously passed here while Billing would HOLD the same tuple — the exact
+    // Portal/Billing contract divergence the Hermes re-audit flagged (correction 5).
+    billingDescriptionSuffix: ' (10%)',
     customerShippingMoneyPolicyVersion: 'ps-508-v1',
   };
 }
@@ -119,6 +123,8 @@ type SeedLabel = {
   billed?: number;
   /** PrepShip's frozen rate snapshot, used when no billing line exists yet. */
   frozen?: { cost: number; customer: number };
+  /** A VERBATIM selected_rate_json, for negative fixtures the canonical resolver must reject. */
+  frozenRaw?: Record<string, unknown>;
 };
 
 type SeedOrder = {
@@ -169,9 +175,11 @@ async function seedOrder(input: SeedOrder) {
         voided: label.voided ?? false,
         isReturn: label.isReturn ?? false,
         source: 'cp060_fixture',
-        ...(label.frozen
-          ? { selectedRateJson: frozenRate(label.frozen.cost, label.frozen.customer) }
-          : {}),
+        ...(label.frozenRaw
+          ? { selectedRateJson: label.frozenRaw }
+          : label.frozen
+            ? { selectedRateJson: frozenRate(label.frozen.cost, label.frozen.customer) }
+            : {}),
       })
       .returning();
     shipmentIds.push(shipment!.id);
@@ -1031,6 +1039,76 @@ await reset();
     'billing_mismatch',
     'customer basis on the same order still detects the abnormal lineage',
   );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nScenario 30: suffix-less ps-508/ps-509 tuples are never counted as customer money');
+await reset();
+{
+  // Billing's decision owner HOLDS any accepted tuple missing billingDescriptionSuffix
+  // (customer-shipping-money-billable-decision.ts). A tuple Billing would hold must not read
+  // as settled money here. The Hermes PS-508 re-audit (round 2) required these exact negatives.
+  const clientId = await seedClient('CP060 Client');
+  const { billingDescriptionSuffix: _dropped, ...suffixless508 } =
+    frozenRate(10, 99.99) as Record<string, unknown>;
+  const suffixless509: Record<string, unknown> = {
+    selectedRateCost: 8,
+    cShippingRateAmount: 55.55,
+    shippingMarginAmount: 47.55,
+    shippingMarginPct: null,
+    customerRateSource: 'carrier_markup_customer_shipping_rate',
+    rateCostSource: 'shipstation_sync_receipt_cost',
+    customerShippingMoneyPolicyVersion: 'ps-509-v1',
+    customerShippingMoneyCaptureSource: 'shipstation_sync_ingestion',
+  };
+  const valid509 = { ...suffixless509, cShippingRateAmount: 12, shippingMarginAmount: 4, billingDescriptionSuffix: ' (sync)' };
+  await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, frozenRaw: suffixless508 },
+      { service: STD, frozenRaw: suffixless509 },
+      { service: EXP, frozenRaw: valid509 },
+    ],
+  });
+  const result = await run(clientId);
+  equal(result.orders.length, 1, 'one drawer row');
+  const row = result.orders[0]!;
+  money(row.shipping_total, 12, 'ONLY the suffix-bearing tuple is counted (99.99 and 55.55 rejected)');
+  equal(row.shipping_standard, null, 'both suffix-less tuples contributed nothing');
+  money(row.shipping_expedited, 12, 'the valid ps-509 tuple still counts in its class');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nScenario 31: a non-return ps-437 tuple is never counted (no relational lane proof)');
+await reset();
+{
+  // Hermes PS-508 round-3 (P4): ps-437's only non-return writer is the replacement freeze,
+  // whose tables do not exist in production yet. A bare version match would surface such a
+  // tuple as settled money with no proof it belongs to the replacement lane — so the
+  // non-return union excludes ps-437 entirely, even when the tuple is otherwise pristine.
+  const clientId = await seedClient('CP060 Client');
+  const valid437: Record<string, unknown> = {
+    selectedRateCost: 10,
+    cShippingRateAmount: 44.44,
+    shippingMarginAmount: 34.44,
+    shippingMarginPct: null,
+    customerRateSource: 'realized_customer_shipping_rate',
+    rateCostSource: 'label_final_cost',
+    customerShippingMoneyPolicyVersion: 'ps-437-v1',
+    billingDescriptionSuffix: ' (10%)',
+  };
+  await seedOrder({
+    clientId,
+    labels: [
+      { service: STD, frozenRaw: valid437 },
+      { service: EXP, billed: 20 },
+    ],
+  });
+  const result = await run(clientId);
+  equal(result.orders.length, 1, 'one drawer row');
+  const row = result.orders[0]!;
+  money(row.shipping_total, 20, 'ONLY the billed line counts; the non-return ps-437 tuple is rejected');
+  equal(row.shipping_standard, null, 'the ps-437 tuple contributed nothing');
 }
 
 // ---------------------------------------------------------------------------

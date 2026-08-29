@@ -28,7 +28,15 @@ function frozenCustomerShippingTupleHasValidMoneySql(): SQL {
   `;
 }
 
-/** PS-437 return/replacement tuple. Kept as the return-only compatibility gate. */
+/**
+ * PS-437 return/replacement tuple — the HISTORICAL lane, arbitrated 2026-08-24 (Hermes PS-508
+ * re-audit): these tuples intentionally lack billingDescriptionSuffix because they predate the
+ * eighth field and are billed by the return/replacement billers, which never flow through
+ * PrepShip's ordinary-outbound decision owner. The suffix is therefore deliberately NOT
+ * required here. If PrepShip's ordinary Billing ever encounters a suffix-less ps-437 tuple it
+ * fails CLOSED to review — that boundary belongs to Billing, and this lane must not widen to
+ * cover it. Only ps-508/ps-509 (below) mirror Billing's suffix-required contract.
+ */
 function frozenCustomerShippingTupleIsValidSql(): SQL {
   return sql`(${frozenCustomerShippingTupleHasValidMoneySql()})
     and ${shipments.selectedRateJson}->>'customerRateSource' in (
@@ -53,6 +61,11 @@ function frozenOutboundPurchaseCustomerShippingTupleIsValidSql(): SQL {
     )
     and ${shipments.selectedRateJson}->>'rateCostSource' = 'label_final_cost'
     and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-508-v1'
+    -- PS-508 contract parity (Hermes re-audit 2026-08-24, correction 5): Billing fails a
+    -- ps-508-v1 tuple CLOSED to review when billingDescriptionSuffix is absent, because the
+    -- suffix is part of the duplicate-suppression key. The Portal must not display as the
+    -- customer rate a tuple Billing would hold, so it enforces the same requirement.
+    and jsonb_typeof(${shipments.selectedRateJson}->'billingDescriptionSuffix') = 'string'
     and not (
       coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
         ? 'customerShippingMoneyCaptureSource'
@@ -68,16 +81,32 @@ function frozenSyncIngressCustomerShippingTupleIsValidSql(): SQL {
     )
     and ${shipments.selectedRateJson}->>'rateCostSource' = 'shipstation_sync_receipt_cost'
     and ${shipments.selectedRateJson}->>'customerShippingMoneyPolicyVersion' = 'ps-509-v1'
+    -- PS-508 re-audit round 2: Billing's decision owner requires the suffix for EVERY tuple it
+    -- bills, ps-509 included. The normal ingress writer always emits it, but a malformed or
+    -- hand-written tuple without it would be HELD by Billing — so it must not read as settled
+    -- money here either. Same fail-closed contract as the ps-508 lane above.
+    and jsonb_typeof(${shipments.selectedRateJson}->'billingDescriptionSuffix') = 'string'
     and coalesce(${shipments.selectedRateJson}, '{}'::jsonb)
       ? 'customerShippingMoneyCaptureSource'
     and ${shipments.selectedRateJson}->>'customerShippingMoneyCaptureSource'
       = 'shipstation_sync_ingestion'`;
 }
 
+/**
+ * PS-437 is deliberately ABSENT from this non-return union (Hermes PS-508 round-3, P4).
+ * The only writers of ps-437 tuples are the return freeze (isReturn=true shipments, covered by
+ * the return-lane projection) and the replacement freeze — and PS-502's replacement tables do
+ * not exist in production yet, so source topology implies a zero legitimate non-return ps-437
+ * display population (UNVERIFIED against the production catalog — no runtime readback was in
+ * scope; the claim is structural, not measured). Accepting the version here would let any suffix-less ps-437 tuple on an ordinary
+ * shipment read as settled money with no relational proof it belongs to the replacement lane.
+ * When PS-502 lands, reintroduce the branch WITH that proof, e.g.
+ *   exists (select 1 from replacements r where r.replacement_shipment_id = shipments.id)
+ * — never as a bare version check. Fail-closed until then.
+ */
 function frozenOutboundCustomerShippingTupleIsValidSql(): SQL {
   return sql`(
-    (${frozenCustomerShippingTupleIsValidSql()})
-    or (${frozenOutboundPurchaseCustomerShippingTupleIsValidSql()})
+    (${frozenOutboundPurchaseCustomerShippingTupleIsValidSql()})
     or (${frozenSyncIngressCustomerShippingTupleIsValidSql()})
   )`;
 }
@@ -90,7 +119,9 @@ function frozenCustomerShippingAmountSql(): SQL {
  * Compatibility name retained for callers. This reads only PrepShip's
  * explicit, policy-versioned shipment snapshot and never derives customer
  * money from cost or billing config. Return labels remain ps-437-only;
- * ordinary outbound labels accept the canonical ps-437/508/509 contracts.
+ * ordinary outbound labels accept the ps-508/ps-509 contracts ONLY — ps-437 is the
+ * return/replacement lane and is deliberately absent from the non-return union (see the
+ * P4 note above); reintroducing it requires relational replacement-lane proof.
  */
 export function projectedCustomerShippingRateSql(): SQL<string | null> {
   return sql`case
