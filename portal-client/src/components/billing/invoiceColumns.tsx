@@ -12,6 +12,11 @@ export const invoiceActionButtonClass =
 const moneyRight = 'text-right';
 export const numberValue = (value: unknown) => Number(value ?? 0) || 0;
 const moneyOrDash = (value: number) => value > 0 ? money(value) : '—';
+// CP-059 AC-6. A billing adjustment can be a CREDIT. moneyOrDash() renders anything not
+// strictly positive as an em dash, so -5.00 displayed as "—" — money moving in the customer's
+// favour, invisible. Dash only genuine absence (exactly zero); render every non-zero amount,
+// sign included.
+const signedMoneyOrDash = (value: number) => value === 0 ? '—' : money(value);
 
 export type PeriodSummary = {
   clientId: number;
@@ -196,6 +201,7 @@ function invoiceMoneyColumn(
   header: string,
   width: number,
   value: (row: BillingInvoiceDetailRow) => unknown,
+  format: (value: number) => string = moneyOrDash,
 ): Column<BillingInvoiceDetailRow> {
   return {
     key,
@@ -203,7 +209,7 @@ function invoiceMoneyColumn(
     defaultWidth: width,
     className: moneyRight,
     render: (row) => (
-      <span className="tnum text-ink-2">{moneyOrDash(numberValue(value(row)))}</span>
+      <span className="tnum text-ink-2">{format(numberValue(value(row)))}</span>
     ),
     sortAccessor: (row) => numberValue(value(row)),
   };
@@ -336,6 +342,19 @@ export function buildInvoiceLineColumns(
     },
     invoiceMoneyColumn('shipping', 'Shipping', 110, (row) => row.shippingTotal),
     invoiceMoneyColumn('storage', 'Storage', 100, (row) => row.storageTotal),
+    // CP-059 AC-6. These four categories were already inside rowTotal and already crossed the
+    // DTO boundary, but had no column — so an outbound row could show components summing to
+    // $8.60 beside a Fulfillment Fee of $20.35, with $11.75 of real money invisible on the
+    // customer's own invoice. Rendered here, in the printable footer's order, from the
+    // producer's fields. Nothing is derived: no column adds, nets or reconciles another.
+    invoiceMoneyColumn(
+      'adjustment',
+      'Adjustment',
+      120,
+      (row) => row.adjustmentTotal,
+      // Signed: a credit is negative and must stay visible.
+      signedMoneyOrDash,
+    ),
     invoiceMoneyColumn(
       'returnprocessing',
       'Return Processing',
@@ -347,6 +366,30 @@ export function buildInvoiceLineColumns(
       'Return Postage',
       130,
       (row) => row.returnPostageTotal,
+    ),
+    // Producer-owned, NOT returnProcessing + returnPostage. A legacy bare return line funds
+    // this while leaving both parts at zero, so deriving it here would print nothing for a
+    // real charge — the same defect the printable footer had.
+    invoiceMoneyColumn(
+      'returntotal',
+      'Return Total',
+      120,
+      (row) => row.returnTotal,
+      signedMoneyOrDash,
+    ),
+    invoiceMoneyColumn(
+      'replacepostage',
+      'Replacement Postage',
+      160,
+      (row) => row.replacePostageTotal,
+      signedMoneyOrDash,
+    ),
+    invoiceMoneyColumn(
+      'replacepickpack',
+      'Replacement Pick & Pack',
+      180,
+      (row) => row.replacePickPackTotal,
+      signedMoneyOrDash,
     ),
     {
       key: 'fee',

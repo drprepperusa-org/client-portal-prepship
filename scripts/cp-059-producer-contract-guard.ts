@@ -18,6 +18,7 @@
  * The portal no longer gets a vote on what the producer emits.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 process.env.PREPSHIP_API_URL ??= 'http://canonical.test';
@@ -40,12 +41,40 @@ const ok = (label: string) => { checks += 1; console.log(`ok   ${label}`); };
 const FIXTURE = 'fixtures/cp-059-producer-billing-rows.json';
 const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
   producerSha: string;
+  contentHash: string;
   shapes: Array<{ name: string; rows: Array<Record<string, unknown>> }>;
 };
 
 // Provenance. A fixture with no recorded producer SHA is a fixture nobody can trace back to the
 // code that produced it, which is how a stale contract survives unnoticed.
 assert.match(fixture.producerSha, /^[0-9a-f]{40}$/, 'the fixture must record the producer SHA it came from');
+
+/*
+ * CONTENT-HASH ENFORCEMENT.
+ *
+ * The fixture recorded a contentHash from the day it was generated and nothing ever read it,
+ * so the value was decoration: the shapes could be hand-edited — a total nudged, a presence
+ * flag flipped — and every guard downstream would keep passing against the edited rows while
+ * still claiming to test "the producer's own output".
+ *
+ * Recomputed and compared here. The scheme is the one the fixture was generated with:
+ * sha256 over JSON.stringify(shapes).
+ *
+ * SCOPE, stated precisely so this is not read as more than it is. This proves the committed
+ * rows are UNMODIFIED since generation — tamper evidence. It does NOT prove they still match
+ * what prepship-v4 emits at producerSha; nothing in this repo re-runs the producer. Upstream
+ * drift needs an exact-SHA producer/consumer parity lane against
+ * src/services/billing-detail-row-sot.ts, the way the expedited-service contract is pinned.
+ * Until that exists, producerSha is provenance METADATA and this hash is the only enforced
+ * half.
+ */
+const recomputed = createHash('sha256').update(JSON.stringify(fixture.shapes)).digest('hex');
+assert.equal(
+  recomputed, fixture.contentHash,
+  'the committed producer rows do not match their recorded contentHash — they were hand-edited, '
+  + 'or regenerated without updating the hash. Either way these rows are no longer the producer\'s output.',
+);
+ok('the committed producer rows match their recorded contentHash (unmodified since generation)');
 assert.ok(fixture.shapes.length >= 11, `expected at least 11 producer shapes, got ${fixture.shapes.length}`);
 console.log(`     producer SHA ${fixture.producerSha}, ${fixture.shapes.length} shapes`);
 ok('the committed producer fixture records its provenance and covers every known shape');
@@ -190,6 +219,46 @@ for (const [index, row] of accepted.entries()) {
 ok('no producer row prints a fabricated $0.00 in the printable invoice');
 
 /*
+ * FOOTER RECONCILIATION.
+ *
+ * Everything above reads the printed ROWS. The footer was never rendered with real totals —
+ * the call above passes zeros — so the summary line escaped every check, and review found it
+ * computing Return Total as `returnProcessingTotal + returnPostageTotal`.
+ *
+ * That addition is observably wrong for the producer's legacy bare-return shape, which funds
+ * returnTotal while setting neither presence flag. Here the totals are deliberately
+ * INCONSISTENT with that addition — returnTotal 15.50 against parts summing to 10.73 — so a
+ * footer that re-derives prints 10.73 and a footer that renders the owned value prints 15.50.
+ * Only one of those can pass.
+ */
+const footerHtml = renderPortalInvoiceHtml({
+  clientName: 'Acme Fulfilment', dateFrom: '2026-08-01', dateTo: '2026-08-31',
+  details: projected as never, truncated: false,
+  invoiceTotals: {
+    orderCount: accepted.length, qty: 0, pickPackTotal: 0, additionalTotal: 0, packageTotal: 0,
+    shippingTotal: 0, storageTotal: 0,
+    returnProcessingTotal: 3.0,
+    returnPostageTotal: 7.73,
+    // NOT 10.73. A bare return line funds this without touching either part.
+    returnTotal: 15.5,
+    adjustmentTotal: 0, replacePostageTotal: 0, replacePickPackTotal: 0,
+    grandTotal: 15.5,
+  } as never,
+});
+const footer = (footerHtml.match(/<tfoot>[\s\S]*?<\/tfoot>/) ?? footerHtml.match(/<tr class="totals"[\s\S]*?<\/tr>/) ?? [''])[0]
+  || footerHtml.slice(footerHtml.lastIndexOf('</tbody>'));
+assert.ok(
+  footer.includes('$15.50'),
+  'the footer must render the summary-owned returnTotal verbatim',
+);
+assert.ok(
+  !footer.includes('$10.73'),
+  'the footer must NOT re-derive Return Total by adding returnProcessing + returnPostage — '
+  + 'that addition prints $0.00 for a legacy bare return line',
+);
+ok('the printable footer renders the owned Return Total, never the sum of its parts');
+
+/*
  * VISIBLE RECONCILIATION — the check that would have caught the invisibility defect.
  *
  * Every earlier proof asked whether a field SURVIVED transport: `field in projectedRow`. That
@@ -288,7 +357,7 @@ assert.ok(whole.ok, `the full producer payload must not fail the response bounda
 assert.equal(whole.rows.length, accepted.length, 'every producer row survives the response boundary');
 ok('the entire producer payload passes the response boundary in one piece');
 
-const EXPECTED_CHECKS = 14;
+const EXPECTED_CHECKS = 16;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log('');
 console.log(`PASS CP-059 producer contract guard - ${checks}/${EXPECTED_CHECKS} checks`);

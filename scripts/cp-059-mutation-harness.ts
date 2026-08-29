@@ -20,8 +20,18 @@ type Mutation = {
   /** What the mutation breaks, in terms of the property — not the syntax. */
   readonly label: string;
   readonly file: string;
-  /** The guard expected to catch it. */
+  /** The guard expected to catch it. Also the baseline key and the failure message. */
   readonly guard: string;
+  /**
+   * How to RUN that guard. Defaults to `npx tsx <guard>`.
+   *
+   * The grid's categories cannot be defended by a static guard — a column that is absent from
+   * a React builder is not a string another script can grep for without pinning the exact
+   * spelling, which is the brittle assertion this repo keeps having to unwind. The browser
+   * proof renders the real grid and reconciles its visible cells, so grid mutations name it
+   * here instead.
+   */
+  readonly command?: readonly string[];
   readonly from: string;
   readonly to: string;
 };
@@ -31,13 +41,123 @@ const HTML = 'src/lib/client-portal/invoice-html.ts';
 const XLSX = 'portal-client/src/lib/invoiceExcel.ts';
 const EVENTS = 'src/lib/client-portal/read-models/canonical-invoice-events.ts';
 const ROWS = 'portal-client/src/lib/invoiceRows.ts';
+const GRID = 'portal-client/src/components/billing/invoiceColumns.tsx';
 
 const CONTRACT = 'scripts/cp-059-producer-contract-guard.ts';
 const BOUNDARY = 'scripts/cp-059-canonical-billing-guard.ts';
 const DISPLAY = 'scripts/client-portal-billing-returns-display-guard.ts';
 const SORT = 'scripts/client-portal-billing-line-item-sort-guard.ts';
+/** Not a tsx script — see Mutation.command. */
+const BROWSER = 'npm run test:cp-059-billing:browser';
+const BROWSER_COMMAND = ['npm', 'run', 'test:cp-059-billing:browser'] as const;
 
 export const MUTATIONS: readonly Mutation[] = [
+  {
+    label: 'FIXTURE: hand-edit a producer amount without regenerating (contentHash must catch it)',
+    file: 'fixtures/cp-059-producer-billing-rows.json', guard: CONTRACT,
+    from: '\"returnTotal\": 10.73',
+    to: '\"returnTotal\": 99.99',
+  },
+  // ---- CP-059 AC-6: each money category, hidden from each surface, independently ----
+  //
+  // Review found the grid omitting Adjustment, Return Total, Replacement Postage and
+  // Replacement Pick & Pack while still printing a Fulfillment Fee that contained them, so a
+  // row displayed components totalling $10.60 beside a $15.85 charge. These mutations reinstate
+  // that defect one category and one surface at a time: any single category that can be hidden
+  // without a guard going red is a category the customer can be charged for invisibly.
+  {
+    label: 'GRID: drop the Adjustment column (a credit vanishes from the row)',
+    file: GRID, guard: BROWSER, command: BROWSER_COMMAND,
+    from: "      'Adjustment',\n      120,\n      (row) => row.adjustmentTotal,",
+    to: "      'Adjustment',\n      120,\n      () => null,",
+  },
+  {
+    label: 'GRID: render Adjustment through moneyOrDash, so a negative credit shows as an em dash',
+    file: GRID, guard: BROWSER, command: BROWSER_COMMAND,
+    from: `      (row) => row.adjustmentTotal,
+      // Signed: a credit is negative and must stay visible.
+      signedMoneyOrDash,`,
+    to: `      (row) => row.adjustmentTotal,
+      moneyOrDash,`,
+  },
+  {
+    label: 'GRID: drop the producer-owned Return Total column',
+    file: GRID, guard: BROWSER, command: BROWSER_COMMAND,
+    from: "      'Return Total',\n      120,\n      (row) => row.returnTotal,",
+    to: "      'Return Total',\n      120,\n      () => null,",
+  },
+  {
+    label: 'GRID: derive Return Total from its parts instead of rendering the producer value',
+    file: GRID, guard: BROWSER, command: BROWSER_COMMAND,
+    from: '      (row) => row.returnTotal,\n      signedMoneyOrDash,',
+    to: '      (row) => numberValue(row.returnProcessingTotal) + numberValue(row.returnPostageTotal),\n      signedMoneyOrDash,',
+  },
+  {
+    label: 'GRID: drop the Replacement Postage column',
+    file: GRID, guard: BROWSER, command: BROWSER_COMMAND,
+    from: '      (row) => row.replacePostageTotal,',
+    to: '      () => null,',
+  },
+  {
+    label: 'GRID: drop the Replacement Pick & Pack column',
+    file: GRID, guard: BROWSER, command: BROWSER_COMMAND,
+    from: '      (row) => row.replacePickPackTotal,',
+    to: '      () => null,',
+  },
+  {
+    label: 'HTML: blank the Adjustment cell on every printed row',
+    file: HTML, guard: CONTRACT,
+    from: '        <td class="num">${signedMoneyOrDash(detail.adjustmentTotal)}</td>',
+    to: '        <td class="num"></td>',
+  },
+  {
+    label: 'HTML: blank the Return Total cell on every printed row',
+    file: HTML, guard: CONTRACT,
+    from: '        <td class="num">${moneyOrDash(detail.returnTotal)}</td>',
+    to: '        <td class="num"></td>',
+  },
+  {
+    label: 'HTML: blank the Replacement Postage cell on every printed row',
+    file: HTML, guard: CONTRACT,
+    from: '        <td class="num">${moneyOrDash(detail.replacePostageTotal)}</td>',
+    to: '        <td class="num"></td>',
+  },
+  {
+    label: 'HTML: blank the Replacement Pick & Pack cell on every printed row',
+    file: HTML, guard: CONTRACT,
+    from: '        <td class="num">${moneyOrDash(detail.replacePickPackTotal)}</td>',
+    to: '        <td class="num"></td>',
+  },
+  {
+    label: 'HTML: re-derive the footer Return Total by adding its two named parts',
+    file: HTML, guard: CONTRACT,
+    from: '        <td class="num">${money(invoiceTotals.returnTotal)}</td>',
+    to: '        <td class="num">${money(invoiceTotals.returnProcessingTotal + invoiceTotals.returnPostageTotal)}</td>',
+  },
+  {
+    label: 'XLSX: zero the Adjustment cell on every exported row',
+    file: XLSX, guard: CONTRACT,
+    from: '    { type: Number, value: num(r.adjustmentTotal), format: MONEY_FORMAT },',
+    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
+  },
+  {
+    label: 'XLSX: zero the Return Total cell on every exported row',
+    file: XLSX, guard: CONTRACT,
+    from: '    { type: Number, value: num(r.returnTotal), format: MONEY_FORMAT },',
+    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
+  },
+  {
+    label: 'XLSX: zero the Replacement Postage cell on every exported row',
+    file: XLSX, guard: CONTRACT,
+    from: '    { type: Number, value: num(r.replacePostageTotal), format: MONEY_FORMAT },',
+    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
+  },
+  {
+    label: 'XLSX: zero the Replacement Pick & Pack cell on every exported row',
+    file: XLSX, guard: CONTRACT,
+    from: '    { type: Number, value: num(r.replacePickPackTotal), format: MONEY_FORMAT },',
+    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
+  },
   // ---- the two defects that reached review, reinstated verbatim ----
   {
     label: 'REGRESSION: reject `present:false` carrying a number (the rule that would have 502ed every request)',
@@ -218,11 +338,22 @@ export const MUTATIONS: readonly Mutation[] = [
  * So the baseline is proven first. If any guard is not green before a single mutation is
  * applied, the run aborts rather than producing evidence nobody can trust.
  */
-function assertBaselineGreen(guards: readonly string[]): void {
+function commandFor(mutation: Pick<Mutation, 'guard' | 'command'>): readonly string[] {
+  return mutation.command ?? ['npx', 'tsx', mutation.guard];
+}
+
+function runGuard(command: readonly string[]): void {
+  const [bin, ...args] = command;
+  execFileSync(bin, args, { stdio: 'pipe', shell: process.platform === 'win32' });
+}
+
+function assertBaselineGreen(mutations: readonly Mutation[]): void {
+  const seen = new Map<string, readonly string[]>();
+  for (const mutation of mutations) seen.set(mutation.guard, commandFor(mutation));
   const red: string[] = [];
-  for (const guard of guards) {
+  for (const [guard, command] of seen) {
     try {
-      execFileSync('npx', ['tsx', guard], { stdio: 'pipe', shell: process.platform === 'win32' });
+      runGuard(command);
     } catch {
       red.push(guard);
     }
@@ -233,11 +364,11 @@ function assertBaselineGreen(guards: readonly string[]): void {
     console.error('A red guard reports every mutation as killed. Fix the baseline first.');
     process.exit(1);
   }
-  console.log(`baseline: all ${guards.length} guards green before mutating\n`);
+  console.log(`baseline: all ${seen.size} guards green before mutating\n`);
 }
 
 function run(): number {
-  assertBaselineGreen([...new Set(MUTATIONS.map((m) => m.guard))]);
+  assertBaselineGreen(MUTATIONS);
   const files = [...new Set(MUTATIONS.map((m) => m.file))];
   const originals = new Map(files.map((f) => [f, readFileSync(f, 'utf8')]));
   const restore = () => { for (const [f, text] of originals) writeFileSync(f, text); };
@@ -265,7 +396,7 @@ function run(): number {
     writeFileSync(mutation.file, crlf ? mutated.split('\n').join('\r\n') : mutated);
     let killed = false;
     try {
-      execFileSync('npx', ['tsx', mutation.guard], { stdio: 'pipe', shell: process.platform === 'win32' });
+      runGuard(commandFor(mutation));
     } catch {
       killed = true;
     }

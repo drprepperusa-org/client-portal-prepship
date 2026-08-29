@@ -2,6 +2,7 @@
 // services/billing.ts (C4 decomposition). Billing writes stay in billing.ts;
 // customer shipping money is frozen by PrepShip and only consumed here.
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { RETURN_LINE_TYPES } from './billing-line-types';
 import { db } from '../db/client';
 import { billingLineItems } from '../db/schema/billing';
 import { shipments } from '../db/schema/shipments';
@@ -73,6 +74,20 @@ export type BillingSummaryRow = {
   storageTotal: number;
   // CP-031: return billing totals (surface in byType + fold into grandTotal).
   returnPostageTotal: number;
+  /**
+   * CP-059 AC-6. ALL return money, as one canonical category.
+   *
+   * This is NOT returnPostageTotal + returnProcessingTotal. The producer emits a per-row
+   * returnTotal that can exceed its two named parts: a legacy bare return line funds
+   * returnTotal while setting NEITHER presence flag (producer fixture shape 5 —
+   * returnTotal 5.50 with both parts 0.00 and both flags false). Any surface that renders
+   * the sum of the two parts therefore shows $0.00 for a real $5.50 charge, which is what
+   * the printable footer did before this field existed.
+   *
+   * Owned here, at the money authority, so print / grid / export cannot each derive their
+   * own answer. Serializers render it verbatim.
+   */
+  returnTotal: number;
   /** PS-512 — categories that were inside grand_total but invisible on every itemized surface. */
   adjustmentTotal: number;
   replacePostageTotal: number;
@@ -191,6 +206,7 @@ export async function billingSummary(
         shippingTotal: 0,
         storageTotal: 0,
         returnPostageTotal: 0,
+        returnTotal: 0,
         adjustmentTotal: 0,
         replacePostageTotal: 0,
         replacePickPackTotal: 0,
@@ -223,6 +239,10 @@ export async function billingSummary(
   // Totals are filtered SUMs per line_type; orderCount counts distinct billed
   // orders from any order-backed line so clients with $0 pick/pack defaults
   // still show order volume when shipping lines were generated.
+  const returnLineTypes = sql.join(
+    RETURN_LINE_TYPES.map((lineType) => sql`${lineType}`),
+    sql`, `,
+  );
   const rows = await db.execute<{
     client_id: number;
     client_name: string;
@@ -232,6 +252,7 @@ export async function billingSummary(
     shipping_total: string;
     storage_total: string;
     return_postage_total: string;
+    return_total: string;
     adjustment_total: string;
     replace_postage_total: string;
     replace_pick_pack_total: string;
@@ -251,6 +272,11 @@ export async function billingSummary(
       -- line types) already reconciles them into the grand total.
       coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as return_postage_total,
       coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as return_processing_total,
+      -- CP-059 AC-6. Return money as ONE category, defined by SET MEMBERSHIP rather than by
+      -- adding the two named parts. The parts are subsets of this whole, so a return line type
+      -- introduced later folds in automatically instead of going silently missing from every
+      -- footer until somebody remembers to extend an addition somewhere.
+      coalesce(sum(case when b.line_type in (${returnLineTypes}) then b.total_cost else 0 end), 0)::text as return_total,
       -- PS-512: adjustment and REPLACEMENT money were already inside grand_total (it sums every
       -- line type) but had no category of their own, so an itemized invoice showed components
       -- that did not add up to its own total. Broken out here, at the summary authority, rather
@@ -281,6 +307,7 @@ export async function billingSummary(
     const shippingTotal = toNum(r.shipping_total);
     const storageTotal = toNum(r.storage_total);
     const returnPostageTotal = toNum(r.return_postage_total);
+    const returnTotal = toNum(r.return_total);
     const adjustmentTotal = toNum(r.adjustment_total);
     const replacePostageTotal = toNum(r.replace_postage_total);
     const replacePickPackTotal = toNum(r.replace_pick_pack_total);
@@ -295,6 +322,7 @@ export async function billingSummary(
       shippingTotal,
       storageTotal,
       returnPostageTotal,
+      returnTotal,
       adjustmentTotal,
       replacePostageTotal,
       replacePickPackTotal,

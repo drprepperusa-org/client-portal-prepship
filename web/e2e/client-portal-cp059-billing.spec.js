@@ -79,6 +79,12 @@ const canonical = (over = {}) => ({
   returnPostageTotal: null,
   returnProcessingTotal: null,
   returnTotal: null,
+  // CP-059 AC-6. Present on the producer contract and inside rowTotal all along; the grid
+  // simply had no column for them, so a row could show components that did not add up to the
+  // charge printed beside them.
+  adjustmentTotal: null,
+  replacePostageTotal: null,
+  replacePickPackTotal: null,
   rowTotal: 8.6,
   shipDate: '2026-08-01',
   actualActivityDate: '2026-08-01',
@@ -124,6 +130,31 @@ const EVENT_ROWS = [
   canonical({
     orderId: 6001, orderNumber: '6001', rowType: 'Outbound',
     displayReference: '6001', destination: 'Needs Review', rowTotal: 5.0,
+  }),
+  // AC-6 reconciliation row: ordinary money, a NEGATIVE adjustment, and both replacement
+  // components on one outbound. 2.50 + 1.10 + 0.90 + 6.10 - 1.25 + 4.00 + 2.50 = 15.85.
+  // Before the four columns existed this row displayed 10.60 of components beside a 15.85
+  // charge, with 5.25 of real money — the credit and both replacement fees — nowhere on the
+  // page. Carries no return money, so its cells sum without Return Total double-counting its
+  // own parts.
+  canonical({
+    orderId: 7788, orderNumber: '7788', rowType: 'Outbound',
+    displayReference: '7788', destination: 'Domestic',
+    pickpackTotal: 2.5, additionalTotal: 1.1, packageTotal: 0.9, shippingTotal: 6.1,
+    adjustmentTotal: -1.25,
+    replacePostageTotal: 4.0, replacePickPackTotal: 2.5,
+    rowTotal: 15.85,
+  }),
+  // The producer's LEGACY BARE RETURN shape (committed fixture, shape 5): returnTotal is
+  // funded while NEITHER named part is present and neither presence flag is set. Any surface
+  // deriving return money as postage + processing prints $0.00 here for a real $5.50 charge.
+  canonical({
+    orderId: 8899, orderNumber: '8899', rowType: 'Return', returnId: 9004,
+    displayReference: '8899-RETURN', destination: 'Domestic',
+    pickpackTotal: 0, shippingTotal: 0,
+    hasReturnPostageLine: false, returnPostageTotal: null,
+    hasReturnProcessingLine: false, returnProcessingTotal: null,
+    returnTotal: 5.5, rowTotal: 5.5,
   }),
 ];
 
@@ -259,4 +290,86 @@ test('AC-1: a Return reference does not open the outbound shipment drawer', asyn
     page.getByRole('button', { name: /View shipment information for order 4242-RETURN/ }),
     'no Return row may expose a shipment-drawer control',
   ).toHaveCount(0);
+});
+
+/**
+ * Parse the currency cells of one rendered row, in visual order.
+ *
+ * Deliberately reads the DOM rather than the fixture: the whole point of AC-6 is that what the
+ * customer SEES adds up, so an assertion sourced from the fixture would prove nothing about
+ * the grid.
+ */
+async function moneyCells(row) {
+  const cells = await row.locator('td').allInnerTexts();
+  return cells
+    .map((text) => text.replace(/\s+/g, ''))
+    .filter((text) => /^-?\$[\d,]+\.\d{2}$/.test(text))
+    .map((text) => Number(text.replace(/[$,]/g, '')));
+}
+
+test('AC-6: every money component is visible and the row reconciles to its own total', async ({ page }) => {
+  const errors = await setupBilling(page);
+  await openDetailRows(page);
+
+  const row = page.locator('tr', { hasText: '7788' }).first();
+  await expect(row).toBeVisible();
+  const rendered = (await row.innerText()).replace(/\s+/g, ' ');
+
+  // Each category is on the page as its own visible amount, not folded silently into the total.
+  for (const [label, amount] of [
+    ['pick & pack', '$2.50'], ['additional units', '$1.10'], ['box charge', '$0.90'],
+    ['shipping', '$6.10'], ['adjustment credit', '-$1.25'],
+    ['replacement postage', '$4.00'], ['replacement pick & pack', '$2.50'],
+  ]) {
+    expect(rendered, `${label} must be visible on the row — rendered: ${rendered}`).toContain(amount);
+  }
+
+  // And they add up to the charge printed beside them. The final currency cell is the
+  // Fulfillment Fee (rowTotal); everything before it is a component of that fee.
+  const amounts = await moneyCells(row);
+  expect(amounts.length, `expected component cells plus a total — got ${JSON.stringify(amounts)}`)
+    .toBeGreaterThan(1);
+  const total = amounts[amounts.length - 1];
+  const components = amounts.slice(0, -1);
+  const summed = Number(components.reduce((n, v) => n + v, 0).toFixed(2));
+  expect(total, 'the rendered total must be the producer-issued rowTotal').toBe(15.85);
+  expect(
+    summed,
+    `visible components ${JSON.stringify(components)} must reconcile to the displayed total ${total}`,
+  ).toBe(total);
+
+  expect(errors, `console/page errors: ${errors.join(' | ')}`).toEqual([]);
+});
+
+test('AC-6: a legacy bare return renders its producer-owned Return Total, not a derived zero', async ({ page }) => {
+  await setupBilling(page);
+  await openDetailRows(page);
+
+  // Both named parts are ABSENT and both presence flags are false, but returnTotal is 5.50.
+  // A grid or footer that derives return money as postage + processing shows $0.00 here.
+  const row = page.locator('tr', { hasText: '8899-RETURN' }).first();
+  await expect(row).toBeVisible();
+  const rendered = (await row.innerText()).replace(/\s+/g, ' ');
+
+  const cells = (await row.locator('td').allInnerTexts()).map((t) => t.replace(/\s+/g, ''));
+  const showing550 = cells.filter((text) => text === '$5.50').length;
+  expect(
+    showing550,
+    `Return Total must have its OWN cell, not just the Fulfillment Fee — cells: ${JSON.stringify(cells)}`,
+  ).toBe(2);
+  expect(
+    /\$0\.00/.test(rendered),
+    `return money must not be derived from absent parts into a fabricated 0.00 — row was: ${rendered}`,
+  ).toBe(false);
+});
+
+test('AC-6: a negative adjustment renders as a signed credit, never an em dash', async ({ page }) => {
+  await setupBilling(page);
+  await openDetailRows(page);
+
+  // moneyOrDash() renders anything not strictly positive as '—', which turned a customer's
+  // credit into blank space. The Adjustment column must be signed.
+  const row = page.locator('tr', { hasText: '7788' }).first();
+  const rendered = (await row.innerText()).replace(/\s+/g, ' ');
+  expect(rendered, `a -1.25 credit must render signed — row was: ${rendered}`).toContain('-$1.25');
 });

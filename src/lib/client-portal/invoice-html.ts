@@ -32,6 +32,17 @@ export interface InvoiceTotals {
   returnProcessingTotal: number;
   returnPostageTotal: number;
   /**
+   * CP-059 AC-6 — ALL return money, owned by the billing summary.
+   *
+   * Required, not optional, and NOT `returnProcessingTotal + returnPostageTotal`. The footer
+   * used to add those two, which is observably wrong for the producer's legacy bare-return
+   * shape: that row funds returnTotal while setting neither presence flag, so the addition
+   * printed $0.00 under a real charge. The same branch's event-row rule already says
+   * returnTotal is upstream-owned and must not be re-summed from its parts; the footer is now
+   * held to the rule the rows were.
+   */
+  returnTotal: number;
+  /**
    * PS-512 — replacement and adjustment money.
    *
    * Required, not optional: they were already inside grandTotal, so leaving them off the type
@@ -290,7 +301,7 @@ export function renderPortalInvoiceHtml(input: {
         <td class="num">${money(invoiceTotals.adjustmentTotal)}</td>
         <td class="num">${money(invoiceTotals.returnProcessingTotal)}</td>
         <td class="num">${money(invoiceTotals.returnPostageTotal)}</td>
-        <td class="num">${money(invoiceTotals.returnProcessingTotal + invoiceTotals.returnPostageTotal)}</td>
+        <td class="num">${money(invoiceTotals.returnTotal)}</td>
         <td class="num">${money(invoiceTotals.replacePostageTotal)}</td>
         <td class="num">${money(invoiceTotals.replacePickPackTotal)}</td>
         <td class="num">${money(invoiceTotals.grandTotal)}</td>

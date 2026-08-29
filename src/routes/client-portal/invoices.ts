@@ -186,6 +186,9 @@ app.get('/invoice', async (c) => {
     storageTotal: Number(row?.storageTotal ?? 0),
     returnProcessingTotal: Number(row?.returnProcessingTotal ?? 0),
     returnPostageTotal: Number(row?.returnPostageTotal ?? 0),
+    // CP-059 AC-6. Read, never derived. The two named parts above are SUBSETS of this value,
+    // not its definition — see services/billing-line-types.ts.
+    returnTotal: Number(row?.returnTotal ?? 0),
     // PS-512 — read from the canonical billing summary like every other category here. The
     // route does not sum, derive or reconcile money; it renders what the money authority says.
     adjustmentTotal: Number(row?.adjustmentTotal ?? 0),
