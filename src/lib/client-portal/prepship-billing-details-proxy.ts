@@ -242,6 +242,37 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
     return typeof value === 'number' && Number.isFinite(value);
   });
 
+  /*
+   * OPTIONAL money must be ABSENT or a finite number. It may not be the wrong type.
+   *
+   * "Optional" on the producer DTO means the field may not be there — it does not mean the field
+   * may arrive as a string when it is there. `asNumber` happily turns "3.00" into 3, which is
+   * numerically harmless and contractually wrong, and this boundary exists to fail closed on
+   * contract drift rather than paper over it. The required totals were tightened for exactly
+   * this reason; leaving the optional ones coercible kept half the door open.
+   */
+  const optionalMoneyValid = ALLOWED_NUMBER_FIELDS.every((field) => {
+    if (REQUIRED_NUMBER_FIELDS.includes(field as (typeof REQUIRED_NUMBER_FIELDS)[number])) return true;
+    const value = row[field];
+    if (value === null || value === undefined) return true;
+    return typeof value === 'number' && Number.isFinite(value);
+  });
+
+  /*
+   * Relational identifiers are not coerced either.
+   *
+   * PrepShip publishes clientId/orderId/returnId as numbers. Accepting "208" and converting it
+   * silently means the boundary is guessing at identity, and identity is the one thing this
+   * repository has been told repeatedly not to derive. Absence stays legal — orderId is null on
+   * a storage row, returnId is null on an outbound one — but a PRESENT value must be a real
+   * integer.
+   */
+  const relationalIdValid = (['clientId', 'orderId', 'returnId'] as const).every((field) => {
+    const value = row[field];
+    if (value === null || value === undefined) return true;
+    return typeof value === 'number' && Number.isInteger(value);
+  });
+
   // Client identity. PrepShip stamps it on every generated row; silently erasing it to null
   // would detach a billing line from the client it belongs to on a multi-client export.
   const clientId = asInteger(row.clientId);
@@ -261,7 +292,8 @@ export function toCanonicalBillingEventRow(input: unknown): CanonicalBillingEven
   const orderIdValid = !orderIdPresent || asInteger(row.orderId) !== null;
 
   if (canonicalEventId === null || clientId === null || !orderIdValid || !rowTypeValid || !destinationValid
-    || !postagePresenceValid || !processingPresenceValid || !moneyValid) {
+    || !postagePresenceValid || !processingPresenceValid || !moneyValid
+    || !optionalMoneyValid || !relationalIdValid) {
     return null;
   }
 
@@ -438,7 +470,7 @@ export async function fetchCanonicalBillingDetails(
    */
   const seen = new Set<string>();
   for (const row of rows) {
-    const id = String((row as { canonicalEventId?: unknown }).canonicalEventId ?? '');
+    const id = row.canonicalEventId;
     if (seen.has(id)) {
       console.error(
         '[client-portal] canonical billing rows share an event identity; rejecting the response '

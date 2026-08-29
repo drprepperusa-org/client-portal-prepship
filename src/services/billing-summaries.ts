@@ -73,6 +73,10 @@ export type BillingSummaryRow = {
   storageTotal: number;
   // CP-031: return billing totals (surface in byType + fold into grandTotal).
   returnPostageTotal: number;
+  /** PS-512 — categories that were inside grand_total but invisible on every itemized surface. */
+  adjustmentTotal: number;
+  replacePostageTotal: number;
+  replacePickPackTotal: number;
   returnProcessingTotal: number;
   orderCount: number;
   grandTotal: number;
@@ -187,6 +191,9 @@ export async function billingSummary(
         shippingTotal: 0,
         storageTotal: 0,
         returnPostageTotal: 0,
+        adjustmentTotal: 0,
+        replacePostageTotal: 0,
+        replacePickPackTotal: 0,
         returnProcessingTotal: 0,
         orderCount: 0,
         grandTotal: 0,
@@ -225,6 +232,9 @@ export async function billingSummary(
     shipping_total: string;
     storage_total: string;
     return_postage_total: string;
+    adjustment_total: string;
+    replace_postage_total: string;
+    replace_pick_pack_total: string;
     return_processing_total: string;
     order_count: number;
     grand_total: string;
@@ -241,6 +251,13 @@ export async function billingSummary(
       -- line types) already reconciles them into the grand total.
       coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::text as return_postage_total,
       coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::text as return_processing_total,
+      -- PS-512: adjustment and REPLACEMENT money were already inside grand_total (it sums every
+      -- line type) but had no category of their own, so an itemized invoice showed components
+      -- that did not add up to its own total. Broken out here, at the summary authority, rather
+      -- than derived in a serializer — same pattern CP-031 used for the return categories.
+      coalesce(sum(case when b.line_type = 'billing_adjustment' then b.total_cost else 0 end), 0)::text as adjustment_total,
+      coalesce(sum(case when b.line_type = 'replace_postage' then b.total_cost else 0 end), 0)::text as replace_postage_total,
+      coalesce(sum(case when b.line_type = 'replace_pick_pack' then b.total_cost else 0 end), 0)::text as replace_pick_pack_total,
       count(distinct b.order_id)::int as order_count,
       coalesce(sum(b.total_cost), 0)::text as grand_total
     from clients c
@@ -264,6 +281,9 @@ export async function billingSummary(
     const shippingTotal = toNum(r.shipping_total);
     const storageTotal = toNum(r.storage_total);
     const returnPostageTotal = toNum(r.return_postage_total);
+    const adjustmentTotal = toNum(r.adjustment_total);
+    const replacePostageTotal = toNum(r.replace_postage_total);
+    const replacePickPackTotal = toNum(r.replace_pick_pack_total);
     const returnProcessingTotal = toNum(r.return_processing_total);
     const grandTotal = toNum(r.grand_total);
     return {
@@ -275,6 +295,9 @@ export async function billingSummary(
       shippingTotal,
       storageTotal,
       returnPostageTotal,
+      adjustmentTotal,
+      replacePostageTotal,
+      replacePickPackTotal,
       returnProcessingTotal,
       orderCount: Number(r.order_count ?? 0),
       grandTotal,

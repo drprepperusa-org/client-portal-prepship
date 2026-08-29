@@ -98,10 +98,14 @@ export const MUTATIONS: readonly Mutation[] = [
     to: 'export const invoiceRowKey = (row: BillingInvoiceDetailRow): string => String(row.orderId) + String(row.rowType);',
   },
   {
-    label: 'ids: truncate a fractional relational id instead of rejecting it (42.9 -> 42)',
+    // Targets relationalIdValid, not asInteger. asInteger's integer check became a second
+    // layer once relationalIdValid was added, and a mutation of a redundant layer is not
+    // observable — the same trap PS-512 hit with the cancelled zeroing. This breaks the layer
+    // that actually decides.
+    label: 'ids: accept a fractional relational id instead of rejecting it (42.9 points at another order)',
     file: PROXY, guard: BOUNDARY,
-    from: '  return Number.isInteger(parsed) ? parsed : null;',
-    to: '  return Math.trunc(parsed);',
+    from: "    return typeof value === 'number' && Number.isInteger(value);",
+    to: '    return asNumber(value) !== null;',
   },
   {
     label: 'money: accept a numeric STRING for a producer-declared number field',

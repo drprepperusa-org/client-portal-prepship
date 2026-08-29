@@ -295,6 +295,20 @@ assert.ok(
   toCanonicalBillingEventRow(canonical({ orderId: null, canonicalEventId: hex32('storage-1') })),
   'a null orderId is a real storage shape and must still pass',
 );
+// clientId and returnId too — orderId has a second guard of its own, so a mutation of the
+// shared integer rule is invisible unless a field WITHOUT that second layer is covered.
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ clientId: 7.5 })), null,
+  'a fractional clientId must be rejected — identity is not rounded',
+);
+assert.equal(
+  toCanonicalBillingEventRow(canonical({ rowType: 'Return', returnId: 3.5 })), null,
+  'a fractional returnId must be rejected',
+);
+assert.ok(
+  toCanonicalBillingEventRow(canonical({ rowType: 'Return', returnId: 3 })),
+  'a real integer returnId still passes',
+);
 ok('a fractional relational id is rejected rather than silently truncated');
 
 for (const field of ['pickpackTotal', 'grandTotal', 'shippingTotal']) {

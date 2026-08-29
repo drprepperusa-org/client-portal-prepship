@@ -186,6 +186,11 @@ app.get('/invoice', async (c) => {
     storageTotal: Number(row?.storageTotal ?? 0),
     returnProcessingTotal: Number(row?.returnProcessingTotal ?? 0),
     returnPostageTotal: Number(row?.returnPostageTotal ?? 0),
+    // PS-512 — read from the canonical billing summary like every other category here. The
+    // route does not sum, derive or reconcile money; it renders what the money authority says.
+    adjustmentTotal: Number(row?.adjustmentTotal ?? 0),
+    replacePostageTotal: Number(row?.replacePostageTotal ?? 0),
+    replacePickPackTotal: Number(row?.replacePickPackTotal ?? 0),
     grandTotal: Number(row?.grandTotal ?? 0),
   };
   // No silent truncation: the itemized list is row-capped only on the normal

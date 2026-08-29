@@ -45,12 +45,16 @@ const HEADERS = [
   'Box Size',
   'Shipping',
   'Storage',
+  'Adjustment',
   'Return Processing',
   'Return Postage',
+  'Return Total',
+  'Replacement Postage',
+  'Replacement Pick & Pack',
   'Fulfillment Fee',
 ] as const;
 
-const COLUMN_WIDTHS = [12, 14, 10, 13, 28, 6, 12, 11, 10, 12, 10, 10, 15, 13, 14];
+const COLUMN_WIDTHS = [12, 14, 10, 13, 28, 6, 12, 11, 10, 12, 10, 10, 12, 15, 13, 12, 17, 20, 14];
 
 function slugify(name: string): string {
   const slug = name
@@ -112,8 +116,18 @@ export function buildInvoiceExcelSheet(
     { type: String, value: r.boxSize ?? '' },
     { type: Number, value: num(r.shippingTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.storageTotal), format: MONEY_FORMAT },
+    { type: Number, value: num(r.adjustmentTotal), format: MONEY_FORMAT },
     moneyCellOrBlank(r.hasReturnProcessingLine, r.returnProcessingTotal),
     moneyCellOrBlank(r.hasReturnPostageLine, r.returnPostageTotal),
+    // The producer's own returnTotal. The two cells above are breakouts WITHIN it; a legacy
+    // bare 'return' line funds this without being attributable to either, so without this
+    // column that money is visible nowhere while still inside the row total.
+    { type: Number, value: num(r.returnTotal), format: MONEY_FORMAT },
+    // PS-512. Plain numeric cells: unlike the return fees there is no upstream presence flag for
+    // replacement money, so absent and zero are not distinguishable here and must not pretend to
+    // be. The producer emits 0 when there is no replacement activity.
+    { type: Number, value: num(r.replacePostageTotal), format: MONEY_FORMAT },
+    { type: Number, value: num(r.replacePickPackTotal), format: MONEY_FORMAT },
     { type: Number, value: num(r.rowTotal), format: MONEY_FORMAT },
   ]);
 
@@ -138,8 +152,12 @@ export function buildInvoiceExcelSheet(
     null,
     { type: Number, value: sum((r) => r.shippingTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.storageTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.adjustmentTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.returnProcessingTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.returnPostageTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.returnTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.replacePostageTotal), format: MONEY_FORMAT, ...bold },
+    { type: Number, value: sum((r) => r.replacePickPackTotal), format: MONEY_FORMAT, ...bold },
     { type: Number, value: sum((r) => r.rowTotal), format: MONEY_FORMAT, ...bold },
   ];
 

@@ -159,7 +159,10 @@ ok('the React key separates two orderless storage rows and is the producer ident
 
 const html = renderPortalInvoiceHtml({
   clientName: 'Acme Fulfilment', dateFrom: '2026-08-01', dateTo: '2026-08-31',
-  details: accepted as never, truncated: false,
+  // The PROJECTED rows, not the raw boundary rows. The projection is what the route serves,
+  // and it maps grandTotal -> rowTotal; rendering the boundary rows printed a $0.00 total on
+  // every line, which went unnoticed until the reconciliation check below started reading it.
+  details: projected as never, truncated: false,
   invoiceTotals: {
     orderCount: accepted.length, qty: 0, pickPackTotal: 0, additionalTotal: 0, packageTotal: 0,
     shippingTotal: 0, storageTotal: 0, grandTotal: 0,
@@ -170,11 +173,11 @@ const bodyRows = (html.match(/<tbody>[\s\S]*?<\/tbody>/) ?? [''])[0]
 assert.equal(bodyRows.length, accepted.length, `every accepted row must render (${bodyRows.length} vs ${accepted.length})`);
 
 // A row whose return fee is ABSENT must blank both return cells, whatever amount it carries.
-const HTML_PROCESSING = 12;
-const HTML_POSTAGE = 13;
+const HTML_PROCESSING = 13;
+const HTML_POSTAGE = 14;
 for (const [index, row] of accepted.entries()) {
   const cells = [...bodyRows[index].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].trim());
-  assert.equal(cells.length, 15, `row ${index} rendered ${cells.length} cells`);
+  assert.equal(cells.length, 19, `row ${index} rendered ${cells.length} cells`);
   if (row.hasReturnPostageLine === false) {
     assert.equal(cells[HTML_POSTAGE], '&mdash;',
       `an absent postage line must blank, not print the ${row.returnPostageTotal} it carries`);
@@ -186,9 +189,91 @@ for (const [index, row] of accepted.entries()) {
 }
 ok('no producer row prints a fabricated $0.00 in the printable invoice');
 
-const { sheet } = buildInvoiceExcelSheet(accepted as never);
+/*
+ * VISIBLE RECONCILIATION — the check that would have caught the invisibility defect.
+ *
+ * Every earlier proof asked whether a field SURVIVED transport: `field in projectedRow`. That
+ * stayed true while replacement and adjustment money reached the DTO and were rendered nowhere,
+ * so a row printed components adding to $8.60 beneath a Fulfillment Fee of $20.35 — $11.75
+ * hidden behind the total, on a customer's invoice.
+ *
+ * This reads the money out of the RENDERED CELLS and requires it to add up to the rendered
+ * total. A category that is carried but not displayed fails here, which "is the property
+ * present?" never could.
+ *
+ * The producer stays the money authority: the total is not recomputed and replaced, it is
+ * compared. If they disagree, this fails rather than picking a winner.
+ */
+const cellMoney = (cell: string): number => {
+  const text = cell.replace(/&mdash;|&nbsp;/g, '').replace(/[$,]/g, '').trim();
+  if (text === '') return 0;
+  const parsed = Number(text);
+  assert.ok(Number.isFinite(parsed), `rendered cell is not money: ${JSON.stringify(cell)}`);
+  return parsed;
+};
+
+// 6 Pick&Pack · 7 Addl · 8 Box Charge · 10 Shipping · 11 Storage · 12 Adjustment
+// 13 Return Processing · 14 Return Postage · 15 Replacement Postage · 16 Replacement Pick&Pack
+// Return Processing (13) and Return Postage (14) are breakouts WITHIN Return Total (15), so
+// only the total participates — counting all three would double-count return money.
+const HTML_COMPONENTS = [6, 7, 8, 10, 11, 12, 15, 16, 17];
+const HTML_TOTAL = 18;
+
+let reconciledRows = 0;
+let rowsCarryingReplacement = 0;
+for (const [index, chunk] of bodyRows.entries()) {
+  const cells = [...chunk.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => (m[1] ?? '').trim());
+  const visible = HTML_COMPONENTS.reduce((sum, col) => sum + cellMoney(cells[col] ?? ''), 0);
+  const printedTotal = cellMoney(cells[HTML_TOTAL] ?? '');
+  assert.equal(
+    Math.round(visible * 100) / 100, Math.round(printedTotal * 100) / 100,
+    `row ${index}: the VISIBLE components (${visible}) do not add up to the printed total `
+    + `(${printedTotal}). A category is carried but not displayed.`,
+  );
+  reconciledRows += 1;
+  if (cellMoney(cells[16] ?? '') > 0 || cellMoney(cells[17] ?? '') > 0) rowsCarryingReplacement += 1;
+}
+// Setup check: if no row carried replacement money, the reconciliation above would hold for a
+// trivial reason and prove nothing about the categories this exists to surface.
+assert.ok(
+  rowsCarryingReplacement > 0,
+  'no rendered row carried replacement money — this check would pass vacuously',
+);
+ok(`all ${reconciledRows} printed rows reconcile from VISIBLE cells, ${rowsCarryingReplacement} carrying replacement money`);
+
+const { sheet } = buildInvoiceExcelSheet(projected as never);
 assert.equal(sheet.length, accepted.length + 2, 'header + every row + totals');
 ok('every producer row survives into the spreadsheet export');
+
+// The same property in the spreadsheet, where a hidden category is worse: the numbers get
+// summed, filtered and reconciled by whoever opens it.
+const xlsxHeaders = (sheet[0] as Array<{ value: string }>).map((c) => c?.value);
+for (const label of ['Replacement Postage', 'Replacement Pick & Pack', 'Adjustment']) {
+  assert.ok(xlsxHeaders.includes(label), `the export must have a ${label} column`);
+}
+const colOf = (label: string) => xlsxHeaders.indexOf(label);
+const XLSX_COMPONENTS = ['Pick & Pack', 'Addl Units', 'Box Charge', 'Shipping', 'Storage',
+  'Adjustment', 'Return Total', 'Replacement Postage',
+  'Replacement Pick & Pack'].map(colOf);
+const XLSX_TOTAL = colOf('Fulfillment Fee');
+assert.ok(XLSX_TOTAL > 0 && XLSX_COMPONENTS.every((c) => c > 0), 'every expected column is present');
+
+const xlsxCellValue = (cell: unknown): number => {
+  const value = (cell as { value?: unknown })?.value;
+  return typeof value === 'number' ? value : 0;
+};
+let xlsxReconciled = 0;
+for (const row of sheet.slice(1, -1)) {
+  const cells = row as unknown[];
+  const visible = XLSX_COMPONENTS.reduce((sum, col) => sum + xlsxCellValue(cells[col]), 0);
+  const total = xlsxCellValue(cells[XLSX_TOTAL]);
+  assert.equal(
+    Math.round(visible * 100) / 100, Math.round(total * 100) / 100,
+    `a spreadsheet row's visible components (${visible}) do not add up to its total (${total})`,
+  );
+  xlsxReconciled += 1;
+}
+ok(`all ${xlsxReconciled} spreadsheet rows reconcile from visible numeric cells`);
 
 // --- 4. the whole fixture passes through the response boundary as one payload -----------------
 
@@ -203,7 +288,7 @@ assert.ok(whole.ok, `the full producer payload must not fail the response bounda
 assert.equal(whole.rows.length, accepted.length, 'every producer row survives the response boundary');
 ok('the entire producer payload passes the response boundary in one piece');
 
-const EXPECTED_CHECKS = 12;
+const EXPECTED_CHECKS = 14;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log('');
 console.log(`PASS CP-059 producer contract guard - ${checks}/${EXPECTED_CHECKS} checks`);
