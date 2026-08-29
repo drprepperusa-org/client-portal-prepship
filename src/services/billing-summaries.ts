@@ -273,9 +273,12 @@ export async function billingSummary(
       coalesce(sum(case when ${isReturnPostageLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as return_postage_total,
       coalesce(sum(case when ${isReturnProcessingLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as return_processing_total,
       -- CP-059 AC-6. Return money as ONE category, defined by SET MEMBERSHIP rather than by
-      -- adding the two named parts. The parts are subsets of this whole, so a return line type
-      -- introduced later folds in automatically instead of going silently missing from every
-      -- footer until somebody remembers to extend an addition somewhere.
+      -- adding the two named parts. The parts are subsets of this whole, and a bare 'return'
+      -- row funds the total while both named parts stay 0.00, so the addition would print
+      -- nothing for a real charge. The set is declared once, in src/services/billing-line-types.ts.
+      -- It is a static allowlist: a new upstream line type does NOT fold in on its own. What
+      -- catches that drift is scripts/prepship-return-vocabulary-parity.mjs, which compares the
+      -- local registry against the pinned upstream owner and fails when they diverge.
       coalesce(sum(case when ${isReturnLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as return_total,
       -- PS-512: adjustment and REPLACEMENT money were already inside grand_total (it sums every
       -- line type) but had no category of their own, so an itemized invoice showed components
