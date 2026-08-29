@@ -471,8 +471,15 @@ async function main(): Promise<void> {
   const expectedBlankPostage = producerRows.filter((r) => r.hasReturnPostageLine === false).length;
   const expectedBlankProcessing = producerRows.filter((r) => r.hasReturnProcessingLine === false).length;
   const printedCells = printedRows.map(cellsOfPrintedRow);
-  const blankPostage = printedCells.filter((cells) => cells[13] === '&mdash;').length;
-  const blankProcessing = printedCells.filter((cells) => cells[12] === '&mdash;').length;
+  // Column layout after PS-512 made replacement and adjustment visible (19 columns):
+  //   11 Storage · 12 Adjustment · 13 Return Processing · 14 Return Postage · 15 Return Total
+  //   16 Replacement Postage · 17 Replacement Pick&Pack · 18 Fulfillment Fee
+  // These were 12/13 when the table had 15 columns; the counts silently shifted by one, which
+  // is why an index-based assertion needs the layout written down beside it.
+  const HTML_RETURN_PROCESSING = 13;
+  const HTML_RETURN_POSTAGE = 14;
+  const blankPostage = printedCells.filter((cells) => cells[HTML_RETURN_POSTAGE] === '&mdash;').length;
+  const blankProcessing = printedCells.filter((cells) => cells[HTML_RETURN_PROCESSING] === '&mdash;').length;
 
   // Setup check: the fixture must actually contain absent fees, or the counts below are trivially
   // satisfied and prove nothing.
