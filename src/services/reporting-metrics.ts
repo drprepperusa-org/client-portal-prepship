@@ -1,4 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
+import {
+  isReturnLineTypeSql,
+  isReturnPostageLineTypeSql,
+  isReturnProcessingLineTypeSql,
+} from './billing-line-types';
 import { db } from '../db/client';
 import { billingLineEffectiveDaySql } from './billing-effective-day';
 import { customerSafeBillingLineSql } from '../lib/client-portal/customer-shipping-rate';
@@ -99,6 +104,15 @@ export type BillingSummaryMetricRow = {
   // CP-031: return billing totals (surface in byType; grand_total sums all).
   returnPostageTotal: number;
   returnProcessingTotal: number;
+  /** CP-059 AC-6 — ALL return money, not the sum of the two named parts. */
+  returnTotal: number;
+  // PS-512: adjustment and replacement, same treatment — inside grandTotal already, now with
+  // categories of their own so an itemized surface can reconcile to the total it prints.
+  // PS-512: materialised alongside the return totals (migration 0051), so this path supplies
+  // them like any other category rather than defaulting to a silent 0.
+  adjustmentTotal: number;
+  replacePostageTotal: number;
+  replacePickPackTotal: number;
   orderCount: number;
   grandTotal: number;
   total: number;
@@ -517,6 +531,13 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         storage_total,
         return_postage_total,
         return_processing_total,
+        -- CP-059 AC-6: all return money as one owned category, so no footer adds the parts.
+        return_total,
+        -- PS-512: already inside grand_total, now with columns of their own so an itemized
+        -- invoice can reconcile to the total printed on the same page.
+        adjustment_total,
+        replace_postage_total,
+        replace_pick_pack_total,
         grand_total,
         updated_at
       )
@@ -531,8 +552,12 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::numeric(14, 2) as shipping_total,
         coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::numeric(14, 2) as storage_total,
         -- CP-031: return line-type totals materialized for the summary byType.
-        coalesce(sum(case when b.line_type = 'return_postage' then b.total_cost else 0 end), 0)::numeric(14, 2) as return_postage_total,
-        coalesce(sum(case when b.line_type = 'return_processing_fee' then b.total_cost else 0 end), 0)::numeric(14, 2) as return_processing_total,
+        coalesce(sum(case when ${isReturnPostageLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::numeric(14, 2) as return_postage_total,
+        coalesce(sum(case when ${isReturnProcessingLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::numeric(14, 2) as return_processing_total,
+        coalesce(sum(case when ${isReturnLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::numeric(14, 2) as return_total,
+        coalesce(sum(case when b.line_type = 'billing_adjustment' then b.total_cost else 0 end), 0)::numeric(14, 2) as adjustment_total,
+        coalesce(sum(case when b.line_type = 'replace_postage' then b.total_cost else 0 end), 0)::numeric(14, 2) as replace_postage_total,
+        coalesce(sum(case when b.line_type = 'replace_pick_pack' then b.total_cost else 0 end), 0)::numeric(14, 2) as replace_pick_pack_total,
         coalesce(sum(b.total_cost), 0)::numeric(14, 2) as grand_total,
         now() as updated_at
       from clients c
@@ -554,6 +579,10 @@ export async function refreshBillingSummaryMetrics(from: Date, to: Date): Promis
         storage_total = excluded.storage_total,
         return_postage_total = excluded.return_postage_total,
         return_processing_total = excluded.return_processing_total,
+        return_total = excluded.return_total,
+        adjustment_total = excluded.adjustment_total,
+        replace_postage_total = excluded.replace_postage_total,
+        replace_pick_pack_total = excluded.replace_pick_pack_total,
         grand_total = excluded.grand_total,
         updated_at = now()
     `);
@@ -891,6 +920,10 @@ export async function getFreshBillingSummaryMetrics(options: {
       storage_total: string | number;
       return_postage_total: string | number;
       return_processing_total: string | number;
+      return_total: string | number;
+      adjustment_total: string | number;
+      replace_postage_total: string | number;
+      replace_pick_pack_total: string | number;
       order_count: number;
       grand_total: string | number;
       fresh_count: string | number;
@@ -936,6 +969,10 @@ export async function getFreshBillingSummaryMetrics(options: {
           m.storage_total,
           m.return_postage_total,
           m.return_processing_total,
+          m.return_total,
+          m.adjustment_total,
+          m.replace_postage_total,
+          m.replace_pick_pack_total,
           m.order_count,
           m.grand_total,
           m.updated_at as updated_at,
@@ -970,6 +1007,10 @@ export async function getFreshBillingSummaryMetrics(options: {
         fm.storage_total,
         fm.return_postage_total,
         fm.return_processing_total,
+        fm.return_total,
+        fm.adjustment_total,
+        fm.replace_postage_total,
+        fm.replace_pick_pack_total,
         fm.order_count,
         fm.grand_total,
         coverage.fresh_count,
@@ -991,6 +1032,10 @@ export async function getFreshBillingSummaryMetrics(options: {
       const shippingTotal = num(row.shipping_total);
       const storageTotal = num(row.storage_total);
       const returnPostageTotal = num(row.return_postage_total);
+      const returnTotal = num(row.return_total);
+      const adjustmentTotal = num(row.adjustment_total);
+      const replacePostageTotal = num(row.replace_postage_total);
+      const replacePickPackTotal = num(row.replace_pick_pack_total);
       const returnProcessingTotal = num(row.return_processing_total);
       const grandTotal = num(row.grand_total);
       const orderCount = num(row.order_count);
@@ -1003,12 +1048,19 @@ export async function getFreshBillingSummaryMetrics(options: {
         shippingTotal,
         storageTotal,
         returnPostageTotal,
+        returnTotal,
+        adjustmentTotal,
+        replacePostageTotal,
+        replacePickPackTotal,
         returnProcessingTotal,
         orderCount,
         grandTotal,
         total: grandTotal,
         count: orderCount,
         byType: {
+          billing_adjustment: adjustmentTotal,
+          replace_postage: replacePostageTotal,
+          replace_pick_pack: replacePickPackTotal,
           pick_pack: pickPackTotal,
           additional_unit: additionalTotal,
           package_cost: packageTotal,

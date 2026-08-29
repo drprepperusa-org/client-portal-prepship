@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { invoiceRowKey } from '@/lib/invoiceRows';
 import { ChevronLeft, FileSpreadsheet, FileText } from 'lucide-react';
 import type { InvoiceShipmentSelection } from '@/components/billing/InvoiceShipmentDrawer';
 import { DataTable } from '@/components/ui/DataTable';
@@ -88,7 +89,26 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
           tableId="invoices-lines"
           columns={lineColumns}
           rows={props.lineItems}
-          rowKey={(row) => `${row.orderId}-${row.orderNumber}`}
+          // CP-059: keyed on RELATIONAL EVENT identity, not the order.
+          //
+          // `${orderId}-${orderNumber}` was unique while every order produced one row. At event
+          // grain an outbound and its returns all share that pair, so three rows arrived as key
+          // "4242-4242" — React warns about duplicate keys and may duplicate or omit children,
+          // which on a billing table means a customer sees the wrong money against the wrong
+          // reference. The browser proof caught this as a console error.
+          //
+          // returnId is the discriminator because it is the relational fact. displayReference
+          // is deliberately NOT used: it is a label, and two rows may legitimately share one.
+          // CP-059: the backend-issued event identity, with NO fallback.
+      //
+      // The previous key was built from orderId/rowType/returnId, which is
+      // `null-Outbound-none` for EVERY orderless storage line — React then treats several
+      // distinct billing events as one row and reuses the wrong DOM node. The fallback that
+      // shipped alongside the fix would have silently restored exactly that behaviour the
+      // moment the identity went missing, which is how the projection defect stayed invisible.
+      // The boundary now rejects any row without a valid identity, so there is nothing to fall
+      // back to and no reason to pretend otherwise.
+      rowKey={invoiceRowKey}
           allowColumnCustomization={props.canCustomizeTables}
           sort={props.sort}
           onSortChange={props.onSortChange}

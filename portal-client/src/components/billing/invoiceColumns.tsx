@@ -12,6 +12,11 @@ export const invoiceActionButtonClass =
 const moneyRight = 'text-right';
 export const numberValue = (value: unknown) => Number(value ?? 0) || 0;
 const moneyOrDash = (value: number) => value > 0 ? money(value) : '—';
+// CP-059 AC-6. A billing adjustment can be a CREDIT. moneyOrDash() renders anything not
+// strictly positive as an em dash, so -5.00 displayed as "—" — money moving in the customer's
+// favour, invisible. Dash only genuine absence (exactly zero); render every non-zero amount,
+// sign included.
+const signedMoneyOrDash = (value: number) => value === 0 ? '—' : money(value);
 
 export type PeriodSummary = {
   clientId: number;
@@ -196,6 +201,7 @@ function invoiceMoneyColumn(
   header: string,
   width: number,
   value: (row: BillingInvoiceDetailRow) => unknown,
+  format: (value: number) => string = moneyOrDash,
 ): Column<BillingInvoiceDetailRow> {
   return {
     key,
@@ -203,7 +209,7 @@ function invoiceMoneyColumn(
     defaultWidth: width,
     className: moneyRight,
     render: (row) => (
-      <span className="tnum text-ink-2">{moneyOrDash(numberValue(value(row)))}</span>
+      <span className="tnum text-ink-2">{format(numberValue(value(row)))}</span>
     ),
     sortAccessor: (row) => numberValue(value(row)),
   };
@@ -233,28 +239,75 @@ export function buildInvoiceLineColumns(
     },
     {
       key: 'order',
-      header: 'Order #',
+      header: 'Reference',
+      defaultWidth: 150,
+      // CP-059 AC-1. The reference is rendered VERBATIM from the backend — "1234",
+      // "1234-RETURN", "1234-RETURN-2" — and never assembled here. The portal has no suffix
+      // rule and must not acquire one: a locally minted "-RETURN" would be a second owner of
+      // return identity, disagreeing with billing the moment upstream changes.
+      //
+      // Navigation keys on rowType, NOT on orderId. A Return shares its orderId with the
+      // outbound, so routing by orderId opens the OUTBOUND shipment drawer from a Return —
+      // showing a customer a different shipment's money. Returns stay non-clickable until a
+      // dedicated return surface exists. Wrong navigation is worse than none.
+      render: (row) => {
+        const isReturn = row.rowType === 'Return';
+        const label = row.displayReference
+          ?? row.orderNumber
+          ?? (row.orderId ? `#${row.orderId}` : '—');
+        if (isReturn || row.orderId == null) {
+          return (
+            <span
+              className="min-h-11 font-semibold text-ink-2 sm:min-h-8"
+              title={isReturn ? 'Return activity for this order' : undefined}
+            >
+              {label}
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              onShipmentSelect({
+                orderId: Number(row.orderId),
+                orderNumber: row.orderNumber ?? null,
+                shippingTotal: row.shippingTotal ?? null,
+              });
+            }}
+            className="focus-ring min-h-11 cursor-pointer font-semibold text-brand-700 hover:underline sm:min-h-8"
+            title="View shipment information"
+            aria-label={`View shipment information for order ${row.orderNumber ?? row.orderId ?? ''}`}
+          >
+            {label}
+          </button>
+        );
+      },
+      // Sorts the LABEL. Sorting cannot change which rows exist or how they group.
+      sortAccessor: (row) => row.displayReference ?? row.orderNumber ?? '',
+    },
+    {
+      key: 'rowType',
+      header: 'Type',
+      defaultWidth: 100,
+      // Rendered as issued. The portal never infers Outbound vs Return from a reference
+      // string, a line type, or the mere presence of return money.
+      render: (row) => <span className="text-ink-2">{row.rowType ?? '—'}</span>,
+      sortAccessor: (row) => row.rowType ?? '',
+    },
+    {
+      key: 'destination',
+      header: 'Destination',
       defaultWidth: 130,
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => {
-            if (row.orderId == null) return;
-            onShipmentSelect({
-              orderId: Number(row.orderId),
-              orderNumber: row.orderNumber ?? null,
-              shippingTotal: row.shippingTotal ?? null,
-            });
-          }}
-          disabled={row.orderId == null}
-          className="focus-ring min-h-11 cursor-pointer font-semibold text-brand-700 hover:underline disabled:cursor-default disabled:no-underline sm:min-h-8"
-          title="View shipment information"
-          aria-label={`View shipment information for order ${row.orderNumber ?? row.orderId ?? ''}`}
-        >
-          {row.orderNumber ?? (row.orderId ? `#${row.orderId}` : '—')}
-        </button>
-      ),
-      sortAccessor: (row) => row.orderNumber ?? '',
+      // CP-059 AC-2/AC-3. Backend classification ONLY — no country or territory comparison
+      // here. PrepShip already normalises every US state, DC, APO/FPO/DPO and the territories
+      // (PR/GU/VI/AS/MP/UM) to Domestic, and a Return inherits its OUTBOUND's classification
+      // rather than the US address its parcel is physically travelling to.
+      //
+      // 'Needs Review' is a real value, not an error state. A column can say "we don't know",
+      // and saying it beats guessing Domestic.
+      render: (row) => <span className="text-ink-2">{row.destination ?? '—'}</span>,
+      sortAccessor: (row) => row.destination ?? '',
     },
     {
       key: 'sku',
@@ -289,6 +342,19 @@ export function buildInvoiceLineColumns(
     },
     invoiceMoneyColumn('shipping', 'Shipping', 110, (row) => row.shippingTotal),
     invoiceMoneyColumn('storage', 'Storage', 100, (row) => row.storageTotal),
+    // CP-059 AC-6. These four categories were already inside rowTotal and already crossed the
+    // DTO boundary, but had no column — so an outbound row could show components summing to
+    // $8.60 beside a Fulfillment Fee of $20.35, with $11.75 of real money invisible on the
+    // customer's own invoice. Rendered here, in the printable footer's order, from the
+    // producer's fields. Nothing is derived: no column adds, nets or reconciles another.
+    invoiceMoneyColumn(
+      'adjustment',
+      'Adjustment',
+      120,
+      (row) => row.adjustmentTotal,
+      // Signed: a credit is negative and must stay visible.
+      signedMoneyOrDash,
+    ),
     invoiceMoneyColumn(
       'returnprocessing',
       'Return Processing',
@@ -300,6 +366,30 @@ export function buildInvoiceLineColumns(
       'Return Postage',
       130,
       (row) => row.returnPostageTotal,
+    ),
+    // Producer-owned, NOT returnProcessing + returnPostage. A legacy bare return line funds
+    // this while leaving both parts at zero, so deriving it here would print nothing for a
+    // real charge — the same defect the printable footer had.
+    invoiceMoneyColumn(
+      'returntotal',
+      'Return Total',
+      120,
+      (row) => row.returnTotal,
+      signedMoneyOrDash,
+    ),
+    invoiceMoneyColumn(
+      'replacepostage',
+      'Replacement Postage',
+      160,
+      (row) => row.replacePostageTotal,
+      signedMoneyOrDash,
+    ),
+    invoiceMoneyColumn(
+      'replacepickpack',
+      'Replacement Pick & Pack',
+      180,
+      (row) => row.replacePickPackTotal,
+      signedMoneyOrDash,
     ),
     {
       key: 'fee',

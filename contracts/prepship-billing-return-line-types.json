@@ -1,0 +1,19 @@
+{
+  "note": "CP-059 — the canonical RETURN line-type vocabulary, owned by PrepShip. Do not hand-edit: re-pin from upstream and let scripts/prepship-return-vocabulary-parity.mjs prove the copy.",
+  "why": "The Client Portal's two summary authorities (billing-summaries.ts and reporting-metrics.ts) sum return money by line type. A spelling present upstream and missing here drops that money out of the return bucket while leaving it in grand_total, so a customer's invoice stops reconciling. Upstream says the same thing in its own doc comment on BILLING_RETURN_LINE_TYPES.",
+  "upstream": {
+    "repo": "drprepperusa-org/prepship-v4",
+    "ref": "291845287b29784da02fd468b6d2d66742dd5983",
+    "path": "src/services/billing-row-status.ts",
+    "blobSha": "e347a487fa7b5ab90277c9b1188621a9eb79351a",
+    "exports": {
+      "all": "BILLING_RETURN_LINE_TYPES",
+      "postage": "isBillingReturnPostageLineType",
+      "processing": "isBillingReturnProcessingLineType"
+    }
+  },
+  "all": ["return", "return_label", "return_processing", "return_postage", "return_processing_fee"],
+  "postage": ["return_postage", "return_label"],
+  "processing": ["return_processing_fee", "return_processing"],
+  "bare": ["return"]
+}

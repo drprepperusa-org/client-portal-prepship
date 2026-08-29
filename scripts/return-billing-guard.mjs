@@ -211,10 +211,20 @@ assert(
 // whose amount is not provably PrepShip's frozen, policy-versioned money. That
 // gate is src/lib/client-portal/customer-shipping-rate.ts, so that is where
 // these assertions now point.
+// CP-059: repointed from the SPELLING to the DELEGATION. This used to pin the literal
+// `<> 'return_postage'`, which meant the gate covered only the modern spelling — the
+// producer also emits the legacy `return_label` alias as return postage, so an
+// unvalidated legacy line reached customer money without the tuple check its modern
+// equivalent has to pass. The gate now reads the shared registry, and this asserts
+// that delegation plus the registry's coverage, which is strictly stronger than the
+// old literal: it cannot be satisfied by gating one spelling and leaking another.
 assert(
   /export function customerSafeBillingLineSql\(/.test(customerShippingRate) &&
-    /coalesce\(\$\{input\.lineType\}, ''\) <> 'return_postage'/.test(customerShippingRate),
-  'the portal keeps a customer-safety gate that singles out return_postage lines',
+    /not \(\$\{isReturnPostageLineTypeSql\(input\.lineType\)\}\)/.test(
+      customerShippingRate,
+    ) &&
+    /isReturnPostageLineTypeSql/.test(customerShippingRate),
+  'the customer-safety gate covers every return-postage spelling via the shared registry',
 );
 assert(
   customerShippingRate.includes("'customerShippingMoneyPolicyVersion' = 'ps-437-v1'") &&
@@ -305,10 +315,16 @@ assert(
 // KEPT AS-IS — billing-summaries.ts and reporting-metrics.ts are portal files and
 // were never part of the writer.
 // Live-fallback aggregation (billing-summaries.ts).
+// CP-059: these buckets now sum by the SHARED REGISTRY rather than a hand-listed spelling,
+// so the legacy aliases (return_label, return_processing) and the bare 'return' line cannot
+// fall out of the return buckets while their money stays in grand_total. Asserting the
+// delegation is stronger than asserting one spelling: a hand-listed literal reappearing here
+// is now itself a failure, checked by scripts/prepship-return-vocabulary-parity.mjs.
 assert(
-  summaries.includes("when b.line_type = 'return_postage' then b.total_cost") &&
-    summaries.includes("when b.line_type = 'return_processing_fee' then b.total_cost"),
-  'billingSummary live aggregation SUMs return_postage + return_processing_fee',
+  summaries.includes('${isReturnPostageLineTypeSql(sql`b.line_type`)}') &&
+    summaries.includes('${isReturnProcessingLineTypeSql(sql`b.line_type`)}') &&
+    summaries.includes('${isReturnLineTypeSql(sql`b.line_type`)}'),
+  'billingSummary sums return postage, processing AND the canonical return total by registry',
 );
 assert(
   summariesFlat.includes('return_postage: returnPostageTotal') &&
@@ -321,11 +337,13 @@ assert(
 );
 // Materialized read-model (reporting-metrics.ts + billing_summary_metrics).
 assert(
-  reporting.includes("when b.line_type = 'return_postage' then b.total_cost") &&
-    reporting.includes("when b.line_type = 'return_processing_fee' then b.total_cost") &&
+  reporting.includes('${isReturnPostageLineTypeSql(sql`b.line_type`)}') &&
+    reporting.includes('${isReturnProcessingLineTypeSql(sql`b.line_type`)}') &&
+    reporting.includes('${isReturnLineTypeSql(sql`b.line_type`)}') &&
     reporting.includes('return_postage_total') &&
-    reporting.includes('return_processing_total'),
-  'billing_summary_metrics refresh materializes return_postage_total + return_processing_total',
+    reporting.includes('return_processing_total') &&
+    reporting.includes('return_total'),
+  'billing_summary_metrics materializes postage, processing AND the canonical return_total by registry',
 );
 assert(
   reportingFlat.includes('return_postage: returnPostageTotal') &&

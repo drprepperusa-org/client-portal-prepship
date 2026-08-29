@@ -61,3 +61,10 @@ jobs:
       # this runs the browser assertions in the same job rather than on a workstation.
       - name: CP-061 reason-contract browser proof
         run: npm run test:cp-061:browser
+
+      # CP-059: the browser proof is REQUIRED, not optional. It is the only check that runs the
+      # real grid and catches a duplicate React key — the defect that first exposed the missing
+      # event identity. Playwright chromium is already installed above and the config starts its
+      # own vite server with every portal API intercepted, so this needs no extra services.
+      - name: CP-059 Billing browser proof
+        run: npm run test:cp-059-billing:browser

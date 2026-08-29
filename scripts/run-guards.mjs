@@ -38,6 +38,7 @@ const DENY_PATTERNS = [
   'marketplace-reconciliation',
   'shipstation-awaiting-parity',
   'client-portal-replacement-reason-parity', // CP-061 parity needs the prepship-v4 checkout
+  'prepship-return-vocabulary-parity',       // CP-059 parity needs a prepship-v4 read (token-gated)
 ];
 const DENY = new RegExp(`(${DENY_PATTERNS.join('|')})`);
 

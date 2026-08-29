@@ -187,9 +187,15 @@ function serverSources(dir: string, acc: string[] = []): string[] {
 
 // Discovered, not hardcoded, so a NEW surface that totals return_postage is caught
 // the day it is added instead of inheriting an exemption from this list.
-const returnPostageReaders = serverSources('src').filter((file) =>
-  /line_type = 'return_postage'/.test(fs.readFileSync(file, 'utf8')),
-);
+const returnPostageReaders = serverSources('src').filter((file) => {
+  // The vocabulary owner DEFINES the predicate; it reads no billing rows and totals no money,
+  // so requiring it to apply the customer-safety gate is a category error.
+  if (file.replace(/\\/g, '/').endsWith('src/services/billing-line-types.ts')) return false;
+  const source = fs.readFileSync(file, 'utf8');
+  // Either the legacy hand-listed spelling or the CP-059 shared registry.
+  return /line_type = 'return_postage'/.test(source)
+    || /isReturnPostageLineTypeSql/.test(source);
+});
 // Vacuity guard: the three known read surfaces are billing-summaries.ts,
 // read-models/invoice-details.ts and reporting-metrics.ts. If this count drops,
 // the loop below stopped covering a surface and must be re-examined, not relaxed.
