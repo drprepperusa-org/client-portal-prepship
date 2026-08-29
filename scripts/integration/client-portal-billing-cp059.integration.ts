@@ -568,17 +568,36 @@ async function main(): Promise<void> {
     // drizzle-kit push does not create them and the throwaway database has neither them nor
     // CP-059's return_total column. Apply both here. Every statement in these files is
     // CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS, so this is safe to re-run.
-    // DEPENDENCY order, not numeric order. 0022 ALTERs billing_summary_metrics but is numbered
-    // BEFORE 0029, which is the file that CREATEs it — on a fresh database 0022 would fail
-    // against a table that does not exist yet. Production reached that state by a different
-    // route; a throwaway database has to build it in the order the statements actually require.
+    // The reporting tables come from raw SQL migrations rather than drizzle schema files, so
+    // drizzle-kit push never creates them for a throwaway database.
+    //
+    // Two things make applying them here fiddly, and both are properties of the real migration
+    // history rather than of this test:
+    //
+    //  - DEPENDENCY order, not numeric order. 0022 ALTERs billing_summary_metrics but is
+    //    numbered BEFORE 0029, the file that CREATEs it.
+    //  - 0022 also ALTERs billing_config with a plain ADD COLUMN, and those columns already
+    //    exist here because drizzle push created them from the schema. Applying that file
+    //    whole fails on "column already exists".
+    //
+    // So: 0029 whole (every statement is CREATE TABLE IF NOT EXISTS, and refresh checks all
+    // five tables exist), then only the billing_summary_metrics statements of the rest.
+    await db.execute(rawSql.raw(readFileSync('drizzle/0029_reporting_metrics.sql', 'utf8')));
     for (const migration of [
-      'drizzle/0029_reporting_metrics.sql',              // creates the table
-      'drizzle/0022_return_billing_config.sql',          // + return_postage_total / return_processing_total
+      'drizzle/0022_return_billing_config.sql',                  // + return_postage_total / return_processing_total
       'drizzle/0051_billing_summary_replacement_adjustment.sql', // + adjustment / replacement
-      'drizzle/0052_billing_summary_return_total.sql',   // + return_total (CP-059)
+      'drizzle/0052_billing_summary_return_total.sql',           // + return_total (CP-059)
     ]) {
-      await db.execute(rawSql.raw(readFileSync(migration, 'utf8')));
+      const statements = readFileSync(migration, 'utf8')
+        .split('--> statement-breakpoint')
+        .map((statement) => statement.trim())
+        .filter((statement) => /billing_summary_metrics/i.test(statement));
+      if (statements.length === 0) {
+        throw new Error(`${migration} contributed no billing_summary_metrics statement`);
+      }
+      for (const statement of statements) {
+        await db.execute(rawSql.raw(statement));
+      }
     }
     await refreshBillingSummaryMetrics(new Date(FROM), new Date(TO));
     const materializedRows = await db.execute<{ return_total: string; grand_total: string }>(rawSql`
