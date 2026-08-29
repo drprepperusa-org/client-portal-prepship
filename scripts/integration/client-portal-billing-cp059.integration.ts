@@ -568,9 +568,15 @@ async function main(): Promise<void> {
     // drizzle-kit push does not create them and the throwaway database has neither them nor
     // CP-059's return_total column. Apply both here. Every statement in these files is
     // CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS, so this is safe to re-run.
+    // DEPENDENCY order, not numeric order. 0022 ALTERs billing_summary_metrics but is numbered
+    // BEFORE 0029, which is the file that CREATEs it — on a fresh database 0022 would fail
+    // against a table that does not exist yet. Production reached that state by a different
+    // route; a throwaway database has to build it in the order the statements actually require.
     for (const migration of [
-      'drizzle/0029_reporting_metrics.sql',
-      'drizzle/0052_billing_summary_return_total.sql',
+      'drizzle/0029_reporting_metrics.sql',              // creates the table
+      'drizzle/0022_return_billing_config.sql',          // + return_postage_total / return_processing_total
+      'drizzle/0051_billing_summary_replacement_adjustment.sql', // + adjustment / replacement
+      'drizzle/0052_billing_summary_return_total.sql',   // + return_total (CP-059)
     ]) {
       await db.execute(rawSql.raw(readFileSync(migration, 'utf8')));
     }
