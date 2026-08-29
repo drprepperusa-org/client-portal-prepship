@@ -67,15 +67,16 @@ jobs:
       # and missing here drops return money out of the return bucket while leaving it inside
       # grand_total. Same arming rule as the expedited gate above: without the secret this
       # reports NOT ARMED rather than silently passing.
+      # FAIL-CLOSED on purpose: no --allow-unarmed fallback here.
+      #
+      # The unarmed path prints WARN NOT ARMED and still exits 0, so a lane that used it went
+      # GREEN at the check level while verifying nothing upstream. The warning is visible only
+      # to someone reading the log. If the secret disappears or expires this lane must go red.
+      # --allow-unarmed stays available as a LOCAL developer command; it is not a CI substitute.
       - name: Check PrepShip return line-type vocabulary parity
         env:
           PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
-        run: |
-          if [ -n "$PREPSHIP_CONTRACT_TOKEN" ]; then
-            node scripts/prepship-return-vocabulary-parity.mjs
-          else
-            node scripts/prepship-return-vocabulary-parity.mjs --allow-unarmed
-          fi
+        run: node scripts/prepship-return-vocabulary-parity.mjs
       - name: Check PrepShip expedited-service classification parity
         env:
           PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}

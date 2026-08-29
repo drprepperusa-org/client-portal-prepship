@@ -220,10 +220,10 @@ assert(
 // old literal: it cannot be satisfied by gating one spelling and leaking another.
 assert(
   /export function customerSafeBillingLineSql\(/.test(customerShippingRate) &&
-    /coalesce\(\$\{input\.lineType\}, ''\) not in \(\$\{returnPostageLineTypes\(\)\}\)/.test(
+    /not \(\$\{isReturnPostageLineTypeSql\(input\.lineType\)\}\)/.test(
       customerShippingRate,
     ) &&
-    /RETURN_POSTAGE_LINE_TYPES/.test(customerShippingRate),
+    /isReturnPostageLineTypeSql/.test(customerShippingRate),
   'the customer-safety gate covers every return-postage spelling via the shared registry',
 );
 assert(
@@ -321,9 +321,9 @@ assert(
 // delegation is stronger than asserting one spelling: a hand-listed literal reappearing here
 // is now itself a failure, checked by scripts/prepship-return-vocabulary-parity.mjs.
 assert(
-  summaries.includes('lower(b.line_type) in (${returnPostageLineTypes})') &&
-    summaries.includes('lower(b.line_type) in (${returnProcessingLineTypes})') &&
-    summaries.includes('lower(b.line_type) in (${returnLineTypes})'),
+  summaries.includes('${isReturnPostageLineTypeSql(sql`b.line_type`)}') &&
+    summaries.includes('${isReturnProcessingLineTypeSql(sql`b.line_type`)}') &&
+    summaries.includes('${isReturnLineTypeSql(sql`b.line_type`)}'),
   'billingSummary sums return postage, processing AND the canonical return total by registry',
 );
 assert(
@@ -337,9 +337,9 @@ assert(
 );
 // Materialized read-model (reporting-metrics.ts + billing_summary_metrics).
 assert(
-  reporting.includes('lower(b.line_type) in (${returnPostageLineTypes})') &&
-    reporting.includes('lower(b.line_type) in (${returnProcessingLineTypes})') &&
-    reporting.includes('lower(b.line_type) in (${returnLineTypes})') &&
+  reporting.includes('${isReturnPostageLineTypeSql(sql`b.line_type`)}') &&
+    reporting.includes('${isReturnProcessingLineTypeSql(sql`b.line_type`)}') &&
+    reporting.includes('${isReturnLineTypeSql(sql`b.line_type`)}') &&
     reporting.includes('return_postage_total') &&
     reporting.includes('return_processing_total') &&
     reporting.includes('return_total'),

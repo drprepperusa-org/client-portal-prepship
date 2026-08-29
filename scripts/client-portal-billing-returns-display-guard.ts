@@ -57,11 +57,11 @@ const pkg = JSON.parse(read('package.json'));
 // aggregate here, so these SQL sums must stay.
 check(readModel.length > 0, 'the invoice-details read-model exists');
 check(
-  count(readModel, /lower\(b\.line_type\) in \(\$\{returnPostageLineTypes\}\) then b\.total_cost/g) >= 3,
+  count(readModel, /\$\{isReturnPostageLineTypeSql\([\s\S]{0,40}?\)\} then b\.total_cost/g) >= 3,
   'summary + period + detail each SUM return_postage from billing_line_items (backend-owned)',
 );
 check(
-  count(readModel, /lower\(b\.line_type\) in \(\$\{returnProcessingLineTypes\}\) then b\.total_cost/g) >= 3,
+  count(readModel, /\$\{isReturnProcessingLineTypeSql\([\s\S]{0,40}?\)\} then b\.total_cost/g) >= 3,
   'summary + period + detail each SUM return_processing_fee from billing_line_items (backend-owned)',
 );
 check(

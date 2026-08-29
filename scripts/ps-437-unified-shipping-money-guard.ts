@@ -137,7 +137,7 @@ for (const [name, source] of [
 // old literal: it cannot be satisfied by gating one spelling and leaking another.
 assert.match(
   sqlProjection,
-  /coalesce\(\$\{input\.lineType\}, ''\) not in \(\$\{returnPostageLineTypes\(\)\}\)/,
+  /not \(\$\{isReturnPostageLineTypeSql\(input\.lineType\)\}\)/,
   'unproven return-postage lines are withheld via the shared registry, not recalculated',
 );
 {

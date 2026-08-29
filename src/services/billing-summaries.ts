@@ -3,9 +3,9 @@
 // customer shipping money is frozen by PrepShip and only consumed here.
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import {
-  RETURN_LINE_TYPES,
-  RETURN_POSTAGE_LINE_TYPES,
-  RETURN_PROCESSING_LINE_TYPES,
+  isReturnLineTypeSql,
+  isReturnPostageLineTypeSql,
+  isReturnProcessingLineTypeSql,
 } from './billing-line-types';
 import { db } from '../db/client';
 import { billingLineItems } from '../db/schema/billing';
@@ -243,19 +243,6 @@ export async function billingSummary(
   // Totals are filtered SUMs per line_type; orderCount counts distinct billed
   // orders from any order-backed line so clients with $0 pick/pack defaults
   // still show order volume when shipping lines were generated.
-  // CP-059 AC-6. Bound from services/billing-line-types.ts so the producer's vocabulary is
-  // transcribed once. Hand-listing 'return_postage' here is what made a legacy return_label
-  // row report $0.00 return postage while the producer reported 5.25.
-  const returnPostageLineTypes = sql.join(
-    RETURN_POSTAGE_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
-  );
-  const returnProcessingLineTypes = sql.join(
-    RETURN_PROCESSING_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
-  );
-  const returnLineTypes = sql.join(
-    RETURN_LINE_TYPES.map((lineType) => sql`${lineType}`),
-    sql`, `,
-  );
   const rows = await db.execute<{
     client_id: number;
     client_name: string;
@@ -283,13 +270,13 @@ export async function billingSummary(
       coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
       -- CP-031: return line types fold into byType here; grand_total (sum of ALL
       -- line types) already reconciles them into the grand total.
-      coalesce(sum(case when lower(b.line_type) in (${returnPostageLineTypes}) then b.total_cost else 0 end), 0)::text as return_postage_total,
-      coalesce(sum(case when lower(b.line_type) in (${returnProcessingLineTypes}) then b.total_cost else 0 end), 0)::text as return_processing_total,
+      coalesce(sum(case when ${isReturnPostageLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as return_postage_total,
+      coalesce(sum(case when ${isReturnProcessingLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as return_processing_total,
       -- CP-059 AC-6. Return money as ONE category, defined by SET MEMBERSHIP rather than by
       -- adding the two named parts. The parts are subsets of this whole, so a return line type
       -- introduced later folds in automatically instead of going silently missing from every
       -- footer until somebody remembers to extend an addition somewhere.
-      coalesce(sum(case when lower(b.line_type) in (${returnLineTypes}) then b.total_cost else 0 end), 0)::text as return_total,
+      coalesce(sum(case when ${isReturnLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as return_total,
       -- PS-512: adjustment and REPLACEMENT money were already inside grand_total (it sums every
       -- line type) but had no category of their own, so an itemized invoice showed components
       -- that did not add up to its own total. Broken out here, at the summary authority, rather

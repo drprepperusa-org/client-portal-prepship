@@ -61,11 +61,53 @@ if (!localPostage || !localProcessing || !localBare) {
   }
 }
 
+// CLASSIFICATION AND VALIDATION MUST NORMALISE IDENTICALLY.
+//
+// Review found the aggregates written as `lower(b.line_type) in (...)` while the customer-safety
+// gate compared RAW text against the same lowercase list. line_type is a bare `text not null`
+// with no lowercase constraint, so a row spelled RETURN_LABEL was classified as return postage
+// AND slipped past postage validation — unvalidated money on a customer's invoice, through
+// capitalisation alone.
+//
+// Rendered, not grepped: both fragments are compiled to SQL and compared, so this cannot be
+// satisfied by a comment or by a spelling that merely looks right.
+{
+  let rendered = null;
+  try {
+    const out = execFileSync('npx', ['tsx', 'scripts/cp-059-render-return-sql.ts'], {
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    });
+    rendered = JSON.parse(out.trim().split('\n').filter(Boolean).pop());
+  } catch (error) {
+    fail(`could not render the return-postage SQL to compare normalisation: ${String(error).split('\n')[0]}`);
+  }
+  if (rendered) {
+    const normalises = (fragment) => /lower\(/.test(fragment);
+    if (!normalises(rendered.classification)) {
+      fail('the return-postage CLASSIFICATION no longer lowercases the line type');
+    } else if (!normalises(rendered.gate)) {
+      fail(
+        'the customer-safety GATE does not lowercase the line type while classification does — ' +
+          'a RETURN_LABEL row would be counted as postage and skip postage validation',
+      );
+    } else {
+      pass('classification and the customer-safety gate normalise case identically');
+    }
+    // The gate must be the NEGATION of the same predicate, not a second hand-written list.
+    if (rendered.gate.includes(rendered.classification.trim())) {
+      pass('the safety gate is the shared classification predicate, not a second copy');
+    } else {
+      fail('the safety gate no longer reuses the shared classification predicate');
+    }
+  }
+}
+
 // Both summary authorities must SUM by the registry, not by a hand-listed spelling. A literal
 // 'return_postage' in a case arm is how the vocabulary drifted in the first place.
 for (const file of ['src/services/billing-summaries.ts', 'src/services/reporting-metrics.ts']) {
   const source = readFileSync(file, 'utf8');
-  const handListed = source.match(/line_type\s*=\s*'return[a-z_]*'/g);
+  const handListed = source.match(/line_type\s*=\s*'return[a-z_]*'|lower\(b\.line_type\) in \(/g);
   if (handListed) {
     fail(`${file} still hand-lists a return line type in SQL: ${[...new Set(handListed)].join(', ')}`);
   } else {

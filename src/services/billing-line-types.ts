@@ -7,17 +7,16 @@
 // fix. The committed producer fixture emits five return line types, three of which our source
 // never writes and all of which can already be sitting in billing_line_items.
 //
-// The grouping is the producer's, taken from the committed fixture:
-//   - `return_label`      is POSTAGE      (shape 18: returnPostageTotal 5.25)
-//   - `return_processing` is PROCESSING   (shape 19: returnProcessingTotal 2.75)
+// The grouping is the producer's, from prepship-v4 src/services/billing-row-status.ts:
+//   - `return_label`      is POSTAGE      (isBillingReturnPostageLineType)
+//   - `return_processing` is PROCESSING   (isBillingReturnProcessingLineType)
 //   - `return`            is BARE return money that funds returnTotal while leaving both named
-//                         parts at 0.00 and both presence flags false (shape 5: returnTotal 5.50)
+//                         parts at 0.00 and both presence flags false
 //
-// This is a static allowlist. It does NOT "fold in" a new upstream type on its own — an earlier
-// comment here claimed that and it was untrue. What keeps it honest is
-// scripts/cp-059-producer-contract-guard.ts, which reads every return line type out of the
-// hash-enforced producer fixture and fails if this file does not cover it. Adding a return type
-// upstream turns that guard red instead of silently zeroing a customer's return money.
+// These are static allowlists. They do NOT "fold in" a new upstream type on their own. What
+// keeps them honest is scripts/prepship-return-vocabulary-parity.mjs, which compares this file
+// against the pinned upstream owner and fails when either drifts.
+import { sql, type SQL } from 'drizzle-orm';
 
 /** Return postage, including the legacy `return_label` spelling. */
 export const RETURN_POSTAGE_LINE_TYPES = ['return_postage', 'return_label'] as const;
@@ -45,3 +44,39 @@ export const RETURN_LINE_TYPES = [
 ] as const;
 
 export type ReturnLineType = (typeof RETURN_LINE_TYPES)[number];
+
+/**
+ * Line-type membership as SQL — the ONE place normalisation is decided.
+ *
+ * Review found the reason this is a function rather than three exported lists. The aggregates
+ * had been written as `lower(b.line_type) in (...)` while the customer-safety gate compared the
+ * RAW text against the same lowercase list. `billing_line_items.line_type` is a bare
+ * `text not null` with no lowercase constraint, so a row spelled `RETURN_LABEL` was classified
+ * as return postage by the aggregate and simultaneously slipped past the postage validation —
+ * unvalidated postage reaching customer-visible money through nothing but capitalisation.
+ *
+ * Upstream normalises before classifying (`normalizedText(lineType)?.toLowerCase()`). Every
+ * caller here goes through these helpers, so the classification and the validation boundary
+ * cannot normalise differently again: there is no list to compare against by hand.
+ */
+function lineTypeIn(lineType: SQL, types: readonly string[]): SQL {
+  return sql`lower(coalesce(${lineType}, '')) in (${sql.join(
+    types.map((type) => sql`${type}`),
+    sql`, `,
+  )})`;
+}
+
+/** True when the line is return POSTAGE, in any registered spelling and any case. */
+export function isReturnPostageLineTypeSql(lineType: SQL): SQL {
+  return lineTypeIn(lineType, RETURN_POSTAGE_LINE_TYPES);
+}
+
+/** True when the line is return PROCESSING, in any registered spelling and any case. */
+export function isReturnProcessingLineTypeSql(lineType: SQL): SQL {
+  return lineTypeIn(lineType, RETURN_PROCESSING_LINE_TYPES);
+}
+
+/** True when the line is return money of ANY kind — the canonical category. */
+export function isReturnLineTypeSql(lineType: SQL): SQL {
+  return lineTypeIn(lineType, RETURN_LINE_TYPES);
+}

@@ -26,6 +26,11 @@ const { portalCanonicalInvoiceEvents } = await import(
 );
 const { billingSummary } = await import('../../src/services/billing-summaries');
 const { refreshBillingSummaryMetrics } = await import('../../src/services/reporting-metrics');
+const {
+  portalInvoiceSummary,
+  portalInvoicePeriodSummary,
+  portalInvoiceDetails,
+} = await import('../../src/lib/client-portal/read-models/invoice-details');
 
 let checks = 0;
 const ok = (label: string) => { checks += 1; console.log(`ok   ${label}`); };
@@ -657,7 +662,167 @@ async function main(): Promise<void> {
     await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
   }
 
-  const EXPECTED_CHECKS = 23;
+  // -------------------------------------------------------------------------------------
+  // CP-059 — CASE VARIANTS cannot classify one way and validate another.
+  //
+  // Review found the defect this proves against. The aggregates had been written as
+  // `lower(b.line_type) in (...)` while the customer-safety gate compared the RAW text against
+  // the same lowercase list. `billing_line_items.line_type` is a bare `text not null` with no
+  // lowercase constraint, so a row spelled `RETURN_LABEL`:
+  //   - was classified as return POSTAGE by the aggregate (lower() matched), and
+  //   - slipped past the postage validation (raw text did not match),
+  // putting unvalidated postage into customer-visible Return Postage and Return Total through
+  // nothing but capitalisation.
+  //
+  // Both sides now go through isReturnPostageLineTypeSql(), so there is no second list to
+  // normalise differently. These two scenarios prove the negative AND the positive: an
+  // unvalidated case-variant is excluded everywhere, and a VALID one is still included once —
+  // a gate that simply rejected every case variant would pass the first test and be wrong.
+  console.log('\nScenario: an UNVALIDATED case-variant return_label is excluded everywhere');
+  {
+    const CLIENT = 7909;
+    const ORDER = 79090;
+    const FROM = '2026-08-01T00:00:00.000Z';
+    const TO = '2026-09-01T00:00:00.000Z';
+    const summaryInput = {
+      clientId: CLIENT, dateFrom: FROM, dateTo: TO,
+      scopeClientIds: null, scopeStoreIds: null, scopeRestricted: false,
+    };
+    const caseScope = {
+      ...(scope as unknown as Record<string, unknown>),
+      clientIds: null, storeIds: null, isRestricted: false,
+    } as unknown as Parameters<typeof portalInvoiceSummary>[0];
+
+    await db.execute(rawSql`delete from billing_line_items where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from billing_summary_metrics where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from returns where order_id = ${ORDER}`);
+    await db.execute(rawSql`delete from orders where id = ${ORDER}`);
+    await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
+    await db.execute(rawSql`insert into clients (id, name) values (${CLIENT}, 'CP059 Case Variant')`);
+    await db.execute(rawSql`insert into orders (id, order_number) values (${ORDER}, '79090')`);
+
+    // Uppercase, and with NO validated shipment/return tuple behind it.
+    await db.execute(rawSql`
+      insert into billing_line_items
+        (client_id, order_id, line_type, description, qty, unit_cost, total_cost, ship_date, billing_effective_date)
+      values
+        (${CLIENT}, ${ORDER}, 'RETURN_LABEL', 'Uppercase unvalidated postage', 1, 5.25, 5.25, ${FROM}::timestamptz, ${FROM}::timestamptz)
+    `);
+
+    const unvalidated = await billingSummary(summaryInput as never);
+    const unvalidatedRow = unvalidated.clients.find((c) => c.clientId === CLIENT);
+    if (!unvalidatedRow) throw new Error('the seeded client must appear in the summary');
+    if (Number(unvalidatedRow.returnPostageTotal) !== 0) {
+      throw new Error(
+        `an UNVALIDATED 'RETURN_LABEL' must not reach customer Return Postage — got `
+        + `${unvalidatedRow.returnPostageTotal}. Classification lowercases; the safety gate must too.`,
+      );
+    }
+    if (Number(unvalidatedRow.returnTotal) !== 0) {
+      throw new Error(
+        `an UNVALIDATED 'RETURN_LABEL' must not reach the canonical Return Total — got ${unvalidatedRow.returnTotal}`,
+      );
+    }
+
+    // The materialized path must agree — a bypass that only exists in cache is still a bypass.
+    await refreshBillingSummaryMetrics(new Date(FROM), new Date(TO));
+    const metricRows = await db.execute<{ return_postage_total: string; return_total: string }>(rawSql`
+      select return_postage_total, return_total
+      from billing_summary_metrics
+      where client_id = ${CLIENT} and period_from = ${FROM}::date and period_to = ${TO}::date
+    `);
+    const metric = metricRows[0];
+    if (metric && (Number(metric.return_postage_total) !== 0 || Number(metric.return_total) !== 0)) {
+      throw new Error(
+        `the materialized metrics path let an unvalidated case-variant through: postage `
+        + `${metric.return_postage_total}, total ${metric.return_total}`,
+      );
+    }
+
+    // And every invoice-detail reader. These are the three surfaces the ps-435 guard counts.
+    const detailSummary = await portalInvoiceSummary(caseScope, {
+      clientId: CLIENT, dateFrom: FROM, dateTo: TO,
+    } as never);
+    const detailPeriod = await portalInvoicePeriodSummary(caseScope, {
+      clientId: CLIENT, dateFrom: FROM, dateTo: TO, granularity: 'month',
+    } as never);
+    const detailRows = await portalInvoiceDetails(caseScope, {
+      clientId: CLIENT, dateFrom: FROM, dateTo: TO,
+    } as never);
+    const readerTotals = [
+      ['portalInvoiceSummary', detailSummary],
+      ['portalInvoicePeriodSummary', detailPeriod],
+      ['portalInvoiceDetails', detailRows],
+    ] as const;
+    for (const [name, result] of readerTotals) {
+      const list = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? []);
+      for (const row of list as ReadonlyArray<{ returnPostageTotal?: unknown }>) {
+        if (Number(row.returnPostageTotal ?? 0) !== 0) {
+          throw new Error(
+            `${name} exposed unvalidated case-variant return postage: ${String(row.returnPostageTotal)}`,
+          );
+        }
+      }
+    }
+    ok('an UNVALIDATED case-variant return_label is excluded from every return surface');
+
+    // ---- the positive counterpart -------------------------------------------------------
+    //
+    // A gate that rejected every case variant outright would pass the assertions above and
+    // still be wrong: it would withhold money the customer legitimately owes. Give the SAME
+    // uppercase spelling a complete, valid, policy-versioned tuple and it must be counted.
+    const shipmentRows = await db.execute<{ id: number }>(rawSql`
+      insert into shipments (order_id, is_return, selected_rate_json)
+      values (${ORDER}, true, ${rawSql`${JSON.stringify({
+        selectedRateCost: 4.18,
+        cShippingRateAmount: 5.25,
+        shippingMarginAmount: 1.07,
+        shippingMarginPct: 25.6,
+        customerRateSource: 'realized_customer_shipping_rate',
+        rateCostSource: 'label_final_cost',
+        customerShippingMoneyPolicyVersion: 'ps-437-v1',
+      })}::jsonb`})
+      returning id
+    `);
+    const returnShipmentId = shipmentRows[0]?.id;
+    if (!returnShipmentId) throw new Error('failed to seed the return shipment');
+    await db.execute(rawSql`
+      insert into returns (order_id, client_id, return_shipment_id, return_customer_shipping_rate, initiated_by)
+      values (${ORDER}, ${CLIENT}, ${returnShipmentId}, 5.25, 'cp059-integration')
+    `);
+    // Point the billing line at that shipment; amount matches the frozen tuple to the cent.
+    await db.execute(rawSql`
+      update billing_line_items
+      set shipment_id = ${returnShipmentId}
+      where client_id = ${CLIENT} and line_type = 'RETURN_LABEL'
+    `);
+
+    const validated = await billingSummary(summaryInput as never);
+    const validatedRow = validated.clients.find((c) => c.clientId === CLIENT);
+    if (!validatedRow) throw new Error('the seeded client must still appear');
+    if (Number(validatedRow.returnPostageTotal) !== 5.25) {
+      throw new Error(
+        `a VALIDATED case-variant 'RETURN_LABEL' must be counted as return postage exactly once: `
+        + `expected 5.25, got ${validatedRow.returnPostageTotal}. A gate that rejects every case `
+        + `variant withholds money the customer legitimately owes.`,
+      );
+    }
+    if (Number(validatedRow.returnTotal) !== 5.25) {
+      throw new Error(
+        `a VALIDATED case-variant must fund the canonical Return Total once: got ${validatedRow.returnTotal}`,
+      );
+    }
+    ok('a VALIDATED case-variant return_label is counted exactly once, not permanently excluded');
+
+    await db.execute(rawSql`delete from billing_line_items where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from billing_summary_metrics where client_id = ${CLIENT}`);
+    await db.execute(rawSql`delete from returns where order_id = ${ORDER}`);
+    await db.execute(rawSql`delete from shipments where order_id = ${ORDER}`);
+    await db.execute(rawSql`delete from orders where id = ${ORDER}`);
+    await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
+  }
+
+  const EXPECTED_CHECKS = 25;
   if (checks !== EXPECTED_CHECKS) {
     throw new Error(`expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   }

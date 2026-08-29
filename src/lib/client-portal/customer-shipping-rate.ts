@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { RETURN_POSTAGE_LINE_TYPES } from '../../services/billing-line-types';
+import { isReturnPostageLineTypeSql } from '../../services/billing-line-types';
 import { orders } from '../../db/schema/orders';
 import { returns } from '../../db/schema/returns';
 import { shipments } from '../../db/schema/shipments';
@@ -125,7 +125,13 @@ export function validatedReturnCustomerShippingRateSql(): SQL<string | null> {
  * shipment tuple both prove the same canonical amount. Other billing line types
  * pass through unchanged.
  *
- * CP-059: gated on EVERY return-postage spelling, not just the modern one. The
+ * CP-059: gated on EVERY return-postage spelling, in ANY case, through the SAME helper the
+ * aggregates classify with. The first version of this listed the spellings itself and compared
+ * RAW text, while the aggregates lowercased — so a row spelled `RETURN_LABEL` was counted as
+ * return postage AND slipped past this validation. Sharing the helper removes the possibility:
+ * there is no second list here to normalise differently.
+ *
+ * Gated on every return-postage spelling, not just the modern one. The
  * producer also emits the legacy `return_label` alias as return postage, and
  * naming only `return_postage` here meant a legacy line reached customer money
  * surfaces WITHOUT the tuple validation its modern equivalent has to pass — a
@@ -133,17 +139,13 @@ export function validatedReturnCustomerShippingRateSql(): SQL<string | null> {
  * The spellings come from services/billing-line-types.ts so the safety gate and
  * the aggregates cannot disagree about what return postage is.
  */
-const returnPostageLineTypes = () => sql.join(
-  RETURN_POSTAGE_LINE_TYPES.map((lineType) => sql`${lineType}`), sql`, `,
-);
-
 export function customerSafeBillingLineSql(input: {
   lineType: SQL;
   shipmentId: SQL;
   totalCost: SQL;
 }): SQL {
   return sql`(
-    coalesce(${input.lineType}, '') not in (${returnPostageLineTypes()})
+    not (${isReturnPostageLineTypeSql(input.lineType)})
     or exists (
       select 1
       from ${shipments}

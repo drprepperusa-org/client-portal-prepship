@@ -112,8 +112,8 @@ check(
     /import \{[^}]*\btoNum\b[^}]*\} from '\.\/billing-read-support'/.test(summaries) &&
     // CP-059: summed by the shared registry now, so the legacy aliases and the bare
     // 'return' line cannot drop out of the bucket while their money stays in grand_total.
-    /lower\(b\.line_type\) in \(\$\{returnPostageLineTypes\}\)[\s\S]{0,60}b\.total_cost/.test(summaries) &&
-    /lower\(b\.line_type\) in \(\$\{returnProcessingLineTypes\}\)[\s\S]{0,60}b\.total_cost/.test(summaries) &&
+    /\$\{isReturnPostageLineTypeSql\(sql[\s\S]{0,60}b\.total_cost/.test(summaries) &&
+    /\$\{isReturnProcessingLineTypeSql\(sql[\s\S]{0,60}b\.total_cost/.test(summaries) &&
     /const returnPostageTotal = toNum\(r\.return_postage_total\)/.test(summaries) &&
     !/returnCustomerShippingRate|return_customer_shipping_rate/.test(summaries) &&
     !/resolveReturnPostageRate|resolveReturnCustomerPrice/.test(summaries),

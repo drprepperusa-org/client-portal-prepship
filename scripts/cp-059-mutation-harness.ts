@@ -56,6 +56,19 @@ const VOCAB_PARITY_COMMAND = ['node', 'scripts/prepship-return-vocabulary-parity
 const BROWSER_COMMAND = ['npm', 'run', 'test:cp-059-billing:browser'] as const;
 
 export const MUTATIONS: readonly Mutation[] = [
+  // ---- case normalisation: classification and validation must agree ----
+  //
+  // Review found the aggregates lowercasing while the customer-safety gate compared RAW text
+  // against the same lowercase list. line_type is a bare `text not null` with no lowercase
+  // constraint, so a row spelled RETURN_LABEL was counted as return postage AND skipped postage
+  // validation — unvalidated money on a customer's invoice through capitalisation alone. Both
+  // sides now share one helper; dropping lower() from it must go red.
+  {
+    label: 'CASE: drop lower() from the shared return line-type predicate',
+    file: TYPES, guard: VOCAB_PARITY, command: VOCAB_PARITY_COMMAND,
+    from: "  return sql`lower(coalesce(${lineType}, '')) in (${sql.join(",
+    to: "  return sql`coalesce(${lineType}, '') in (${sql.join(",
+  },
   {
     label: 'VOCAB PARITY: file return_label under processing instead of postage',
     file: TYPES, guard: VOCAB_PARITY, command: VOCAB_PARITY_COMMAND,
