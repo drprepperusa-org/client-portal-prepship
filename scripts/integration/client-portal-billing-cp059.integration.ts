@@ -564,6 +564,16 @@ async function main(): Promise<void> {
     // Item 4: the materialized metrics path must agree with the query above. Both read the same
     // registry; if they ever disagree, a customer's return money changes depending on whether
     // the summary happened to answer from cache.
+    // The reporting tables come from a raw SQL migration, not a drizzle schema file, so
+    // drizzle-kit push does not create them and the throwaway database has neither them nor
+    // CP-059's return_total column. Apply both here. Every statement in these files is
+    // CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS, so this is safe to re-run.
+    for (const migration of [
+      'drizzle/0029_reporting_metrics.sql',
+      'drizzle/0052_billing_summary_return_total.sql',
+    ]) {
+      await db.execute(rawSql.raw(readFileSync(migration, 'utf8')));
+    }
     await refreshBillingSummaryMetrics(new Date(FROM), new Date(TO));
     const materializedRows = await db.execute<{ return_total: string; grand_total: string }>(rawSql`
       select return_total, grand_total
