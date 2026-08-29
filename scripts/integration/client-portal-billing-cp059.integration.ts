@@ -38,6 +38,14 @@ const scope = {
   isRestricted: false,
 } as unknown as Parameters<typeof portalCanonicalInvoiceEvents>[0];
 
+/** A deterministic 32-hex identity, shaped exactly like the one the producer publishes. */
+const hex32 = (seed: string) => seed
+  .split('')
+  .map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
+  .join('')
+  .padEnd(32, '0')
+  .slice(0, 32);
+
 let fixtureSeq = 0;
 const canonical = (over: Record<string, unknown> = {}) => ({
   // Producer-issued identity, DERIVED FROM THE EVENT — not from a call counter.
@@ -48,7 +56,7 @@ const canonical = (over: Record<string, unknown> = {}) => ({
   // test. Real producer identity is content-derived and stable: the same event yields the same
   // id however it arrives. The fixture has to behave the same way or it is not modelling the
   // producer, it is modelling itself.
-  canonicalEventId: `evt-${String(over.displayReference ?? over.orderId ?? (fixtureSeq += 1))}`,
+  canonicalEventId: hex32(String(over.displayReference ?? over.orderId ?? (fixtureSeq += 1))),
   clientId: 7, clientName: 'Acme', orderId: 9001, orderNumber: '9001',
   returnId: null, rowType: 'Outbound', displayReference: '9001',
   destination: 'Domestic', hasReturnPostageLine: false, hasReturnProcessingLine: false,

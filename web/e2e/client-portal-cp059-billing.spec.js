@@ -49,9 +49,20 @@ const adminSession = () => ({
 });
 
 /** One canonical event row, shaped exactly as PrepShip issues it. */
+const hex32 = (seed) => String(seed)
+  .split('')
+  .map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
+  .join('')
+  .padEnd(32, '0')
+  .slice(0, 32);
+
 const canonical = (over = {}) => ({
   clientId: 1,
   clientName: 'Acme',
+  // CP-059: the producer-issued identity. Without it every row's React key was undefined and
+  // the grid rendered several distinct billing events under one key — which this spec then
+  // correctly failed on, since it treats a React key warning as a page error.
+  canonicalEventId: hex32(over.displayReference ?? over.orderId ?? 4242),
   orderId: 4242,
   orderNumber: '4242',
   returnId: null,
