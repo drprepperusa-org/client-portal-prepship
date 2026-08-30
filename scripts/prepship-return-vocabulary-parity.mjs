@@ -191,6 +191,71 @@ if (!token) {
   }
 }
 
+// ── the canonicalEventId mitigation must retire itself ──────────────────────
+//
+// CP-059 was deployed AHEAD of its producer, against the card's own stated order. The deployed
+// PrepShip did not emit canonicalEventId, the portal required it, and because one bad row fails
+// the whole response, Billing line items returned 502 for every client for ~12 hours
+// (2026-08-30). The portal now substitutes a positional identity when the field is WHOLLY
+// ABSENT — a deliberate, temporary loosening.
+//
+// Nothing in the static suite noticed that loosening, so nothing would stop it becoming
+// permanent. This check is the counterweight, and it cuts BOTH ways:
+//
+//   deployed producer emits canonicalEventId  -> the mitigation must be GONE
+//   deployed producer does not emit it        -> the mitigation must be PRESENT
+//
+// It reads the branch Render actually deploys rather than a pinned commit, because the whole
+// failure was the difference between what we pinned and what was running.
+{
+  const proxy = readFileSync('src/lib/client-portal/prepship-billing-details-proxy.ts', 'utf8');
+  const mitigationPresent = /LEGACY_EVENT_ID_PREFIX/.test(proxy);
+
+  if (!token) {
+    // Unarmed already fails above; say plainly that this check could not run either.
+    console.warn('WARN  the canonicalEventId mitigation check needs the token too — not verified');
+  } else {
+    const deployedRef = 'prepshipv4-stable';
+    const producerPath = 'src/services/billing-detail-row-sot.ts';
+    let producer = null;
+    try {
+      const meta = JSON.parse(
+        execFileSync('gh', ['api', `repos/${repo}/contents/${producerPath}?ref=${deployedRef}`], {
+          encoding: 'utf8',
+          env: { ...process.env, GH_TOKEN: token },
+        }),
+      );
+      producer = Buffer.from(meta.content, 'base64').toString('utf8');
+    } catch {
+      // The file not existing on that branch is itself the "does not emit it" case.
+      producer = '';
+    }
+    const producerEmitsIdentity = /canonicalEventId/.test(producer);
+
+    if (producerEmitsIdentity && mitigationPresent) {
+      fail(
+        `the deployed producer (${repo}@${deployedRef}) now emits canonicalEventId, so the `
+        + 'temporary positional-identity mitigation in prepship-billing-details-proxy.ts must be '
+        + 'REMOVED and the identity required again. Leaving it in place keeps a weaker contract '
+        + 'than the producer now guarantees.',
+      );
+    } else if (!producerEmitsIdentity && !mitigationPresent) {
+      fail(
+        `the deployed producer (${repo}@${deployedRef}) does NOT emit canonicalEventId, so `
+        + 'requiring it fails row 0 of every response and returns 502 for all Billing line '
+        + 'items. Restore the mitigation, or ship the producer first.',
+      );
+    } else if (producerEmitsIdentity) {
+      pass('the deployed producer emits canonicalEventId and the mitigation is retired');
+    } else {
+      pass(
+        'the deployed producer does not emit canonicalEventId; the positional-identity '
+        + 'mitigation is correctly still in place',
+      );
+    }
+  }
+}
+
 if (failed) {
   console.error('\n✖ prepship return-vocabulary parity gate failed.');
   process.exit(1);
