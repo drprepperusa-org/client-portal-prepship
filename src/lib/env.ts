@@ -46,7 +46,24 @@ const schema = z.object({
   // of milliseconds, so anything approaching seconds already means requests are
   // queueing for a connection. Failing fast here is the signal we want.
   DB_POOL_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
-  DB_POOL_MAX: z.coerce.number().int().positive().max(20).default(4),
+  // Connections the REQUEST pool may open. Raised from 4 to 10 on 2026-08-30.
+  //
+  // With 4, a cold start after deploy 503'd the portal for ~4 minutes: real requests
+  // (/inventory, /billing/status, /invoice-summary) each exhausted the 15s budget while
+  // queueing for a connection, and the readiness probe's `select 1` was cancelled at 5002ms.
+  // Production never set this variable, so it ran on the default while local dev used 8.
+  //
+  // 10 is chosen against a Supabase TRANSACTION pooler (`prepare: false` in db/client.ts is
+  // that pooler's requirement), where client connections are cheap and multiplexed — the
+  // constraint is the pooler's own capacity, not Postgres max_connections. It stays well under
+  // the 20 cap, and the route's private health pool (max 3) is deliberately separate so a
+  // starved request pool still reports rather than going dark.
+  //
+  // This is HEADROOM, not a guarantee. The pool fills lazily, so a cold start still pays
+  // connection setup on its first requests; ten slots establish in parallel where four
+  // serialised behind each other. If a burst can saturate ten, the honest fix is a warmed
+  // pool at boot, not a larger number.
+  DB_POOL_MAX: z.coerce.number().int().positive().max(20).default(10),
   DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
   DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(8),
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
