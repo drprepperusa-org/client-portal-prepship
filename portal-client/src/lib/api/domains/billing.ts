@@ -14,6 +14,67 @@ import {
 } from '../scope';
 import { apiGet, apiPost, apiText } from '../transport';
 
+type BillingGenerateResult = {
+  generated: number;
+  total: number;
+  skipped: number;
+  message: string;
+  lastGeneratedAt?: string;
+};
+
+/**
+ * Start a billing update and poll it to completion.
+ *
+ * PrepShip takes ~25s for a 90-day range while the portal API has a 15s whole-request budget, so
+ * the old single POST was killed mid-flight and reported "the server took too long" for work that
+ * had already SUCCEEDED upstream (2026-08-30: portal 503 at 15s, upstream 200 at 24.6s). People
+ * then clicked again, re-running a real billing regeneration.
+ *
+ * The POST now returns 202 with a job id and this polls until the job settles. The poll replays
+ * the exact status and body the POST used to return, so every existing failure path — 401, 403,
+ * 400, the PS-434 weekend 409, the 502 shapes — still arrives here as a thrown ApiError with the
+ * same message, and callers need no change.
+ */
+const BILLING_GENERATE_POLL_MS = 2_000;
+// Comfortably past the upstream 120s abort, so a hung run surfaces as a timeout here rather than
+// polling forever. Not a cancel: PrepShip keeps going regardless of whether anyone is watching.
+const BILLING_GENERATE_MAX_WAIT_MS = 180_000;
+
+async function runBillingGenerate(
+  token: string,
+  dateFrom: string,
+  dateTo: string,
+  clientId?: number,
+): Promise<BillingGenerateResult> {
+  const started = await apiPost<{ jobId?: string; status?: string } & Partial<BillingGenerateResult>>(
+    token,
+    '/api/client-portal/billing/generate',
+    { ...billingRangeParams({ from: dateFrom, to: dateTo }), clientId },
+    30_000,
+  );
+  // A deployment that still answers synchronously returns the finished result, not a job id.
+  // Accept it rather than failing on a shape the older API is entitled to send.
+  if (!started.jobId) return started as BillingGenerateResult;
+
+  const deadline = Date.now() + BILLING_GENERATE_MAX_WAIT_MS;
+  for (;;) {
+    await new Promise((resolve) => window.setTimeout(resolve, BILLING_GENERATE_POLL_MS));
+    const view = await apiGet<{ status?: string } & Partial<BillingGenerateResult>>(
+      token,
+      `/api/client-portal/billing/generate/${started.jobId}`,
+    );
+    // Anything that is not still running IS the settled result: apiGet already threw for every
+    // non-2xx, so reaching here with no 'running' marker means success.
+    if (view.status !== 'running') return view as BillingGenerateResult;
+    if (Date.now() > deadline) {
+      throw new Error(
+        'The billing update is still running on PrepShip. It has not been cancelled — '
+        + 'check Billing in a few minutes before starting another one.',
+      );
+    }
+  }
+}
+
 export const billingApi = {
   reports: (token: string, range: PortalDateRange) =>
     apiGet<PortalReports>(token, '/api/client-portal/reports', {
@@ -87,16 +148,7 @@ export const billingApi = {
       ...billingRangeParams({ from: dateFrom, to: dateTo }),
     }),
   generateBilling: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
-    apiPost<{
-      generated: number;
-      total: number;
-      skipped: number;
-      message: string;
-      lastGeneratedAt?: string;
-    }>(token, '/api/client-portal/billing/generate', {
-      ...billingRangeParams({ from: dateFrom, to: dateTo }),
-      clientId,
-    }, 120_000),
+    runBillingGenerate(token, dateFrom, dateTo, clientId),
   billingStatus: (token: string) =>
     apiGet<{ lastGenerated: BillingLastGenerated | null }>(
       token,

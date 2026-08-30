@@ -26,6 +26,19 @@ const generateRouteBlock = route.slice(
   route.indexOf("app.get('/markups'")
 );
 
+
+/**
+ * The client's upper bound on waiting for a billing run, in ms.
+ *
+ * Read from the source rather than pattern-matched, so lowering it below the old synchronous
+ * 120s wait fails the guard instead of quietly reintroducing the bug where the UI reported
+ * failure for a run that had already succeeded upstream.
+ */
+function billingGenerateMaxWaitMs(source: string): number {
+  const match = /BILLING_GENERATE_MAX_WAIT_MS\s*=\s*([\d_]+)/.exec(source);
+  return match ? Number(match[1].replace(/_/g, '')) : 0;
+}
+
 check(
   'client portal billing route no longer imports the independent generator',
   !/import\s+\{\s*generateLineItems\s*\}\s+from ['"]\.\.\/\.\.\/services\/billing['"]/.test(route)
@@ -86,7 +99,11 @@ check(
   'Update Billing sends the selected days, waits for PrepShip, then refreshes portal reads',
   /portalApi\.generateBilling\(accessToken, draftFrom, draftTo\)/.test(billingPage) &&
     /await invalidateBilling\(\)/.test(billingPage) &&
-    /120_000/.test(billingApi)
+    // Async since 2026-08-30: POST starts the job, the client polls it to completion. The old
+    // 120_000 literal was the synchronous timeout and no longer exists; what must hold is that
+    // the client still waits for PrepShip rather than abandoning a run that is succeeding.
+    /billing\/generate\/\$\{/.test(billingApi) &&
+    billingGenerateMaxWaitMs(billingApi) >= 120_000
 );
 
 check(
