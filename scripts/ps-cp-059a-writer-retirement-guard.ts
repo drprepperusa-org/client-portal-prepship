@@ -223,7 +223,11 @@ check('the proxy keeps auth, tenant-override rejection and bearer forwarding', (
   // by the `const authorization = c.req.header(...)` DECLARATION, so deleting the header
   // from the upstream request left the guard green while the proxy forwarded no
   // credential at all — the upstream call would have been unauthenticated.
-  const fetchBlock = /await fetch\(\s*`\$\{baseUrl\}\/billing\/generate`[\s\S]*?\n  \}\);/.exec(proxy)?.[0] ?? '';
+  // Anchored to the END OF THE FETCH CALL at ANY indentation. Pinning a two-space closing
+  // coupled this to where the call happened to sit, so moving it into runBillingGenerate()
+  // broke the guard without weakening the property. Non-greedy still stops at the fetch's own
+  // closing brace, so the authorization assertion stays anchored INSIDE the outgoing request.
+  const fetchBlock = /await fetch\(\s*`\$\{baseUrl\}\/billing\/generate`[\s\S]*?\n\s*\}\);/.exec(proxy)?.[0] ?? '';
   assert.ok(fetchBlock.length > 0, 'the upstream fetch call must be locatable');
   assert.ok(/headers:\s*\{[\s\S]*?\bauthorization\b/.test(fetchBlock),
     'the caller bearer token must be forwarded in the upstream request headers');

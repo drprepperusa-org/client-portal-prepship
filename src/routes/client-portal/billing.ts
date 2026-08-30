@@ -2,6 +2,13 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono, type Context } from 'hono';
+import {
+  billingJobOwnerKey,
+  createBillingGenerateJob,
+  readBillingGenerateJob,
+  settleBillingGenerateJob,
+  type BillingGenerateOutcome,
+} from '../../lib/client-portal/billing-generate-jobs';
 import { eq, ilike, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema/settings';
@@ -147,16 +154,100 @@ app.post('/billing/generate', async (c) => {
   };
   await recordPortalAudit('portal.billing.generate.requested', scope, auditFacts);
 
+  // Every rejection above is decided BEFORE any work starts, so a caller still learns
+  // immediately that it lacks access or sent a bad range. Only the slow part is deferred.
+  const baseUrl = env.PREPSHIP_API_URL.replace(/\/+$/, '');
+  const requestId = c.req.header('x-request-id') ?? undefined;
+  const jobId = createBillingGenerateJob(billingJobOwnerKey(scope.userId));
+
+  // Deliberately not awaited. PrepShip runs the generation to completion regardless of whether
+  // this process is still listening — the 2026-08-30 incident proved that: the portal returned
+  // 503 at its 15s budget while upstream finished 200 at 24.6s and the data was written. What
+  // was broken was the REPORT, not the work, so the fix is to stop making the report wait.
+  void runBillingGenerate({ baseUrl, authorization, range, clientId, requestId })
+    .then((outcome) => {
+      settleBillingGenerateJob(jobId, outcome);
+      const ok = outcome.httpStatus >= 200 && outcome.httpStatus < 300;
+      return recordPortalAudit(
+        ok ? 'portal.billing.generate' : 'portal.billing.generate.failed',
+        scope,
+        ok
+          ? {
+              ...auditFacts,
+              generated: outcome.body.generated,
+              total: outcome.body.total,
+              skipped: outcome.body.skipped,
+            }
+          : { ...auditFacts, upstreamStatus: outcome.httpStatus },
+      );
+    })
+    .catch((error) => {
+      // Nothing may escape here: an unhandled rejection on a detached promise takes the
+      // process down, which would turn a slow billing run into an outage.
+      console.error(
+        '[client-portal] billing generate job crashed:',
+        error instanceof Error ? error.message : 'unknown error',
+      );
+      settleBillingGenerateJob(jobId, {
+        httpStatus: 502,
+        body: {
+          error: 'PrepShip billing update failed unexpectedly.',
+          code: 'prep_ship_billing_failed',
+        },
+      });
+    });
+
+  return c.json({ jobId, status: 'running' }, 202);
+});
+
+// Poll a billing-generate job. Returns 202 while it runs, then EXACTLY the status and body the
+// synchronous POST used to return — so every existing caller's error handling (401/403/400/409,
+// the PS-434 weekend rejection, the 502 shapes) keeps working, just one hop later.
+app.get('/billing/generate/:jobId', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials) return c.json({ error: 'Billing access required' }, 403);
+
+  const view = readBillingGenerateJob(c.req.param('jobId'), billingJobOwnerKey(scope.userId));
+  if (view.state === 'unknown') {
+    // Also the answer when the job belongs to someone else, so polling cannot enumerate other
+    // people's billing runs.
+    return c.json({
+      status: 'unknown',
+      error:
+        'No such billing update. It may have finished more than 15 minutes ago, or the API '
+        + 'restarted while it was running. The update itself is performed by PrepShip and is '
+        + 'not cancelled by this — re-check Billing before starting another one.',
+      code: 'billing_generate_job_unknown',
+    }, 404);
+  }
+  if (view.state === 'running') {
+    return c.json({ status: 'running', elapsedMs: view.elapsedMs }, 202);
+  }
+  return c.json(view.outcome.body, view.outcome.httpStatus as 200);
+});
+
+/**
+ * The upstream call and its response translation, unchanged from when this ran inline.
+ * Returns the response to hand back rather than sending one, so the poll can replay it.
+ */
+async function runBillingGenerate(input: {
+  baseUrl: string;
+  authorization: string;
+  range: { fromDay: string; toDay: string };
+  clientId: number | undefined;
+  requestId: string | undefined;
+}): Promise<BillingGenerateOutcome> {
+  const { baseUrl, authorization, range, clientId, requestId } = input;
   let upstream: Response;
   try {
-    const baseUrl = env.PREPSHIP_API_URL.replace(/\/+$/, '');
     upstream = await fetch(`${baseUrl}/billing/generate`, {
       method: 'POST',
       headers: {
         authorization,
         accept: 'application/json',
         'content-type': 'application/json',
-        ...(c.req.header('x-request-id') ? { 'x-request-id': c.req.header('x-request-id')! } : {}),
+        ...(requestId ? { 'x-request-id': requestId } : {}),
       },
       body: JSON.stringify({
         dateFrom: range.fromDay,
@@ -170,14 +261,7 @@ app.post('/billing/generate', async (c) => {
       '[client-portal] canonical billing update unavailable:',
       error instanceof Error ? error.message : 'unknown error',
     );
-    await recordPortalAudit('portal.billing.generate.failed', scope, {
-      ...auditFacts,
-      reason: 'canonical_api_unavailable',
-    });
-    return c.json({
-      error: 'PrepShip billing update is temporarily unavailable. Please try again.',
-      code: 'prep_ship_billing_unavailable',
-    }, 502);
+    return { httpStatus: 502, body: { error: 'PrepShip billing update is temporarily unavailable. Please try again.', code: 'prep_ship_billing_unavailable' } };
   }
 
   const upstreamBody = (await upstream.json().catch(() => null)) as Record<string, unknown> | null;
@@ -186,42 +270,34 @@ app.post('/billing/generate', async (c) => {
       typeof upstreamBody?.error === 'string' && upstreamBody.error.length <= 300
         ? upstreamBody.error
         : 'PrepShip billing update failed.';
-    await recordPortalAudit('portal.billing.generate.failed', scope, {
-      ...auditFacts,
-      upstreamStatus: upstream.status,
-    });
-    if (upstream.status === 401) return c.json({ error: upstreamError }, 401);
-    if (upstream.status === 403) return c.json({ error: upstreamError }, 403);
-    if (upstream.status === 400) return c.json({ error: upstreamError }, 400);
+    if (upstream.status === 401) return { httpStatus: 401, body: { error: upstreamError } };
+    if (upstream.status === 403) return { httpStatus: 403, body: { error: upstreamError } };
+    if (upstream.status === 400) return { httpStatus: 400, body: { error: upstreamError } };
     // PS-434: PrepShip owns the California weekday operation policy. Preserve
     // its structured 409 so the portal displays the canonical rejection
     // instead of turning it into an unrelated upstream failure.
     if (upstream.status === 409) {
-      return c.json({
-        error: upstreamError,
-        code: typeof upstreamBody?.code === 'string'
-          ? upstreamBody.code
-          : 'BILLING_WEEKEND_OPERATION_BLOCKED',
-        operationDay: typeof upstreamBody?.operationDay === 'string'
-          ? upstreamBody.operationDay
-          : undefined,
-      }, 409);
+      return {
+        httpStatus: 409,
+        body: {
+          error: upstreamError,
+          code: typeof upstreamBody?.code === 'string'
+            ? upstreamBody.code
+            : 'BILLING_WEEKEND_OPERATION_BLOCKED',
+          operationDay: typeof upstreamBody?.operationDay === 'string'
+            ? upstreamBody.operationDay
+            : undefined,
+        },
+      };
     }
-    return c.json({ error: upstreamError, code: 'prep_ship_billing_failed' }, 502);
+    return { httpStatus: 502, body: { error: upstreamError, code: 'prep_ship_billing_failed' } };
   }
 
   const generated = Number(upstreamBody?.generated);
   const total = Number(upstreamBody?.total);
   const skipped = Number(upstreamBody?.skipped);
   if (![generated, total, skipped].every(Number.isFinite)) {
-    await recordPortalAudit('portal.billing.generate.failed', scope, {
-      ...auditFacts,
-      reason: 'invalid_canonical_response',
-    });
-    return c.json({
-      error: 'PrepShip returned an invalid billing update response.',
-      code: 'prep_ship_billing_invalid_response',
-    }, 502);
+    return { httpStatus: 502, body: { error: 'PrepShip returned an invalid billing update response.', code: 'prep_ship_billing_invalid_response' } };
   }
 
   const result = {
@@ -233,14 +309,8 @@ app.post('/billing/generate', async (c) => {
         ? upstreamBody.message
         : `Generated ${generated} billing line items.`,
   };
-  await recordPortalAudit('portal.billing.generate', scope, {
-    ...auditFacts,
-    generated,
-    total,
-    skipped,
-  });
-  return c.json(result);
-});
+  return { httpStatus: 200, body: result };
+}
 
 app.get('/markups', async (c) => {
   const scope = requireBillingAdmin(c);
