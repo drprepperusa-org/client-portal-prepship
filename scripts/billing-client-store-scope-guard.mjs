@@ -107,6 +107,45 @@ assert(
     + ' file by that name invites a generator to be re-added to the portal',
 );
 
+// Portal callers of billingSummary must convert scope through portalBillingScopeArgs.
+//
+// billingClientScopePredicate predates the portal and narrows by `clients.store_ids &&`
+// whenever store ids are present, regardless of whether the caller is restricted. The portal's
+// own rule (clientScopePredicate) is that an UNRESTRICTED scope gets no filter at all.
+//
+// Handing a global admin's raw arrays to the billing helper therefore silently narrowed them to
+// whatever stores were on their token. On 2026-08-30 that printed a HUGRAB invoice with every
+// summary box and Total Amount Due at $0.00 above line items showing real charges: HUGRAB's
+// store_ids are [378060], the admin's were [356678, 376661], so the summary returned no row and
+// every total fell through `Number(row?.x ?? 0)`. Both portal callers had it.
+//
+// Asserting the CONVERSION, not a spelling: a caller that passes scope.storeIds straight into
+// billingSummary is the bug, whatever it is called.
+for (const caller of [
+  'src/routes/client-portal/invoices.ts',
+  'src/routes/client-portal/billing.ts',
+]) {
+  const source = fs.readFileSync(path.join(root, caller), 'utf8');
+  if (!/billingSummary\(/.test(source)) continue;
+  assert(
+    /portalBillingScopeArgs\(scope\)/.test(source),
+    `${caller} must build billing scope with portalBillingScopeArgs(scope) so an unrestricted `
+      + 'caller is not narrowed by store ids',
+  );
+  assert(
+    !/scopeStoreIds:\s*scope\.storeIds/.test(source),
+    `${caller} must not pass scope.storeIds straight into billingSummary — that narrows a `
+      + 'global admin and zeroes their invoice totals',
+  );
+}
+
+assert(
+  /if \(!scope\.isRestricted\)/.test(
+    fs.readFileSync(path.join(root, 'src/lib/client-portal/predicates.ts'), 'utf8'),
+  ),
+  'portalBillingScopeArgs must special-case an unrestricted scope rather than always forwarding ids',
+);
+
 assert(
   packageJson.scripts?.['test:billing-client-scope'] ===
     'node scripts/billing-client-store-scope-guard.mjs',

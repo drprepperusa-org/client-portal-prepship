@@ -2,6 +2,7 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono, type Context } from 'hono';
+import { portalBillingScopeArgs } from '../../lib/client-portal/predicates';
 import {
   billingJobOwnerKey,
   createBillingGenerateJob,
@@ -71,9 +72,10 @@ app.get('/reports', async (c) => {
     clientId: requestedClientId(c) ?? undefined,
     dateFrom: range.fromUtc,
     dateTo: range.toUtcExclusive,
-    scopeClientIds: scope.clientIds,
-    scopeStoreIds: scope.storeIds,
-    scopeRestricted: scope.isRestricted,
+    // Unrestricted must mean unrestricted. Passing raw arrays here narrowed a global admin by
+    // clients.store_ids and printed a $0.00 invoice over real line items — see
+    // portalBillingScopeArgs.
+    ...portalBillingScopeArgs(scope),
   });
   await recordPortalAudit('portal.reports.view', scope, { rows: summary.clients.length });
   // CP-012: Finance's charge breakdown, billable-order count, and avg cost/order

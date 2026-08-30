@@ -433,3 +433,40 @@ export function invoiceLineScopePredicate(scope: ClientPortalScope): SQL | undef
   if (!predicates.length) return sql`false`;
   return predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
 }
+
+/**
+ * Portal scope, expressed the way the billing summary helpers expect it.
+ *
+ * `billingClientScopePredicate` (services/billing-read-support.ts) predates the portal and
+ * narrows by `clients.store_ids &&` whenever store ids are present, regardless of whether the
+ * caller is actually restricted. The portal's own rule — `clientScopePredicate` directly above —
+ * is the opposite and is the one that governs every other surface: an UNRESTRICTED scope gets no
+ * filter at all.
+ *
+ * Passing a global admin's raw arrays into the billing helper therefore silently narrowed them
+ * to the stores that happened to be on their token. On 2026-08-30 that printed an invoice for
+ * HUGRAB with every summary box and the Total Amount Due at $0.00 while the line items below
+ * showed real charges: HUGRAB's store_ids are [378060], the admin's were [356678, 376661], so
+ * the summary query returned NO row for that client and every total fell through
+ * `Number(row?.x ?? 0)` to zero. The reports surface had the same defect.
+ *
+ * One conversion, used by every portal caller, so the two scope rules cannot disagree again.
+ */
+export function portalBillingScopeArgs(scope: ClientPortalScope): {
+  scopeClientIds: number[] | undefined;
+  scopeStoreIds: number[] | undefined;
+  scopeRestricted: boolean;
+} {
+  // Unrestricted means unrestricted: send nothing to narrow by, exactly as
+  // clientScopePredicate returns `undefined` rather than a filter.
+  if (!scope.isRestricted) {
+    return { scopeClientIds: undefined, scopeStoreIds: undefined, scopeRestricted: false };
+  }
+  // Restricted with nothing granted stays deny-by-default in the billing predicate, which
+  // returns `false` when it has no ids to match — the same answer clientScopePredicate gives.
+  return {
+    scopeClientIds: scope.clientIds,
+    scopeStoreIds: scope.storeIds,
+    scopeRestricted: true,
+  };
+}
