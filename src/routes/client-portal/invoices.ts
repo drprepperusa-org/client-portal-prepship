@@ -8,7 +8,7 @@ import { billingSummary } from '../../services/billing-summaries';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
-import { clientFilterPredicate } from '../../lib/client-portal/predicates';
+import { clientFilterPredicate, portalBillingScopeArgs } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
 // CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails and
 // portalInvoiceDetailCount are no longer called from here. They are left in the read model
@@ -154,9 +154,10 @@ app.get('/invoice', async (c) => {
     clientId,
     dateFrom: range.fromUtc,
     dateTo: range.toUtcExclusive,
-    scopeClientIds: scope.clientIds,
-    scopeStoreIds: scope.storeIds,
-    scopeRestricted: scope.isRestricted,
+    // Unrestricted must mean unrestricted. Passing raw arrays here narrowed a global admin by
+    // clients.store_ids and printed a $0.00 invoice over real line items — see
+    // portalBillingScopeArgs.
+    ...portalBillingScopeArgs(scope),
   });
   const row = summary.clients[0];
   // CP-059 AC-6: the printable invoice is a SECOND serializer of the same event rows. It must
