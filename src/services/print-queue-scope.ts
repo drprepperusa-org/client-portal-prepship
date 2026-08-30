@@ -22,6 +22,31 @@ function intArraySql(values: number[]): SQL {
 }
 
 export function printQueueScopePredicate(scope: PrintQueueListScope): SQL {
+  /*
+   * UNRESTRICTED MEANS UNRESTRICTED.
+   *
+   * A global token can still carry clientIds/storeIds — they describe who the caller happens to
+   * be associated with, not a limit on what they may see. Narrowing by them whenever they were
+   * present silently answered a smaller question than the one asked, and only when both lists
+   * were empty did scopeRestricted get a say.
+   *
+   * That has now cost three separate defects. Analysis returned an empty page for a client whose
+   * store was absent from the token (fixed in analysisOrderScopePredicate, whose comment says
+   * "predicates.ts already returns early on !isRestricted; this had diverged"). Then on
+   * 2026-08-30 the printable invoice showed Total Amount Due $0.00 above real line items, and
+   * /reports showed a global admin $1,105.95 of a real $8,484.04 — 13% — with no error to
+   * suggest anything was missing.
+   *
+   * The portal's own clientScopePredicate has always returned early here. printQueueScopePredicate now agrees,
+   * so the two families cannot disagree again.
+   *
+   * Safe because every caller that supplies ids also supplies scopeRestricted: withBillingScope
+   * (routes/billing.ts) and the print-queue route both set it from scope.isRestricted, and the
+   * `?? {}` call sites supply no ids at all. Restriction and deny-by-default are untouched: a
+   * restricted caller with ids still narrows, and a restricted caller with none still gets
+   * `false`.
+   */
+  if (scope.scopeRestricted !== true) return sql`true`;
   const clientIds = normalizeScopeIds(scope.scopeClientIds);
   const storeIds = normalizeScopeIds(scope.scopeStoreIds);
   const predicates: SQL[] = [];
@@ -44,6 +69,31 @@ export function printQueueScopePredicate(scope: PrintQueueListScope): SQL {
 }
 
 export function printQueueClientScopePredicate(scope: PrintQueueListScope): SQL {
+  /*
+   * UNRESTRICTED MEANS UNRESTRICTED.
+   *
+   * A global token can still carry clientIds/storeIds — they describe who the caller happens to
+   * be associated with, not a limit on what they may see. Narrowing by them whenever they were
+   * present silently answered a smaller question than the one asked, and only when both lists
+   * were empty did scopeRestricted get a say.
+   *
+   * That has now cost three separate defects. Analysis returned an empty page for a client whose
+   * store was absent from the token (fixed in analysisOrderScopePredicate, whose comment says
+   * "predicates.ts already returns early on !isRestricted; this had diverged"). Then on
+   * 2026-08-30 the printable invoice showed Total Amount Due $0.00 above real line items, and
+   * /reports showed a global admin $1,105.95 of a real $8,484.04 — 13% — with no error to
+   * suggest anything was missing.
+   *
+   * The portal's own clientScopePredicate has always returned early here. printQueueClientScopePredicate now agrees,
+   * so the two families cannot disagree again.
+   *
+   * Safe because every caller that supplies ids also supplies scopeRestricted: withBillingScope
+   * (routes/billing.ts) and the print-queue route both set it from scope.isRestricted, and the
+   * `?? {}` call sites supply no ids at all. Restriction and deny-by-default are untouched: a
+   * restricted caller with ids still narrows, and a restricted caller with none still gets
+   * `false`.
+   */
+  if (scope.scopeRestricted !== true) return sql`true`;
   const clientIds = normalizeScopeIds(scope.scopeClientIds);
   const storeIds = normalizeScopeIds(scope.scopeStoreIds);
   const predicates: SQL[] = [];
