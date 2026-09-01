@@ -52,11 +52,13 @@ check('the CP returns schema maps the PS-owned billing_date_override column (rea
   );
 });
 
-check('the detail read model derives effectiveBillingDate = billing_date_override ?? created_at', () => {
+check('the detail read model derives the effective billing DAY, gated to staff', () => {
   const code = stripComments(reads);
+  // Backend derives the canonical UTC DAY (isoDay) once, so the FE never re-derives it two ways,
+  // and gates it to scope.isGlobal (staff) with null for clients so a correction cannot be inferred.
   assert(
-    /effectiveBillingDate:\s*iso\(row\.ret\.billingDateOverride\s*\?\?\s*row\.ret\.createdAt\)/.test(code),
-    'the detail DTO must surface the backend-derived effective billing date',
+    /effectiveBillingDate:\s*scope\.isGlobal[\s\S]{0,90}?isoDay\(row\.ret\.billingDateOverride\s*\?\?\s*row\.ret\.createdAt\)[\s\S]{0,20}?:\s*null/.test(code),
+    'the detail DTO must surface isoDay(billing_date_override ?? created_at) gated on scope.isGlobal, null otherwise',
   );
 });
 
@@ -75,10 +77,24 @@ check('the drawer passes the backend value into the panel', () => {
   );
 });
 
-check('the panel accepts + displays the current billing date (AC-1)', () => {
-  assert(/currentBillingDate:\s*string\s*\|\s*null/.test(panel), 'the panel takes the current date as a prop');
+check('the panel accepts + displays the current billing day (AC-1)', () => {
+  assert(/currentBillingDate:\s*string\s*\|\s*null/.test(panel), 'the panel takes the current day as a prop');
   assert(/Current billing date:/.test(panel), 'the panel labels the current billing date');
-  assert(/shortDate\(currentBillingDate\)/.test(panel), 'the current date is rendered from the backend value');
+  // Calendar-safe shortDay, NOT the local-tz shortDate — the label must agree with the input.
+  assert(/shortDay\(currentBillingDate\)/.test(panel), 'the label renders via the calendar-safe shortDay');
+  assert(!/shortDate\(currentBillingDate\)/.test(panel), 'the label must NOT use local-tz shortDate (off-by-one in US zones)');
+});
+
+check('the label and the date input agree on the UTC day (no local-tz off-by-one)', () => {
+  // The input pre-fills from the UTC day slice; the label formats the SAME value via shortDay,
+  // which anchors a YYYY-MM-DD to LOCAL midnight of that exact day. shortDate() would parse the
+  // day as UTC midnight and render the PREVIOUS day in US timezones — the defect CP-063 fixes.
+  const status = read('portal-client/src/lib/status.ts');
+  assert(/export function shortDay\(/.test(status), 'status.ts exposes a calendar-safe shortDay formatter');
+  assert(/new Date\(`\$\{value\.slice\(0, 10\)\}T00:00:00`\)/.test(status),
+    'shortDay anchors the day to LOCAL midnight so the rendered calendar day matches in any timezone');
+  assert(/currentBillingDate\.slice\(0, 10\)/.test(panel),
+    'the date input pre-fills from the same UTC day the label renders');
 });
 
 check('the panel re-syncs to the backend value after a save, not a blank form (AC-2)', () => {

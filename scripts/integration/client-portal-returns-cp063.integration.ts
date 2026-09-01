@@ -1,9 +1,10 @@
-/* CP-063 — the returns detail DTO surfaces the current effective billing date.
+/* CP-063 — the returns detail DTO surfaces the current effective billing DAY (staff only).
  *
- * Runs the real return read route against a throwaway Postgres. The effective billing
- * date is coalesce(billing_date_override, created_at) — the same rule PS-487 uses. This
- * proves the detail DTO returns the override when present and falls back to created_at when
- * it is not, so the staff panel can show the current value instead of a blank form.
+ * Runs the real return read route against a throwaway Postgres. The effective billing date is
+ * the canonical UTC day of coalesce(billing_date_override, created_at) — the same rule PS-487
+ * uses. This proves the detail DTO returns the override day when present, falls back to the
+ * created_at day otherwise, reflects a correction on re-read (AC-2), and is gated to staff
+ * (client users receive null so they cannot infer a correction occurred).
  *
  * Every network request is blocked; no provider, storage, or postage call is made.
  */
@@ -36,16 +37,18 @@ function equal(actual: unknown, expected: unknown, message: string): void {
   check(actual === expected, `${message} (got ${String(actual)}, want ${String(expected)})`);
 }
 
-function appFor(clientId: number): Hono {
+// A staff (global) scope is what the ReturnBillingDatePanel runs under and is what
+// effectiveBillingDate is gated to; a client_user scope must receive null for the field.
+function appFor(clientId: number, opts: { global?: boolean } = {}): Hono {
   const routes = new Hono();
   registerReturnReadRoutes(routes);
   const app = new Hono();
   app.use('*', async (c, next) => {
     c.set('userId' as never, 'cp063-user' as never);
     c.set('email' as never, 'cp063@example.test' as never);
-    c.set('role' as never, 'client_user' as never);
+    c.set('role' as never, (opts.global ? 'admin' : 'client_user') as never);
     c.set('permissions' as never, [] as never);
-    c.set('clientIds' as never, [clientId] as never);
+    c.set('clientIds' as never, (opts.global ? [] : [clientId]) as never);
     c.set('storeIds' as never, [] as never);
     await next();
   });
@@ -67,7 +70,7 @@ async function reset(): Promise<void> {
   networkCalls = 0;
 }
 
-type Seed = { clientId: number; returnId: number; createdAtIso: string };
+type Seed = { clientId: number; returnId: number; createdAtDay: string };
 
 async function seedReturn(billingDateOverride: Date | null): Promise<Seed> {
   const [client] = await db
@@ -102,72 +105,80 @@ async function seedReturn(billingDateOverride: Date | null): Promise<Seed> {
   return {
     clientId: client!.id,
     returnId: returnRow!.id,
-    createdAtIso: (returnRow!.createdAt as Date).toISOString(),
+    createdAtDay: (returnRow!.createdAt as Date).toISOString().slice(0, 10),
   };
 }
 
-type DetailBody = { data?: { effectiveBillingDate?: unknown; createdAt?: unknown }; error?: unknown };
+type DetailBody = { data?: { effectiveBillingDate?: unknown }; error?: unknown };
 
-async function noOverrideFallsBackToCreatedAt(): Promise<void> {
-  console.log('\nCP-063 - no override: effectiveBillingDate falls back to created_at');
+async function staffNoOverrideFallsBackToCreatedDay(): Promise<void> {
+  console.log('\nCP-063 - staff, no override: effectiveBillingDate is the created_at day');
   await reset();
   const seed = await seedReturn(null);
-  const res = await appFor(seed.clientId).request(`/returns/${seed.returnId}`);
+  const res = await appFor(seed.clientId, { global: true }).request(`/returns/${seed.returnId}`);
   const body = (await res.json()) as DetailBody;
-  equal(res.status, 200, 'the in-scope return detail is available');
+  equal(res.status, 200, 'the staff-scoped detail is available');
   equal(
     body.data?.effectiveBillingDate,
-    seed.createdAtIso,
-    'with no override, the effective billing date is created_at',
+    seed.createdAtDay,
+    'with no override, the effective billing day is the created_at day (YYYY-MM-DD)',
   );
   equal(networkCalls, 0, 'the read makes no provider or storage network call');
 }
 
-async function overrideWins(): Promise<void> {
-  console.log('\nCP-063 - override present: effectiveBillingDate is the override');
+async function staffOverrideWins(): Promise<void> {
+  console.log('\nCP-063 - staff, override present: effectiveBillingDate is the override day');
   await reset();
-  const override = new Date('2026-07-05T00:00:00.000Z');
-  const seed = await seedReturn(override);
-  const res = await appFor(seed.clientId).request(`/returns/${seed.returnId}`);
+  const seed = await seedReturn(new Date('2026-07-05T00:00:00.000Z'));
+  const res = await appFor(seed.clientId, { global: true }).request(`/returns/${seed.returnId}`);
   const body = (await res.json()) as DetailBody;
-  equal(res.status, 200, 'the in-scope return detail is available');
-  equal(
-    body.data?.effectiveBillingDate,
-    override.toISOString(),
-    'a billing_date_override wins over created_at',
-  );
+  equal(res.status, 200, 'the staff-scoped detail is available');
+  equal(body.data?.effectiveBillingDate, '2026-07-05', 'a billing_date_override day wins over created_at');
   check(
-    body.data?.effectiveBillingDate !== seed.createdAtIso,
-    'the corrected date is distinct from created_at (a saved correction is visible)',
+    body.data?.effectiveBillingDate !== seed.createdAtDay,
+    'the corrected day is distinct from created_at (a saved correction is visible)',
   );
 }
 
-async function correctionRefetchReflectsNewValue(): Promise<void> {
-  console.log('\nCP-063 - after a correction, a re-read reflects the NEW current value');
+async function staffCorrectionRefetchReflectsNewDay(): Promise<void> {
+  console.log('\nCP-063 - staff: after a correction, a re-read reflects the NEW day (AC-2)');
   await reset();
   const seed = await seedReturn(null);
-  const first = await appFor(seed.clientId).request(`/returns/${seed.returnId}`);
-  const firstBody = (await first.json()) as DetailBody;
-  equal(firstBody.data?.effectiveBillingDate, seed.createdAtIso, 'the first read shows created_at');
+  const staff = appFor(seed.clientId, { global: true });
+  const first = (await (await staff.request(`/returns/${seed.returnId}`)).json()) as DetailBody;
+  equal(first.data?.effectiveBillingDate, seed.createdAtDay, 'the first read shows the created_at day');
   // Simulate PS-487 applying a correction (the portal proxies this in production).
-  const corrected = new Date('2026-07-07T00:00:00.000Z');
   await db
     .update(schema.returns)
-    .set({ billingDateOverride: corrected, updatedAt: new Date() })
+    .set({ billingDateOverride: new Date('2026-07-07T00:00:00.000Z'), updatedAt: new Date() })
     .where(eq(schema.returns.id, seed.returnId));
-  const second = await appFor(seed.clientId).request(`/returns/${seed.returnId}`);
-  const secondBody = (await second.json()) as DetailBody;
+  const second = (await (await staff.request(`/returns/${seed.returnId}`)).json()) as DetailBody;
   equal(
-    secondBody.data?.effectiveBillingDate,
-    corrected.toISOString(),
-    'the re-read reflects the corrected billing date, not the original (AC-2)',
+    second.data?.effectiveBillingDate,
+    '2026-07-07',
+    'the re-read reflects the corrected day, not the original',
+  );
+}
+
+async function clientUserGetsNull(): Promise<void> {
+  console.log('\nCP-063 - client user: the field is gated to null (no correction inference)');
+  await reset();
+  const seed = await seedReturn(new Date('2026-07-05T00:00:00.000Z'));
+  const res = await appFor(seed.clientId).request(`/returns/${seed.returnId}`);
+  const body = (await res.json()) as DetailBody;
+  equal(res.status, 200, 'the in-scope return detail is still available to the client');
+  equal(
+    body.data?.effectiveBillingDate,
+    null,
+    'a client user never receives the effective billing date (staff-only)',
   );
 }
 
 async function main(): Promise<void> {
-  await noOverrideFallsBackToCreatedAt();
-  await overrideWins();
-  await correctionRefetchReflectsNewValue();
+  await staffNoOverrideFallsBackToCreatedDay();
+  await staffOverrideWins();
+  await staffCorrectionRefetchReflectsNewDay();
+  await clientUserGetsNull();
 }
 
 let exitCode = 1;
@@ -176,12 +187,12 @@ try {
   exitCode = failures === 0 ? 0 : 1;
   console.log(
     failures === 0
-      ? '\nPASS CP-063 effective-billing-date read-model integration.\n'
+      ? '\nPASS CP-063 effective-billing-day read-model integration.\n'
       : `\nFAIL ${failures} CP-063 assertion(s) failed.\n`,
   );
 } catch (error) {
   console.error(
-    '\nFAIL CP-063 effective-billing-date integration errored:',
+    '\nFAIL CP-063 effective-billing-day integration errored:',
     error instanceof Error ? error.stack : error,
   );
 } finally {

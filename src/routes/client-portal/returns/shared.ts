@@ -107,3 +107,15 @@ export function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : value;
 }
+
+/**
+ * The UTC calendar DAY (YYYY-MM-DD) of a timestamp — the canonical billing-day shape PS-487
+ * uses (toISOString().slice(0,10)). A billing date is day-granular; returning the day rather
+ * than a full instant lets the client render the same calendar day in any timezone instead of
+ * a UTC-midnight instant a local formatter shifts across midnight.
+ */
+export function isoDay(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const asIso = value instanceof Date ? value.toISOString() : value;
+  return asIso.slice(0, 10);
+}

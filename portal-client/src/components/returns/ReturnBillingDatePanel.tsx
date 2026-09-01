@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { portalApi } from '@/lib/api';
 import { useMe } from '@/lib/hooks';
-import { shortDate } from '@/lib/status';
+import { shortDay } from '@/lib/status';
 
 /**
  * CP-058 AC-6 — staff-only correction of a return's billing date.
@@ -91,7 +91,7 @@ export function ReturnBillingDatePanel({
       </p>
       <p className="text-xs text-ink-2">
         Current billing date:{' '}
-        <span className="font-semibold text-ink">{shortDate(currentBillingDate)}</span>
+        <span className="font-semibold text-ink">{shortDay(currentBillingDate)}</span>
       </p>
       <input
         type="date"
