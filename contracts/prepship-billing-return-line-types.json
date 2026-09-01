@@ -1,15 +1,16 @@
 {
   "note": "CP-059 — the canonical RETURN line-type vocabulary, owned by PrepShip. Do not hand-edit: re-pin from upstream and let scripts/prepship-return-vocabulary-parity.mjs prove the copy.",
   "why": "The Client Portal's two summary authorities (billing-summaries.ts and reporting-metrics.ts) sum return money by line type. A spelling present upstream and missing here drops that money out of the return bucket while leaving it in grand_total, so a customer's invoice stops reconciling. Upstream says the same thing in its own doc comment on BILLING_RETURN_LINE_TYPES.",
+  "repinNote": "CP-065 (2026-09-01): re-pinned past prepship-v4 PS-517, which moved the split spellings out of the predicate BODIES and into consts. exports.postage/.processing now name those consts, and the parity script reads all three buckets from their const declarations — so an upstream representation change can no longer read as a vocabulary change. Membership is unchanged from the previous pin.",
   "upstream": {
     "repo": "drprepperusa-org/prepship-v4",
-    "ref": "291845287b29784da02fd468b6d2d66742dd5983",
+    "ref": "b737b55968bab0f40b5b57d7191e3a8633bd034c",
     "path": "src/services/billing-row-status.ts",
-    "blobSha": "e347a487fa7b5ab90277c9b1188621a9eb79351a",
+    "blobSha": "f543e5a1137c9f4e02ac65a189ed58c460cd1bc8",
     "exports": {
       "all": "BILLING_RETURN_LINE_TYPES",
-      "postage": "isBillingReturnPostageLineType",
-      "processing": "isBillingReturnProcessingLineType"
+      "postage": "BILLING_RETURN_POSTAGE_LINE_TYPES",
+      "processing": "BILLING_RETURN_PROCESSING_LINE_TYPES"
     }
   },
   "all": ["return", "return_label", "return_processing", "return_postage", "return_processing_fee"],

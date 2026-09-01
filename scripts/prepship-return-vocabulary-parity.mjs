@@ -148,37 +148,39 @@ if (!token) {
 
     const source = Buffer.from(remote.content, 'base64').toString('utf8');
 
-    const allBlock = source.match(
-      new RegExp(`${upstreamExports.all}\\s*=\\s*\\[([\\s\\S]*?)\\]`),
-    );
-    if (!allBlock) {
-      fail(`could not find ${upstreamExports.all} in the upstream file`);
-    } else {
-      const upstreamAll = [...allBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-      if (sorted(upstreamAll) !== sorted(contract.all)) {
-        fail(
-          `upstream return vocabulary differs from the pinned contract.\n` +
-            `  upstream: ${sorted(upstreamAll)}\n  pinned:   ${sorted(contract.all)}`,
-        );
-      } else {
-        pass(`upstream ${upstreamExports.all} matches the pinned contract exactly`);
-      }
-    }
+    /**
+     * Read a vocabulary from an upstream `const NAME = [ ... ]` declaration.
+     *
+     * CP-065: all three buckets are read this way now. The two SPLIT buckets used to be scraped
+     * out of the BODIES of isBillingReturnPostageLineType / isBillingReturnProcessingLineType,
+     * which worked only while those predicates happened to spell the literals inline. PS-517
+     * moved them into consts and the predicates became `CONST.includes(value)` — so the scrape
+     * returned [] and this gate failed both buckets as empty, reporting a vocabulary change when
+     * nothing about the vocabulary had changed. Reading the declaration means a REPRESENTATION
+     * change upstream can no longer masquerade as a MEMBERSHIP change here.
+     */
+    const constArrayFrom = (name) => {
+      const block = source.match(new RegExp(`${name}\\s*(?::[^=]*)?=\\s*\\[([\\s\\S]*?)\\]`));
+      return block ? [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : null;
+    };
 
-    // The SPLIT matters as much as the membership: filing return_label under processing would
-    // keep the canonical total right while making both named parts wrong.
     for (const [label, exportName, pinned] of [
+      ['all', upstreamExports.all, contract.all],
+      // The SPLIT matters as much as the membership: filing return_label under processing would
+      // keep the canonical total right while making both named parts wrong.
       ['postage', upstreamExports.postage, contract.postage],
       ['processing', upstreamExports.processing, contract.processing],
     ]) {
-      const fnBlock = source.match(
-        new RegExp(`function ${exportName}\\([\\s\\S]*?\\n\\}`),
-      );
-      if (!fnBlock) {
-        fail(`could not find ${exportName} in the upstream file`);
+      const upstreamBucket = constArrayFrom(exportName);
+      if (!upstreamBucket || upstreamBucket.length === 0) {
+        // Empty is treated as NOT FOUND on purpose. An extractor that silently yields [] is how
+        // this gate would report "the upstream bucket is empty" for what is really a refactor.
+        fail(
+          `could not read ${exportName} as a const array from the upstream file. If upstream `
+          + 'renamed or restructured it, re-pin exports + ref rather than loosening this reader.',
+        );
         continue;
       }
-      const upstreamBucket = [...fnBlock[0].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
       if (sorted(upstreamBucket) !== sorted(pinned)) {
         fail(
           `upstream ${label} bucket differs from the pinned contract.\n` +
