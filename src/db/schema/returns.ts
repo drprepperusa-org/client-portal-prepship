@@ -76,6 +76,12 @@ export const returns = pgTable(
     deliveryMethod: text(),
     deliveryStatus: text(),
     deliveryError: text(),
+    // PS-487-owned billing-date correction. Written ONLY by the canonical PrepShip
+    // route (the portal proxies to it and decides nothing about it). The Client Portal
+    // READS it to show the return's current effective billing date —
+    // coalesce(billing_date_override, created_at). The override actor/reason stay
+    // PS-owned and are intentionally not mapped here.
+    billingDateOverride: timestamp('billing_date_override', { withTimezone: true }),
     requestedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     closedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),

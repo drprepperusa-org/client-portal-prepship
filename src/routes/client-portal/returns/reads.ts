@@ -31,6 +31,7 @@ import { resolveReturnReference } from '../../../services/return-reference';
 import { toClientSafeReturnRow } from './dto';
 import {
   iso,
+  isoDay,
   RETURN_STATUS_FILTERS,
   returnScopePredicate,
   returnSearchPredicate,
@@ -226,6 +227,15 @@ function registerReturnDetailRoute(app: Hono): void {
         pdfUrl,
         requestedAt: iso(row.ret.requestedAt),
         closedAt: iso(row.ret.closedAt),
+        // CP-063: the return's current effective billing DAY (YYYY-MM-DD). Backend truth is
+        // coalesce(billing_date_override, created_at), reduced to the canonical UTC day PS-487
+        // uses (toISOString().slice(0,10)) so the client renders the same calendar day in any
+        // timezone. Derived once here rather than in the FE. STAFF-ONLY: null for client users —
+        // the staff correction panel is the only consumer, and a client should not be able to
+        // infer that a billing-date correction occurred. Display only; the RULE stays PS-487-owned.
+        effectiveBillingDate: scope.isGlobal
+          ? isoDay(row.ret.billingDateOverride ?? row.ret.createdAt)
+          : null,
         items: items.map((item: ReturnItem) => ({
           id: item.id,
           sku: item.sku,

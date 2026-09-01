@@ -222,8 +222,10 @@ function ReturnOverview({
       {canCreateLabel ? <ReturnExternalTrackingPanel returnId={detail.id} /> : null}
 
       {/* AC-6: staff only — the component renders nothing for client users. Not gated on
-          label state: a return's billing period can need correcting long after it ships. */}
-      <ReturnBillingDatePanel returnId={detail.id} />
+          label state: a return's billing period can need correcting long after it ships.
+          CP-063: pass the backend-derived current billing date so the panel shows it and
+          reflects a saved correction instead of clearing to a blank form. */}
+      <ReturnBillingDatePanel returnId={detail.id} currentBillingDate={detail.effectiveBillingDate} />
 
       <Link
         to={orderHref}

@@ -54,3 +54,13 @@ export function shortDate(value: string | null | undefined): string {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+// CP-063: format a day-granular value (a YYYY-MM-DD calendar day, e.g. a backend billing day)
+// WITHOUT a timezone shifting it. shortDate() parses a day as UTC midnight, so a local formatter
+// renders the previous day in Western-hemisphere zones; anchoring to LOCAL midnight of the exact
+// day keeps the rendered date the same calendar day in any timezone.
+export function shortDay(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
