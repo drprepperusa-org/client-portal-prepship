@@ -4,11 +4,10 @@
 import { Hono, type Context } from 'hono';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
-import { billingSummary } from '../../services/billing-summaries';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/billing-day';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
-import { clientFilterPredicate, portalBillingScopeArgs } from '../../lib/client-portal/predicates';
+import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
 // CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails and
 // portalInvoiceDetailCount are no longer called from here. They are left in the read model
@@ -59,7 +58,10 @@ app.get('/invoice-details', async (c) => {
     const sortBy = c.req.query('sortBy');
     const sortDir = c.req.query('sortDir');
     const result = await portalCanonicalInvoiceEvents(scope, authorization, {
-      clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive, page, pageSize, sortBy, sortDir,
+      // Days, not instants — see the note on the /invoice call site. PrepShip re-normalizes
+      // whatever it receives, so an exclusive bound arrives as an inclusive day and widens the
+      // window. The grid and the XLSX export read this route, so they drifted too.
+      clientId, dateFrom: range.fromDay, dateTo: range.toDay, page, pageSize, sortBy, sortDir,
     }, requestId);
     if (!result.ok) {
       await recordPortalAudit('portal.invoice_details.failed', scope, { clientId, reason: result.code });
@@ -79,7 +81,8 @@ app.get('/invoice-details', async (c) => {
   }
 
   const result = await portalCanonicalInvoiceEvents(scope, authorization, {
-    clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive,
+    // Days, not instants — same boundary contract as the paged branch above.
+    clientId, dateFrom: range.fromDay, dateTo: range.toDay,
   }, requestId);
   if (!result.ok) {
     await recordPortalAudit('portal.invoice_details.failed', scope, { clientId, reason: result.code });
@@ -150,23 +153,21 @@ app.get('/invoice', async (c) => {
     .where(clientFilterPredicate(scope, clientId, requestedStoreId(c)))
     .limit(1);
   if (!client) return c.text('Client not found', 404);
-  const summary = await billingSummary({
-    clientId,
-    dateFrom: range.fromUtc,
-    dateTo: range.toUtcExclusive,
-    // Unrestricted must mean unrestricted. Passing raw arrays here narrowed a global admin by
-    // clients.store_ids and printed a $0.00 invoice over real line items — see
-    // portalBillingScopeArgs.
-    ...portalBillingScopeArgs(scope),
-  });
-  const row = summary.clients[0];
   // CP-059 AC-6: the printable invoice is a SECOND serializer of the same event rows. It must
   // read the identical canonical contract as the grid — a print surface that regroups by order
   // while the grid shows events is exactly the parity failure this card exists to remove.
   const printAuthorization = c.req.header('authorization');
   if (!printAuthorization) return c.text('Missing bearer token', 401);
   const detailResult = await portalCanonicalInvoiceEvents(scope, printAuthorization, {
-    clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive,
+    // SEND OPERATOR DAYS, NOT INSTANTS.
+    //
+    // `range.toUtcExclusive` is an EXCLUSIVE bound (Sep 01 00:00Z for an Aug 1-31 invoice), but
+    // PrepShip's /billing/details re-runs its own billingDayRange() on whatever it receives and
+    // reads the date part as the LAST INCLUDED day — so Sep 01 became Sep 02 and the row window
+    // silently opened a day wider than the totals on the same page. That is why an August
+    // invoice listed 9/1 rows. Both sides normalize days identically; only days may cross this
+    // boundary.
+    clientId, dateFrom: range.fromDay, dateTo: range.toDay,
   }, c.req.header('x-request-id') ?? undefined);
   // Fail closed. A printable invoice that silently renders zero rows because upstream was
   // unavailable is a document a customer could reasonably treat as a statement of no activity.
@@ -174,28 +175,48 @@ app.get('/invoice', async (c) => {
   const details = detailResult.rows;
   // qty is a display count and is always summed from the rendered detail rows.
   const orderedQty = details.reduce((n, detail) => n + Number(detail.qty ?? 0), 0);
-  // CP-024: the printable invoice's MONEY totals (amount due + section totals)
-  // come from the canonical, uncapped billing summary — NEVER a reduction over
-  // the (row-capped) detail rows, which under-counts a large invoice's amount due.
+  // THE CUSTOMER'S MONEY COMES FROM PREPSHIP'S CANONICAL OWNER. NOT FROM THIS REPO.
+  //
+  // CP-024 correctly established that these totals must not be a reduction over the row-capped
+  // details. But the "canonical billing summary" it read was this repo's OWN aggregation, which
+  // made the portal a second source of truth for invoice money — and it implements neither of
+  // PrepShip's two money rules:
+  //   - PS-491 duplicate-order-copy suppression
+  //   - cancelled-no-charge zeroing
+  // Measured on HUGRAB's Aug 2026 invoice: the portal billed the customer for 8 CANCELLED orders
+  // ($27.00) plus a duplicate copy of order 3629 ($3.50) — $30.50 over, and one order too many
+  // (581 vs 580). Both documents were internally consistent; they answered different questions.
+  //
+  // These totals now arrive in the SAME upstream response as the rows, already suppressed, from
+  // billingInvoiceHeaderTotals — the owner PrepShip's own invoice and its finalization snapshot
+  // read. The route still does not sum, derive or reconcile anything.
+  const canonicalTotals = detailResult.totals;
+  // Fail closed, for the same reason the row fetch does. A missing totals block means the
+  // contract changed or upstream is degraded; rendering $0.00 — or quietly falling back to this
+  // repo's own aggregation — would reintroduce the exact divergence this replaced.
+  if (!canonicalTotals) {
+    return c.text(
+      'Invoice totals are unavailable from the billing authority. Please try again.',
+      502,
+    );
+  }
   const invoiceTotals = {
-    orderCount: Number(row?.orderCount ?? 0),
+    orderCount: canonicalTotals.orderCount,
     qty: orderedQty,
-    pickPackTotal: Number(row?.pickPackTotal ?? 0),
-    additionalTotal: Number(row?.additionalTotal ?? 0),
-    packageTotal: Number(row?.packageTotal ?? 0),
-    shippingTotal: Number(row?.shippingTotal ?? 0),
-    storageTotal: Number(row?.storageTotal ?? 0),
-    returnProcessingTotal: Number(row?.returnProcessingTotal ?? 0),
-    returnPostageTotal: Number(row?.returnPostageTotal ?? 0),
+    pickPackTotal: canonicalTotals.pickPackTotal,
+    additionalTotal: canonicalTotals.additionalTotal,
+    packageTotal: canonicalTotals.packageTotal,
+    shippingTotal: canonicalTotals.shippingTotal,
+    storageTotal: canonicalTotals.storageTotal,
+    returnProcessingTotal: canonicalTotals.returnProcessingTotal,
+    returnPostageTotal: canonicalTotals.returnPostageTotal,
     // CP-059 AC-6. Read, never derived. The two named parts above are SUBSETS of this value,
     // not its definition — see services/billing-line-types.ts.
-    returnTotal: Number(row?.returnTotal ?? 0),
-    // PS-512 — read from the canonical billing summary like every other category here. The
-    // route does not sum, derive or reconcile money; it renders what the money authority says.
-    adjustmentTotal: Number(row?.adjustmentTotal ?? 0),
-    replacePostageTotal: Number(row?.replacePostageTotal ?? 0),
-    replacePickPackTotal: Number(row?.replacePickPackTotal ?? 0),
-    grandTotal: Number(row?.grandTotal ?? 0),
+    returnTotal: canonicalTotals.returnTotal,
+    adjustmentTotal: canonicalTotals.adjustmentTotal,
+    replacePostageTotal: canonicalTotals.replacePostageTotal,
+    replacePickPackTotal: canonicalTotals.replacePickPackTotal,
+    grandTotal: canonicalTotals.grandTotal,
   };
   // No silent truncation: the itemized list is row-capped only on the normal
   // (billing_line_items) path. Compare like-for-like grains — count only

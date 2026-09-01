@@ -253,7 +253,8 @@
     "typecheck:web:legacy": "tsc --noEmit -p web/tsconfig.json",
     "verify:client-portal-live": "tsx scripts/verify-client-portal-live-parity.ts",
     "verify:client-portal-rbac": "tsx scripts/verify-client-portal-rbac.ts",
-    "watchdog:production": "node scripts/production-watchdog.mjs"
+    "watchdog:production": "node scripts/production-watchdog.mjs",
+    "test:client-portal-invoice-canonical-totals": "tsx scripts/client-portal-invoice-canonical-totals-guard.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

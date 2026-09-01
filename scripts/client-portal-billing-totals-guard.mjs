@@ -74,20 +74,37 @@ assert(
   'the period-summary API response type exposes backend totals',
 );
 
-// ── CP-024: the printable /invoice HTML's money totals are backend-owned too ──
-// The amount-due and every section total must come from the canonical, uncapped
-// billingSummary row — NEVER a reduction over the (row-capped) detail rows,
-// which under-counts amount-due for a large invoice.
+// ── CP-024, as amended by CP-066: the printable /invoice HTML's money is backend-owned ──
+//
+// CP-024's REQUIREMENT stands: amount-due and every section total must come from an uncapped
+// canonical aggregate, NEVER a reduction over the row-capped detail rows.
+//
+// What changed is WHICH aggregate is canonical. These two assertions used to pin the literal
+// call `billingSummary(...)` + `summary.clients[0]` — this repo's OWN aggregation. That made the
+// portal a second source of truth for invoice money, and it implements neither of PrepShip's
+// suppression rules (PS-491 duplicate copies, cancelled-no-charge). Measured on HUGRAB's Aug 2026
+// invoice, it billed the customer for 8 cancelled orders and a duplicate copy of order 3629 —
+// $30.50 over, and one order too many. The guard was pinning the defect in place.
+//
+// So it now asserts the OUTCOME (money comes from the canonical owner, and is not re-derived
+// here) rather than a call-site spelling. The owner is PrepShip's billingInvoiceHeaderTotals,
+// delivered in the same response as the rows.
 assert(
-  route.includes('const summary = await billingSummary(') && route.includes('const row = summary.clients[0];'),
-  'the /invoice handler derives its money totals from the canonical billingSummary (row)',
+  route.includes('detailResult.totals') && !/\bbillingSummary\s*\(/.test(route),
+  'the /invoice handler takes its money from PrepShip\'s canonical totals and does not re-derive it',
 );
 assert(
-  route.includes('grandTotal: Number(row?.grandTotal') &&
-    route.includes('pickPackTotal: Number(row?.pickPackTotal') &&
-    route.includes('shippingTotal: Number(row?.shippingTotal') &&
-    route.includes('storageTotal: Number(row?.storageTotal'),
-  'the printable invoiceTotals source amount-due and every section total from the canonical row',
+  route.includes('grandTotal: canonicalTotals.grandTotal') &&
+    route.includes('pickPackTotal: canonicalTotals.pickPackTotal') &&
+    route.includes('shippingTotal: canonicalTotals.shippingTotal') &&
+    route.includes('storageTotal: canonicalTotals.storageTotal'),
+  'the printable invoiceTotals source amount-due and every section total from the canonical owner',
+);
+// Fail closed: absent canonical totals must not render $0.00 or silently fall back to a local
+// aggregation, because either would reintroduce the divergence this replaced.
+assert(
+  /if\s*\(\s*!canonicalTotals\s*\)/.test(route) && route.includes('502'),
+  'the /invoice handler fails closed when the canonical totals are unavailable',
 );
 // Any detail-row money reduction is gated to the Heritage override client (whose
 // itemized rows come from a hand-maintained table, not billing_line_items, and

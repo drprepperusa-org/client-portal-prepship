@@ -272,7 +272,11 @@ export function renderPortalInvoiceHtml(input: {
     <div class="card"><div class="label">Packages</div><div class="value">${moneyOrDash(invoiceTotals.packageTotal)}</div></div>
     <div class="card"><div class="label">Shipping</div><div class="value">${moneyOrDash(invoiceTotals.shippingTotal)}</div></div>
     <div class="card"><div class="label">Storage</div><div class="value">${moneyOrDash(invoiceTotals.storageTotal)}</div></div>
-    <div class="card"><div class="label">Fulfillment Fee</div><div class="value">${money(invoiceTotals.grandTotal)}</div></div>
+    <!-- Was labelled "Fulfillment Fee" while rendering the GRAND TOTAL, so one label named two
+         different quantities across the two apps — in PrepShip, Fulfillment Fee is
+         pick&pack + add'l + packages, not the amount due. Two documents using the same words for
+         different numbers is how a reconciliation argument with a customer starts. -->
+    <div class="card"><div class="label">Total Billed</div><div class="value">${money(invoiceTotals.grandTotal)}</div></div>
   </div>
   <div class="total"><span>Total Amount Due &mdash; ${periodFrom} &rarr; ${periodTo}</span><b>${money(invoiceTotals.grandTotal)}</b></div>
   ${truncNote}

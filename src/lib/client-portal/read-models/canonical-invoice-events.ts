@@ -24,6 +24,7 @@ import {
   fetchCanonicalBillingDetails,
   type CanonicalBillingEventRow,
   type CanonicalBillingDetailsResult,
+  type CanonicalBillingTotals,
 } from '../prepship-billing-details-proxy.js';
 
 export interface CanonicalInvoiceEventsInput {
@@ -138,7 +139,17 @@ export function orderCanonicalEvents(
 export const CANONICAL_SORTABLE_KEYS: readonly string[] = [...SORTABLE];
 
 export type CanonicalInvoiceEventsResult =
-  | { ok: true; rows: BillingInvoiceDetailRow[]; total: number }
+  | {
+      ok: true;
+      rows: BillingInvoiceDetailRow[];
+      total: number;
+      /**
+       * PrepShip's canonical money for this exact period, carried through from the SAME response
+       * as the rows. The invoice renders these instead of a portal-side aggregation, so the
+       * document cannot quote a total the backend owner disagrees with.
+       */
+      totals: CanonicalBillingTotals | null;
+    }
   | { ok: false; status: number; error: string; code: string };
 
 /**
@@ -184,7 +195,7 @@ export async function portalCanonicalInvoiceEvents(
     row.orderId === null ? undefined : enrichment.get(row.orderId),
   ));
 
-  return { ok: true, rows, total };
+  return { ok: true, rows, total, totals: upstream.totals };
 }
 
 /**

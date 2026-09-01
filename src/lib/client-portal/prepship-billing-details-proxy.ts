@@ -399,8 +399,65 @@ export interface CanonicalBillingDetailsQuery {
   clientId?: number;
 }
 
+/**
+ * PrepShip's CANONICAL invoice totals, returned alongside the rows by `GET /billing/details`.
+ *
+ * These are the output of `billingInvoiceHeaderTotals` — the same owner PrepShip's own invoice
+ * and its finalization snapshot read. Critically, they have already had the two money rules
+ * applied that this repo has no copy of:
+ *   - PS-491 duplicate-order-copy suppression (drops the copy from the money AND the count)
+ *   - cancelled-no-charge zeroing
+ * The portal used to compute its own totals and throw this block away, which is exactly how a
+ * customer's invoice came to bill 8 cancelled orders plus a duplicate copy of one order.
+ *
+ * Nullable by contract: PrepShip computes totals only for a single-client request.
+ */
+export type CanonicalBillingTotals = {
+  orderCount: number;
+  pickPackTotal: number;
+  additionalTotal: number;
+  packageTotal: number;
+  shippingTotal: number;
+  storageTotal: number;
+  adjustmentTotal: number;
+  replacePostageTotal: number;
+  replacePickPackTotal: number;
+  returnTotal: number;
+  returnPostageTotal: number;
+  returnProcessingTotal: number;
+  grandTotal: number;
+};
+
+const TOTALS_FIELDS = [
+  'orderCount', 'pickPackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal',
+  'storageTotal', 'adjustmentTotal', 'replacePostageTotal', 'replacePickPackTotal',
+  'returnTotal', 'returnPostageTotal', 'returnProcessingTotal', 'grandTotal',
+] as const;
+
+/**
+ * Parse the totals block, or return null.
+ *
+ * Strict about NUMBERS, tolerant about ABSENCE. A deployed PrepShip predating a newly added
+ * field must not blank a customer's invoice, so a missing field reads as 0. But a field that is
+ * PRESENT and unparseable is a contract breach and yields null, so the caller fails closed
+ * instead of printing a silent $0.00 — a zero on a real invoice is a customer-visible lie.
+ */
+export function parseCanonicalBillingTotals(raw: unknown): CanonicalBillingTotals | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, number> = {};
+  for (const field of TOTALS_FIELDS) {
+    const value = src[field];
+    if (value === undefined || value === null) { out[field] = 0; continue; }
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return null;
+    out[field] = n;
+  }
+  return out as unknown as CanonicalBillingTotals;
+}
+
 export type CanonicalBillingDetailsResult =
-  | { ok: true; rows: CanonicalBillingEventRow[] }
+  | { ok: true; rows: CanonicalBillingEventRow[]; totals: CanonicalBillingTotals | null }
   | { ok: false; status: number; error: string; code: string };
 
 /**
@@ -527,5 +584,8 @@ export async function fetchCanonicalBillingDetails(
     seen.add(id);
   }
 
-  return { ok: true, rows };
+  // Carry PrepShip's canonical totals through. The rows and the totals must come from the SAME
+  // upstream response or they can describe different periods — which is what happened when the
+  // portal paired proxied rows with its own locally-computed money.
+  return { ok: true, rows, totals: parseCanonicalBillingTotals(body?.totals) };
 }
