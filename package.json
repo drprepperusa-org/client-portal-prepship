@@ -130,6 +130,8 @@
     "test:client-portal-returns-cp057:integration": "tsx scripts/integration/client-portal-returns-cp057.integration.ts",
     "test:client-portal-returns-cp058": "tsx scripts/client-portal-returns-cp058-guard.mjs",
     "test:client-portal-returns-cp058:integration": "tsx scripts/integration/client-portal-returns-cp058-routes.integration.ts",
+    "test:client-portal-returns-cp063": "node scripts/client-portal-returns-cp063-guard.mjs",
+    "test:client-portal-returns-cp063:integration": "tsx scripts/integration/client-portal-returns-cp063.integration.ts",
     "test:client-portal-returns-delivery": "node scripts/client-portal-returns-delivery-guard.mjs",
     "test:client-portal-returns-label": "node scripts/client-portal-returns-label-guard.mjs",
     "test:client-portal-returns-pdf-download": "node scripts/client-portal-returns-pdf-download-guard.mjs",

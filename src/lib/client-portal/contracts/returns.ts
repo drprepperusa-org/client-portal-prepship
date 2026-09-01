@@ -69,6 +69,12 @@ export interface PortalReturnDetail extends PortalReturnRow {
   trackingStatus: string | null;
   deliveryError: string | null;
   returnToLocationId: number | null;
+  /**
+   * CP-063 — the return's current effective billing date, backend-derived as
+   * coalesce(billing_date_override, created_at). Display only; the correction rule
+   * stays PS-487-owned. The staff-only panel shows this and re-reads it after a save.
+   */
+  effectiveBillingDate: string | null;
   /** Resolved provider/mock URL or short-lived signed private URL; never a storage object path. */
   pdfUrl: string | null;
   requestedAt: string | null;

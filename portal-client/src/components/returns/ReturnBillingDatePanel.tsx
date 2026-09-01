@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { portalApi } from '@/lib/api';
 import { useMe } from '@/lib/hooks';
+import { shortDate } from '@/lib/status';
 
 /**
  * CP-058 AC-6 — staff-only correction of a return's billing date.
@@ -23,15 +24,31 @@ import { useMe } from '@/lib/hooks';
 const field =
   'min-h-11 w-full rounded-glass-sm bg-white/70 px-3 text-sm text-ink-1 ring-1 ring-slate-200/70 focus-ring';
 
-export function ReturnBillingDatePanel({ returnId }: { returnId: number }) {
+export function ReturnBillingDatePanel({
+  returnId,
+  currentBillingDate,
+}: {
+  returnId: number;
+  currentBillingDate: string | null;
+}) {
   const { accessToken } = useAuth();
   const me = useMe().data;
   const toast = useToast();
   const qc = useQueryClient();
-  const [newBillingDay, setNewBillingDay] = useState('');
+  // CP-063: the backend's current effective billing date as a YYYY-MM-DD the date input
+  // accepts. Derived from the read-model value — the panel does not own the billing date.
+  const currentDay = currentBillingDate ? currentBillingDate.slice(0, 10) : '';
+  const [newBillingDay, setNewBillingDay] = useState(currentDay);
   const [reason, setReason] = useState('');
   const [approval, setApproval] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // CP-063: re-sync the input to the backend's current billing date whenever it changes —
+  // on first load, and after a successful correction refetches the new value — so the panel
+  // reflects the saved date instead of clearing to a blank form.
+  useEffect(() => {
+    setNewBillingDay(currentDay);
+  }, [currentDay]);
 
   // Staff only. AC-6: clients can neither edit the date nor see the audit.
   if (!me?.isAdmin && !me?.isGlobal) return null;
@@ -71,6 +88,10 @@ export function ReturnBillingDatePanel({ returnId }: { returnId: number }) {
     <div className="space-y-2 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
       <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">
         Correct billing date (staff only)
+      </p>
+      <p className="text-xs text-ink-2">
+        Current billing date:{' '}
+        <span className="font-semibold text-ink">{shortDate(currentBillingDate)}</span>
       </p>
       <input
         type="date"

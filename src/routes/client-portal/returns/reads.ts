@@ -226,6 +226,12 @@ function registerReturnDetailRoute(app: Hono): void {
         pdfUrl,
         requestedAt: iso(row.ret.requestedAt),
         closedAt: iso(row.ret.closedAt),
+        // CP-063: the return's current effective billing date. Backend truth is
+        // coalesce(billing_date_override, created_at) — the same expression PS-487's
+        // regeneration uses. Surfaced here so the staff correction panel can show the
+        // current value (and reflect a saved change) instead of a blank form. Display
+        // only; the correction RULE stays PS-487-owned.
+        effectiveBillingDate: iso(row.ret.billingDateOverride ?? row.ret.createdAt),
         items: items.map((item: ReturnItem) => ({
           id: item.id,
           sku: item.sku,
