@@ -227,6 +227,17 @@ async function main(): Promise<void> {
     }) as typeof fetch;
   };
 
+  // CP-066: the printable /invoice takes its MONEY from the totals block PrepShip returns with
+  // the rows, and fails closed (502) without it. Every /invoice stub below must carry one, or
+  // the case 502s for a reason unrelated to what it is testing — which is exactly how this
+  // suite went red at the SHA that introduced the requirement. Hoisted here so sections 7 and
+  // 8 share it.
+  const CANONICAL_TOTALS_STUB = {
+    orderCount: 1, pickPackTotal: 0, additionalTotal: 0, packageTotal: 0, shippingTotal: 0,
+    storageTotal: 0, adjustmentTotal: 0, replacePostageTotal: 0, replacePickPackTotal: 0,
+    returnTotal: 3.5, returnPostageTotal: 0, returnProcessingTotal: 3.5, grandTotal: 3.5,
+  };
+
   const mount = (vars: Record<string, unknown>) => {
     const harness = new Hono();
     harness.use('*', async (c, next) => {
@@ -310,7 +321,7 @@ async function main(): Promise<void> {
       hasReturnPostageLine: false, returnPostageTotal: null,
       hasReturnProcessingLine: true, returnProcessingTotal: 3.5,
       returnTotal: 3.5, grandTotal: 3.5 }),
-  ] });
+  ], totals: CANONICAL_TOTALS_STUB });
   const printed = await mount(financials).request(
     `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
   );
@@ -332,7 +343,8 @@ async function main(): Promise<void> {
   ok('the absent postage line prints blank in the itemized row, never a fabricated $0.00');
 
   // 7g. And the printable invoice fails closed on the same malformed row.
-  stubCapturing({ data: [canonical(), {}] });
+  // Totals present and valid, so the 502 below can only come from the malformed ROW.
+  stubCapturing({ data: [canonical(), {}], totals: CANONICAL_TOTALS_STUB });
   const printedBad = await mount(financials).request(
     `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
   );
@@ -449,7 +461,7 @@ async function main(): Promise<void> {
   ok(`all ${producerRows.length} producer rows render with distinct identities and no internal field on the wire`);
 
   // 8f. The printable invoice renders the whole producer fixture without fabricating money.
-  stubCapturing({ data: producerRows });
+  stubCapturing({ data: producerRows, totals: CANONICAL_TOTALS_STUB });
   const printedAll = await mount(financials).request(
     `/invoice?clientId=7907&${RANGE}`, { headers: { authorization: BEARER } },
   );

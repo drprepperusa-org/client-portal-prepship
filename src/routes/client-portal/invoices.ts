@@ -11,6 +11,7 @@ import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
 import { fetchCanonicalInvoiceTotals } from '../../lib/client-portal/prepship-invoice-totals-proxy';
 import type { CanonicalBillingTotals } from '../../lib/client-portal/prepship-billing-details-proxy';
+import { assignCanonicalTotals, keyBillingSummaryRows } from '../../lib/client-portal/billing-summary-canonical-keys';
 // CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails and
 // portalInvoiceDetailCount are no longer called from here. They are left in the read model
 // because other callers still use them; importing them here would leave a dead reference that
@@ -59,10 +60,11 @@ app.get('/invoice-details', async (c) => {
     // (before pagination) — the read-model validates/ignores unknown keys.
     const sortBy = c.req.query('sortBy');
     const sortDir = c.req.query('sortDir');
+    // Days, not instants — see the note on the /invoice call site. PrepShip re-normalizes
+    // whatever it receives, so an exclusive bound arrives as an inclusive day and widens the
+    // window. The grid and the XLSX export read this route, so they drifted too.
+    // (Comment sits ABOVE the call: ps-384 and the sort guard pin the call's argument shape.)
     const result = await portalCanonicalInvoiceEvents(scope, authorization, {
-      // Days, not instants — see the note on the /invoice call site. PrepShip re-normalizes
-      // whatever it receives, so an exclusive bound arrives as an inclusive day and widens the
-      // window. The grid and the XLSX export read this route, so they drifted too.
       clientId, dateFrom: range.fromDay, dateTo: range.toDay, page, pageSize, sortBy, sortDir,
     }, requestId);
     if (!result.ok) {
@@ -82,8 +84,8 @@ app.get('/invoice-details', async (c) => {
     });
   }
 
+  // Days, not instants — same boundary contract as the paged branch above.
   const result = await portalCanonicalInvoiceEvents(scope, authorization, {
-    // Days, not instants — same boundary contract as the paged branch above.
     clientId, dateFrom: range.fromDay, dateTo: range.toDay,
   }, requestId);
   if (!result.ok) {
@@ -133,20 +135,27 @@ app.get('/invoice-summary', async (c) => {
   if (!listAuthorization) return c.json({ error: 'Missing bearer token' }, 401);
   const listRequestId = c.req.header('x-request-id') ?? undefined;
 
-  type PeriodKey = string;
-  const periodOf = (row: { periodStart?: string; periodEnd?: string }): PeriodKey =>
-    `${row.periodStart ?? range.fromDay}|${row.periodEnd ?? range.toDay}`;
-  const periods = new Map<PeriodKey, number[]>();
-  for (const row of rows) {
-    const key = periodOf(row as { periodStart?: string; periodEnd?: string });
-    const ids = periods.get(key);
-    if (ids) ids.push(Number(row.clientId));
-    else periods.set(key, [Number(row.clientId)]);
-  }
+  // Every row must carry a coherent identity BEFORE any money is fetched for it. These are
+  // producer-contract checks — the read models above always emit these fields — so a violation
+  // is a bug upstream of this route, and the answer is 502, not a best-effort row.
+  const contractBreach = async (reason: string) => {
+    await recordPortalAudit('portal.invoice_summary.failed', scope, { clientId, reason });
+    return c.json(
+      { error: 'Billing summary rows did not match the expected shape.', code: 'billing_summary_contract_mismatch' },
+      502,
+    );
+  };
 
-  const canonicalByPeriod = new Map<PeriodKey, Map<number, CanonicalBillingTotals>>();
-  for (const [key, clientIds] of periods) {
-    const [dateFrom, dateTo] = key.split('|') as [string, string];
+  // WHICH (client, period) each row's money comes from is decided by a PURE module, because
+  // that decision is the whole risk here and it must be testable without a database. Review
+  // broke it twice while every route-level guard stayed green — see
+  // billing-summary-canonical-keys.ts for the two rules it owns (clamp, and fail closed on
+  // absence). This route only fetches and renders what that module tells it to.
+  const keyedResult = keyBillingSummaryRows(rows, range);
+  if (!keyedResult.ok) return contractBreach(keyedResult.reason);
+
+  const canonicalByPeriod = new Map<string, Map<number, CanonicalBillingTotals>>();
+  for (const [key, { dateFrom, dateTo, clientIds }] of keyedResult.periods) {
     const result = await fetchCanonicalInvoiceTotals(
       listAuthorization,
       { clientIds, dateFrom, dateTo },
@@ -162,26 +171,22 @@ app.get('/invoice-summary', async (c) => {
     canonicalByPeriod.set(key, result.byClient);
   }
 
-  const canonicalRows = rows.map((row) => {
-    const totals = canonicalByPeriod.get(periodOf(row as { periodStart?: string; periodEnd?: string }))
-      ?.get(Number(row.clientId));
-    // A client with no canonical row for the period genuinely has no billable activity in it —
-    // the endpoint returns a row for every id it was asked about, so absence here means the
-    // upstream dropped it as out of scope. Zeroing is right, and it matches what the customer's
-    // invoice for that period would render.
-    return {
-      ...row,
-      orders: totals?.orderCount ?? 0,
-      pickpackTotal: String(totals?.pickPackTotal ?? 0),
-      additionalTotal: String(totals?.additionalTotal ?? 0),
-      packageTotal: String(totals?.packageTotal ?? 0),
-      shippingTotal: String(totals?.shippingTotal ?? 0),
-      storageTotal: String(totals?.storageTotal ?? 0),
-      returnPostageTotal: String(totals?.returnPostageTotal ?? 0),
-      returnProcessingTotal: String(totals?.returnProcessingTotal ?? 0),
-      rowTotal: String(totals?.grandTotal ?? 0),
-    };
-  });
+  // Absence is a breach, never $0.00 — the module refuses to assign a row it cannot find.
+  const assigned = assignCanonicalTotals(keyedResult.keyed, canonicalByPeriod);
+  if (!assigned.ok) return contractBreach(assigned.reason);
+
+  const canonicalRows = assigned.rows.map(({ row, totals }) => ({
+    ...row,
+    orders: totals.orderCount,
+    pickpackTotal: String(totals.pickPackTotal),
+    additionalTotal: String(totals.additionalTotal),
+    packageTotal: String(totals.packageTotal),
+    shippingTotal: String(totals.shippingTotal),
+    storageTotal: String(totals.storageTotal),
+    returnPostageTotal: String(totals.returnPostageTotal),
+    returnProcessingTotal: String(totals.returnProcessingTotal),
+    rowTotal: String(totals.grandTotal),
+  }));
 
   // CP-011: grand totals across all summary rows are backend-owned, so the
   // Billing footer renders these instead of the frontend reducing per-period

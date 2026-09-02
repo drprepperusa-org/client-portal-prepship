@@ -254,7 +254,8 @@
     "verify:client-portal-live": "tsx scripts/verify-client-portal-live-parity.ts",
     "verify:client-portal-rbac": "tsx scripts/verify-client-portal-rbac.ts",
     "watchdog:production": "node scripts/production-watchdog.mjs",
-    "test:client-portal-invoice-canonical-totals": "tsx scripts/client-portal-invoice-canonical-totals-guard.ts"
+    "test:client-portal-invoice-canonical-totals": "tsx scripts/client-portal-invoice-canonical-totals-guard.ts",
+    "test:client-portal-billing-summary-canonical": "tsx scripts/client-portal-billing-summary-canonical-guard.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

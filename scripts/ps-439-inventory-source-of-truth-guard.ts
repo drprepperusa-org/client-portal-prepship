@@ -57,6 +57,10 @@ assert.match(portalBilling, /\$\{baseUrl\}\/billing\/generate/);
 
 assert.doesNotMatch(invoiceReadModel, /heritagePrepFeeRowsForRange|HERITAGE_PREP_FEE_CLIENT_NAME/);
 assert.doesNotMatch(invoiceRoute, /heritagePrepFeeRowsForRange|HERITAGE_PREP_FEE_CLIENT_NAME|const sumDetails =/);
-assert.match(invoiceRoute, /grandTotal: Number\(row\?\.grandTotal/);
+// The invoice's money must come from a canonical total, never a sum over its detail rows. This
+// used to pin `grandTotal: Number(row?.grandTotal` — this repo's OWN aggregation row, which
+// CP-066 removed because it implemented neither of PrepShip's suppression rules and billed a
+// customer for cancelled orders. The property is unchanged; the owner it points at is not.
+assert.match(invoiceRoute, /grandTotal: canonicalTotals\.grandTotal/);
 
 console.log('PASS CP PS-462 inventory and billing shadow-renderer guard');

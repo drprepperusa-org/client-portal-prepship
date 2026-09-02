@@ -129,6 +129,17 @@ export async function fetchCanonicalInvoiceTotals(
         error: 'PrepShip billing totals contained an unreadable amount.',
       };
     }
+    // One answer per client. A second row for the same id is a contract breach — silently
+    // keeping either copy would let the caller assign one client's money twice, or to the
+    // wrong period, with nothing to indicate it.
+    if (byClient.has(clientId) || !ids.includes(clientId)) {
+      return {
+        ok: false,
+        status: 502,
+        code: 'prep_ship_billing_contract_mismatch',
+        error: 'PrepShip billing totals returned a duplicate or unrequested client.',
+      };
+    }
     byClient.set(clientId, totals);
   }
   return { ok: true, byClient };
