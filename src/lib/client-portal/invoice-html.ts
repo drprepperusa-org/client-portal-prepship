@@ -69,10 +69,14 @@ type InvoiceDetailRows = BillingInvoiceDetailRow[];
 
 const invoicePrintStyles = `
     * { box-sizing: border-box; }
+    /* FIT THE PAGE. Nineteen columns: an 1120px body hid the right-hand ones behind a horizontal
+       scrollbar on screen and clipped them off a portrait print. The body uses the viewport, the
+       table is fixed-layout at 100% so every column is always on the page, headers wrap by word,
+       and print is landscape with the header row repeated on every page. */
     body {
       margin: 0 auto;
-      max-width: 1120px;
-      padding: 40px 48px;
+      max-width: 1600px;
+      padding: 28px 32px;
       color: #111827;
       background: #fff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -125,16 +129,27 @@ const invoicePrintStyles = `
       margin-bottom: 20px;
       font-size: 12px;
     }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #f9fafb; color: #374151; text-transform: uppercase; font-size: 10px; letter-spacing: .06em; }
-    td, th { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+    /* Mixed case, no letter-spacing: at 19 columns an uppercase "DESTINATION" no longer fits a
+       column and broke mid-word. A header word breaks only when it cannot fit on its own line. */
+    th { background: #f9fafb; color: #374151; font-size: 8px; font-weight: 800; overflow-wrap: break-word; vertical-align: bottom; }
+    td, th { border: 1px solid #e5e7eb; padding: 5px 2px; text-align: left; overflow-wrap: break-word; }
+    /* Column widths for the fixed layout: the text columns need room; the thirteen money/qty
+       columns share the remainder equally. Percentages, so one rule set fits a 1280px screen
+       and a landscape page alike. */
+    th.col-date { width: 8.5%; }
+    th.col-ref { width: 5%; }
+    th.col-type { width: 5%; }
+    th.col-dest { width: 5.5%; }
+    th.col-sku { width: 7.5%; }
+    th.col-box { width: 5.5%; }
     .item-name { white-space: pre-line; }
     tbody tr:nth-child(even) { background: #fafafa; }
     .num { text-align: right; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .order-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #2563eb; }
     .bold { font-weight: 800; }
-    tfoot td { font-weight: 800; background: #f3f4f6; }
+    tfoot td { font-weight: 800; background: #f3f4f6; font-size: 10px; }
     .footer {
       border-top: 1px solid #e5e7eb;
       color: #9ca3af;
@@ -143,9 +158,28 @@ const invoicePrintStyles = `
       text-align: center;
       font-size: 11px;
     }
+    /* PRINT: landscape, full width, compact, the header row on every page, no row split across pages. */
+    @page { size: landscape; margin: 8mm 9mm; }
     @media print {
       .print-tip { display: none; }
-      body { padding: 18px; max-width: none; }
+      body { padding: 0; max-width: none; font-size: 10px; }
+      .header { margin-bottom: 10px; padding-bottom: 8px; gap: 12px; }
+      .brand h1 { font-size: 16px; margin-bottom: 3px; }
+      .client strong { font-size: 13px; }
+      .summary { gap: 6px; margin: 8px 0; }
+      .card { padding: 5px 8px; border-radius: 4px; }
+      .label { font-size: 7.5px; }
+      .value { margin-top: 1px; font-size: 11px; }
+      .total { padding: 6px 12px; margin-bottom: 8px; border-radius: 4px; font-size: 10px; }
+      .total b { font-size: 15px; }
+      .trunc-note { margin-bottom: 8px; padding: 5px 10px; font-size: 9px; }
+      table { font-size: 8.5px; }
+      thead { display: table-header-group; }
+      th { font-size: 6.5px; padding: 3px 2px; }
+      td { padding: 2px 3px; }
+      tfoot td { font-size: 8.5px; }
+      tr { page-break-inside: avoid; break-inside: avoid; }
+      .footer { margin-top: 8px; padding-top: 4px; font-size: 7.5px; }
     }
 `;
 
@@ -282,9 +316,9 @@ export function renderPortalInvoiceHtml(input: {
   ${truncNote}
   <table>
     <thead><tr>
-      <th>Billing / Activity Date</th><th>Reference</th><th>Type</th><th>Destination</th><th>SKU(s)</th><th class="num">Qty</th>
+      <th class="col-date">Billing / Activity Date</th><th class="col-ref">Reference</th><th class="col-type">Type</th><th class="col-dest">Destination</th><th class="col-sku">SKU(s)</th><th class="num">Qty</th>
       <th class="num">Pick &amp; Pack</th><th class="num">Addl Units</th>
-      <th class="num">Box Charge</th><th>Box Size</th><th class="num">Shipping</th>
+      <th class="num">Box Charge</th><th class="col-box">Box Size</th><th class="num">Shipping</th>
       <th class="num">Storage</th><th class="num">Adjustment</th>
       <th class="num">Return Processing</th><th class="num">Return Postage</th>
       <th class="num">Return Total</th>
