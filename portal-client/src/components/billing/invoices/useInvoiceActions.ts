@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useToast } from '@/components/ui/Toast';
-import { portalApi, type BillingInvoiceDetailRow } from '@/lib/api';
-import { exportInvoiceExcel } from '@/lib/invoiceExcel';
-import { fetchAllInvoiceRows as fetchAllInvoiceRowsPaged } from '@/lib/invoiceRows';
+import { portalApi } from '@/lib/api';
+import { downloadFile } from '@/lib/downloadFile';
+import { downloadInvoiceWorkbook } from '@/lib/invoiceWorkbookDownload';
 import type { PeriodSummary } from '../invoiceColumns';
 
 interface InvoiceActionsOptions {
@@ -11,21 +11,6 @@ interface InvoiceActionsOptions {
   clientFilter: number | undefined;
   from: string;
   to: string;
-}
-
-async function fetchAllInvoiceRows(
-  token: string,
-  clientId: number | undefined,
-  rangeFrom: string,
-  rangeTo: string,
-): Promise<{ rows: BillingInvoiceDetailRow[]; truncated: boolean }> {
-  return fetchAllInvoiceRowsPaged({
-    fetcher: portalApi.invoiceDetailsRange,
-    token,
-    clientId,
-    rangeFrom,
-    rangeTo,
-  });
 }
 
 export function useInvoiceActions({
@@ -64,9 +49,18 @@ export function useInvoiceActions({
     }
   }
 
+  /**
+   * CP-068 — the Excel export IS PrepShip's workbook.
+   *
+   * The portal used to page every /invoice-details row into the browser and build its own
+   * sheet — its own columns, its own totals row. That was a second serializer of invoice
+   * money beside the printable invoice, which already renders PrepShip's canonical totals.
+   * Now the bytes PrepShip's own Export serves go straight to the download manager through
+   * invoiceWorkbookDownload.ts, which a guard EXECUTES to prove the Blob is the same object
+   * in and out. Nothing here reads rows, decides columns, or adds anything up.
+   */
   async function exportExcel(
     clientId: number,
-    clientName: string,
     rangeFrom: string,
     rangeTo: string,
     busyKey: string,
@@ -74,48 +68,35 @@ export function useInvoiceActions({
     if (exporting != null || !accessToken) return;
     setExporting(busyKey);
     try {
-      const result = await fetchAllInvoiceRows(accessToken, clientId, rangeFrom, rangeTo);
-      if (!result.rows.length) {
-        toast.error('Nothing to export', 'No billable lines for this client in this period.');
-        return;
-      }
-      await exportInvoiceExcel(result.rows, { clientName, from: rangeFrom, to: rangeTo });
-      if (result.truncated) {
-        toast.warning('Partial export', 'This range is very large; narrow it for a complete file.');
-      }
+      const file = await downloadInvoiceWorkbook(
+        { fetchWorkbook: portalApi.invoiceWorkbookRange, sink: downloadFile },
+        accessToken, clientId, rangeFrom, rangeTo,
+      );
+      toast.success('Excel ready', `${file.filename} — PrepShip's invoice workbook for ${rangeFrom} → ${rangeTo}.`);
     } catch (error) {
-      toast.error('Excel export failed', error instanceof Error ? error.message : 'Could not build the Excel file.');
+      toast.error('Excel export failed', error instanceof Error ? error.message : 'Could not download the Excel file.');
     } finally {
       setExporting(null);
     }
   }
 
+  /**
+   * Whole-range export. PrepShip issues one workbook per client, so this resolves the page to
+   * ONE client (the filter, or the only client on the page). DJ ruled (CP-068, 2026-09-02):
+   * one file per client — no merged multi-client sheet is assembled anywhere.
+   */
   async function exportAllPeriods() {
     if (exporting != null || !accessToken) return;
     const clientIds = [...new Set(summary.map((row) => row.clientId))];
     const clientId = clientFilter ?? (clientIds.length === 1 ? clientIds[0] : undefined);
-    const multiClient = clientId == null && clientIds.length > 1;
-    const clientName = clientId == null
-      ? 'All clients'
-      : summary.find((row) => row.clientId === clientId)?.clientName ?? `Client ${clientId}`;
-    setExporting('all-periods');
-    try {
-      const result = await fetchAllInvoiceRows(accessToken, clientId, from, to);
-      if (!result.rows.length) {
-        toast.error('Nothing to export', 'No billable lines in this date range.');
-        return;
-      }
-      await exportInvoiceExcel(result.rows, { clientName, from, to, includeClient: multiClient });
-      if (result.truncated) {
-        toast.warning('Partial export', 'This range is very large; narrow it for a complete file.');
-      } else {
-        toast.success('Excel ready', `${result.rows.length.toLocaleString()} lines across ${from} → ${to}.`);
-      }
-    } catch (error) {
-      toast.error('Excel export failed', error instanceof Error ? error.message : 'Could not build the Excel file.');
-    } finally {
-      setExporting(null);
+    if (clientId == null) {
+      toast.info(
+        'Choose a client to export',
+        'PrepShip issues one invoice workbook per client. Filter to a client, then export the whole range.',
+      );
+      return;
     }
+    await exportExcel(clientId, from, to, 'all-periods');
   }
 
   return { opening, exporting, viewInvoice, exportExcel, exportAllPeriods };

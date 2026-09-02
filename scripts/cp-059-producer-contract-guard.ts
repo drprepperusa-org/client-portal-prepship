@@ -37,7 +37,6 @@ const { renderPortalInvoiceHtml } = await import('../src/lib/client-portal/invoi
 const { toPortalDetailRow } = await import(
   '../src/lib/client-portal/read-models/canonical-invoice-events.js'
 );
-const { buildInvoiceExcelSheet } = await import('../portal-client/src/lib/invoiceExcel.js');
 const { invoiceRowKey } = await import('../portal-client/src/lib/invoiceRows.js');
 
 let checks = 0;
@@ -377,39 +376,10 @@ assert.ok(
 );
 ok(`all ${reconciledRows} printed rows reconcile from VISIBLE cells, ${rowsCarryingReplacement} carrying replacement money`);
 
-const { sheet } = buildInvoiceExcelSheet(projected as never);
-assert.equal(sheet.length, accepted.length + 2, 'header + every row + totals');
-ok('every producer row survives into the spreadsheet export');
-
-// The same property in the spreadsheet, where a hidden category is worse: the numbers get
-// summed, filtered and reconciled by whoever opens it.
-const xlsxHeaders = (sheet[0] as Array<{ value: string }>).map((c) => c?.value);
-for (const label of ['Replacement Postage', 'Replacement Pick & Pack', 'Adjustment']) {
-  assert.ok(xlsxHeaders.includes(label), `the export must have a ${label} column`);
-}
-const colOf = (label: string) => xlsxHeaders.indexOf(label);
-const XLSX_COMPONENTS = ['Pick & Pack', 'Addl Units', 'Box Charge', 'Shipping', 'Storage',
-  'Adjustment', 'Return Total', 'Replacement Postage',
-  'Replacement Pick & Pack'].map(colOf);
-const XLSX_TOTAL = colOf('Fulfillment Fee');
-assert.ok(XLSX_TOTAL > 0 && XLSX_COMPONENTS.every((c) => c > 0), 'every expected column is present');
-
-const xlsxCellValue = (cell: unknown): number => {
-  const value = (cell as { value?: unknown })?.value;
-  return typeof value === 'number' ? value : 0;
-};
-let xlsxReconciled = 0;
-for (const row of sheet.slice(1, -1)) {
-  const cells = row as unknown[];
-  const visible = XLSX_COMPONENTS.reduce((sum, col) => sum + xlsxCellValue(cells[col]), 0);
-  const total = xlsxCellValue(cells[XLSX_TOTAL]);
-  assert.equal(
-    Math.round(visible * 100) / 100, Math.round(total * 100) / 100,
-    `a spreadsheet row's visible components (${visible}) do not add up to its total (${total})`,
-  );
-  xlsxReconciled += 1;
-}
-ok(`all ${xlsxReconciled} spreadsheet rows reconcile from visible numeric cells`);
+// CP-068: the spreadsheet half of this reconciliation is gone. The Excel export is PrepShip's
+// workbook, passed through unmodified, so there is no portal-built sheet whose visible cells
+// could hide a category. client-portal-invoice-export-proxy-guard.ts pins that nothing here
+// constructs spreadsheet cells.
 
 // --- 4. the whole fixture passes through the response boundary as one payload -----------------
 
@@ -424,7 +394,7 @@ assert.ok(whole.ok, `the full producer payload must not fail the response bounda
 assert.equal(whole.rows.length, accepted.length, 'every producer row survives the response boundary');
 ok('the entire producer payload passes the response boundary in one piece');
 
-const EXPECTED_CHECKS = 18;
+const EXPECTED_CHECKS = 16;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log('');
 console.log(`PASS CP-059 producer contract guard - ${checks}/${EXPECTED_CHECKS} checks`);

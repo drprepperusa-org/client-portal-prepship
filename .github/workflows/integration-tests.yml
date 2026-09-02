@@ -59,6 +59,12 @@ jobs:
       # MISS cannot erase a canonical Return row, and that sort/pagination never regroup.
       - name: Run CP-059 canonical billing event-row integration suite
         run: npm run test:client-portal-billing-cp059:integration
+      # CP-068. The portal's invoice Export is PrepShip's workbook, passed through. Proves against
+      # a real database that the route gates scope before any upstream call, forwards the bearer,
+      # sends days only, and returns the producer's bytes unmodified — a valid workbook whose first
+      # row is PrepShip's 19-column header.
+      - name: Run CP-068 invoice-export pass-through integration suite
+        run: npm run test:client-portal-invoice-export-cp068:integration
       # Cross-repo classification ownership. Runs the local half always; the
       # upstream half only when PREPSHIP_CONTRACT_TOKEN is configured (prepship-v4
       # is private, so the default GITHUB_TOKEN cannot read it). Without the

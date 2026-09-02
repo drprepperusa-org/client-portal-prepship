@@ -12,7 +12,7 @@ import {
   billingRangeParams,
   defaultRange,
 } from '../scope';
-import { apiGet, apiPost, apiText } from '../transport';
+import { apiBlob, apiGet, apiPost, apiText } from '../transport';
 
 type BillingGenerateResult = {
   generated: number;
@@ -147,6 +147,18 @@ export const billingApi = {
       clientId,
       ...billingRangeParams({ from: dateFrom, to: dateTo }),
     }),
+  /**
+   * CP-068 — PrepShip's invoice workbook for ONE client over a range of days, unmodified.
+   * The portal used to assemble its own .xlsx from /invoice-details rows; that was a second
+   * serializer of invoice money. The bytes here are the same file PrepShip's own Export serves.
+   */
+  invoiceWorkbookRange: (token: string, clientId: number, dateFrom: string, dateTo: string) =>
+    apiBlob(
+      token,
+      '/api/client-portal/invoice.xlsx',
+      { clientId, ...billingRangeParams({ from: dateFrom, to: dateTo }) },
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ),
   generateBilling: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
     runBillingGenerate(token, dateFrom, dateTo, clientId),
   billingStatus: (token: string) =>

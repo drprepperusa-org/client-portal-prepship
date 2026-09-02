@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { readSourceTree } from './lib/source-tree.mjs';
 import type { BillingInvoiceDetailRow } from '../portal-client/src/lib/api';
-import { fetchAllInvoiceRows, INVOICE_EXPORT_MAX_PAGES, INVOICE_EXPORT_PAGE_SIZE } from '../portal-client/src/lib/invoiceRows';
 import { renderPortalInvoiceHtml } from '../src/lib/client-portal/invoice-html';
 
 let failures = 0;
@@ -31,7 +30,6 @@ const invoices = readSourceTree([
   'portal-client/src/components/billing/invoiceColumns.tsx',
   'portal-client/src/components/billing/invoices',
 ]);
-const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
 const routes = read('src/routes/client-portal/invoices.ts');
 const readModel = read('src/lib/client-portal/read-models/invoice-details.ts');
 const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
@@ -74,15 +72,15 @@ check('detail endpoint returns a paginated slice plus full event-row count',
 check('detail read model caps only the visible/unpaginated detail path, not summary truth',
   /limit \$\{input\.pageSize \?\? \(input\.clientId \? 5000 : 1000\)\}/.test(detailBlock));
 
-check('exports use the shared paginated fetch-all helper, not the capped unpaginated path',
-  /import \{ fetchAllInvoiceRows as fetchAllInvoiceRowsPaged \} from '@\/lib\/invoiceRows'/.test(invoices) &&
-    /fetcher: portalApi\.invoiceDetailsRange/.test(invoices) &&
+// CP-068: the export no longer pages rows into the browser at all — it downloads PrepShip's
+// workbook, which PrepShip renders over the FULL period from its own uncapped query. The
+// truncation risk this guard protected against cannot exist on that path, so the property
+// became "the export reads no rows".
+check('exports download PrepShip\'s whole-period workbook instead of paging capped detail rows',
+  /fetchWorkbook: portalApi\.invoiceWorkbookRange/.test(invoices) &&
+    /downloadInvoiceWorkbook\(/.test(invoices) &&
+    !/invoiceDetailsRange|fetchAllInvoiceRows/.test(sliceBetween(invoices, 'async function exportExcel', 'return { opening')) &&
     !/pageSize: 5000/.test(invoices));
-
-check('fetch-all helper walks backend pagination with an explicit row ceiling',
-  /INVOICE_EXPORT_PAGE_SIZE = 200/.test(invoiceRows) &&
-    /INVOICE_EXPORT_MAX_PAGES = 250/.test(invoiceRows) &&
-    /res\.pagination\?\.totalPages/.test(invoiceRows));
 
 check('printable invoice renderer has an explicit partial-itemization note',
   /Amount due above is complete/.test(invoiceHtml) &&
@@ -97,63 +95,6 @@ const highVolumeRows: BillingInvoiceDetailRow[] = Array.from({ length: 6001 }, (
   qty: '1',
   rowTotal: '1.00',
 }));
-const calls: Array<{ page?: number; pageSize?: number; clientId?: number }> = [];
-const completeExport = await fetchAllInvoiceRows({
-  token: 'token',
-  clientId: 44,
-  rangeFrom: '2026-04-03',
-  rangeTo: '2026-07-01',
-  fetcher: async (_token, _from, _to, clientId, opts = {}) => {
-    calls.push({ page: opts.page, pageSize: opts.pageSize, clientId });
-    const page = opts.page ?? 1;
-    const pageSize = opts.pageSize ?? INVOICE_EXPORT_PAGE_SIZE;
-    return {
-      data: highVolumeRows.slice((page - 1) * pageSize, page * pageSize),
-      pagination: {
-        page,
-        pageSize,
-        total: highVolumeRows.length,
-        totalPages: Math.ceil(highVolumeRows.length / pageSize),
-      },
-    };
-  },
-});
-
-check('export helper includes every row for a >5000-detail high-volume fixture',
-  completeExport.rows.length === 6001 &&
-    completeExport.truncated === false &&
-    calls.length === Math.ceil(6001 / INVOICE_EXPORT_PAGE_SIZE) &&
-    calls.every((call) => call.pageSize === INVOICE_EXPORT_PAGE_SIZE && call.clientId === 44),
-  { rows: completeExport.rows.length, calls: calls.length, truncated: completeExport.truncated });
-
-const ceilingExport = await fetchAllInvoiceRows({
-  token: 'token',
-  clientId: undefined,
-  rangeFrom: '2026-04-03',
-  rangeTo: '2026-07-01',
-  fetcher: async (_token, _from, _to, _clientId, opts = {}) => {
-    const page = opts.page ?? 1;
-    const pageSize = opts.pageSize ?? INVOICE_EXPORT_PAGE_SIZE;
-    return {
-      data: Array.from({ length: pageSize }, (_, index) => ({
-        clientId: index % 2 === 0 ? 44 : 45,
-        orderId: (page - 1) * pageSize + index + 1,
-        rowTotal: '1.00',
-      })),
-      pagination: {
-        page,
-        pageSize,
-        total: (INVOICE_EXPORT_MAX_PAGES + 1) * pageSize,
-        totalPages: INVOICE_EXPORT_MAX_PAGES + 1,
-      },
-    };
-  },
-});
-
-check('export helper flags a partial export instead of silently hiding the hard page ceiling',
-  ceilingExport.truncated === true &&
-    ceilingExport.rows.length === INVOICE_EXPORT_MAX_PAGES * INVOICE_EXPORT_PAGE_SIZE);
-
 const html = renderPortalInvoiceHtml({
   clientName: 'Tran Agency',
   dateFrom: '2026-04-03',

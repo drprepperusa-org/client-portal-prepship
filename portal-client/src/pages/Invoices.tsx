@@ -108,7 +108,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           onSelect={(value) => { setSelected(value); setDetailPage(1); }}
           onExportAll={() => { void actions.exportAllPeriods(); }}
           onExport={(row, key) => {
-            void actions.exportExcel(row.clientId, row.clientName, row.periodStart, row.periodEnd, key);
+            void actions.exportExcel(row.clientId, row.periodStart, row.periodEnd, key);
           }}
           onView={(row, key) => {
             void actions.viewInvoice(row.clientId, row.periodStart, row.periodEnd, key);
@@ -132,7 +132,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           onSortChange={(sort) => { setDetailSort(sort); setDetailPage(1); }}
           onShipmentSelect={handleShipmentSelect}
           onExport={() => {
-            void actions.exportExcel(selected.clientId, selected.clientName, selected.from, selected.to, busyKey);
+            void actions.exportExcel(selected.clientId, selected.from, selected.to, busyKey);
           }}
           onView={() => {
             void actions.viewInvoice(selected.clientId, selected.from, selected.to, busyKey);

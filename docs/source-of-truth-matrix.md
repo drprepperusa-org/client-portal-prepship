@@ -1121,13 +1121,25 @@ Guards: `client-portal-billing-totals-guard.mjs`,
 | --- | --- | --- | --- | --- | --- |
 | Invoice line items | `items[]` (name/sku/qty) | invoice-detail rows | `read-models/invoice-details.ts` over `billing_line_items` + `order_items` | billing time | backend-owned-truth |
 | Printable invoice totals | section totals / amount due | backend totals | invoice read-model (CP-024 — HTML money is backend-owned) | billing time | backend-owned-truth (CP-024) |
-| Excel "Export all" | full-range rows | paginated fetch of every line item | invoice-details, page-through (no 5000/1000-row truncation) | billing time | presentation-only |
+| Excel export (per client, whole range) | PrepShip workbook bytes | `GET /api/client-portal/invoice.xlsx` → PrepShip `GET /billing/invoice.xlsx` | PrepShip `renderInvoiceXlsx` over `billingInvoiceData` (columns: `billing-invoice-columns.ts`, totals: SUM formulas) | billing time | backend-owned-truth (CP-068, byte pass-through) |
+| CSV export (per client, whole range) | PrepShip CSV bytes | `GET /api/client-portal/invoice.csv` → PrepShip `GET /billing/invoice.csv` | PrepShip `renderInvoiceCsv` over the same `billingInvoiceData` | billing time | backend-owned-truth (CP-068, byte pass-through) |
 | Carrier code | (never shipped) | dropped from `invoice-details` SQL + DTO | — | n/a | backend-owned-truth (redaction, CP-018) |
 
-Owner: `read-models/invoice-details.ts`, `Invoices.tsx`. The `.xlsx` stays
-client-safe (no carrier/service). Guards:
-`client-portal-invoice-items-guard.ts`,
-`client-portal-invoice-export-range-guard.mjs`.
+Owner: `read-models/invoice-details.ts`, `Invoices.tsx` for the grid and the printable
+invoice; PrepShip (`src/routes/billing.ts`) for the `.xlsx` / `.csv` exports, which the
+portal passes through unmodified (`prepship-invoice-export-proxy.ts`, CP-068) — it builds
+no spreadsheet cells. Guards: `client-portal-invoice-items-guard.ts`,
+`client-portal-invoice-export-range-guard.mjs`,
+`client-portal-invoice-export-proxy-guard.ts`.
+
+DJ rulings (CP-068, 2026-09-02): (1) the `Carrier` column PrepShip's workbook and CSV carry
+is APPROVED as a customer-visible field on the invoice exports — recorded under "DJ-approved
+exceptions" below; it is PrepShip's own artifact, passed through, and the carrier is already
+inferable from the tracking numbers the portal shows. Every other CP-018 / CP-024 redaction
+(service, provider, rate identity, label cost, margin) is unchanged. (2) The export is ONE
+FILE PER CLIENT: "Export all" resolves the page to a client (the filter, or the only client
+present) and otherwise asks the user to pick one. No merged multi-client sheet is built
+anywhere.
 
 ### Returns (CP-026 → CP-031)
 
@@ -1269,10 +1281,19 @@ and this row becomes a real mapping.
 
 ### DJ-approved exceptions
 
-None. No Client Portal surface currently derives an authoritative business value
-outside a database / PrepShip-backed canonical owner. Any future exception must
-be recorded here with the DJ approval, the exact field, and the justification,
-and must still document source inputs, event clock, and formula.
+- **CP-068 (DJ, 2026-09-02) — `Carrier` on the invoice `.xlsx` / `.csv` exports.** Field:
+  the `Carrier` column of PrepShip's invoice workbook and CSV (`billing-invoice-columns.ts`,
+  rendered by `invoiceCarrierCell`). Owner: PrepShip; the portal passes the bytes through
+  unmodified. Justification: DJ's rule that every invoice export carries the same data
+  cross-app; the carrier name is already inferable from the tracking numbers the portal
+  shows. Scope: this column only — service, provider, rate identity, label cost and margin
+  stay redacted everywhere (CP-018 / CP-024). Event clock: billing time; formula: none
+  (a label, not a derived value).
+
+No other Client Portal surface derives an authoritative business value outside a
+database / PrepShip-backed canonical owner. Any future exception must be recorded here
+with the DJ approval, the exact field, and the justification, and must still document
+source inputs, event clock, and formula.
 
 ### CP remediation reference
 
@@ -1297,6 +1318,9 @@ and must still document source inputs, event clock, and formula.
   ship date), not ordered units.
 - **CP-024** — printable-invoice money totals are backend-owned; the Excel
   export stays carrier/service-free.
+- **CP-068** — the Excel / CSV exports are PrepShip's own files, passed
+  through byte-for-byte; the portal builds no spreadsheet cells (see the open
+  carrier-column decision above).
 - **CP-026 → CP-031** — returns workflow/item/inspection/media tables own only
   workflow detail; label money + tracking stay on `shipments`; no portal-side
   rate-shopping; offline-mock labels only for test clients; operator-gated receiving.
