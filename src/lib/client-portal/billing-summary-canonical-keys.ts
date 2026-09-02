@@ -44,13 +44,26 @@ export type KeyedBillingSummaryRow<R> = {
 export type BillingSummaryPeriod = { dateFrom: string; dateTo: string; clientIds: number[] };
 
 export type BillingSummaryContractBreach =
+  | 'range_invalid'
   | 'client_id_not_integer'
   | 'period_bounds_incomplete'
+  | 'period_bound_invalid'
   | 'period_outside_range'
   | 'duplicate_client_period'
   | 'canonical_totals_incomplete';
 
-// YYYY-MM-DD compares lexically, so a plain string comparison IS a date comparison.
+// YYYY-MM-DD compares lexically, so a plain string comparison IS a date comparison — but ONLY
+// for strings that really are YYYY-MM-DD. Review pointed out that this module claimed a
+// producer-contract boundary while accepting any string, so `2026-02-30` survived. It is
+// validated now: the right shape AND a day that exists.
+const CALENDAR_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const isCalendarDay = (s: string): boolean => {
+  const m = CALENDAR_DAY.exec(s);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+};
 const maxDay = (a: string, b: string): string => (a > b ? a : b);
 const minDay = (a: string, b: string): string => (a < b ? a : b);
 
@@ -71,6 +84,12 @@ export function keyBillingSummaryRows<R extends BillingSummaryIdentityRow>(
   const keyed: KeyedBillingSummaryRow<R>[] = [];
   const seen = new Set<string>();
 
+  // The range comes from billingDayRange, which already validates — but this module must not
+  // depend on who called it. Same rule as the rows: a bound that is not a real day is a breach.
+  if (!isCalendarDay(range.fromDay) || !isCalendarDay(range.toDay)) {
+    return { ok: false, reason: 'range_invalid' };
+  }
+
   for (const row of rows) {
     // A financial join is not the place to coerce. The read models emit a numeric client id;
     // anything else is a contract breach, not a value to be Number()'d into shape.
@@ -84,6 +103,9 @@ export function keyBillingSummaryRows<R extends BillingSummaryIdentityRow>(
     const hasStart = typeof row.periodStart === 'string';
     const hasEnd = typeof row.periodEnd === 'string';
     if (hasStart !== hasEnd) return { ok: false, reason: 'period_bounds_incomplete' };
+    if (hasStart && (!isCalendarDay(row.periodStart as string) || !isCalendarDay(row.periodEnd as string))) {
+      return { ok: false, reason: 'period_bound_invalid' };
+    }
 
     const dateFrom = hasStart ? maxDay(row.periodStart as string, range.fromDay) : range.fromDay;
     const dateTo = hasEnd ? minDay(row.periodEnd as string, range.toDay) : range.toDay;

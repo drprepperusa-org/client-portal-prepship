@@ -113,11 +113,23 @@ export async function fetchCanonicalInvoiceTotals(
   }
 
   const byClient = new Map<number, CanonicalBillingTotals>();
+  const malformed = (what: string): CanonicalInvoiceTotalsResult => ({
+    ok: false,
+    status: 502,
+    code: 'prep_ship_billing_contract_mismatch',
+    error: `PrepShip billing totals contained a malformed entry (${what}).`,
+  });
   for (const row of rows) {
-    if (!row || typeof row !== 'object') continue;
+    // A strictly typed financial boundary REJECTS a malformed entry rather than skipping it.
+    // Skipping was safe only because the completeness check downstream would catch a missing
+    // client — but "safe because something else notices" is not a contract, and an unrequested
+    // or unreadable entry means the producer is not the one this code was written against.
+    if (!row || typeof row !== 'object') return malformed('non-object row');
     const entry = row as { clientId?: unknown; totals?: unknown };
-    const clientId = Number(entry.clientId);
-    if (!Number.isInteger(clientId) || clientId <= 0) continue;
+    if (typeof entry.clientId !== 'number' || !Number.isInteger(entry.clientId) || entry.clientId <= 0) {
+      return malformed('client id');
+    }
+    const clientId = entry.clientId;
     const totals = parseCanonicalBillingTotals(entry.totals);
     // A row whose totals will not parse is a contract breach, not a zero. Returning 0 here
     // would put a confident, wrong number on a customer's Billing page.

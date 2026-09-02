@@ -47,6 +47,33 @@ const keysOf = (r: ReturnType<typeof keyBillingSummaryRows>) =>
     r.ok ? [...r.periods.keys()].join(',') : String(keysOf(r)));
 }
 
+// ── 1b. BOTH clamps on ONE row: the selected range sits entirely inside one period ──
+// Review mutation A: clamp the end only when the start was NOT clamped. Every case above clamps
+// at most one edge of any single row, so a rule that skips the second clamp survived — and it
+// restores wrong-window money for the most ordinary partial-period selection there is.
+{
+  const range = { fromDay: '2026-08-04', toDay: '2026-08-10' };
+  const r = keyBillingSummaryRows([{ clientId: 4, periodStart: '2026-08-01', periodEnd: '2026-08-15' }], range);
+  check('a range entirely inside one period clamps BOTH edges of that row',
+    r.ok && r.keyed[0]?.key === '2026-08-04|2026-08-10', String(keysOf(r)));
+  check('...so the one period the caller sends is exactly the selected range',
+    r.ok && [...r.periods.keys()].join(',') === '2026-08-04|2026-08-10',
+    r.ok ? [...r.periods.keys()].join(',') : String(keysOf(r)));
+}
+
+// ── 1c. A ONE-DAY range is a valid one-day window ───────────────────────────
+// Review mutation B: `>=` in place of `>` rejects dateFrom === dateTo as outside the range,
+// and a customer selecting a single day would get a 502 instead of their summary.
+{
+  const range = { fromDay: '2026-08-10', toDay: '2026-08-10' };
+  const grouped = keyBillingSummaryRows([{ clientId: 4, periodStart: '2026-08-01', periodEnd: '2026-08-15' }], range);
+  check('a one-day selection against a grouped row is a valid one-day window, not period_outside_range',
+    grouped.ok && grouped.keyed[0]?.key === '2026-08-10|2026-08-10', String(keysOf(grouped)));
+  const plain = keyBillingSummaryRows([{ clientId: 4 }], range);
+  check('a one-day selection against an ungrouped row keys to that one day',
+    plain.ok && plain.keyed[0]?.key === '2026-08-10|2026-08-10', String(keysOf(plain)));
+}
+
 // ── 2. granularity=month, partial first and last months ─────────────────────
 {
   const range = { fromDay: '2026-08-04', toDay: '2026-09-02' };
@@ -103,6 +130,18 @@ const keysOf = (r: ReturnType<typeof keyBillingSummaryRows>) =>
       { clientId: 4, periodStart: '2026-08-01', periodEnd: '2026-08-15' },
       { clientId: 4, periodStart: '2026-08-16', periodEnd: '2026-08-31' },
     ]) === 'ok');
+  // The module compares days lexically, which is only valid for strings that really are
+  // YYYY-MM-DD. Review found it accepting any string at all.
+  check('a period bound that is not a REAL calendar day is a breach (2026-02-30)',
+    breach([{ clientId: 4, periodStart: '2026-02-30', periodEnd: '2026-03-15' }]) === 'period_bound_invalid');
+  check('a period bound that is not YYYY-MM-DD is a breach, even if it names a real day',
+    breach([{ clientId: 4, periodStart: '08/01/2026', periodEnd: '2026-08-15' }]) === 'period_bound_invalid');
+  check('a leap day is a real day (2024-02-29 is accepted)',
+    keyBillingSummaryRows([{ clientId: 4, periodStart: '2024-02-16', periodEnd: '2024-02-29' }],
+      { fromDay: '2024-02-01', toDay: '2024-02-29' }).ok);
+  const badRange = keyBillingSummaryRows([{ clientId: 4 }], { fromDay: '2026-08-01', toDay: '2026-08-32' });
+  check('an invalid RANGE is a breach too — the module does not trust its caller',
+    !badRange.ok && badRange.reason === 'range_invalid');
 }
 
 // ── 6. ASSIGNMENT: each row gets ITS OWN period's totals ───────────────────
