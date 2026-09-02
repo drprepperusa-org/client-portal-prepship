@@ -1,20 +1,34 @@
 {
   "note": "CP-059 — the canonical RETURN line-type vocabulary, owned by PrepShip. Do not hand-edit: re-pin from upstream and let scripts/prepship-return-vocabulary-parity.mjs prove the copy.",
   "why": "The Client Portal's two summary authorities (billing-summaries.ts and reporting-metrics.ts) sum return money by line type. A spelling present upstream and missing here drops that money out of the return bucket while leaving it in grand_total, so a customer's invoice stops reconciling. Upstream says the same thing in its own doc comment on BILLING_RETURN_LINE_TYPES.",
-  "repinNote": "CP-065 (2026-09-01): re-pinned past prepship-v4 PS-517, which moved the split spellings out of the predicate BODIES and into consts. exports.postage/.processing now name those consts, and the parity script reads all three buckets from their const declarations — so an upstream representation change can no longer read as a vocabulary change. Membership is unchanged from the previous pin.",
+  "repinNote": "CP-065 (2026-09-03): re-pinned past prepship-v4 PS-521, which moved the three declarations out of billing-row-status.ts into a dependency-free leaf, src/services/billing-return-line-types.ts (billing-row-status.ts re-exports them). upstream.path now names the leaf; exports are the same three consts. Membership and order are unchanged from the previous pin. Previous note (CP-065, 2026-09-01): the parity script reads all three buckets from their const declarations, so an upstream representation change cannot read as a vocabulary change.",
   "upstream": {
     "repo": "drprepperusa-org/prepship-v4",
-    "ref": "b737b55968bab0f40b5b57d7191e3a8633bd034c",
-    "path": "src/services/billing-row-status.ts",
-    "blobSha": "f543e5a1137c9f4e02ac65a189ed58c460cd1bc8",
+    "ref": "310aa36a0e6199fbbcb2697bcf51cbf0aefe1c81",
+    "path": "src/services/billing-return-line-types.ts",
+    "blobSha": "4d36499d21512e8fe1ca3b9c2a9c2cfaccdc81b6",
     "exports": {
       "all": "BILLING_RETURN_LINE_TYPES",
       "postage": "BILLING_RETURN_POSTAGE_LINE_TYPES",
       "processing": "BILLING_RETURN_PROCESSING_LINE_TYPES"
     }
   },
-  "all": ["return", "return_label", "return_processing", "return_postage", "return_processing_fee"],
-  "postage": ["return_postage", "return_label"],
-  "processing": ["return_processing_fee", "return_processing"],
-  "bare": ["return"]
+  "all": [
+    "return",
+    "return_label",
+    "return_processing",
+    "return_postage",
+    "return_processing_fee"
+  ],
+  "postage": [
+    "return_postage",
+    "return_label"
+  ],
+  "processing": [
+    "return_processing_fee",
+    "return_processing"
+  ],
+  "bare": [
+    "return"
+  ]
 }
