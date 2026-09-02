@@ -114,3 +114,30 @@ Date: 2026-09-02 · Ticket: CP-068 (proposed) · Origin: PS-520 r6 pre-audit fin
 - The merged multi-client export (DJ decision).
 - PrepShip-side carrier redaction (DJ decision; PrepShip change).
 - A CSV button in the UI.
+
+## r2 — after Hermes r1 (71%)
+
+Hermes wrote a disposable alternate exporter (cells joined into a CSV string in a
+Blob) and the r1 pattern guard stayed green. r2 proves the property instead of the
+absence:
+
+- `portal-client/src/lib/invoiceWorkbookDownload.ts` (NEW, pure) — the Blob the
+  API returned is the Blob the sink receives, same object. The hook wires
+  `portalApi.invoiceWorkbookRange` and `downloadFile` into it and nothing else.
+- `scripts/client-portal-invoice-export-no-local-builder-guard.ts` (NEW, 7 checks)
+  — EXECUTES the module and `downloadFile` with a sentinel Blob and asserts identity
+  end to end; statically pins the hook wiring (one `new Blob`, the HTML window; no
+  `File`, no joins, no data URI), forbids any CSV/TSV/Excel/octet-stream media
+  type or data URI in `portal-client/src` (the workbook type only as the Accept
+  header), and forbids row joining anywhere on the export path.
+- `scripts/cp-068-mutation-harness.ts` (NEW, `test:cp-068-mutations`, in
+  `test:guards`) — ten mutations, the first being Hermes's exporter verbatim; each
+  must turn its guard red; sources restored and verified after every run.
+- `web/e2e/client-portal-cp068-export.spec.js` (NEW, `test:cp-068-export:browser`,
+  in ci.yml) — a real Chromium clicks Export: the request carries one client, plain
+  days and the caller's bearer; the saved file is sha256-identical to the fixture
+  under PrepShip's filename; "Export all" across several clients requests nothing.
+- Fixture determinism — the generator pins `docProps/core.xml` timestamps and ZIP
+  entry dates to one instant and re-emits the container with fixed settings, so a
+  clean regeneration reproduces the committed sha256 (`--check` proves it). Business
+  members are the renderer's, untouched; their sha256s are in the sidecar.

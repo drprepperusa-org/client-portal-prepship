@@ -77,7 +77,8 @@ check('detail read model caps only the visible/unpaginated detail path, not summ
 // truncation risk this guard protected against cannot exist on that path, so the property
 // became "the export reads no rows".
 check('exports download PrepShip\'s whole-period workbook instead of paging capped detail rows',
-  /portalApi\.invoiceWorkbookRange\(/.test(invoices) &&
+  /fetchWorkbook: portalApi\.invoiceWorkbookRange/.test(invoices) &&
+    /downloadInvoiceWorkbook\(/.test(invoices) &&
     !/invoiceDetailsRange|fetchAllInvoiceRows/.test(sliceBetween(invoices, 'async function exportExcel', 'return { opening')) &&
     !/pageSize: 5000/.test(invoices));
 

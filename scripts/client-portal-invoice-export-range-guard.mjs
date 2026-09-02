@@ -67,8 +67,7 @@ assert(
 
 // ── The file is PrepShip's, downloaded whole; nothing pages rows for an export ──
 assert(
-  /portalApi\.invoiceWorkbookRange\(accessToken, clientId, rangeFrom, rangeTo\)/.test(hook) &&
-    hook.includes('downloadFile('),
+  /downloadInvoiceWorkbook\(\s*\{ fetchWorkbook: portalApi\.invoiceWorkbookRange, sink: downloadFile \},\s*accessToken, clientId, rangeFrom, rangeTo,/.test(hook),
   'exportExcel downloads PrepShip\'s workbook through the pass-through route and hands the bytes to the browser',
 );
 assert(

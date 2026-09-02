@@ -15,9 +15,10 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import JSZip from 'jszip';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORTAL_ROOT = path.resolve(HERE, '..', '..');
@@ -81,21 +82,68 @@ const totals = {
   shippingTotal: 6.1, storageTotal: 0, adjustmentTotal: 0, grandTotal: 25.03, fulfillmentFeeTotal: 25.03,
 };
 
-const bytes = await billing.renderInvoiceXlsx({
+const rendered = await billing.renderInvoiceXlsx({
   clientName: 'CP068 Fixture Client', fromDay: '2026-08-01', toDay: '2026-08-31', totals, details,
 });
 
+/*
+ * DETERMINISM. ExcelJS stamps docProps/core.xml and every ZIP entry with "now", so two runs of
+ * the real renderer differ in CONTAINER METADATA while every worksheet, style, shared-string
+ * and workbook member is byte-identical (Hermes r1 measured exactly that: 7546 vs 7545 bytes,
+ * all business members equal). The integration suite compares the whole-file sha256, so those
+ * stamps are pinned to one instant here and the container is re-emitted with fixed settings.
+ * Only metadata moves; the members carrying business content are the renderer's, untouched —
+ * their own sha256 is recorded in the sidecar so a re-audit can compare member by member.
+ */
+const FIXED_INSTANT = new Date('2026-09-02T00:00:00.000Z');
+const sha256 = (buffer: Uint8Array) => createHash('sha256').update(buffer).digest('hex');
+const zip = await JSZip.loadAsync(rendered);
+const core = await zip.file('docProps/core.xml')?.async('string');
+if (core) {
+  const stamp = FIXED_INSTANT.toISOString();
+  zip.file('docProps/core.xml', core
+    .replace(/(<dcterms:created[^>]*>)[^<]*(<\/dcterms:created>)/, (_m, open, close) => `${open}${stamp}${close}`)
+    .replace(/(<dcterms:modified[^>]*>)[^<]*(<\/dcterms:modified>)/, (_m, open, close) => `${open}${stamp}${close}`));
+}
+zip.forEach((_name, entry) => { entry.date = FIXED_INSTANT; });
+const bytes = await zip.generateAsync({
+  type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 }, platform: 'UNIX',
+});
+const BUSINESS_MEMBERS = ['xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/styles.xml', 'xl/sharedStrings.xml'];
+const memberSha256: Record<string, string> = {};
+for (const name of BUSINESS_MEMBERS) {
+  const member = zip.file(name);
+  if (member) memberSha256[name] = sha256(await member.async('nodebuffer'));
+}
+
 const outDir = path.join(PORTAL_ROOT, 'fixtures');
+const workbookPath = path.join(outDir, 'cp-068-prepship-invoice-workbook.xlsx');
+const sidecarPath = path.join(outDir, 'cp-068-prepship-invoice-workbook.json');
+
+// `--check`: regenerate in memory and compare against the committed fixture. Exit 1 on drift.
+if (process.argv.includes('--check')) {
+  const committed = readFileSync(workbookPath);
+  const same = sha256(committed) === sha256(bytes);
+  console.log(`${same ? 'MATCH' : 'DRIFT'}: committed ${sha256(committed).slice(0, 12)} vs regenerated ${sha256(bytes).slice(0, 12)} (${bytes.byteLength} bytes)`);
+  process.exit(same ? 0 : 1);
+}
+
 mkdirSync(outDir, { recursive: true });
-writeFileSync(path.join(outDir, 'cp-068-prepship-invoice-workbook.xlsx'), bytes);
-writeFileSync(path.join(outDir, 'cp-068-prepship-invoice-workbook.json'), `${JSON.stringify({
+writeFileSync(workbookPath, bytes);
+writeFileSync(sidecarPath, `${JSON.stringify({
   producerSha,
-  generatedAt: new Date().toISOString(),
-  sha256: createHash('sha256').update(bytes).digest('hex'),
+  sha256: sha256(bytes),
   sheet: 'Invoice',
   headers: columns.INVOICE_COLUMN_HEADERS,
   dataRows: details.length,
   fixtureClient: 'CP068 Fixture Client',
   period: { fromDay: '2026-08-01', toDay: '2026-08-31' },
+  normalization: {
+    docPropsTimestamps: FIXED_INSTANT.toISOString(),
+    zipEntryDates: FIXED_INSTANT.toISOString(),
+    container: 'jszip DEFLATE level 6, platform UNIX',
+    businessMembersUntouched: BUSINESS_MEMBERS,
+  },
+  memberSha256,
 }, null, 2)}\n`);
-console.log(`wrote fixtures/cp-068-prepship-invoice-workbook.xlsx (${bytes.byteLength} bytes) from producer ${producerSha}`);
+console.log(`wrote fixtures/cp-068-prepship-invoice-workbook.xlsx (${bytes.byteLength} bytes, sha256 ${sha256(bytes).slice(0, 12)}) from producer ${producerSha}`);

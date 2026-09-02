@@ -80,8 +80,8 @@ ok(`no cell-shaped code in ${SCANNED.join(', ')}`);
 
 // ── 3. The export hook downloads the proxied workbook and reads no rows ──────────────────────
 const hook = read('portal-client/src/components/billing/invoices/useInvoiceActions.ts');
-assert.match(hook, /portalApi\.invoiceWorkbookRange\(/, 'exportExcel must download PrepShip\'s workbook through the proxy');
-assert.match(hook, /downloadFile\(/, 'the bytes go straight to the download manager');
+assert.match(hook, /fetchWorkbook:\s*portalApi\.invoiceWorkbookRange/, 'exportExcel must download PrepShip\'s workbook through the proxy');
+assert.match(hook, /downloadInvoiceWorkbook\(/, 'the bytes go straight to the download manager via invoiceWorkbookDownload.ts');
 for (const forbidden of ['invoiceDetailsRange', 'fetchAllInvoiceRows', 'invoiceExcel', 'invoiceRows']) {
   assert.doesNotMatch(hook, new RegExp(forbidden), `the export hook must not touch ${forbidden} — the export reads no rows`);
 }

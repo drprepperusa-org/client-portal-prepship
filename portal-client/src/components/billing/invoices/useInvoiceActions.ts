@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useToast } from '@/components/ui/Toast';
 import { portalApi } from '@/lib/api';
 import { downloadFile } from '@/lib/downloadFile';
+import { downloadInvoiceWorkbook } from '@/lib/invoiceWorkbookDownload';
 import type { PeriodSummary } from '../invoiceColumns';
 
 interface InvoiceActionsOptions {
@@ -54,8 +55,9 @@ export function useInvoiceActions({
    * The portal used to page every /invoice-details row into the browser and build its own
    * sheet — its own columns, its own totals row. That was a second serializer of invoice
    * money beside the printable invoice, which already renders PrepShip's canonical totals.
-   * Now the bytes PrepShip's own Export serves are downloaded unmodified; nothing here reads
-   * rows, decides columns, or adds anything up.
+   * Now the bytes PrepShip's own Export serves go straight to the download manager through
+   * invoiceWorkbookDownload.ts, which a guard EXECUTES to prove the Blob is the same object
+   * in and out. Nothing here reads rows, decides columns, or adds anything up.
    */
   async function exportExcel(
     clientId: number,
@@ -66,12 +68,11 @@ export function useInvoiceActions({
     if (exporting != null || !accessToken) return;
     setExporting(busyKey);
     try {
-      const file = await portalApi.invoiceWorkbookRange(accessToken, clientId, rangeFrom, rangeTo);
-      downloadFile({
-        bytes: file.bytes,
-        filename: file.filename ?? `invoice-${clientId}-${rangeFrom}-${rangeTo}.xlsx`,
-      });
-      toast.success('Excel ready', `PrepShip's invoice workbook for ${rangeFrom} → ${rangeTo}.`);
+      const file = await downloadInvoiceWorkbook(
+        { fetchWorkbook: portalApi.invoiceWorkbookRange, sink: downloadFile },
+        accessToken, clientId, rangeFrom, rangeTo,
+      );
+      toast.success('Excel ready', `${file.filename} — PrepShip's invoice workbook for ${rangeFrom} → ${rangeTo}.`);
     } catch (error) {
       toast.error('Excel export failed', error instanceof Error ? error.message : 'Could not download the Excel file.');
     } finally {

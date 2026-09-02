@@ -68,3 +68,9 @@ jobs:
       # own vite server with every portal API intercepted, so this needs no extra services.
       - name: CP-059 Billing browser proof
         run: npm run test:cp-059-billing:browser
+
+      # CP-068: clicking Export must download PrepShip's bytes — the intercepted workbook, byte for
+      # byte, under the filename PrepShip named. Only a real browser can prove the click-to-download
+      # path; the guards prove identity in Node.
+      - name: CP-068 invoice Export browser proof
+        run: npm run test:cp-068-export:browser
