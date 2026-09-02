@@ -34,13 +34,30 @@ const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
 const pkg = JSON.parse(read('package.json'));
 
 // ── Backend /invoice-summary owns the grand totals ──
+//
+// CP-011's REQUIREMENT stands: the footer is reduced backend-side over the full aggregated set,
+// never by the frontend over a page of rows. What changed in CP-067 is WHICH rows it reduces.
+// The list's money now comes from PrepShip's canonical owner — the same totals the invoice
+// reads — so the reduction runs over `canonicalRows`, not over this repo's own aggregation.
+// Pinning `rows.reduce(` would have demanded the divergent aggregation back.
 assert(
-  route.includes('const totals = rows.reduce('),
-  'invoice-summary route computes grand totals backend-side (over the full SQL-aggregated set)',
+  route.includes('const totals = canonicalRows.reduce('),
+  'invoice-summary route reduces the footer over the CANONICAL rows, backend-side',
 );
 assert(
-  route.includes('return c.json({ data: rows, totals, billingVisible: true });'),
-  'invoice-summary route returns the backend-owned totals alongside the rows',
+  route.includes('return c.json({ data: canonicalRows, totals, billingVisible: true });'),
+  'invoice-summary route returns the canonical rows and their backend-owned totals',
+);
+// The list must take its money from PrepShip, not compute it here — the whole point of CP-067.
+assert(
+  route.includes('fetchCanonicalInvoiceTotals('),
+  'invoice-summary must read canonical totals from PrepShip, not aggregate money locally',
+);
+// Fail closed: a list that silently renders this repo's aggregation when upstream is down
+// restores the exact divergence CP-067 removed, and it would be invisible.
+assert(
+  /if\s*\(\s*!result\.ok\s*\)[\s\S]{0,400}?result\.status as 401 \| 403 \| 502 \| 503/.test(route),
+  'invoice-summary must fail closed when canonical totals are unavailable',
 );
 assert(
   route.includes('portal.invoice_summary.denied') && route.includes('billingVisible: false'),

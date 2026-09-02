@@ -9,6 +9,8 @@ import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/b
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
+import { fetchCanonicalInvoiceTotals } from '../../lib/client-portal/prepship-invoice-totals-proxy';
+import type { CanonicalBillingTotals } from '../../lib/client-portal/prepship-billing-details-proxy';
 // CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails and
 // portalInvoiceDetailCount are no longer called from here. They are left in the read model
 // because other callers still use them; importing them here would leave a dead reference that
@@ -117,10 +119,75 @@ app.get('/invoice-summary', async (c) => {
           granularity: c.req.query('granularity') === 'month' ? 'month' : 'half',
         })
       : await portalInvoiceSummary(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
+  // ── CP-067: the LIST's money comes from PrepShip's owner, like the invoice ──
+  //
+  // The rows above supply IDENTITY — which client, which period, what it is called. Their money
+  // is this repo's own aggregation, which has neither PS-491 duplicate suppression nor
+  // cancelled-no-charge. CP-066 moved the customer INVOICE onto PrepShip's canonical totals; a
+  // list still on the old aggregation would disagree with the invoice a customer opens from it.
+  //
+  // So the identity stays and every money field is REPLACED by the canonical answer for that
+  // (client, period). Periods are grouped first, so this costs one upstream call per distinct
+  // period on the page — typically one, at most two for half-month granularity — not one per row.
+  const listAuthorization = c.req.header('authorization');
+  if (!listAuthorization) return c.json({ error: 'Missing bearer token' }, 401);
+  const listRequestId = c.req.header('x-request-id') ?? undefined;
+
+  type PeriodKey = string;
+  const periodOf = (row: { periodStart?: string; periodEnd?: string }): PeriodKey =>
+    `${row.periodStart ?? range.fromDay}|${row.periodEnd ?? range.toDay}`;
+  const periods = new Map<PeriodKey, number[]>();
+  for (const row of rows) {
+    const key = periodOf(row as { periodStart?: string; periodEnd?: string });
+    const ids = periods.get(key);
+    if (ids) ids.push(Number(row.clientId));
+    else periods.set(key, [Number(row.clientId)]);
+  }
+
+  const canonicalByPeriod = new Map<PeriodKey, Map<number, CanonicalBillingTotals>>();
+  for (const [key, clientIds] of periods) {
+    const [dateFrom, dateTo] = key.split('|') as [string, string];
+    const result = await fetchCanonicalInvoiceTotals(
+      listAuthorization,
+      { clientIds, dateFrom, dateTo },
+      listRequestId,
+    );
+    // Fail closed. Silently falling back to this repo's aggregation would restore the exact
+    // divergence this replaces, and it would be invisible — the numbers would simply be the
+    // old, wrong ones with nothing to indicate it.
+    if (!result.ok) {
+      await recordPortalAudit('portal.invoice_summary.failed', scope, { clientId, reason: result.code });
+      return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
+    }
+    canonicalByPeriod.set(key, result.byClient);
+  }
+
+  const canonicalRows = rows.map((row) => {
+    const totals = canonicalByPeriod.get(periodOf(row as { periodStart?: string; periodEnd?: string }))
+      ?.get(Number(row.clientId));
+    // A client with no canonical row for the period genuinely has no billable activity in it —
+    // the endpoint returns a row for every id it was asked about, so absence here means the
+    // upstream dropped it as out of scope. Zeroing is right, and it matches what the customer's
+    // invoice for that period would render.
+    return {
+      ...row,
+      orders: totals?.orderCount ?? 0,
+      pickpackTotal: String(totals?.pickPackTotal ?? 0),
+      additionalTotal: String(totals?.additionalTotal ?? 0),
+      packageTotal: String(totals?.packageTotal ?? 0),
+      shippingTotal: String(totals?.shippingTotal ?? 0),
+      storageTotal: String(totals?.storageTotal ?? 0),
+      returnPostageTotal: String(totals?.returnPostageTotal ?? 0),
+      returnProcessingTotal: String(totals?.returnProcessingTotal ?? 0),
+      rowTotal: String(totals?.grandTotal ?? 0),
+    };
+  });
+
   // CP-011: grand totals across all summary rows are backend-owned, so the
   // Billing footer renders these instead of the frontend reducing per-period
-  // subtotals. Computed over the full SQL-aggregated set (no row cap).
-  const totals = rows.reduce(
+  // subtotals. Now reducing over CANONICAL rows, so the footer, the rows and the
+  // invoice all answer with the same money.
+  const totals = canonicalRows.reduce(
     (acc, r) => ({
       orders: acc.orders + Number(r.orders ?? 0),
       pickpackTotal: acc.pickpackTotal + Number(r.pickpackTotal ?? 0),
@@ -136,7 +203,7 @@ app.get('/invoice-summary', async (c) => {
     { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, returnPostageTotal: 0, returnProcessingTotal: 0, rowTotal: 0 },
   );
   await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
-  return c.json({ data: rows, totals, billingVisible: true });
+  return c.json({ data: canonicalRows, totals, billingVisible: true });
 });
 
 app.get('/invoice', async (c) => {
