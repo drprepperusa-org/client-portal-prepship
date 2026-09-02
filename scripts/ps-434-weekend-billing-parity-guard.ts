@@ -18,7 +18,6 @@ const summaries = read('src/services/billing-summaries.ts');
 const metrics = read('src/services/reporting-metrics.ts');
 const contract = read('src/lib/client-portal/contracts/billing.ts');
 const columns = read('portal-client/src/components/billing/invoiceColumns.tsx');
-const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const html = read('src/lib/client-portal/invoice-html.ts');
 const billingRoute = read('src/routes/client-portal/billing.ts');
 
@@ -35,7 +34,6 @@ assert.match(contract, /rolledFromWeekend\?: boolean/);
 assert.match(columns, /row\.rolledFromWeekend/);
 assert.match(columns, /Billed \{shortDate\(row\.billingEffectiveDate\)\}/);
 assert.doesNotMatch(columns, /getDay\(|getUTCDay\(|Saturday|Sunday/);
-assert.match(excel, /Billing \/ Activity Date/);
 assert.match(html, /Billing \/ Activity Date/);
 assert.match(billingRoute, /upstream\.status === 409/);
 assert.match(billingRoute, /BILLING_WEEKEND_OPERATION_BLOCKED/);

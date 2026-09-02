@@ -22,9 +22,10 @@ async function request(
   path: string,
   params: Record<string, QueryValue>,
   accept: string,
+  timeoutMs = TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(`${API_BASE}${path}${queryString(params)}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: accept },
@@ -66,6 +67,34 @@ export async function apiText(
   const response = await request(token, path, params, 'text/html,application/pdf,text/plain,*/*');
   if (!response.ok) await fail(response);
   return response.text();
+}
+
+/** A file the backend produced: its bytes, its declared type, and the name it gave the file. */
+export type ApiFile = { bytes: Blob; contentType: string; filename: string | null };
+
+// A generated file (an invoice workbook across a billing range) can legitimately outrun the
+// JSON budget; the backend owns the real ceiling.
+const FILE_TIMEOUT_MS = 120000;
+
+/**
+ * CP-068 — download a backend-produced file unmodified. The filename comes from the
+ * Content-Disposition header when the API exposes it; callers supply a fallback otherwise.
+ */
+export async function apiBlob(
+  token: string,
+  path: string,
+  params: Record<string, QueryValue> = {},
+  accept = '*/*',
+): Promise<ApiFile> {
+  const response = await request(token, path, params, accept, FILE_TIMEOUT_MS);
+  if (!response.ok) await fail(response);
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+  return {
+    bytes: await response.blob(),
+    contentType: response.headers.get('content-type') ?? '',
+    filename,
+  };
 }
 
 async function apiSend<T>(

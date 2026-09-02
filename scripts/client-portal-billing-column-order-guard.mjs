@@ -36,7 +36,6 @@ function orderedContains(source, labels, message) {
 }
 
 const invoices = read('portal-client/src/components/billing/invoiceColumns.tsx');
-const excel = read('portal-client/src/lib/invoiceExcel.ts');
 const invoiceHtml = read('src/lib/client-portal/invoice-html.ts');
 const invoiceRoute = read('src/routes/client-portal/invoices.ts');
 const pkg = JSON.parse(read('package.json'));
@@ -91,8 +90,10 @@ assert(
   'Billing line-item website table does not keep the removed Item Name column',
 );
 
-orderedContains(excel, detailLabels, 'Invoice Excel headers follow the requested order');
-assert(!excel.includes("'Item Name'"), 'Invoice Excel export does not keep the removed Item Name column');
+// CP-068: the Excel export is PrepShip's own workbook, passed through unmodified; its columns
+// are owned by prepship-v4 billing-invoice-columns.ts, so this repo has no Excel header list
+// left to order-check. client-portal-invoice-export-proxy-guard.ts pins that nothing here builds
+// spreadsheet cells at all.
 
 orderedContains(
   sliceBetween(invoiceHtml, '<thead><tr>', '</tr></thead>'),

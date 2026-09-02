@@ -298,4 +298,8 @@ app.get('/invoice', async (c) => {
   return c.html(renderPortalInvoiceHtml({ clientName: client.name, dateFrom: range.fromDay, dateTo: range.toDay, invoiceTotals, details, truncated }));
 });
 
+// CP-068: the invoice EXPORTS (/invoice.xlsx, /invoice.csv) are PrepShip's files, passed
+// through by the invoice-export sub-router — the portal used to build its own .xlsx in the
+// browser, a second serializer of invoice money beside the canonical HTML above.
+
 export default app;

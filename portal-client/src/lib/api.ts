@@ -8,6 +8,7 @@
 export { portalApi } from './api/client';
 export {
   API_BASE,
+  apiBlob,
   apiDelete,
   apiGet,
   apiPatch,
@@ -16,5 +17,5 @@ export {
   apiText,
   apiUpload,
 } from './api/transport';
-export type { ApiError, QueryValue } from './api/transport';
+export type { ApiError, ApiFile, QueryValue } from './api/transport';
 export type * from '@client-portal-contracts/index';

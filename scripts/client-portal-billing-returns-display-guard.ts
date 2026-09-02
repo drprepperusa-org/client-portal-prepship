@@ -12,8 +12,9 @@
  * the only blanking branch, and null is not false. Matching the source of a function tells you
  * nothing about what the function returns.
  *
- * So the presentation half now RUNS. It renders the real printable-invoice HTML and builds the
- * real spreadsheet cells, then reads the output cell by cell. Cells are addressed by INDEX, not
+ * So the presentation half now RUNS. It renders the real printable-invoice HTML and reads the
+ * output cell by cell. (CP-068: the spreadsheet half is gone — the Excel export is PrepShip's
+ * workbook, passed through, so there are no local cells to read.) Cells are addressed by INDEX, not
  * by searching the row text: a row legitimately contains $0.00 in other columns, so a substring
  * search would pass on an unrelated zero and prove nothing about the return columns.
  *
@@ -26,7 +27,6 @@ import path from 'node:path';
 import { readActiveClientPortalApiSource } from './lib/client-portal-active-api-source.mjs';
 import { readSourceTree } from './lib/source-tree.mjs';
 import { renderPortalInvoiceHtml } from '../src/lib/client-portal/invoice-html';
-import { buildInvoiceExcelSheet } from '../portal-client/src/lib/invoiceExcel';
 import type { BillingInvoiceDetailRow } from '../portal-client/src/lib/api';
 
 const root = process.cwd();
@@ -187,49 +187,11 @@ check(
   'HTML: NULL/undefined presence prints blank even with money attached — only true renders',
 );
 
-// -- 5b. Spreadsheet cells --------------------------------------------------------------------
-const { sheet } = buildInvoiceExcelSheet(rows);
-const header = sheet[0] as Array<{ value: string }>;
-const processingCol = header.findIndex((cell) => cell?.value === 'Return Processing');
-const postageCol = header.findIndex((cell) => cell?.value === 'Return Postage');
-assert.ok(processingCol > 0 && postageCol > 0, 'the export must have Return Processing + Return Postage columns');
-
-const dataRows = sheet.slice(1, -1);
-assert.equal(dataRows.length, rows.length, `expected ${rows.length} data rows, got ${dataRows.length}`);
-const cell = (rowIndex: number, col: number) => dataRows[rowIndex]?.[col] as { type?: unknown; value?: unknown };
-
-check(
-  cell(0, postageCol)?.type === String && cell(0, postageCol)?.value === '',
-  'XLSX: the producer absent shape (false + 0) is a BLANK cell, never the 0 it carries',
-);
-check(
-  cell(1, postageCol)?.type === Number && cell(1, postageCol)?.value === 0,
-  'XLSX: a real $0.00 return-postage line is a NUMERIC 0 — the two stay distinguishable in a filter',
-);
-check(
-  cell(2, postageCol)?.value === 7.73 && cell(2, processingCol)?.value === 3,
-  'XLSX: real return amounts are written as numbers, verbatim',
-);
-check(
-  cell(3, postageCol)?.type === String && cell(3, processingCol)?.type === String,
-  'XLSX: NULL/undefined presence is blank even carrying 4.50 — presence decides, not the amount',
-);
-
-// The totals row must line up under its headings. A shifted totals row still adds up, which is
-// what makes it the worst kind of spreadsheet bug.
-const totals = sheet[sheet.length - 1] as Array<{ value?: unknown } | null>;
-check(
-  totals.length === header.length,
-  `XLSX: the totals row has one cell per column (${totals.length} vs ${header.length})`,
-);
-// 0 + 0 + 7.73 + 4.50. The totals row sums AMOUNTS, ignoring presence — which is correct
-// precisely because the producer emits 0 for an absent fee rather than null: an absent line
-// contributes nothing to the total while still being blanked in its own cell. Had the producer
-// emitted null, num() would coerce it to 0 anyway; the distinction lives in presence, not here.
-check(
-  (totals[postageCol] as { value?: unknown })?.value === 12.23,
-  'XLSX: the return-postage total sums amounts under its own heading; absent rows add their 0',
-);
+// -- 5b. Spreadsheet cells: RETIRED by CP-068 ------------------------------------------------
+// The Excel export is PrepShip's workbook, passed through byte-for-byte; the portal builds no
+// sheet, so there are no local cells to read. PrepShip's own renderer keeps absent-vs-zero apart
+// (resolveBillingInvoiceReturnFee, PS-488 M3); client-portal-invoice-export-proxy-guard.ts pins
+// that nothing here constructs spreadsheet cells.
 
 // -- 6. package.json wiring -------------------------------------------------------------------
 check(
@@ -240,7 +202,7 @@ check(
 
 // A checks/checks report is a tautology. Pinning the count means deleting a block fails the
 // guard instead of quietly shrinking it.
-const EXPECTED_CHECKS = 22;
+const EXPECTED_CHECKS = 16;
 if (checks !== EXPECTED_CHECKS) {
   console.error(`FAIL expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   failed = true;

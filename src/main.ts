@@ -113,7 +113,8 @@ app.use(
   cors({
     origin: (origin) => (isAllowedCorsOrigin(origin) ? origin : null),
     allowHeaders: ['Authorization', 'Content-Type', 'X-Request-Id', 'X-Correlation-Id'],
-    exposeHeaders: ['X-Request-Id', 'Server-Timing'],
+    // CP-068: the invoice export's filename is PrepShip's, read from Content-Disposition.
+    exposeHeaders: ['X-Request-Id', 'Server-Timing', 'Content-Disposition'],
   })
 );
 

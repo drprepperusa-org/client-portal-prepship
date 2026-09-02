@@ -1,8 +1,18 @@
-// Billing "Export all" — the whole selected date range (e.g. Apr → Jul) must
-// be exportable as ONE Excel, not just per-period. Pins: the range export
-// button + handler exist, the fetch pages through every line item (so a
-// multi-month range never silently truncates at the unpaginated 5000/1000-row
-// cap), and multi-client exports carry a Client column.
+// Billing "Export all" — the whole selected date range (e.g. Apr → Jul) must be
+// exportable as ONE Excel, not just per-period.
+//
+// CP-068 changed WHAT that file is. It used to be assembled in the browser from every
+// /invoice-details row (paged through so a multi-month range never truncated). It is now
+// PrepShip's own workbook, downloaded through the pass-through route for ONE client over the
+// whole range — PrepShip renders it from its uncapped query, so truncation cannot arise and
+// there are no rows for the portal to page. Pins: the range export button + handler exist,
+// the handler resolves the page to one client and downloads the proxied workbook for the
+// full from → to, no code path pages rows for an export any more, and the export path
+// touches no carrier / service / rate / margin identity.
+//
+// The merged multi-client file the old path produced is a DJ decision (spec
+// docs/superpowers/specs/2026-09-02-cp-068-invoice-export-prepship-workbook-design.md); until
+// then a multi-client page asks the user to pick a client rather than assembling a sheet.
 import fs from 'node:fs';
 import path from 'node:path';
 import { readSourceTree } from './lib/source-tree.mjs';
@@ -24,8 +34,8 @@ const invoices = readSourceTree([
   'portal-client/src/components/billing/invoiceColumns.tsx',
   'portal-client/src/components/billing/invoices',
 ]);
-const invoiceRows = read('portal-client/src/lib/invoiceRows.ts');
-const excel = read('portal-client/src/lib/invoiceExcel.ts');
+const hook = read('portal-client/src/components/billing/invoices/useInvoiceActions.ts');
+const domain = read('portal-client/src/lib/api/domains/billing.ts');
 const packageJson = JSON.parse(read('package.json'));
 
 // ── Range export button + handler ──
@@ -36,59 +46,50 @@ assert(
   'Billing periods header has an "Export all" button wired to exportAllPeriods',
 );
 assert(
-  invoices.includes('async function exportAllPeriods()'),
+  hook.includes('async function exportAllPeriods()'),
   'exportAllPeriods handler exists',
 );
 assert(
-  invoices.includes('fetchAllInvoiceRows(accessToken, clientId, from, to)'),
-  'Export all covers the whole selected page range (from → to), not a single period',
+  /await exportExcel\(clientId, from, to, 'all-periods'\)/.test(hook),
+  'Export all covers the whole selected page range (from → to) for the resolved client',
 );
 
-// ── Completeness: page through every line item, never a single capped shot ──
+// ── One client per file; the merged form is deferred to DJ, not assembled here ──
 assert(
-  invoices.includes('async function fetchAllInvoiceRows('),
-  'a paginated fetch-all helper exists',
+  /const clientId = clientFilter \?\? \(clientIds\.length === 1 \? clientIds\[0\] : undefined\);/.test(hook) &&
+    /if \(clientId == null\) \{[\s\S]{0,400}return;/.test(hook),
+  'Export all resolves the page to ONE client and asks the user to pick one otherwise',
 );
 assert(
-  invoiceRows.includes('res.pagination?.totalPages') && invoiceRows.includes('pageSize: INVOICE_EXPORT_PAGE_SIZE'),
-  'fetchAllInvoiceRows walks every page via pagination.totalPages',
-);
-assert(
-  !invoices.includes('pageSize: 5000'),
-  'exports no longer rely on the single-shot 5000-row cap that could silently truncate a multi-month range',
-);
-assert(
-  invoices.includes('fetchAllInvoiceRows(accessToken, clientId, rangeFrom, rangeTo)'),
-  'per-period export also pages through (shares the fetch-all helper)',
+  !/includeClient|multiClient/.test(hook),
+  'no merged multi-client sheet is assembled in the portal (DJ decision pending)',
 );
 
-// ── Multi-client exports stay attributable ──
+// ── The file is PrepShip's, downloaded whole; nothing pages rows for an export ──
 assert(
-  invoices.includes('includeClient: multiClient'),
-  'Export all flags a multi-client file so a Client column is added',
+  /portalApi\.invoiceWorkbookRange\(accessToken, clientId, rangeFrom, rangeTo\)/.test(hook) &&
+    hook.includes('downloadFile('),
+  'exportExcel downloads PrepShip\'s workbook through the pass-through route and hands the bytes to the browser',
 );
 assert(
-  excel.includes('includeClient') && excel.includes("'Client'"),
-  'exportInvoiceExcel prepends a Client column when includeClient is set',
+  /invoiceWorkbookRange[\s\S]{0,400}'\/api\/client-portal\/invoice\.xlsx'/.test(domain),
+  'invoiceWorkbookRange targets GET /api/client-portal/invoice.xlsx',
+);
+assert(
+  !/fetchAllInvoiceRows|invoiceExcel|pageSize: 5000|INVOICE_EXPORT_PAGE_SIZE/.test(invoices) &&
+    !/invoiceDetailsRange/.test(hook),
+  'no export code path pages detail rows into the browser (PrepShip renders the whole period)',
 );
 
-// ── CP-024: the Excel export must stay client-safe — the .xlsx must NEVER
-// leak carrier / service identity, the selected/best rate, the label cost, or
-// the shipping margin. The customer-facing "Shipping" column is the billed
-// customer shipping charge (BillingInvoiceDetailRow), not any provider cost.
-// Match CODE-SHAPED patterns (property access + specific identifiers) rather
-// than bare words, so the file's own "no carrier / margin" prose doesn't trip
-// the check and no comment-stripping (which a `//` inside a string could defeat)
-// is needed. Note: shippingTotal (the billed customer charge) is intentionally
-// NOT matched — only shippingMargin/provider cost is. ──
+// ── CP-024: the export path stays client-safe — it must NEVER read carrier / service
+// identity, the selected/best rate, the label cost, or the shipping margin. Match CODE-SHAPED
+// patterns (property access + specific identifiers) rather than bare words, so prose in
+// comments cannot trip the check. ──
+const exportPath = `${hook}\n${domain}\n${read('portal-client/src/lib/downloadFile.ts')}`;
 assert(
-  !/\.(carrier[A-Za-z]*|service[A-Za-z]*|labelCost|selectedRate|bestRate|shippingMargin|providerAccount)\b/i.test(excel) &&
-    !/\b(carrierCode|carrier_code|serviceCode|service_code|labelCost|label_cost|selectedRate|bestRate|shippingMargin|providerAccount)\b/.test(excel),
-  'invoiceExcel never reads carrier/service/label-cost/selected-rate/margin fields (property access or identifier)',
-);
-assert(
-  !/['"`]\s*(Carrier|Service|Label Cost|Selected Rate|Best Rate|Margin)\s*['"`]/.test(excel),
-  'invoiceExcel column headers expose no Carrier / Service / Label Cost / Rate / Margin column',
+  !/\.(carrier[A-Za-z]*|service[A-Za-z]*|labelCost|selectedRate|bestRate|shippingMargin|providerAccount)\b/i.test(exportPath) &&
+    !/\b(carrierCode|carrier_code|serviceCode|service_code|labelCost|label_cost|selectedRate|bestRate|shippingMargin|providerAccount)\b/.test(exportPath),
+  'the export path never reads carrier/service/label-cost/selected-rate/margin fields',
 );
 
 assert(

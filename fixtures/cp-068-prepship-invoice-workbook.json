@@ -1,0 +1,33 @@
+{
+  "producerSha": "feb922c81091a46ea5509e55021018a3bee198c6",
+  "generatedAt": "2026-09-02T07:47:39.088Z",
+  "sha256": "8573685362d09c61e13b67f07e2c16ba0b57c89fd692d51c057f6377727d2ebe",
+  "sheet": "Invoice",
+  "headers": [
+    "Billing / Activity Date (Los Angeles)",
+    "Order #",
+    "SKUs",
+    "Box Size",
+    "Box Cost",
+    "Qty",
+    "Pick & Pack Fee",
+    "Additional Units",
+    "Shipping",
+    "Storage",
+    "Total",
+    "Shipment #",
+    "Destination",
+    "Return Postage",
+    "Return Processing",
+    "Replace Postage",
+    "Replace Pick&Pack",
+    "Carrier",
+    "Item Name"
+  ],
+  "dataRows": 3,
+  "fixtureClient": "CP068 Fixture Client",
+  "period": {
+    "fromDay": "2026-08-01",
+    "toDay": "2026-08-31"
+  }
+}

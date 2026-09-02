@@ -32,6 +32,8 @@ const helperMethods = new Map([
   ['apiPatch', 'PATCH'],
   ['apiDelete', 'DELETE'],
   ['apiText', 'GET'],
+  // CP-068: binary downloads (PrepShip's invoice workbook) — a GET like apiText.
+  ['apiBlob', 'GET'],
   ['apiUpload', 'POST'],
   ['scopedList', 'GET'],
 ]);
@@ -59,7 +61,7 @@ function routeRegex(routePath) {
 
 function extractFrontendCalls() {
   const calls = [];
-  const callPattern = /(apiGet|apiPost|apiPut|apiPatch|apiDelete|apiText|apiUpload|scopedList)(?:<[\s\S]*?>)?\s*\(\s*token,\s*(['"`])([\s\S]*?)\2/g;
+  const callPattern = /(apiGet|apiPost|apiPut|apiPatch|apiDelete|apiText|apiBlob|apiUpload|scopedList)(?:<[\s\S]*?>)?\s*\(\s*token,\s*(['"`])([\s\S]*?)\2/g;
 
   for (const file of frontendFiles) {
     const source = readFileSync(path.join(frontendDir, file), 'utf8');

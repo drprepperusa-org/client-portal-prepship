@@ -21,6 +21,10 @@ const TIMED_OUT = Symbol('request-timed-out');
 // return-label / inspection-media uploads (the browser allows 120s for those).
 const EXEMPT_PREFIXES = [
   '/api/client-portal/invoice',
+  // CP-068: the invoice exports are PrepShip's files across a billing range; the proxy owns
+  // its own 60s ceiling. Exact-path entries — the prefix rule above needs a trailing slash.
+  '/api/client-portal/invoice.xlsx',
+  '/api/client-portal/invoice.csv',
   '/api/client-portal/inbound/import',
 ];
 const EXEMPT_SUFFIXES = ['/external-label-pdf', '/media'];

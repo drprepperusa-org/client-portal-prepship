@@ -38,7 +38,6 @@ type Mutation = {
 
 const PROXY = 'src/lib/client-portal/prepship-billing-details-proxy.ts';
 const HTML = 'src/lib/client-portal/invoice-html.ts';
-const XLSX = 'portal-client/src/lib/invoiceExcel.ts';
 const EVENTS = 'src/lib/client-portal/read-models/canonical-invoice-events.ts';
 const ROWS = 'portal-client/src/lib/invoiceRows.ts';
 const GRID = 'portal-client/src/components/billing/invoiceColumns.tsx';
@@ -105,6 +104,9 @@ export const MUTATIONS: readonly Mutation[] = [
     to: '\"returnTotal\": 99.99',
   },
   // ---- CP-059 AC-6: each money category, hidden from each surface, independently ----
+  //
+  // CP-068: the XLSX mutations that used to sit among these are gone — the Excel export is
+  // PrepShip's workbook, passed through, so there is no local sheet to mutate.
   //
   // Review found the grid omitting Adjustment, Return Total, Replacement Postage and
   // Replacement Pick & Pack while still printing a Fulfillment Fee that contained them, so a
@@ -179,30 +181,6 @@ export const MUTATIONS: readonly Mutation[] = [
     file: HTML, guard: CONTRACT,
     from: '        <td class="num">${money(invoiceTotals.returnTotal)}</td>',
     to: '        <td class="num">${money(invoiceTotals.returnProcessingTotal + invoiceTotals.returnPostageTotal)}</td>',
-  },
-  {
-    label: 'XLSX: zero the Adjustment cell on every exported row',
-    file: XLSX, guard: CONTRACT,
-    from: '    { type: Number, value: num(r.adjustmentTotal), format: MONEY_FORMAT },',
-    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
-  },
-  {
-    label: 'XLSX: zero the Return Total cell on every exported row',
-    file: XLSX, guard: CONTRACT,
-    from: '    { type: Number, value: num(r.returnTotal), format: MONEY_FORMAT },',
-    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
-  },
-  {
-    label: 'XLSX: zero the Replacement Postage cell on every exported row',
-    file: XLSX, guard: CONTRACT,
-    from: '    { type: Number, value: num(r.replacePostageTotal), format: MONEY_FORMAT },',
-    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
-  },
-  {
-    label: 'XLSX: zero the Replacement Pick & Pack cell on every exported row',
-    file: XLSX, guard: CONTRACT,
-    from: '    { type: Number, value: num(r.replacePickPackTotal), format: MONEY_FORMAT },',
-    to: '    { type: Number, value: 0, format: MONEY_FORMAT },',
   },
   // ---- the two defects that reached review, reinstated verbatim ----
   {
@@ -330,18 +308,6 @@ export const MUTATIONS: readonly Mutation[] = [
     file: HTML, guard: DISPLAY,
     from: "present === true ? money(value) : '&mdash;';",
     to: "present === true && Number(value) !== 0 ? money(value) : '&mdash;';",
-  },
-  {
-    label: 'XLSX: put return money back through num(), fabricating a summable 0',
-    file: XLSX, guard: DISPLAY,
-    from: "  present === true\n    ? { type: Number, value: num(value), format: MONEY_FORMAT }\n    : { type: String, value: '' };",
-    to: '  ({ type: Number, value: num(value), format: MONEY_FORMAT });',
-  },
-  {
-    label: 'XLSX: blank a real $0.00 line as though it were absent',
-    file: XLSX, guard: DISPLAY,
-    from: '  present === true\n',
-    to: '  present === true && num(value) !== 0\n',
   },
 
   // ---- ordering ----

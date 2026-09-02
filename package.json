@@ -104,6 +104,8 @@
     "test:client-portal-inventory-sold-label": "node scripts/client-portal-inventory-sold-label-guard.mjs",
     "test:client-portal-inventory-status": "tsx scripts/client-portal-inventory-status-guard.ts",
     "test:client-portal-invoice-export-range": "node scripts/client-portal-invoice-export-range-guard.mjs",
+    "test:client-portal-invoice-export-proxy": "tsx scripts/client-portal-invoice-export-proxy-guard.ts",
+    "test:client-portal-invoice-export-cp068:integration": "tsx scripts/integration/client-portal-invoice-export-cp068.integration.ts",
     "test:client-portal-invoice-items": "tsx scripts/client-portal-invoice-items-guard.ts",
     "test:client-portal-manual-refresh-controls": "tsx scripts/client-portal-manual-refresh-controls-guard.ts",
     "test:client-portal-mobile-nav": "node scripts/client-portal-mobile-nav-guard.mjs",
