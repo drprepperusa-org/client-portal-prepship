@@ -141,3 +141,12 @@ absence:
   entry dates to one instant and re-emits the container with fixed settings, so a
   clean regeneration reproduces the committed sha256 (`--check` proves it). Business
   members are the renderer's, untouched; their sha256s are in the sidecar.
+
+## r3 — after Hermes r2 (95%, gated)
+
+Hermes's novel builder swapped the Blob inside the API-domain fetcher; the Node
+identity checks began after it. r3 moves the proof to the wire: the no-local-builder
+guard requires `invoiceWorkbookRange` to RETURN the bare `apiBlob` call and forbids
+any construction, chaining or reading of bytes in the API domain; that builder is
+mutation 11 of the harness (11/11 killed). The integration suite now also reads the
+totals row and requires PrepShip's seven `SUM()` formulas over exactly the data rows.

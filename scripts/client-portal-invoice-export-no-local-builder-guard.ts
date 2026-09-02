@@ -155,6 +155,26 @@ assert.equal(count(read(TRANSPORT), /new Blob\(|new File\(/g), 0, 'the transport
 assert.match(read(TRANSPORT), /bytes: await response\.blob\(\)/, 'apiBlob hands back the response body itself');
 ok('the export path (hook, module, downloadFile, API domain, transport) joins no rows and rebuilds no bytes');
 
-const EXPECTED_CHECKS = 7;
+// ── 6. Static: the API-domain fetcher is the transport call itself — nothing between the wire
+//      and the module. Hermes r2 rebuilt the Blob INSIDE invoiceWorkbookRange (a `.then` that
+//      swapped `bytes`), which the identity checks above cannot see because they start after the
+//      fetcher. Only the browser proof caught it. Now the fetcher must be a bare `apiBlob(...)`
+//      return and the domain file may not construct, chain or read bytes anywhere. ──────────────
+const domainSource = read(DOMAIN);
+const bareApiBlobCall = new RegExp([
+  'invoiceWorkbookRange: \\(token: string, clientId: number, dateFrom: string, dateTo: string\\) =>',
+  "\\s*apiBlob\\(\\s*token,\\s*'/api/client-portal/invoice\\.xlsx',[\\s\\S]{0,200}?",
+  "'application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet',\\s*\\),\\s*generateBilling:",
+].join(''));
+assert.match(domainSource, bareApiBlobCall, 'invoiceWorkbookRange must RETURN the apiBlob call itself — no chaining, no wrapper, no local bytes');
+// `\bBlob\(` deliberately: apiBlob( is the transport call and must stay; `new Blob(` / `globalThis.Blob(` must not.
+assert.doesNotMatch(
+  domainSource,
+  /\.then\(|\bBlob\(|globalThis\.Blob|\bFile\(|bytes:|arrayBuffer|\.text\(\)|TextEncoder|btoa\(/,
+  'the API domain never constructs, chains or reads file bytes',
+);
+ok('the API-domain fetcher is the bare transport call: nothing sits between the wire and the download module');
+
+const EXPECTED_CHECKS = 8;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log(`\nCP-068 invoice-export no-local-builder guard passed - ${checks}/${EXPECTED_CHECKS} checks`);

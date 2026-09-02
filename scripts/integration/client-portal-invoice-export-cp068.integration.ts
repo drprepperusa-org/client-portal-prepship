@@ -55,7 +55,9 @@ const decodeXml = (text: string) => text
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 
 /** Row 1 of the first worksheet, cell by cell, resolving shared and inline strings. */
-async function headerRowOf(bytes: Uint8Array): Promise<{ sheetNames: string[]; headers: string[]; lastRow: number }> {
+async function headerRowOf(bytes: Uint8Array): Promise<{
+  sheetNames: string[]; headers: string[]; lastRow: number; totalsFormulas: string[];
+}> {
   const zip = await JSZip.loadAsync(bytes);
   const workbook = await zip.file('xl/workbook.xml')!.async('string');
   const sheetNames = [...workbook.matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g)].map((m) => decodeXml(m[1]!));
@@ -74,7 +76,11 @@ async function headerRowOf(bytes: Uint8Array): Promise<{ sheetNames: string[]; h
     return decodeXml(value);
   });
   const lastRow = Math.max(0, ...[...sheet.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map((m) => Number(m[1])));
-  return { sheetNames, headers, lastRow };
+  // The totals row: PrepShip writes its money totals as SUM() FORMULAS over the data rows, never
+  // as numbers it added up itself. Formulas live in <f> elements on the last row.
+  const lastRowXml = new RegExp(`<row\\b[^>]*\\br="${lastRow}"[^>]*>([\\s\\S]*?)</row>`).exec(sheet)?.[1] ?? '';
+  const totalsFormulas = [...lastRowXml.matchAll(/<f>([^<]*)<\/f>/g)].map((m) => decodeXml(m[1]!));
+  return { sheetNames, headers, lastRow, totalsFormulas };
 }
 
 async function main(): Promise<void> {
@@ -163,6 +169,25 @@ async function main(): Promise<void> {
   if (parsed.lastRow !== FIXTURE.dataRows + 2) throw new Error(`expected ${FIXTURE.dataRows + 2} rows, got ${parsed.lastRow}`);
   ok(`the served file is a valid workbook: sheet '${FIXTURE.sheet}', row 1 is PrepShip's ${PREPSHIP_INVOICE_HEADERS.length}-column header, ${FIXTURE.dataRows} data rows + totals`);
 
+  // The totals row is PrepShip's arithmetic, expressed as formulas over exactly the data rows —
+  // the portal added nothing up. Seven money/qty columns are summed (Box Cost, Qty, Pick & Pack
+  // Fee, Additional Units, Shipping, Storage, Total — billing.ts sumOf()); each spans row 2 to
+  // the last data row.
+  const firstData = 2;
+  const lastData = parsed.lastRow - 1;
+  // Two captures compared in code rather than a backreference: `\1` followed by a digit reads
+  // as `\14`, a different group entirely.
+  const sumShape = new RegExp(`^SUM\\(([A-Z]+)${firstData}:([A-Z]+)${lastData}\\)$`);
+  const badFormula = parsed.totalsFormulas.find((formula) => {
+    const match = sumShape.exec(formula);
+    return !match || match[1] !== match[2];
+  });
+  if (parsed.totalsFormulas.length !== 7) {
+    throw new Error(`expected 7 SUM() formulas on the totals row, got ${parsed.totalsFormulas.length}: ${parsed.totalsFormulas.join(' | ')}`);
+  }
+  if (badFormula) throw new Error(`a totals-row formula does not span the data rows ${firstData}..${lastData}: ${badFormula}`);
+  ok(`the totals row carries PrepShip's 7 SUM() formulas over rows ${firstData}..${lastData} — no portal arithmetic`);
+
   // --- 2. denials never reach PrepShip ---------------------------------------------------------
   stubWorkbook();
   const noBearer = await get(mount(financials), `/invoice.xlsx?clientId=7907&${RANGE}`, null);
@@ -242,7 +267,7 @@ async function main(): Promise<void> {
 
 try {
   await main();
-  const EXPECTED_CHECKS = 13;
+  const EXPECTED_CHECKS = 14;
   if (checks !== EXPECTED_CHECKS) throw new Error(`expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
   console.log(`\nPASS CP-068 invoice-export pass-through integration - ${checks}/${EXPECTED_CHECKS} checks`);
 } finally {

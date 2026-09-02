@@ -108,6 +108,14 @@ export const MUTATIONS: readonly Mutation[] = [
     to: "      '/api/client-portal/invoice-details',",
   },
   {
+    // Hermes r2's novel builder: identity was proven from the module onward, so a Blob swapped
+    // INSIDE the API-domain fetcher passed every static guard and only the browser caught it.
+    label: 'HERMES r2: the API domain swaps PrepShip\'s Blob for a locally rebuilt one',
+    file: DOMAIN, guard: BUILDER,
+    from: "      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n    ),\n  generateBilling:",
+    to: "      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n    ).then((file) => ({ ...file, bytes: new globalThis.Blob([JSON.stringify({ Total: 'locally rebuilt' })]) })),\n  generateBilling:",
+  },
+  {
     label: 'the route sends an exclusive instant instead of the last included day',
     file: ROUTE, guard: PROXY,
     from: 'clientId, dateFrom: range.fromDay, dateTo: range.toDay, format,',
