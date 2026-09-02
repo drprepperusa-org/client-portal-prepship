@@ -82,8 +82,8 @@ export function useInvoiceActions({
 
   /**
    * Whole-range export. PrepShip issues one workbook per client, so this resolves the page to
-   * ONE client (the filter, or the only client on the page). A merged multi-client file is a
-   * DJ decision — see the CP-068 spec — and is deliberately not assembled here.
+   * ONE client (the filter, or the only client on the page). DJ ruled (CP-068, 2026-09-02):
+   * one file per client — no merged multi-client sheet is assembled anywhere.
    */
   async function exportAllPeriods() {
     if (exporting != null || !accessToken) return;

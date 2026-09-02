@@ -150,3 +150,14 @@ guard requires `invoiceWorkbookRange` to RETURN the bare `apiBlob` call and forb
 any construction, chaining or reading of bytes in the API domain; that builder is
 mutation 11 of the harness (11/11 killed). The integration suite now also reads the
 totals row and requires PrepShip's seven `SUM()` formulas over exactly the data rows.
+
+## DJ rulings — 2026-09-02
+
+1. **Carrier column: exception approved.** PrepShip's `Carrier` column ships in the
+   proxied `.xlsx` / `.csv` as a customer-visible field; recorded under
+   "DJ-approved exceptions" in `docs/source-of-truth-matrix.md`. Every other
+   CP-018 / CP-024 redaction stands.
+2. **Multi-client: one file per client.** "Export all" resolves the page to a
+   client and otherwise asks the user to pick one. No merged sheet anywhere.
+
+With both recorded the branch is cleared to merge to `main`.

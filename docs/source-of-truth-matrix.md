@@ -1132,11 +1132,14 @@ no spreadsheet cells. Guards: `client-portal-invoice-items-guard.ts`,
 `client-portal-invoice-export-range-guard.mjs`,
 `client-portal-invoice-export-proxy-guard.ts`.
 
-OPEN — DJ decision (CP-068): PrepShip's workbook carries a `Carrier` column. CP-018 /
-CP-024 keep carrier identity out of every customer surface and no exception is recorded
-below, so the CP-068 branch is held from `main` until DJ rules (approve the exception here,
-or have PrepShip blank the cell for non-global scope). A merged multi-client export is
-likewise DJ's call; until then the export is one client per file.
+DJ rulings (CP-068, 2026-09-02): (1) the `Carrier` column PrepShip's workbook and CSV carry
+is APPROVED as a customer-visible field on the invoice exports — recorded under "DJ-approved
+exceptions" below; it is PrepShip's own artifact, passed through, and the carrier is already
+inferable from the tracking numbers the portal shows. Every other CP-018 / CP-024 redaction
+(service, provider, rate identity, label cost, margin) is unchanged. (2) The export is ONE
+FILE PER CLIENT: "Export all" resolves the page to a client (the filter, or the only client
+present) and otherwise asks the user to pick one. No merged multi-client sheet is built
+anywhere.
 
 ### Returns (CP-026 → CP-031)
 
@@ -1278,10 +1281,19 @@ and this row becomes a real mapping.
 
 ### DJ-approved exceptions
 
-None. No Client Portal surface currently derives an authoritative business value
-outside a database / PrepShip-backed canonical owner. Any future exception must
-be recorded here with the DJ approval, the exact field, and the justification,
-and must still document source inputs, event clock, and formula.
+- **CP-068 (DJ, 2026-09-02) — `Carrier` on the invoice `.xlsx` / `.csv` exports.** Field:
+  the `Carrier` column of PrepShip's invoice workbook and CSV (`billing-invoice-columns.ts`,
+  rendered by `invoiceCarrierCell`). Owner: PrepShip; the portal passes the bytes through
+  unmodified. Justification: DJ's rule that every invoice export carries the same data
+  cross-app; the carrier name is already inferable from the tracking numbers the portal
+  shows. Scope: this column only — service, provider, rate identity, label cost and margin
+  stay redacted everywhere (CP-018 / CP-024). Event clock: billing time; formula: none
+  (a label, not a derived value).
+
+No other Client Portal surface derives an authoritative business value outside a
+database / PrepShip-backed canonical owner. Any future exception must be recorded here
+with the DJ approval, the exact field, and the justification, and must still document
+source inputs, event clock, and formula.
 
 ### CP remediation reference
 

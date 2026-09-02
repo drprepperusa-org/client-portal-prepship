@@ -62,7 +62,7 @@ assert(
 );
 assert(
   !/includeClient|multiClient/.test(hook),
-  'no merged multi-client sheet is assembled in the portal (DJ decision pending)',
+  'no merged multi-client sheet is assembled in the portal (DJ ruled one file per client, 2026-09-02)',
 );
 
 // ── The file is PrepShip's, downloaded whole; nothing pages rows for an export ──

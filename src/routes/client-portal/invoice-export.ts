@@ -35,8 +35,8 @@ export async function handleInvoiceExport(
   if (!rawFrom || !rawTo) return c.text('dateFrom and dateTo are required', 400);
   const range = billingDayRange(rawFrom, rawTo);
   if (!range) return c.text('Invalid dateFrom/dateTo; expected YYYY-MM-DD', 400);
-  // PrepShip issues one workbook per client. A merged multi-client export is a DJ decision
-  // (see the CP-068 spec); until then the portal asks for exactly one client.
+  // PrepShip issues one workbook per client, and DJ ruled (CP-068, 2026-09-02) that the export
+  // stays one file per client — so the portal asks for exactly one client.
   const clientId = requestedClientId(c);
   if (!clientId) return c.text('clientId is required: PrepShip issues one invoice export per client', 400);
   const authorization = c.req.header('authorization');
