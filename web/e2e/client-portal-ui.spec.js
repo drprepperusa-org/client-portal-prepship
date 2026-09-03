@@ -96,10 +96,55 @@ const returnRow = {
   deliveryStatus: 'pending',
   trackingNumber: '1ZE2E000000000001',
   trackingUrl: null,
+  // CP-062: the read model's carrier delivery signal; the portal renders these verbatim.
+  trackingStatus: null,
+  deliveredAt: null,
+  arrivedReadyToReceive: false,
   pdfAvailable: false,
   returnCustomerShippingRate: 8.25,
   createdAt: '2026-07-09T12:00:00.000Z',
 };
+
+// CP-062 fixtures: one parcel the carrier delivered while the return is still in_transit, one
+// still en route. The flag is BACKEND-derived; these rows are what the read model would serve.
+const arrivedReturn = {
+  ...returnRow,
+  id: 2,
+  orderId: 102,
+  orderNumber: 'E2E-102',
+  returnReference: 'E2E-RET-ARRIVED',
+  status: 'in_transit',
+  trackingNumber: '1ZE2E000000000002',
+  trackingStatus: 'delivered',
+  deliveredAt: '2026-07-24T18:04:00.000Z',
+  arrivedReadyToReceive: true,
+};
+const enRouteReturn = {
+  ...returnRow,
+  id: 3,
+  orderId: 103,
+  orderNumber: 'E2E-103',
+  returnReference: 'E2E-RET-ENROUTE',
+  status: 'in_transit',
+  trackingNumber: '1ZE2E000000000003',
+  trackingStatus: 'in_transit',
+  deliveredAt: null,
+  arrivedReadyToReceive: false,
+};
+const receivingRowOf = (row, requestedAt) => ({
+  id: row.id,
+  orderId: row.orderId,
+  orderNumber: row.orderNumber,
+  returnReference: row.returnReference,
+  clientName: row.clientName,
+  status: row.status,
+  trackingNumber: row.trackingNumber,
+  trackingStatus: row.trackingStatus,
+  deliveredAt: row.deliveredAt,
+  arrivedReadyToReceive: row.arrivedReadyToReceive,
+  returnToLocation: null,
+  requestedAt,
+});
 
 const orderRow = {
   id: 101,
@@ -170,6 +215,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
       canManageAdmins: capabilities.canManageAdmins ?? admin,
       canViewAudit: capabilities.canViewAudit ?? admin,
       canRequestReplacements: capabilities.canRequestReplacements ?? admin,
+      canInspectReturns: capabilities.canInspectReturns ?? admin,
     };
   }
   if (pathname === '/api/client-portal/clients') {
@@ -935,6 +981,81 @@ test('settings access presents a focused master-detail roster', async ({ page })
 // These render the actual UI, because the defect this card already produced was a
 // backend route with no button — source-level checks passed while an operator had no
 // way to reach the feature.
+
+test('CP-062 AC-2: an arrived return shows the backend flag and the delivered time; one en route does not', async ({ page }) => {
+  const errors = await setupPortal(page);
+  await page.route((url) => url.pathname === '/api/client-portal/returns', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [arrivedReturn, enRouteReturn], pagination: { ...emptyPagination, total: 2 } }),
+    });
+  });
+  await page.goto(`${baseUrl}/returns`);
+
+  // Scoped to the ROW (see the CP-058 note above): the status filter's hidden <option>s
+  // would satisfy a page-wide match. The lifecycle chip must still read "In transit" —
+  // delivery is a separate signal and never advances returns.status (AC-4).
+  const arrived = page.getByRole('row').filter({ hasText: 'E2E-RET-ARRIVED' });
+  await expect(arrived.getByText('Arrived — ready to receive')).toBeVisible();
+  await expect(arrived.getByText('In transit', { exact: true })).toBeVisible();
+  await expect(arrived.getByText(/^Delivered /)).toBeVisible();
+
+  const enRoute = page.getByRole('row').filter({ hasText: 'E2E-RET-ENROUTE' });
+  await expect(enRoute.getByText('In transit', { exact: true })).toBeVisible();
+  await expect(enRoute.getByText('Arrived — ready to receive')).toHaveCount(0);
+  await expect(enRoute.getByText(/^Delivered /)).toHaveCount(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-062 AC-3: the receiving queue renders the backend order — arrived first — with the Arrived chip', async ({ page }) => {
+  const errors = await setupPortal(page);
+  await page.route((url) => url.pathname === '/api/client-portal/returns/receiving', async (route) => {
+    // The backend orders arrived parcels first (SQL twin of the arrival rule); the portal
+    // must keep that order and mark the flagged row, without re-sorting on its own.
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [
+          receivingRowOf(arrivedReturn, '2026-07-20T12:00:00.000Z'),
+          receivingRowOf(enRouteReturn, '2026-07-25T12:00:00.000Z'),
+        ],
+      }),
+    });
+  });
+  await page.goto(`${baseUrl}/returns`);
+  await page.getByRole('button', { name: 'Receive returns' }).click();
+
+  const dialog = page.getByRole('dialog');
+  const items = dialog.getByRole('listitem');
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText('E2E-RET-ARRIVED');
+  await expect(items.nth(0).getByText('Arrived', { exact: true })).toBeVisible();
+  await expect(items.nth(1)).toContainText('E2E-RET-ENROUTE');
+  await expect(items.nth(1).getByText('Arrived', { exact: true })).toHaveCount(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-062: the portal never infers arrival — a delivered parcel on a received return shows the date, no flag', async ({ page }) => {
+  // Same carrier facts as the arrived fixture, but the backend says the return is already
+  // received, so arrivedReadyToReceive is false. If the portal derived the flag from
+  // trackingStatus/deliveredAt itself, the chip would appear here.
+  const errors = await setupPortal(page, {
+    returnOverrides: {
+      status: 'received',
+      trackingStatus: 'delivered',
+      deliveredAt: '2026-07-24T18:04:00.000Z',
+      arrivedReadyToReceive: false,
+    },
+  });
+  await page.goto(`${baseUrl}/returns`);
+  const row = page.getByRole('row').filter({ hasText: 'E2E-RET-1' });
+  await expect(row.getByText('Received', { exact: true })).toBeVisible();
+  await expect(row.getByText(/^Delivered /)).toBeVisible();
+  await expect(row.getByText('Arrived — ready to receive')).toHaveCount(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
 
 test('CP-058 AC-1/AC-2: a label-pending return reads as a deliberate state', async ({ page }) => {
   const errors = await setupPortal(page, { returnOverrides: { status: 'requested' } });

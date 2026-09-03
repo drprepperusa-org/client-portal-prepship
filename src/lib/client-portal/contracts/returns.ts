@@ -12,6 +12,15 @@ export interface PortalReturnRow {
   deliveryStatus: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
+  /** CP-062: carrier state of the linked return shipment (backend-normalised); null without one. */
+  trackingStatus: string | null;
+  /** CP-062: when the carrier reported the return parcel delivered (ISO instant), else null. */
+  deliveredAt: string | null;
+  /**
+   * CP-062: backend-derived — the parcel is delivered but the return is still before receipt.
+   * Display only. Delivery never advances the lifecycle status; receiving stays manual.
+   */
+  arrivedReadyToReceive: boolean;
   pdfAvailable: boolean;
   returnCustomerShippingRate: number | null;
   /** Canonical return_items SKUs, in return-line order. */
@@ -66,7 +75,6 @@ export interface PortalReturnActivity {
 }
 
 export interface PortalReturnDetail extends PortalReturnRow {
-  trackingStatus: string | null;
   deliveryError: string | null;
   returnToLocationId: number | null;
   /**
@@ -119,7 +127,16 @@ export interface UpdateReturnRecipientNameInput {
 
 export interface PortalReturnReceivingRow extends Pick<
   PortalReturnRow,
-  'id' | 'orderId' | 'orderNumber' | 'returnReference' | 'clientName' | 'status' | 'trackingNumber'
+  | 'id'
+  | 'orderId'
+  | 'orderNumber'
+  | 'returnReference'
+  | 'clientName'
+  | 'status'
+  | 'trackingNumber'
+  | 'trackingStatus'
+  | 'deliveredAt'
+  | 'arrivedReadyToReceive'
 > {
   returnToLocation: string | null;
   requestedAt: string | null;

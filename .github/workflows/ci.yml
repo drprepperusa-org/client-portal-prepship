@@ -74,3 +74,10 @@ jobs:
       # path; the guards prove identity in Node.
       - name: CP-068 invoice Export browser proof
         run: npm run test:cp-068-export:browser
+
+      # CP-062: the arrived-ready-to-receive chip, the delivered time and the queue's backend order
+      # are portal renders of a read-model flag. The guards prove the flag has one owner; only a
+      # real browser proves the portal renders it verbatim and never derives it from the carrier
+      # columns itself.
+      - name: CP-062 return-arrival browser proof
+        run: npm run test:cp-062:browser

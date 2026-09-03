@@ -67,6 +67,8 @@ function registerReturnListRoute(app: Hono): void {
         returnLabelUrl: shipments.labelUrl,
         returnShipmentSource: shipments.source,
         returnShipmentVoided: shipments.voided,
+        returnTrackingStatus: shipments.trackingStatus,
+        returnDeliveredAt: shipments.deliveredAt,
         validatedReturnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
         returnedSkus: sql<string[]>`coalesce((
           select array_agg(ri.sku order by ri.id)
@@ -149,6 +151,7 @@ function registerReturnDetailRoute(app: Hono): void {
         clientName: clients.name,
         returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
         returnTrackingStatus: shipments.trackingStatus,
+        returnDeliveredAt: shipments.deliveredAt,
         returnCarrier: shipments.labelCarrier,
         returnLabelUrl: shipments.labelUrl,
         returnShipmentSource: shipments.source,
@@ -220,7 +223,6 @@ function registerReturnDetailRoute(app: Hono): void {
     return c.json({
       data: {
         ...safeRow,
-        trackingStatus: row.returnTrackingStatus ?? null,
         deliveryError: row.ret.deliveryError,
         returnToLocationId: row.ret.returnToLocationId,
         pdfAvailable: Boolean(pdfUrl),

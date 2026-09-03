@@ -82,7 +82,10 @@ function ReceivingList({ onPick }: { onPick: (id: number) => void }) {
                 <button
                   type="button"
                   onClick={() => onPick(row.id)}
-                  className="focus-ring flex min-h-14 w-full items-center gap-3 rounded-glass-sm bg-white/60 p-3 text-left ring-1 ring-slate-200/70 transition-colors hover:bg-white/90"
+                  className={
+                    'focus-ring flex min-h-14 w-full items-center gap-3 rounded-glass-sm bg-white/60 p-3 text-left ring-1 transition-colors hover:bg-white/90 ' +
+                    (row.arrivedReadyToReceive ? 'ring-emerald-300' : 'ring-slate-200/70')
+                  }
                 >
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-glass-sm bg-brand-50 text-brand-600">
                     <PackageCheck size={20} />
@@ -95,6 +98,9 @@ function ReceivingList({ onPick }: { onPick: (id: number) => void }) {
                       {row.clientName ?? '—'}{row.trackingNumber ? ` · ${row.trackingNumber}` : ''}
                     </p>
                   </div>
+                  {row.arrivedReadyToReceive && (
+                    <Chip accent="emerald" dot={false}>Arrived</Chip>
+                  )}
                   <Chip accent={status.accent} dot={false}>{status.label}</Chip>
                 </button>
               </li>

@@ -138,10 +138,19 @@ export default function Returns() {
       {
         key: 'status',
         header: 'Status',
-        defaultWidth: 130,
+        defaultWidth: 190,
         render: (row) => {
           const status = returnStatusMeta(row.status);
-          return <Chip accent={status.accent}>{status.label}</Chip>;
+          // CP-062 (AC-2): the backend-derived "arrived, not yet received" flag, rendered as given.
+          // The lifecycle chip stays returns.status; the portal never infers arrival itself.
+          return (
+            <span className="inline-flex flex-wrap items-center gap-1">
+              <Chip accent={status.accent}>{status.label}</Chip>
+              {row.arrivedReadyToReceive && (
+                <Chip accent="emerald" dot={false}>Arrived — ready to receive</Chip>
+              )}
+            </span>
+          );
         },
         sortAccessor: (row) => row.status,
       },
@@ -164,7 +173,7 @@ export default function Returns() {
         defaultWidth: 180,
         render: (row) => {
           if (!row.trackingNumber) return <span className="text-ink-3">—</span>;
-          return row.trackingUrl ? (
+          const number = row.trackingUrl ? (
             <a
               href={row.trackingUrl}
               target="_blank"
@@ -178,6 +187,15 @@ export default function Returns() {
             </a>
           ) : (
             <span className="font-mono text-xs text-ink-2">{row.trackingNumber}</span>
+          );
+          // CP-062: the carrier's delivered time as the read model surfaces it. Display only.
+          return row.deliveredAt ? (
+            <span className="flex flex-col">
+              {number}
+              <span className="text-[11px] text-emerald-700">Delivered {shortDate(row.deliveredAt)}</span>
+            </span>
+          ) : (
+            number
           );
         },
         sortAccessor: (row) => row.trackingNumber ?? '',

@@ -52,6 +52,8 @@ jobs:
         run: npm run test:client-portal-returns-cp057:integration
       - name: Run CP-057/058 public-route and storage-compensation suite
         run: npm run test:client-portal-returns-cp058:integration
+      - name: Run CP-062 return-arrival read-model integration suite
+        run: npm run test:client-portal-returns-cp062:integration
       - name: Run CP-060 per-shipment shipping classification suite
         run: npm run test:client-portal-analysis-cp060:integration
       # CP-059. The contract guard proves the boundary in isolation; this proves what only a

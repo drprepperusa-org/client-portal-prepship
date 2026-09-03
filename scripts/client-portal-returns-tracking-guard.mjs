@@ -67,9 +67,12 @@ assert(
   /status:\s*row\.ret\.status/.test(returnsRoute),
   'the return DTO status is the canonical backend returns.status',
 );
+// CP-062: the carrier state reaches every return row (list, detail, receiving queue) through
+// the one arrival owner; the DTO delegates instead of reading the column itself.
 assert(
-  /trackingStatus:\s*row\.returnTrackingStatus/.test(returnsRoute),
-  'the return detail exposes a DISTINCT backend trackingStatus (carrier state)',
+  /trackingStatus:\s*arrival\.trackingStatus/.test(returnsRoute) &&
+    /const arrival = resolveReturnArrival\(/.test(returnsRoute),
+  'the return DTO exposes a DISTINCT backend trackingStatus (carrier state) via resolveReturnArrival',
 );
 assert(
   /listOriginalOrderActivity/.test(activity) && /original_order_placed/.test(activity),

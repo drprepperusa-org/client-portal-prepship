@@ -15,6 +15,7 @@ import { recordPortalAudit } from '../../../lib/client-portal/audit';
 import { requestedSearch, scopeOrResponse } from '../../../lib/client-portal/query-params';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { uploadReturnInspectionMedia } from '../../../lib/supabase';
+import { resolveReturnArrival, returnArrivedReadyToReceiveSql } from '../../../services/return-arrival';
 import { resolveReturnReference } from '../../../services/return-reference';
 import {
   canRecordAuthoritativeReturnInspection,
@@ -51,6 +52,9 @@ function registerReceivingQueueRoute(app: Hono): void {
         clientName: clients.name,
         returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
         returnToLocationName: locations.name,
+        returnTrackingStatus: shipments.trackingStatus,
+        returnDeliveredAt: shipments.deliveredAt,
+        returnShipmentVoided: shipments.voided,
       })
       .from(returns)
       .leftJoin(orders, eq(orders.id, returns.orderId))
@@ -58,7 +62,9 @@ function registerReceivingQueueRoute(app: Hono): void {
       .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
       .leftJoin(locations, eq(locations.id, returns.returnToLocationId))
       .where(where)
-      .orderBy(desc(returns.requestedAt), desc(returns.id))
+      // CP-062 (AC-3): parcels the carrier has delivered but the warehouse has not received come
+      // first, across the whole page — the SQL twin of the read model's arrival rule. Then newest.
+      .orderBy(desc(returnArrivedReadyToReceiveSql()), desc(returns.requestedAt), desc(returns.id))
       .limit(100);
 
     await recordPortalAudit('portal.returns.receiving.list', scope, { rows: rows.length, search });
@@ -71,6 +77,13 @@ function registerReceivingQueueRoute(app: Hono): void {
         clientName: row.clientName,
         status: row.ret.status,
         trackingNumber: row.returnTracking,
+        // CP-062: trackingStatus, deliveredAt, arrivedReadyToReceive — the same owner the list uses.
+        ...resolveReturnArrival({
+          status: row.ret.status,
+          trackingStatus: row.returnTrackingStatus,
+          deliveredAt: row.returnDeliveredAt,
+          shipmentVoided: row.returnShipmentVoided,
+        }),
         returnToLocation: row.returnToLocationName,
         requestedAt: iso(row.ret.requestedAt),
       })),
