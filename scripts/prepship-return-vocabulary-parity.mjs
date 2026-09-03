@@ -29,6 +29,13 @@ let failed = false;
 const fail = (message) => { console.error(`FAIL ${message}`); failed = true; };
 const pass = (message) => { console.log(`PASS ${message}`); };
 const sorted = (list) => [...list].map((s) => s.toLowerCase()).sort().join(',');
+// ORDER-SENSITIVE, for the upstream half. The pinned contract records the upstream declaration in
+// its declared order, which is the order every `b.line_type in (...)` arm renders upstream and the
+// reason upstream keeps the aggregate a literal. Comparing through sorted() let a reversed upstream
+// list pass this gate (PS-521 audit, 2026-09-03). The LOCAL half stays set-based on purpose: this
+// repo composes its own aggregate from the three buckets in a different, documented order, and
+// membership — not this repo's list order — is what it must share with upstream.
+const ordered = (list) => [...list].map((s) => s.toLowerCase()).join(',');
 
 // ── local half: always runs ──────────────────────────────────────────────────
 const local = readFileSync('src/services/billing-line-types.ts', 'utf8');
@@ -181,13 +188,13 @@ if (!token) {
         );
         continue;
       }
-      if (sorted(upstreamBucket) !== sorted(pinned)) {
+      if (ordered(upstreamBucket) !== ordered(pinned)) {
         fail(
-          `upstream ${label} bucket differs from the pinned contract.\n` +
-            `  upstream: ${sorted(upstreamBucket)}\n  pinned:   ${sorted(pinned)}`,
+          `upstream ${label} bucket differs from the pinned contract (members AND order).\n` +
+            `  upstream: ${ordered(upstreamBucket)}\n  pinned:   ${ordered(pinned)}`,
         );
       } else {
-        pass(`upstream ${exportName} matches the pinned ${label} bucket exactly`);
+        pass(`upstream ${exportName} matches the pinned ${label} bucket exactly, in order`);
       }
     }
   }
