@@ -54,6 +54,10 @@ jobs:
         run: npm run test:client-portal-returns-cp058:integration
       - name: Run CP-062 return-arrival read-model integration suite
         run: npm run test:client-portal-returns-cp062:integration
+      # CP-063 (wired by CP-064). The 9-check source-pin guard runs in CI; this is the runtime half:
+      # the staff-only effectiveBillingDate day, override-wins, re-read after correction, client null.
+      - name: Run CP-063 billing-date read-model integration suite
+        run: npm run test:client-portal-returns-cp063:integration
       - name: Run CP-060 per-shipment shipping classification suite
         run: npm run test:client-portal-analysis-cp060:integration
       # CP-059. The contract guard proves the boundary in isolation; this proves what only a

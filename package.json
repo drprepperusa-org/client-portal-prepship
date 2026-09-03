@@ -99,6 +99,7 @@
     "test:client-portal-effective-stock": "tsx scripts/client-portal-effective-stock-guard.ts",
     "test:client-portal-failure-states": "node scripts/client-portal-failure-states-guard.mjs && tsx scripts/client-portal-failure-states-runtime.ts",
     "test:client-portal-inbound-receipts": "node scripts/client-portal-inbound-receipts-guard.mjs",
+    "test:client-portal-ci-db-suite-wiring": "node scripts/client-portal-ci-db-suite-wiring-guard.mjs",
     "test:client-portal-integration": "tsx scripts/integration/client-portal.integration.ts",
     "test:client-portal-integration:setup": "tsx scripts/integration/setup.ts",
     "test:client-portal-inventory-sold-label": "node scripts/client-portal-inventory-sold-label-guard.mjs",
