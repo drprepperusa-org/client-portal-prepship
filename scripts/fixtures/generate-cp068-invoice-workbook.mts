@@ -68,7 +68,8 @@ const details = [
     has_return_postage_line: true, return_postage_amt: '7.73',
     has_return_processing_line: true, return_processing_amt: '3.00',
     pickpack_amt: '0', shipping_amt: '0', row_total: '10.73', return_reference: '9002-RETURN',
-    order_number_label: '9002 - Return', skus: 'SKU-B', item_names: 'Widget B',
+    // #1532: PrepShip's export Order # cell for a canonical return is its STORED reference, bare.
+    order_number_label: '9002-RETURN', skus: 'SKU-B', item_names: 'Widget B',
     destination: 'International',
   }),
   row({

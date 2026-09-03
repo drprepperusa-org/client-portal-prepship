@@ -116,27 +116,11 @@ export async function portalInvoiceSummary(
   }));
 }
 
-/** Total per-order rows for a details query — powers the drill-in pagination. */
-export async function portalInvoiceDetailCount(
-  scope: ClientPortalScope,
-  input: { clientId?: number | null; dateFrom: string; dateTo: string },
-): Promise<number> {
-  const rows = await db.execute<{ count: string }>(sql`
-    select count(*)::text as count from (
-      select 1
-      from billing_line_items b
-      left join ${clients} c on c.id = b.client_id
-      where coalesce(c.active, true) = true
-        and ${customerSafeInvoiceLine}
-        and ${invoiceEffectiveDay} >= ${input.dateFrom}::timestamptz
-        and ${invoiceEffectiveDay} < ${input.dateTo}::timestamptz
-        ${input.clientId ? sql`and b.client_id = ${input.clientId}` : sql``}
-        ${invoiceLineScopePredicate(scope) ? sql`and ${invoiceLineScopePredicate(scope)}` : sql``}
-      group by b.client_id, c.name, b.order_id, b.order_number
-    ) t
-  `);
-  return Number(rows[0]?.count) || 0;
-}
+// #1532: portalInvoiceDetailCount (order-grain count) was retired. Since CP-059 the detail
+// grain is PrepShip's canonical billing EVENTS (canonical-invoice-events.ts), where the total
+// is the length of the same array the rows come from — a count that cannot disagree with the
+// detail. An order-grain count next to an event-grain detail was a second owner by
+// construction (one order with a return is one row here, two rows there).
 
 type PortalInvoicePeriodSummaryRow = {
   client_id: number;

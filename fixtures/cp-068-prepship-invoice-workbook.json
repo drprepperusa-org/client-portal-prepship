@@ -1,6 +1,6 @@
 {
-  "producerSha": "d0b5861ef8c6bbdffd26417ca14a615361e297f5",
-  "sha256": "e485cf91b47bf622e5742604c35eaa121a7457bc6d168dcaa0ee105d8fa8f9ad",
+  "producerSha": "eb1ff37a2dbdcbb9f03ac107228061608af8a7f4",
+  "sha256": "61f82f285ae460aff959709d98fc8e49d45e51ef34a05bc2c209ae532cc70d7a",
   "sheet": "Invoice",
   "headers": [
     "Billing / Activity Date (Los Angeles)",
@@ -44,6 +44,6 @@
     "xl/workbook.xml": "a412f0a6653f21d13304a2bfa8998291f79d5f451428035e7a568afb88598e51",
     "xl/worksheets/sheet1.xml": "9765e529c0ef192399dd54599f911d665c082cce84cc5c3c63fa2c199b74e6f3",
     "xl/styles.xml": "d6fd7e2f70ae03543db5414ecbedbedafc125e81283dcabd92c0c3abae7a0ef6",
-    "xl/sharedStrings.xml": "408e230532de7d50f96e0b7c7e678e63362a31f55c57eb784f653db251719740"
+    "xl/sharedStrings.xml": "de95d3d768e7ef9adb820adb809b8cae19f73b57a119867d252fedd7a5ad8c72"
   }
 }

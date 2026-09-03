@@ -252,9 +252,12 @@ export function buildInvoiceLineColumns(
       // dedicated return surface exists. Wrong navigation is worse than none.
       render: (row) => {
         const isReturn = row.rowType === 'Return';
+        // #1532 (DJ ruling 2026-09-03): the portal shows the BARE identity — 1234, 1234-RETURN —
+        // exactly as PrepShip's DTO emits it. A '#' is PrepShip's own operator-table convention
+        // and is never added here, not even on the orderless fallback.
         const label = row.displayReference
           ?? row.orderNumber
-          ?? (row.orderId ? `#${row.orderId}` : '—');
+          ?? (row.orderId ? String(row.orderId) : '—');
         if (isReturn || row.orderId == null) {
           return (
             <span

@@ -73,7 +73,7 @@ check('billing reports use exclusive bounds while canonical generation forwards 
 const invoiceReadModel = read('src/lib/client-portal/read-models/invoice-details.ts');
 check('invoice read models use strict upper bound',
   !/b\.ship_date <= \$\{input\.dateTo\}/.test(invoiceReadModel) &&
-    (invoiceReadModel.match(/\$\{invoiceEffectiveDay\} < \$\{input\.dateTo\}/g) ?? []).length >= 4 &&
+    (invoiceReadModel.match(/\$\{invoiceEffectiveDay\} < \$\{input\.dateTo\}/g) ?? []).length >= 3 && // #1532: the order-grain count (one site) was retired
     /billingLineEffectiveDaySql/.test(invoiceReadModel));
 
 const summaries = read('src/services/billing-summaries.ts');

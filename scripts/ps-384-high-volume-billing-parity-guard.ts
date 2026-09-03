@@ -38,7 +38,7 @@ const packageJson = JSON.parse(read('package.json')) as { scripts?: Record<strin
 const summaryBlock = sliceBetween(
   readModel,
   'export async function portalInvoiceSummary',
-  'export async function portalInvoiceDetailCount',
+  'export async function portalInvoicePeriodSummary', // #1532: the order-grain count was retired
 );
 const periodSummaryBlock = sliceBetween(readModel, 'export async function portalInvoicePeriodSummary', '// CP-016');
 const detailBlock = sliceBetween(readModel, 'export async function portalInvoiceDetails', 'const dimsFromRaw');

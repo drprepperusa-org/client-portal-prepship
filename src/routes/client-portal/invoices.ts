@@ -12,10 +12,11 @@ import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
 import { fetchCanonicalInvoiceTotals } from '../../lib/client-portal/prepship-invoice-totals-proxy';
 import type { CanonicalBillingTotals } from '../../lib/client-portal/prepship-billing-details-proxy';
 import { assignCanonicalTotals, keyBillingSummaryRows } from '../../lib/client-portal/billing-summary-canonical-keys';
-// CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails and
-// portalInvoiceDetailCount are no longer called from here. They are left in the read model
-// because other callers still use them; importing them here would leave a dead reference that
-// makes the order-grain path look reachable from production when it is not.
+// CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails is no
+// longer called from here (its order-grain count, portalInvoiceDetailCount, was retired under
+// #1532). It is left in the read model because the master integration suite and several guards
+// still exercise it; importing it here would leave a dead reference that makes the order-grain
+// path look reachable from production when it is not.
 import { portalInvoicePeriodSummary, portalInvoiceSummary } from '../../lib/client-portal/read-models/invoice-details';
 import { portalCanonicalInvoiceEvents } from '../../lib/client-portal/read-models/canonical-invoice-events';
 import { parsePage, parsePageSize, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
