@@ -44,6 +44,24 @@ const FE_QUEUE = 'portal-client/src/components/returns/ReturnReceivingModal.tsx'
 const FE_PRESENTATION = 'portal-client/src/components/returns/returnPresentation.ts';
 
 const DELIVERED_AT = new Date('2026-07-24T18:04:00Z');
+
+/** The call site hands the owner the four source facts, by name, in the owner's order. */
+function delegatesToOwner(src: string, opener: string): void {
+  const start = src.indexOf(opener);
+  assert.ok(start >= 0, `${opener} present`);
+  const block = src.slice(start, src.indexOf('})', start));
+  let cursor = 0;
+  for (const field of [
+    'status: row.ret.status,',
+    'trackingStatus: row.returnTrackingStatus,',
+    'deliveredAt: row.returnDeliveredAt,',
+    'shipmentVoided: row.returnShipmentVoided,',
+  ]) {
+    const at = block.indexOf(field, cursor);
+    assert.ok(at > cursor, `${opener} passes ${field} in order`);
+    cursor = at;
+  }
+}
 const base = { status: 'in_transit', trackingStatus: 'delivered', deliveredAt: DELIVERED_AT, shipmentVoided: false };
 
 // ── 1. The rule, executed ───────────────────────────────────────────────────
@@ -119,7 +137,7 @@ check('the owner is a leaf: no db client, no writes', () => {
 check('dto.ts delegates to resolveReturnArrival and exposes exactly its three fields', () => {
   const src = read(DTO);
   assert.match(src, /import \{ resolveReturnArrival \} from '\.\.\/\.\.\/\.\.\/services\/return-arrival'/);
-  assert.match(src, /const arrival = resolveReturnArrival\(\{[\s\S]*?status: row\.ret\.status,[\s\S]*?trackingStatus: row\.returnTrackingStatus,[\s\S]*?deliveredAt: row\.returnDeliveredAt,[\s\S]*?shipmentVoided: row\.returnShipmentVoided,[\s\S]*?\}\)/);
+  delegatesToOwner(src, 'const arrival = resolveReturnArrival({');
   assert.match(src, /trackingStatus: arrival\.trackingStatus,/);
   assert.match(src, /deliveredAt: arrival\.deliveredAt,/);
   assert.match(src, /arrivedReadyToReceive: arrival\.arrivedReadyToReceive,/);
@@ -134,7 +152,7 @@ check('receiving.ts orders arrived-first through the SQL twin, then newest, and 
   const src = read(RECEIVING);
   const order = src.indexOf('.orderBy(desc(returnArrivedReadyToReceiveSql()), desc(returns.requestedAt), desc(returns.id))');
   assert.ok(order > 0, 'arrived-first orderBy present');
-  assert.match(src, /\.\.\.resolveReturnArrival\(\{[\s\S]*?status: row\.ret\.status,[\s\S]*?trackingStatus: row\.returnTrackingStatus,[\s\S]*?deliveredAt: row\.returnDeliveredAt,[\s\S]*?shipmentVoided: row\.returnShipmentVoided,[\s\S]*?\}\)/);
+  delegatesToOwner(src, '...resolveReturnArrival({');
   for (const column of ['returnTrackingStatus: shipments.trackingStatus', 'returnDeliveredAt: shipments.deliveredAt', 'returnShipmentVoided: shipments.voided']) {
     assert.ok(src.includes(column), `queue projects ${column}`);
   }

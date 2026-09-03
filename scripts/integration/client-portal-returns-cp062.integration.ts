@@ -17,6 +17,17 @@ import { setupTestEnv } from './guard';
 
 setupTestEnv();
 
+// The receiving route imports the Supabase media-upload helper, and supabase-js initialises its
+// optional realtime client at import time. Node 20 (CI) has no native WebSocket; nothing here
+// opens a socket, and every fetch is blocked below. Same stub as the CP-045 integration.
+if (!('WebSocket' in globalThis)) {
+  Object.defineProperty(globalThis, 'WebSocket', {
+    value: class TestWebSocket {},
+    configurable: true,
+    writable: true,
+  });
+}
+
 const originalFetch = globalThis.fetch;
 let networkCalls = 0;
 globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
