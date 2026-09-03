@@ -41,5 +41,19 @@ export function setupTestEnv(): string {
   process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-role-key';
   process.env.SUPABASE_JWT_SECRET ||= 'test-jwt-secret-unused';
 
+  // supabase-js initialises its optional realtime client at import time and, on Node 20 (the
+  // hosted lane), throws when no native WebSocket exists. No suite opens a socket, so an inert
+  // constructor satisfies the check. Installed HERE, once, for every suite: a suite whose route
+  // imports the Supabase helper used to need its own copy, and CP-063 never got one — which is
+  // why it never ran in CI (CP-064). Locally, `NODE_OPTIONS=--no-experimental-websocket`
+  // reproduces the Node 20 condition.
+  if (!('WebSocket' in globalThis)) {
+    Object.defineProperty(globalThis, 'WebSocket', {
+      value: class TestWebSocket {},
+      configurable: true,
+      writable: true,
+    });
+  }
+
   return url;
 }

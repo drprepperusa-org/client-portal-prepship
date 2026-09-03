@@ -10,15 +10,6 @@ import { setupTestEnv } from './guard';
 
 setupTestEnv();
 
-// Supabase initializes its optional realtime client at import time. Node 20
-// has no native WebSocket, while these tests only exercise auth-admin methods.
-if (!('WebSocket' in globalThis)) {
-  Object.defineProperty(globalThis, 'WebSocket', {
-    value: class TestWebSocket {},
-    configurable: true,
-  });
-}
-
 const { db, sql: pgClient } = await import('../../src/db/client');
 const schema = await import('../../src/db/schema/index');
 const accessRoute = await import('../../src/routes/client-portal/access');

@@ -11,12 +11,6 @@ import { setupTestEnv } from './guard';
 
 setupTestEnv();
 
-if (!('WebSocket' in globalThis)) {
-  Object.defineProperty(globalThis, 'WebSocket', {
-    value: class TestWebSocket {},
-    configurable: true,
-  });
-}
 if (!('File' in globalThis)) {
   Object.defineProperty(globalThis, 'File', {
     value: NodeFile,

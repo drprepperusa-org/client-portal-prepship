@@ -13,12 +13,6 @@ setupTestEnv();
 process.env.RETURNS_LIVE_LABELS = 'true';
 process.env.SHIPSTATION_API_KEY_V2 = 'cp058-route-test-key';
 
-if (!('WebSocket' in globalThis)) {
-  Object.defineProperty(globalThis, 'WebSocket', {
-    value: class TestWebSocket {},
-    configurable: true,
-  });
-}
 if (!('File' in globalThis)) {
   Object.defineProperty(globalThis, 'File', {
     value: NodeFile,

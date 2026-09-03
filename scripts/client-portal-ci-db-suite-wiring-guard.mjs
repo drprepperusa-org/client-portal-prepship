@@ -16,7 +16,10 @@
 //      replacement tables, so nothing that needs them may follow it;
 //   5. any OTHER .ts under scripts/integration (today: the CP-061 cross-repo reason-parity test,
 //      which needs a token and runs in its own workflow) has a package.json script that some
-//      workflow under .github/workflows runs — nothing in that directory is dead.
+//      workflow under .github/workflows runs — nothing in that directory is dead;
+//   6. the Node 20 WebSocket stub (supabase-js initialises realtime at import time; the hosted
+//      lane runs Node 20) lives ONCE, in setupTestEnv(), and in no suite — the copy-per-suite
+//      pattern is what left CP-063 without one and out of CI.
 // Then the same checks run against in-memory negative fixtures — an orphan suite file, a script
 // with no step, setup after a suite, a suite after CP-061 — to prove each rule bites.
 //
@@ -147,6 +150,13 @@ check('the CP-061 replacements suite is the last suite in the job', () => {
 });
 check('no other problem is reported for the real files', () => {
   assert.deepEqual(real.problems, [], real.problems.join('; '));
+});
+check('the Node 20 WebSocket stub lives once, in setupTestEnv(), and in no suite', () => {
+  const harness = read('scripts/integration/guard.ts');
+  const fn = harness.slice(harness.indexOf('export function setupTestEnv'), harness.indexOf('\n}\n', harness.indexOf('export function setupTestEnv')));
+  assert.match(fn, /if \(!\('WebSocket' in globalThis\)\) \{\s*Object\.defineProperty\(globalThis, 'WebSocket'/, 'setupTestEnv installs the stub');
+  const copies = allFiles.filter((f) => read(`scripts/integration/${f}`).includes("'WebSocket' in globalThis"));
+  assert.deepEqual(copies, [], `per-suite stub copies: ${copies.join(', ')}`);
 });
 check('the CP-063 suite the card was raised for is wired', () => {
   assert.ok(real.steps.includes('test:client-portal-returns-cp063:integration'), 'cp063 step present');
