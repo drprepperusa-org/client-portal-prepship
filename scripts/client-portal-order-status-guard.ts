@@ -83,26 +83,33 @@ check(!/fulfillmentStatus:\s*['"`]/.test(dto), 'dto never hard-codes a literal f
 
 // ── 3. Read-model supplies the canonical shipment signals ──
 const readModel = read('src/lib/client-portal/read-models/orders.ts');
+const signalProjection = read('src/lib/client-portal/order-fulfillment-signals.ts');
+check((readModel.match(/\.\.\.orderFulfillmentSignalSelects\(\)/g) ?? []).length === 2,
+  'list and detail delegate shipment signals to one projection');
 for (const sig of ['activeTrackingStatus', 'hasActiveShipment', 'hasVoidedShipment']) {
   check(readModel.includes(sig), `read-model provides the ${sig} signal`);
 }
-check(/tracking_status\s+from\s+shipments/.test(readModel), 'active tracking status comes from shipments.tracking_status');
-check(/coalesce\(s\.voided, false\) = true/.test(readModel), 'voided-shipment existence read from shipments.voided');
+check(/tracking_status\s+from\s+shipments/.test(signalProjection), 'active tracking status comes from shipments.tracking_status');
+check(/coalesce\(s\.voided, false\) = true/.test(signalProjection), 'voided-shipment existence read from shipments.voided');
+check(signalProjection.includes('coalesce(s.is_return, false) = false'), 'return labels cannot prove original outbound fulfillment');
 // Tenant isolation: the order_number fallback (for order_id-null shipments) must
 // be scoped to the same client, or a shared order number could surface another
 // client's shipment status. The exact order_id match stays unconditional.
 check(
-  !readModel.includes('s.order_number = ${orders.orderNumber})'),
+  !signalProjection.includes('s.order_number = ${orders.orderNumber})'),
   'the order_number fallback is never used unscoped (no bare order_number match)',
 );
 check(
-  (readModel.match(/s\.order_number = \$\{orders\.orderNumber\} and s\.client_id = \$\{orders\.clientId\}/g) ?? []).length >= 6,
+  (signalProjection.match(/s\.order_number = \$\{orders\.orderNumber\} and s\.client_id = \$\{orders\.clientId\}/g) ?? []).length === 1
+    && (signalProjection.match(/\$\{outboundMatch\}/g) ?? []).length === 3,
   'every shipment-signal subquery scopes the order_number fallback by client_id (tenant isolation)',
 );
 
 // ── 4. Frontend renders the enum, never derives it ──
 const api = readActiveClientPortalApiSource();
 const orders = read('portal-client/src/pages/Orders.tsx');
+const badge = read('portal-client/src/components/OrderStatusBadge.tsx');
+const panel = read('portal-client/src/components/OrderDetailPanel.tsx');
 check(
   /export type PortalOrderFulfillmentStatus\s*=\s*[\s\S]*?'pending'[\s\S]*?'in_transit'[\s\S]*?'delivered'[\s\S]*?'cancelled'[\s\S]*?'voided'/.test(api) &&
     api.includes('fulfillmentStatus: PortalOrderFulfillmentStatus'),
@@ -110,8 +117,12 @@ check(
 );
 check(/header:\s*'Status'/.test(orders) && /status=\{o\.fulfillmentStatus\}/.test(orders), 'Orders table renders a Status column from fulfillmentStatus');
 for (const label of ['Awaiting shipment', 'In Transit', 'Delivered', 'Cancelled', 'Voided']) {
-  check(orders.includes(`'${label}'`), `Orders status label map includes ${label}`);
+  check(badge.includes(`'${label}'`), `Shared status label map includes ${label}`);
 }
+check(orders.includes("import { OrderStatusBadge } from '@/components/OrderStatusBadge'")
+  && panel.includes("import { OrderStatusBadge } from '@/components/OrderStatusBadge'"), 'table and drawer share one status presentation');
+check(panel.includes('<OrderStatusBadge status={o.fulfillmentStatus} />')
+  && !panel.includes('o.orderStatus'), 'drawer renders resolved fulfillmentStatus, never raw shipped status');
 // The frontend must not RE-DERIVE the status: no assignment to fulfillmentStatus.
 check(!/fulfillmentStatus\s*=[^=]/.test(orders), 'Orders.tsx never assigns/derives fulfillmentStatus (render-only)');
 

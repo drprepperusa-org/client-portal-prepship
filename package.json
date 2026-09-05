@@ -259,6 +259,8 @@
     "test:web-bundle-budget": "npm run build:web && node scripts/web-bundle-budget-guard.mjs",
     "test:workflow-certification:browser": "playwright test web/e2e/site-actions.spec.js --reporter=line",
     "test:workflow-orchestration": "node scripts/workflow-orchestration-guard.mjs",
+    "test:ps486-return-eligibility:integration": "tsx scripts/integration/ps486-return-eligibility.integration.ts",
+    "test:ps486-status:browser": "playwright test web/e2e/client-portal-ps486-status.spec.js --workers=1",
     "typecheck": "tsc --noEmit -p tsconfig.json && npm --prefix portal-client run typecheck",
     "typecheck:web:legacy": "tsc --noEmit -p web/tsconfig.json",
     "verify:client-portal-live": "tsx scripts/verify-client-portal-live-parity.ts",

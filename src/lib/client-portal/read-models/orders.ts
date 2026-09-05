@@ -1,3 +1,4 @@
+import { orderFulfillmentSignalSelects } from '../order-fulfillment-signals';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
@@ -116,23 +117,7 @@ export async function listPortalOrders(
       // order_number fallback is required for tenant isolation: two clients can
       // share an order number, so an unscoped order_number match could surface a
       // different client's shipment status.
-      activeTrackingStatus: sql<string | null>`(
-        select s.tracking_status from shipments s
-        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
-          and coalesce(s.voided, false) = false
-        order by s.id desc
-        limit 1
-      )`,
-      hasActiveShipment: sql<boolean>`exists (
-        select 1 from shipments s
-        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
-          and coalesce(s.voided, false) = false
-      )`,
-      hasVoidedShipment: sql<boolean>`exists (
-        select 1 from shipments s
-        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
-          and coalesce(s.voided, false) = true
-      )`,
+      ...orderFulfillmentSignalSelects(),
       // CP-061: backend-derived REPLACE badge — the frontend renders these
       // fields verbatim and never re-derives them from replacement rows.
       ...orderReplacementBadgeSelects(replacementsReady, sql`${orders.id}`),
@@ -201,23 +186,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts).
-      activeTrackingStatus: sql<string | null>`(
-        select s.tracking_status from shipments s
-        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
-          and coalesce(s.voided, false) = false
-        order by s.id desc
-        limit 1
-      )`,
-      hasActiveShipment: sql<boolean>`exists (
-        select 1 from shipments s
-        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
-          and coalesce(s.voided, false) = false
-      )`,
-      hasVoidedShipment: sql<boolean>`exists (
-        select 1 from shipments s
-        where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
-          and coalesce(s.voided, false) = true
-      )`,
+      ...orderFulfillmentSignalSelects(),
       // CP-061: backend-derived REPLACE badge — the frontend renders these
       // fields verbatim and never re-derives them from replacement rows.
       ...orderReplacementBadgeSelects(replacementsReady, sql`${orders.id}`),

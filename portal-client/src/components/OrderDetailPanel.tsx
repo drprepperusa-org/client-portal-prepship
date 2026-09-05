@@ -1,7 +1,8 @@
 import { MapPin, Truck, ExternalLink } from 'lucide-react';
 import { Chip } from '@/components/ui/Display';
 import { Thumb } from '@/components/ui/Thumb';
-import { orderStatusMeta, money, shortDate } from '@/lib/status';
+import { money, shortDate } from '@/lib/status';
+import { OrderStatusBadge } from '@/components/OrderStatusBadge';
 import type { PortalOrder } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
@@ -28,7 +29,6 @@ function CostRow({ label, value, strong }: { label: string; value: string; stron
 
 /** Full v4-style order detail panel — shared by Orders & Analysis drawers. */
 export function OrderDetailPanel({ o }: { o: PortalOrder }) {
-  const meta = orderStatusMeta(o.orderStatus);
   // CP-018: this is a CUSTOMER-facing page — it shows the customer shipping rate
   // only (backend-owned: billed customer shipping, fallback buyer-paid store
   // shipping), never the internal selected/best/label rate, carrier, or service.
@@ -51,7 +51,7 @@ export function OrderDetailPanel({ o }: { o: PortalOrder }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2">
-          <Chip accent={meta.accent}>{meta.label}</Chip>
+          <OrderStatusBadge status={o.fulfillmentStatus} />
           {/* CP-061: backend-derived REPLACE badge — rendered from
               hasActiveReplacement only, never re-derived in the client. */}
           {o.hasActiveReplacement && <Chip accent="emerald" dot={false}>REPLACE</Chip>}

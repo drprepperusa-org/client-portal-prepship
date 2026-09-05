@@ -1,3 +1,4 @@
+import { createReturnRequest, ReturnRequestRejectedError } from '../../../services/return-request';
 import type { Hono } from 'hono';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
@@ -165,10 +166,9 @@ function registerReturnCreateRoute(app: Hono): void {
 
     let created: Return;
     try {
-      const [row] = await db
-        .insert(returns)
-        .values({
-          orderId,
+      created = await createReturnRequest({
+        scope, orderId, items: cleanItems,
+        values: {
           clientId,
           returnReference: returnReference,
           status: 'requested',
@@ -176,10 +176,12 @@ function registerReturnCreateRoute(app: Hono): void {
           initiatedByEmail: scope.email ?? null,
           reason: requestedReason,
           returnRecipientName,
-        })
-        .returning();
-      created = row!;
+        },
+      });
     } catch (err) {
+      if (err instanceof ReturnRequestRejectedError) {
+        return c.json({ error: err.message, code: err.code }, err.status);
+      }
       const message = err instanceof Error ? err.message : String(err);
       if (/returns_one_active_per_order_idx|unique/i.test(message)) {
         return c.json({ error: 'An active return already exists for this order.' }, 409);
@@ -188,16 +190,6 @@ function registerReturnCreateRoute(app: Hono): void {
       return c.json({ error: 'Could not create the return' }, 500);
     }
 
-    await db.insert(returnItems).values(
-      cleanItems.map((item) => ({
-        returnId: created.id,
-        orderId,
-        orderItemId: item.orderItemId,
-        sku: item.sku,
-        name: item.name,
-        quantity: String(item.quantity),
-      })),
-    );
     await recordReturnActivity({
       returnId: created.id,
       eventType: 'return_requested',

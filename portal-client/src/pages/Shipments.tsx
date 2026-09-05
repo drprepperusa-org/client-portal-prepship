@@ -1,3 +1,4 @@
+import { StartReturnButton } from '@/components/returns/StartReturnButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
@@ -15,7 +16,6 @@ import { useAuth } from '@/auth';
 import { useCanCustomizeTables, useShipments, useClients } from '@/lib/hooks';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
-import { Undo2 } from 'lucide-react';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
@@ -334,9 +334,7 @@ export default function Shipments() {
             {/* CP-029: start-return entry point from the shipment — opens the
                 create-return modal for this shipment's order. */}
             {selected.orderId != null && (
-              <Button variant="secondary" className="w-full" leadingIcon={<Undo2 size={16} />} onClick={() => setReturnOrderId(selected.orderId)}>
-                Start a return
-              </Button>
+              <StartReturnButton orderId={selected.orderId} onStart={setReturnOrderId} />
             )}
 
             {/* Full order details + ship-to address. Reuses the order detail

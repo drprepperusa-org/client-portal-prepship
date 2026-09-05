@@ -7,6 +7,7 @@ import { isDiscountLine } from './dashboard-aggregate';
 import { trackingUrlForCarrier } from '../tracking-url';
 import { maskAccountIdentifier } from '../credential-accounts';
 import { resolveOrderFulfillmentStatus } from './order-status';
+import { resolveReturnEligibility } from '../../services/return-eligibility';
 import { normalizePortalShipmentStatus } from './shipment-status';
 import type { PortalItemIdentity } from './contracts/common';
 import type { PortalInbound } from './contracts/inbound';
@@ -276,6 +277,12 @@ export function toPortalOrderDto(
     // order status + the order's shipment voided/tracking truth — the frontend
     // renders this enum, it never re-derives the status. See order-status.ts.
     fulfillmentStatus: resolveOrderFulfillmentStatus({
+      orderStatus: row.orderStatus,
+      activeTrackingStatus: row.activeTrackingStatus ?? null,
+      hasActiveShipment: row.hasActiveShipment ?? false,
+      hasVoidedShipment: row.hasVoidedShipment ?? false,
+    }),
+    returnEligibility: resolveReturnEligibility({
       orderStatus: row.orderStatus,
       activeTrackingStatus: row.activeTrackingStatus ?? null,
       hasActiveShipment: row.hasActiveShipment ?? false,

@@ -8,9 +8,9 @@ import { Chip } from '@/components/ui/Display';
 import { Drawer } from '@/components/ui/Drawer';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
-import { Undo2 } from 'lucide-react';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
-import { Button } from '@/components/ui/Button';
+import { OrderStatusBadge } from '@/components/OrderStatusBadge';
+import { StartReturnButton } from '@/components/returns/StartReturnButton';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { useCanCustomizeTables, useOrders } from '@/lib/hooks';
@@ -42,32 +42,6 @@ function clientAccent(name: string | null): Accent {
   return CLIENT_ACCENTS[h];
 }
 
-// Presentation only: the backend (src/lib/client-portal/order-status.ts) OWNS
-// the fulfillment status value. This maps each canonical enum to a label +
-// badge style and must cover exactly the five PortalOrder['fulfillmentStatus']
-// values — the frontend never derives the status from order/tracking fields.
-const ORDER_STATUS_META: Record<PortalOrder['fulfillmentStatus'], { label: string; cls: string }> = {
-  pending: { label: 'Awaiting shipment', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  in_transit: { label: 'In Transit', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
-  delivered: { label: 'Delivered', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  cancelled: { label: 'Cancelled', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
-  voided: { label: 'Voided', cls: 'bg-slate-100 text-slate-600 ring-slate-300' },
-};
-
-function OrderStatusBadge({ status }: { status: PortalOrder['fulfillmentStatus'] }) {
-  const meta = ORDER_STATUS_META[status] ?? ORDER_STATUS_META.pending;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
-        meta.cls,
-      )}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-      {meta.label}
-    </span>
-  );
-}
 function fmtDateTime(iso: string | null): { date: string; time: string } {
   if (!iso) return { date: '—', time: '' };
   const d = new Date(iso);
@@ -322,9 +296,7 @@ export default function Orders() {
             {/* CP-029: start-return entry point — opens the create-return modal
                 for this order. The modal renders the backend order DTO only; no
                 rate/carrier/billing math happens here. */}
-            <Button variant="secondary" className="w-full" leadingIcon={<Undo2 size={16} />} onClick={() => setReturnOrderId(selected.id)}>
-              Start a return
-            </Button>
+            <StartReturnButton orderId={selected.id} onStart={setReturnOrderId} />
           </div>
         )}
       </Drawer>

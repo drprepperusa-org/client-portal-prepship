@@ -81,3 +81,6 @@ jobs:
       # columns itself.
       - name: CP-062 return-arrival browser proof
         run: npm run test:cp-062:browser
+
+      - name: PS-486 order status and return eligibility browser proof
+        run: npm run test:ps486-status:browser

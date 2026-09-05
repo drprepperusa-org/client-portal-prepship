@@ -72,6 +72,10 @@ export function ReturnCreateModal({
    */
   async function submit(mode: 'with_label' | 'start_only' = 'with_label') {
     if (!accessToken || saving || orderId == null) return;
+    if (order.data?.data.returnEligibility?.allowed !== true) {
+      toast.error('Return unavailable', order.data?.data.returnEligibility?.reason ?? 'Reload this order to check return eligibility.');
+      return;
+    }
     // Build the return items from the ordered lines with a positive requested qty.
     // Quantities are validated (≤ ordered) on the backend — we do not price them.
     const chosen = items
@@ -165,6 +169,8 @@ export function ReturnCreateModal({
         <p className="text-sm text-ink-3">Loading order…</p>
       ) : order.isError || !order.data?.data ? (
         <p className="text-sm text-ink-3">Couldn’t load this order.</p>
+      ) : order.data.data.returnEligibility?.allowed !== true ? (
+        <p className="text-sm text-ink-3" role="status">{order.data.data.returnEligibility?.reason ?? 'Return eligibility is unavailable. Reload this order to try again.'}</p>
       ) : (
         <div className="space-y-4">
           <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">

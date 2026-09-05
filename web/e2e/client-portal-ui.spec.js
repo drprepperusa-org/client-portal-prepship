@@ -158,6 +158,7 @@ const orderRow = {
   sourceStoreId: 'e2e-store',
   orderStatus: 'shipped',
   fulfillmentStatus: 'in_transit',
+  returnEligibility: { allowed: true, reason: null },
   // CP-061: backend-derived badge fields — the UI renders these verbatim.
   hasActiveReplacement: true,
   activeReplacementStatus: 'requested',

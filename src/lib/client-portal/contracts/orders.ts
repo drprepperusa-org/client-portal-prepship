@@ -1,4 +1,5 @@
 import type { PortalItemIdentity } from './common';
+import type { ReturnEligibility } from '../../../services/return-eligibility';
 
 export type PortalOrderFulfillmentStatus =
   | 'pending'
@@ -25,6 +26,8 @@ export interface PortalOrder {
   sourceStoreId: string | null;
   orderStatus: string | null;
   fulfillmentStatus: PortalOrderFulfillmentStatus;
+  /** Backend return-request policy; the create endpoint revalidates current facts. */
+  returnEligibility: ReturnEligibility;
   /** CP-061: backend-derived REPLACE badge — render verbatim, never re-derive. */
   /**
    * REPLACE badge, backend-derived. Source: canonical `replacements` rows owned
