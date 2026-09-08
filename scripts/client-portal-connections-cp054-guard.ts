@@ -260,7 +260,7 @@ check(
 );
 const hooks = read('portal-client/src/lib/hooks.ts');
 check(
-  hooks.includes('const waitForForegroundQueries = async () =>') &&
+  hooks.includes('while (!cancelled && (document.hidden || qc.isFetching() > 0)) await pause()') &&
     hooks.includes('qc.isFetching() > 0') &&
     hooks.includes('await qc.prefetchQuery') &&
     !hooks.split('\n').some((line) => line.trimStart().startsWith('qc.prefetchQuery(')),

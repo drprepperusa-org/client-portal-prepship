@@ -1,0 +1,22 @@
+{
+  "recordedAt": "2026-09-08T11:04:26.410Z",
+  "verificationSnapshot": "749c2c79d833994cb26cccbd8f79da77bf8f5abd",
+  "runtimeMatchesSnapshot": true,
+  "logs": {
+    "typecheck": {
+      "file": "final-typecheck.log.gz",
+      "sha256": "890c9c11e6cf241cf3aef9b63f1053c0830da033238177c4f87d807cc318ed0d",
+      "uncompressedSha256": "3e955418abcc0deaeaddb2812f735c7ec42eb8b98effc78758bd90665a5e8a1a"
+    },
+    "test-sot-guard-pack": {
+      "file": "final-test-sot-guard-pack.log.gz",
+      "sha256": "3f5c0ee141d83555bee344700a5be0300de259751ccc5f6f1e1732a7fde24754",
+      "uncompressedSha256": "88999c64b3fc8d9597713cec7cbdc7bff685ebd0d582a4f7de244ab4040cde7a"
+    }
+  },
+  "postFixCompanionFlags": [],
+  "firstVisibleTradeoffs": [
+    "small/4: first-visible p95 +31.38%"
+  ],
+  "productionChanges": false
+}

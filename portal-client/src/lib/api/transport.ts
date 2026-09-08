@@ -6,6 +6,10 @@ const UPLOAD_TIMEOUT_MS = 120000;
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type ApiError = Error & { status?: number };
+// A read carries its caller's cancellation signal; existing string-token callers
+// (including mutations) retain their current API and lifetime.
+export type RequestAuth = string | { accessToken: string; signal: AbortSignal };
+const bearer = (auth: RequestAuth) => typeof auth === 'string' ? auth : auth.accessToken;
 
 function queryString(params: Record<string, QueryValue>) {
   const search = new URLSearchParams();
@@ -17,22 +21,30 @@ function queryString(params: Record<string, QueryValue>) {
   return out ? `?${out}` : '';
 }
 
-async function request(
-  token: string,
+async function request<T>(
+  token: RequestAuth,
   path: string,
   params: Record<string, QueryValue>,
   accept: string,
+  consume: (response: Response) => Promise<T>,
   timeoutMs = TIMEOUT_MS,
-): Promise<Response> {
+): Promise<T> {
   const controller = new AbortController();
+  const parent = typeof token === 'string' ? undefined : token.signal;
+  const abort = () => controller.abort(parent?.reason);
+  parent?.addEventListener('abort', abort, { once: true });
+  if (parent?.aborted) abort();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(`${API_BASE}${path}${queryString(params)}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: accept },
+    const response = await fetch(`${API_BASE}${path}${queryString(params)}`, {
+      headers: { Authorization: `Bearer ${bearer(token)}`, Accept: accept },
       signal: controller.signal,
     });
+    if (!response.ok) await fail(response);
+    return await consume(response);
   } finally {
     window.clearTimeout(timer);
+    parent?.removeEventListener('abort', abort);
   }
 }
 
@@ -50,23 +62,19 @@ async function fail(response: Response): Promise<never> {
 }
 
 export async function apiGet<T>(
-  token: string,
+  token: RequestAuth,
   path: string,
   params: Record<string, QueryValue> = {},
 ): Promise<T> {
-  const response = await request(token, path, params, 'application/json');
-  if (!response.ok) await fail(response);
-  return (await response.json()) as T;
+  return request(token, path, params, 'application/json', response => response.json() as Promise<T>);
 }
 
 export async function apiText(
-  token: string,
+  token: RequestAuth,
   path: string,
   params: Record<string, QueryValue> = {},
 ): Promise<string> {
-  const response = await request(token, path, params, 'text/html,application/pdf,text/plain,*/*');
-  if (!response.ok) await fail(response);
-  return response.text();
+  return request(token, path, params, 'text/html,application/pdf,text/plain,*/*', response => response.text());
 }
 
 /** A file the backend produced: its bytes, its declared type, and the name it gave the file. */
@@ -81,25 +89,25 @@ const FILE_TIMEOUT_MS = 120000;
  * Content-Disposition header when the API exposes it; callers supply a fallback otherwise.
  */
 export async function apiBlob(
-  token: string,
+  token: RequestAuth,
   path: string,
   params: Record<string, QueryValue> = {},
   accept = '*/*',
 ): Promise<ApiFile> {
-  const response = await request(token, path, params, accept, FILE_TIMEOUT_MS);
-  if (!response.ok) await fail(response);
-  const disposition = response.headers.get('content-disposition') ?? '';
-  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
-  return {
-    bytes: await response.blob(),
-    contentType: response.headers.get('content-type') ?? '',
-    filename,
-  };
+  return request(token, path, params, accept, async response => {
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+    return {
+      bytes: await response.blob(),
+      contentType: response.headers.get('content-type') ?? '',
+      filename,
+    };
+  }, FILE_TIMEOUT_MS);
 }
 
 async function apiSend<T>(
   method: string,
-  token: string,
+  token: RequestAuth,
   path: string,
   body: unknown = {},
   timeoutMs = TIMEOUT_MS,
@@ -110,7 +118,7 @@ async function apiSend<T>(
     const response = await fetch(`${API_BASE}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${bearer(token)}`,
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
@@ -124,22 +132,22 @@ async function apiSend<T>(
   }
 }
 
-export const apiPost = <T>(token: string, path: string, body: unknown = {}, timeoutMs = TIMEOUT_MS) =>
+export const apiPost = <T>(token: RequestAuth, path: string, body: unknown = {}, timeoutMs = TIMEOUT_MS) =>
   apiSend<T>('POST', token, path, body, timeoutMs);
-export const apiPatch = <T>(token: string, path: string, body: unknown = {}) =>
+export const apiPatch = <T>(token: RequestAuth, path: string, body: unknown = {}) =>
   apiSend<T>('PATCH', token, path, body);
-export const apiPut = <T>(token: string, path: string, body: unknown = {}) =>
+export const apiPut = <T>(token: RequestAuth, path: string, body: unknown = {}) =>
   apiSend<T>('PUT', token, path, body);
-export const apiDelete = <T>(token: string, path: string, body: unknown = {}) =>
+export const apiDelete = <T>(token: RequestAuth, path: string, body: unknown = {}) =>
   apiSend<T>('DELETE', token, path, body);
 
-export async function apiUpload<T>(token: string, path: string, form: FormData): Promise<T> {
+export async function apiUpload<T>(token: RequestAuth, path: string, form: FormData): Promise<T> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      headers: { Authorization: `Bearer ${bearer(token)}`, Accept: 'application/json' },
       body: form,
       signal: controller.signal,
     });

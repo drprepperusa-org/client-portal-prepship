@@ -1,7 +1,5 @@
-import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { staggerContainer, staggerItem } from '@/lib/motion';
 import type { Column } from './types';
 
 interface DataTableMobileProps<T> {
@@ -22,16 +20,12 @@ export function DataTableMobile<T>({
   rowActionLabel,
 }: DataTableMobileProps<T>) {
   return (
-    <motion.div
-      variants={staggerContainer}
-      initial="initial"
-      animate="enter"
+    <div
       className="flex flex-col gap-3 md:hidden"
     >
       {rows.map((row) => (
-        <motion.div
+        <div
           key={rowKey(row)}
-          variants={staggerItem}
           onClick={() => onRowClick?.(row)}
           className={cn(
             'glass relative rounded-glass-sm p-4',
@@ -73,8 +67,8 @@ export function DataTableMobile<T>({
               </div>
             </div>
           ))}
-        </motion.div>
+        </div>
       ))}
-    </motion.div>
+    </div>
   );
 }

@@ -1,0 +1,627 @@
+{
+  "recordedAt": "2026-09-08T23:14:00.373Z",
+  "verdict": "Identified local final-review blockers resolved; ready for candidate review, not deployed or certified in hosted CI",
+  "repositories": {
+    "portal": {
+      "baseSha": "164f5520b04c78241ae6edf529d58741c9258b76",
+      "branch": "perf/shared-db-optimization",
+      "uncommitted": true,
+      "applicationFilesUnchangedFromReview": 29,
+      "changedSinceReview": [
+        ".github/workflows/integration-tests.yml",
+        "scripts/client-portal-audit-log-guard.mjs",
+        "scripts/client-portal-ci-db-suite-wiring-guard.mjs",
+        "scripts/client-portal-connections-cp054-guard.ts",
+        "scripts/client-portal-failure-states-guard.mjs",
+        "scripts/client-portal-invoice-export-no-local-builder-guard.ts",
+        "scripts/client-portal-orders-badge-count-guard.mjs",
+        "scripts/client-portal-page-sizes-guard.mjs",
+        "scripts/client-portal-return-identity-display-guard.mjs",
+        "scripts/client-portal-returns-ui-guard.mjs",
+        "scripts/client-portal-sales-sot-drift-guard.mjs",
+        "scripts/dashboard-bar-chart-top-skus-guard.ts",
+        "scripts/dashboard-client-filter-guard.mjs",
+        "scripts/dashboard-date-range-filter-guard.mjs",
+        "scripts/integration/client-portal-billing-cp059.integration.ts",
+        "scripts/portal-store-connect-guard.mjs",
+        "scripts/run-guards.mjs",
+        "scripts/shared-db-boundaries.ts",
+        "scripts/shared-db-portal-integration.ts"
+      ],
+      "files": [
+        {
+          "file": ".github/workflows/integration-tests.yml",
+          "sha256": "bcec2d03cfa9c5e0978cc99cbe7338e50a45b0437c5f040994b5b0398a92a310"
+        },
+        {
+          "file": "package-lock.json",
+          "sha256": "f9c38814568958e9ca5350bbfba6cb1031ef8b47b2a297a2b03519b7dc141e70"
+        },
+        {
+          "file": "package.json",
+          "sha256": "3ad9e17e7bd77039a9e272ee642cfda7e4aaa6591f60471cac8d462d18b38a5c"
+        },
+        {
+          "file": "portal-client/src/components/layout/Layout.tsx",
+          "sha256": "89c6baf0beaa0af17a7849ddee55f5af6d0b39025ed6e88571e1d07b563308d8"
+        },
+        {
+          "file": "portal-client/src/components/ui/data-table/DataTableDesktop.tsx",
+          "sha256": "4cab5d1486d850d9f90a918a0491a162facab4cb4aee4fd44b4fb1799809f9c7"
+        },
+        {
+          "file": "portal-client/src/components/ui/data-table/DataTableMobile.tsx",
+          "sha256": "f75386ff3716b07a0f7c4166bdf4e86ef51e880f7d521b6735678afd4abd272d"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/access.ts",
+          "sha256": "d1649ba62ab9e1b168ab0b52a77f2dca6ad094f0bde5f1675106aa42ae282261"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/analysis.ts",
+          "sha256": "1af29ccb413242458afed0c00eaec0b02d6fbbbc70e1b688e5c7163a868c3691"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/billing.ts",
+          "sha256": "a8756e75e99ddf81f6bbae6f76e325611cf10a74c8af955c79685bafda82a767"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/connections.ts",
+          "sha256": "fdfd1cdfe2b614a0414e679c506d53ff03d0fd74cbcac2e5cd164a6a4bcab835"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/dashboard.ts",
+          "sha256": "793cad11384e71e7d72b582904a6797be538ac3d392eef59a9fe1605ff68b833"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/inbound.ts",
+          "sha256": "901fd72ad634a72eb7ffc846c04692210d5521a004ee77dc9ed1b128f47990e8"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/inventory.ts",
+          "sha256": "c2d2f9004d2b72267838c18f93f52ea98b0811467914bbcec1922d82bdef4b15"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/orders.ts",
+          "sha256": "f978acf179fe98929a9f104191eba35c5235055216d7881811327c8654d3423b"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/replacements.ts",
+          "sha256": "6ff56bdb3c50a2a5372d92323c867ab75a8ffeffcf04864a9498a2a9da645ad2"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/returns.ts",
+          "sha256": "311f9cf2ba382a83b41a7729a86406c62dac0c22da6ede068fe42d048f500e21"
+        },
+        {
+          "file": "portal-client/src/lib/api/domains/shipments.ts",
+          "sha256": "9b81555589ffb59a13cae7a6d1c27fff93783287736bc0408052c9ef24e9d44e"
+        },
+        {
+          "file": "portal-client/src/lib/api/scope.ts",
+          "sha256": "f93ba4efee0271a78c784a22ff8a428663f7a79310c98eb3cd46cbf530e4ad73"
+        },
+        {
+          "file": "portal-client/src/lib/api/transport.ts",
+          "sha256": "082c3eb65de8a84f16351438885408e4e1aa180ed6c89841ac96cb0c427f5044"
+        },
+        {
+          "file": "portal-client/src/lib/hooks.ts",
+          "sha256": "cc5be097551b7878ab841404deed3e2d2630127a87e4c54e3268ed6f2557a646"
+        },
+        {
+          "file": "portal-client/src/lib/query-keys.ts",
+          "sha256": "494bd6149974c7c4cd6462fc4e485be9dd4fc1b510cdd744ab75a1995a398bfe"
+        },
+        {
+          "file": "scripts/apply-postgres-transaction-compat.mjs",
+          "sha256": "2d83cc13fcc4cf4a296edcd583236f266d7709c039686ac2ce6057a3d0cdae55"
+        },
+        {
+          "file": "scripts/client-portal-analytics-parity-guard.mjs",
+          "sha256": "59de95c9e21fec90aba6d61ec414b5a92dacc2e6915693cc67cacbb88517721f"
+        },
+        {
+          "file": "scripts/client-portal-audit-log-guard.mjs",
+          "sha256": "e96df5aa0a038f28ead37e7867469ef6f6bebd596c3f018a4a4f3812a8637166"
+        },
+        {
+          "file": "scripts/client-portal-ci-db-suite-wiring-guard.mjs",
+          "sha256": "cf1ef959e4a56eb3b0ec1951195d3f9aa260869123d1c966a576c59a76969318"
+        },
+        {
+          "file": "scripts/client-portal-connections-cp054-guard.ts",
+          "sha256": "bba7a7fdf63bd73bc8b25c20158a86156f8900e9be763bd682a5a50f03e0adfc"
+        },
+        {
+          "file": "scripts/client-portal-dashboard-sot-guard.mjs",
+          "sha256": "ed6e4ecdb93e1f48caa31859443a024bfcb2ab172b6351978783db8e43dada86"
+        },
+        {
+          "file": "scripts/client-portal-failure-states-guard.mjs",
+          "sha256": "9d8a060e3d2d97773556c1ae990f6f242914e9c88a495837506e80bdcc09837f"
+        },
+        {
+          "file": "scripts/client-portal-invoice-export-no-local-builder-guard.ts",
+          "sha256": "d2f48fa9b698182e059100a15e3c13a41f04ae09339ecc0cc0cf057f50acdc24"
+        },
+        {
+          "file": "scripts/client-portal-orders-badge-count-guard.mjs",
+          "sha256": "6f4d18c2cdc4c29943f3a3757ccf53ea152069683ae43545cd75652ce7bd25c1"
+        },
+        {
+          "file": "scripts/client-portal-page-sizes-guard.mjs",
+          "sha256": "ca6f4fb7f97cbf7c72099b47448f4bdf7c3c5871343b50db8546125cb4ce15aa"
+        },
+        {
+          "file": "scripts/client-portal-return-identity-display-guard.mjs",
+          "sha256": "415520f1e0f49a167a0103f98ae0995e143f41176ef52e0a71d0d49af98b8747"
+        },
+        {
+          "file": "scripts/client-portal-returns-ui-guard.mjs",
+          "sha256": "8fea20f766e868e5cdf2ba9146b915e84f4e6044be726549e94d169af513213a"
+        },
+        {
+          "file": "scripts/client-portal-sales-sot-drift-guard.mjs",
+          "sha256": "1674e37afd20489c36b816d6d284f1b6ea97fdad6b7b9efdf4d33a90dda06162"
+        },
+        {
+          "file": "scripts/dashboard-bar-chart-top-skus-guard.ts",
+          "sha256": "7420d13d11897fd50caf437093f83242af38024973cc648ed93ae344860724f2"
+        },
+        {
+          "file": "scripts/dashboard-client-filter-guard.mjs",
+          "sha256": "913d25d6086a0bf9eaf858d119c45ac00c7c9ecbfc08c7377250d878a12d0f50"
+        },
+        {
+          "file": "scripts/dashboard-date-range-filter-guard.mjs",
+          "sha256": "575ba45335af416984da582b5cf2c8b4e9e71a07595fc4f46ce1fb2f0ace710f"
+        },
+        {
+          "file": "scripts/database-pipeline-behavior.ts",
+          "sha256": "563df1eb6921534fbe95cade57cc4c68853f740bb767b227c148a2a0e623d8ec"
+        },
+        {
+          "file": "scripts/database-pipeline-pg17.ts",
+          "sha256": "2aa2c95feb700901d47666cafd8f97be585e105ddb90935e287edaac5bc7b91d"
+        },
+        {
+          "file": "scripts/database-transaction-compat-guard.mjs",
+          "sha256": "a488eaa73b9b7f68e40e70c02c7da0d94f48f5bbd0d943b6984228609882f84b"
+        },
+        {
+          "file": "scripts/frontend-auth-cache-guard.mjs",
+          "sha256": "034ccd83ae85b33f14eae71f456c782955697aec2f15e9a96cd7b7b91b341688"
+        },
+        {
+          "file": "scripts/integration/client-portal-billing-cp059.integration.ts",
+          "sha256": "3fe4e501176ecb33239854ad5bce1c37154b43db0e5b36654c90f25e16e878e6"
+        },
+        {
+          "file": "scripts/lib/load-fixture-module.ts",
+          "sha256": "e7f2189f1cba67f7ebe233a7c4977b6eb791a091b05f7b40f889f07ded88bb8e"
+        },
+        {
+          "file": "scripts/portal-store-connect-guard.mjs",
+          "sha256": "980e87d9b1e2e90bad7aeb13795120bbb65699dca8784a5df2c6098e99278394"
+        },
+        {
+          "file": "scripts/run-guards.mjs",
+          "sha256": "399419c9bebafe9f27633a80512d80e53622606374c890275000daf6f109003b"
+        },
+        {
+          "file": "scripts/run-shared-db-checks.mjs",
+          "sha256": "8ea23ed845b23fb8558fe09627b34f2395d28966adc54b8345c23e82b2677210"
+        },
+        {
+          "file": "scripts/runtime-ddl-guard.mjs",
+          "sha256": "4c4b929909358a4f0963f40bc0c773ff30eb817d3eb271fe9f75c2ed09b4aa8d"
+        },
+        {
+          "file": "scripts/shared-db-boundaries.ts",
+          "sha256": "09a2f8158f99196a2c7cb2e3f7b8d6730188008c22e9a542a6097be3f313b9dc"
+        },
+        {
+          "file": "scripts/shared-db-native.ts",
+          "sha256": "22c980c0a52248d098a124d33ffb0a6223c9e173e5c8735a0fbf50d26e22163c"
+        },
+        {
+          "file": "scripts/shared-db-portal-integration.ts",
+          "sha256": "a0e3ef16e601445236d799f288529a054221f239d1ff41ba2305855f1cead5cf"
+        },
+        {
+          "file": "src/db/client.ts",
+          "sha256": "fb918feed87e3fc152493da4f7a60cebae395a00657bd7b6d1e108b0b58b4914"
+        },
+        {
+          "file": "src/lib/client-portal/prepship-billing-details-proxy.ts",
+          "sha256": "f0fb1f1aad312b7251b2a6cb8bab3dc3156683637fefb0e67be8ab1b2d17e0b5"
+        },
+        {
+          "file": "src/lib/client-portal/read-models/canonical-invoice-events.ts",
+          "sha256": "6e63ecbfbc92ce9dda11b3ffbcb38d16f57adbae27279932766b38fade4e702c"
+        },
+        {
+          "file": "src/lib/client-portal/read-models/dashboard.ts",
+          "sha256": "3076f6c04529ff621f0551b337140b56c60a27fe6bc21972f5c7674f170d3c39"
+        },
+        {
+          "file": "src/lib/read-budget.ts",
+          "sha256": "3b31a1fceda210e4dbe5dd0d8864d79e15259cf61ed71c6fee301f816d9603ca"
+        },
+        {
+          "file": "src/main.ts",
+          "sha256": "f66b0da7a6c8f8dc7330f28dac55b929439848945ee1cda0b984c18a742c0f9e"
+        },
+        {
+          "file": "src/routes/analysis.ts",
+          "sha256": "c635fda2a38db9c971f5b4731495a919c579fae6867ba9610c7810eedcc46023"
+        },
+        {
+          "file": "src/services/analytics-schema-capability.ts",
+          "sha256": "a541f88868486b1eeb8a2bc15f3f69f9d5317896d0db1959fee31d2fc23d7cd3"
+        },
+        {
+          "file": "web/e2e/shared-db-reads.spec.js",
+          "sha256": "718630f7d2b59864ccdfb16e7be642ccf359933c0310a38ab170a63f6e7d7a90"
+        }
+      ]
+    },
+    "prepship": {
+      "baseSha": "dc3b243566d0296d7bb87056b8b27fb9e6d9a7a6",
+      "branch": "perf/shared-db-optimization",
+      "uncommitted": true,
+      "applicationFilesUnchangedFromReview": 15,
+      "changedSinceReview": [],
+      "files": [
+        {
+          "file": "package.json",
+          "sha256": "0ed083f87d263e9619480c9c04c1aa21d0eb48ed6e59c98fdb85da43d96bca40"
+        },
+        {
+          "file": "scripts/billing-formula-guard.ts",
+          "sha256": "4cace5fa533aabf0c80a62bef7af55e2e5ca175fbcfe5316fbab771cbdc12c3a"
+        },
+        {
+          "file": "scripts/lib/shared-db-query-trace.ts",
+          "sha256": "25c85bfe679156d6ff912099afa05bf58ca824e64cbc4ba78b5b25649225605e"
+        },
+        {
+          "file": "scripts/multi-sku-product-dims-rate-fallback-guard.ts",
+          "sha256": "a728732dbc46d342080bdee45f314d60f6058a9afbc7013925dbca6848ef1be7"
+        },
+        {
+          "file": "scripts/ps-177-dims-defaults-guard.ts",
+          "sha256": "e96b3555de334579c82004900525d5b31256e8654cf4c125707ce1020a90881c"
+        },
+        {
+          "file": "scripts/ps-186-test-label-authority-guard.ts",
+          "sha256": "c07409e9cd5c55f14cbbf6162244b0625ccb20bad181d13ee7db381ce4644e41"
+        },
+        {
+          "file": "scripts/ps-205-package-facts-precedence-guard.ts",
+          "sha256": "d4910150c328a68f099ff7994456ce8ca965b6c5ade1472a55c13d208a2fac6f"
+        },
+        {
+          "file": "scripts/ps-304-shipping-display-facts-authority-guard.ts",
+          "sha256": "38ae3b0b693d37a600c8c3b7b2ac39496d0a56a75febb029db89342d052827f4"
+        },
+        {
+          "file": "scripts/ps-380-billing-summary-cache-freshness-guard.ts",
+          "sha256": "1b112bcf6cfc0c3570e966d1978e8c330cd15b2d6918df32c77ade1af9f3572e"
+        },
+        {
+          "file": "scripts/ps-433-frontend-source-of-truth-sweep-guard.ts",
+          "sha256": "dbc2c21f7181a4359ec4a59437e75be6e5d750efc07551f428792771d3b86fa3"
+        },
+        {
+          "file": "scripts/ps-520-invoice-routes-pg17.ts",
+          "sha256": "01355c10ad68f570451113a46e0de89f501dc2abb704e151bd12a35f7bc5225d"
+        },
+        {
+          "file": "scripts/run-shared-db-checks.mjs",
+          "sha256": "c7967a16ccb7e720731e9f66c6346db6b7c4e389081db1c194fd108e5ca0aebf"
+        },
+        {
+          "file": "scripts/shared-db-boundaries.ts",
+          "sha256": "282d7dc2c949e0736720592ceededd8354604b194d7055be713696311adb62a0"
+        },
+        {
+          "file": "scripts/shared-db-browser-measurements.ts",
+          "sha256": "293c73fc2455a69f9cd1c77d147a35a404bec8e36eddf821afe3567b1aa1d089"
+        },
+        {
+          "file": "scripts/shared-db-build-frontends.mjs",
+          "sha256": "6083cb5cf63fb98e6ee4f3b09a7180886916eebc5f3b2e7f6b9894e97ea9a314"
+        },
+        {
+          "file": "scripts/shared-db-build-render-followup.mjs",
+          "sha256": "550c00582237e773b9f8a3d35503c5d1bd6ae361ec2f5b1dab427a8f412fdc06"
+        },
+        {
+          "file": "scripts/shared-db-extended.ts",
+          "sha256": "d9bfe63275dfda70401afb069100dcbf502dfbd785391a86f0f843617d8b80e2"
+        },
+        {
+          "file": "scripts/shared-db-final-followup.mjs",
+          "sha256": "cbadaff6f50d53bc4d18ca6e7328e9b5b04c9264644bd98901226ab98a56fbf9"
+        },
+        {
+          "file": "scripts/shared-db-native-run.ts",
+          "sha256": "fd6a825c87dd9d9edd51a47955a84b37d7b61ec5c5c93e60bbd40757672871cc"
+        },
+        {
+          "file": "scripts/shared-db-native.ts",
+          "sha256": "af31bd12d193ce115b8cd332e4aa27e7df49a47110accf0e6c1a479fc2b7e0d2"
+        },
+        {
+          "file": "scripts/shared-db-page-measurements.ts",
+          "sha256": "18e6532bf10a1db42fe0aba21f279c23ccff728e17a8e563ba444c1df2522d14"
+        },
+        {
+          "file": "scripts/shared-db-page-report.mjs",
+          "sha256": "6df770d0ab1f183968a6e9ceccfb6d3c514ab4a42ad6d5d1552bd8f28f69a743"
+        },
+        {
+          "file": "scripts/shared-db-query-trace-check.ts",
+          "sha256": "e9017dc6e8e452aa74a7ea526a8e38bbe4133466c37957d7ead73f251b754b81"
+        },
+        {
+          "file": "scripts/shared-db-read-server.ts",
+          "sha256": "c723c2fbd20eccdf1e925576db998047de586591d0cbbfc8d17f497ea7bbe9a6"
+        },
+        {
+          "file": "scripts/shared-db-render-evidence.mjs",
+          "sha256": "3ac2d3c518a4adec8063c416d147d66e40ebc9869c7a7ecce9f61fd578d0d759"
+        },
+        {
+          "file": "scripts/shared-db-validation-report.mjs",
+          "sha256": "d5b86cea15615956fef4c1dff7b38a161bce81b8b7159f3146e62c4d568e75b0"
+        },
+        {
+          "file": "scripts/sot-guard-pack.mjs",
+          "sha256": "9bf52cc54a081f5ef7e9403fbe0f4b8192e5d9982bf0c9a6390184836f4f0851"
+        },
+        {
+          "file": "src/lib/read-budget.ts",
+          "sha256": "610644aa0d1cc15539578171ffd70a355af14dca77c6a68893ad5f985d06cb9f"
+        },
+        {
+          "file": "src/routes/billing.ts",
+          "sha256": "a3bb3befb3752afbfed67ad9c6e6f8b05f1466537ffbd28ef4d33cc148de6c5e"
+        },
+        {
+          "file": "src/routes/orders.ts",
+          "sha256": "90d2dbcd80ac12e7ac3c4e7d74fd362803df3943bb161062b483217ab3c3c1e3"
+        },
+        {
+          "file": "src/services/billing-detail-pagination.ts",
+          "sha256": "836d3fd1ff2869d2ee3683a177a3bf52b73c88ba4335a7e44e2133f006d6a848"
+        },
+        {
+          "file": "src/services/billing-detail-row-sot.ts",
+          "sha256": "221128938d222494b11f601a05d7ba9da63056b5972f9f066417923eae4842ad"
+        },
+        {
+          "file": "src/services/billing-summary-refresh-flight.ts",
+          "sha256": "77ae181f8e16755cf0f5bd3826e1826e4adcccd5d44892b71e8eeb5333eb8b63"
+        },
+        {
+          "file": "src/services/billing.ts",
+          "sha256": "0ad1f22b922f7a153c325323f825182a9429ff0b7cd958dee16b7326ecabda52"
+        },
+        {
+          "file": "src/services/combo-package-defaults.ts",
+          "sha256": "b81f14e736d938282ed0fdaa963ca82399f5acd1530623206f97cf13756833bb"
+        },
+        {
+          "file": "src/services/order-dims-defaults.ts",
+          "sha256": "e7931d07a9eae1cef3948653857badb8f469300e7fe6cd1ec35b0c72deee2afa"
+        },
+        {
+          "file": "src/services/shipping-margin-analytics.ts",
+          "sha256": "a9b80fccbe860090e8fd01b8fb03f31a87158eed3841f20562c6268aa10a7a6f"
+        },
+        {
+          "file": "web/e2e/shipping-margin-account-labels.spec.js",
+          "sha256": "2b840601ff9d793678410e73e5077dc505d7415a6dafad665bf1f56d928db3e3"
+        },
+        {
+          "file": "web/src/components/Views/BillingShippingMarginReconciliation.tsx",
+          "sha256": "141e8b3bbf4898a328333a5c944f1329a4bd24725b6019f71aaf4569a250a33c"
+        },
+        {
+          "file": "web/src/components/Views/BillingView.tsx",
+          "sha256": "748e712caa02907c252bb372299dd45fdf76df323a726089d8a71fd8b5e39a2c"
+        },
+        {
+          "file": "web/src/lib/v2-apiClient.ts",
+          "sha256": "b36ff526f0559c103f416d12f7c0884c761c2e8abebf04b8c4a37950211a0a46"
+        }
+      ]
+    }
+  },
+  "logs": [
+    {
+      "label": "test-guards",
+      "archive": "review-repair-test-guards.log.gz",
+      "sha256": "28c1fc87623e54e60f3f313db9a77d77583bcc636530a334e250b2dfbe691a46",
+      "originalSha256": "83cb70d96549df228fae2e324399d31ebbf08989b7b93c48b062d299810b0ea4",
+      "originalBytes": 6654
+    },
+    {
+      "label": "typecheck",
+      "archive": "review-repair-typecheck.log.gz",
+      "sha256": "a4aef4f82962e5d7acb2f750cec735bc16b42461528da9b6ffe3913070aa29e3",
+      "originalSha256": "c227bdb96396bcc0f8c6f61421fa993fd31594a470e53e2fc780faadea8979d3",
+      "originalBytes": 177
+    },
+    {
+      "label": "build-web",
+      "archive": "review-repair-build-web.log.gz",
+      "sha256": "53156a9b4c797a783c8b024010cb82363ef9923ccdab6d218da612a9ba88f9a8",
+      "originalSha256": "8c46ebbd73f90a7868953e7a41733b4297f84052cc7ab969892f03c0a755d50c",
+      "originalBytes": 3562
+    },
+    {
+      "label": "test-cp-059-billing-browser",
+      "archive": "review-repair-test-cp-059-billing-browser.log.gz",
+      "sha256": "344072f36de065400ba7d953c2b97a6c4b5d805a7ed3438c5c519ddb5753edb3",
+      "originalSha256": "96f51b70b7cbce5ea679f73c89344ade05d2c2c7d472dc753abb181c0f9e4f61",
+      "originalBytes": 1066
+    },
+    {
+      "label": "test-shared-db-reads-browser",
+      "archive": "review-repair-test-shared-db-reads-browser.log.gz",
+      "sha256": "4614add96d2f52e13fd0d209681e6b94633c914018189612dd1700e27874208a",
+      "originalSha256": "59cb158e9b2e42bf44ee2486a0c0ad28ef6e7da25c1e63cbad3b38b3d2d1e142",
+      "originalBytes": 816
+    },
+    {
+      "label": "test-cp-068-export-browser",
+      "archive": "review-repair-test-cp-068-export-browser.log.gz",
+      "sha256": "dd1ab193130ed490a6e1603b66e7298d9ae81696661c45bdc4629e45df6ead7a",
+      "originalSha256": "a71bf72a95a17212592eed71443bf6eede8fb2c2618df782014f3d1af6bb8ab3",
+      "originalBytes": 745
+    },
+    {
+      "label": "test-cp-068-mutations",
+      "archive": "review-repair-test-cp-068-mutations.log.gz",
+      "sha256": "b60ba64010d0f6561282725a10f0339ebd32817dfa2ea41a892cc343e259fc8a",
+      "originalSha256": "464e6c9e2aac3e0b6b00dda067a3653f940b679028d2f86ac18fb6502b7ff2e9",
+      "originalBytes": 963
+    },
+    {
+      "label": "test-shared-db-boundaries",
+      "archive": "review-repair-test-shared-db-boundaries.log.gz",
+      "sha256": "8062fe67d8e647e8f451b622f320e9c88801f6c4b1763307f12553c57cce9a66",
+      "originalSha256": "0ea784b4d8709311d832998f405fb32740afb0e3999e06ff01e28438fb284be1",
+      "originalBytes": 202
+    },
+    {
+      "label": "test-client-portal-ci-db-suite-wiring",
+      "archive": "review-repair-test-client-portal-ci-db-suite-wiring.log.gz",
+      "sha256": "2e92af19be171eb6519b307a0d766e8d9d386bef5c302c22cb4fbde8617582ce",
+      "originalSha256": "8df351158ebfaad29e76a5e2c6cf29008fd4aab602478cbfca98fc9e277bb676",
+      "originalBytes": 2282
+    },
+    {
+      "label": "repair-database-pipeline",
+      "archive": "review-repair-repair-database-pipeline.log.gz",
+      "sha256": "8852dc0c76ec240308a65c2c018a37fc94e7660e2d5c72e4c68cdda8eb006196",
+      "originalSha256": "d1e6ee5903af3ad6f665afa34756bcc3fb240d5968020dd48cf9457345c44512",
+      "originalBytes": 448
+    },
+    {
+      "label": "repair-native-returns",
+      "archive": "review-repair-repair-native-returns.log.gz",
+      "sha256": "1c84c22f8220647681b94181a43e6c6ca97beb81445fe4ee1717a87d91c9956e",
+      "originalSha256": "552c9b1212365c3a9ee49dc75fae4d62ce7a1ecaffb17524720658774422ed99",
+      "originalBytes": 43891
+    },
+    {
+      "label": "repair-final-cp059-setup",
+      "archive": "review-repair-repair-final-cp059-setup.log.gz",
+      "sha256": "cb2920fc2245246169dcb6af61d069693c53e2907591fe6bfde135ec64004f10",
+      "originalSha256": "16498303d34f53939437898195bf560d8eb6875f4b9b2b9692d1f30ebcb123d3",
+      "originalBytes": 38323
+    },
+    {
+      "label": "repair-final-cp059-integration",
+      "archive": "review-repair-repair-final-cp059-integration.log.gz",
+      "sha256": "f9de8048a70a0e73c278f168df2f3f25db3d063e08da9643e4739f6ece6f5c5e",
+      "originalSha256": "37765b8403cf6f1b84ccd1e16264d26d4df52bca8ad1726d2a73834f06b0e647",
+      "originalBytes": 13161
+    },
+    {
+      "label": "prepship-shared-db-boundaries",
+      "archive": "review-repair-prepship-shared-db-boundaries.log.gz",
+      "sha256": "d1094a2c6a0ed10c25c905d852908695ec23ebd5c5d3240e19eeb03d58509c58",
+      "originalSha256": "0ac77458525a4122f46945df7b93899b753b0775c1690c5dbe6e54c614726fdf",
+      "originalBytes": 263
+    }
+  ],
+  "portalStatic": {
+    "before": {
+      "passed": 166,
+      "total": 184
+    },
+    "after": {
+      "passed": 182,
+      "total": 182
+    },
+    "nativeTestsMovedToDedicatedJob": 2
+  },
+  "productionChanges": false,
+  "finalCommands": [
+    {
+      "command": "test:guards",
+      "exit": 0,
+      "ms": 332855
+    },
+    {
+      "command": "typecheck",
+      "exit": 0,
+      "ms": 11895
+    },
+    {
+      "command": "build:web",
+      "exit": 0,
+      "ms": 6969
+    },
+    {
+      "command": "test:cp-059-billing:browser",
+      "exit": 0,
+      "ms": 10996
+    },
+    {
+      "command": "test:shared-db-reads:browser",
+      "exit": 0,
+      "ms": 9023
+    },
+    {
+      "command": "test:cp-068-export:browser",
+      "exit": 0,
+      "ms": 8065
+    }
+  ],
+  "nativeCommands": [
+    {
+      "name": "database-pipeline",
+      "exit": 0,
+      "ms": 1965
+    },
+    {
+      "name": "native-returns",
+      "exit": 0,
+      "ms": 6968
+    },
+    {
+      "name": "cp059-setup",
+      "exit": 0,
+      "ms": 2826
+    },
+    {
+      "name": "cp059-integration",
+      "exit": 0,
+      "ms": 1205
+    }
+  ],
+  "finalBillingIntegration": [
+    {
+      "command": "scripts/integration/setup.ts",
+      "exit": 0,
+      "ms": 4203
+    },
+    {
+      "command": "scripts/integration/client-portal-billing-cp059.integration.ts",
+      "exit": 0,
+      "ms": 1632
+    }
+  ],
+  "cleanup": {
+    "otherClientConnections": 0,
+    "temporaryDatabasesRemaining": 0,
+    "stopExit": 0
+  }
+}

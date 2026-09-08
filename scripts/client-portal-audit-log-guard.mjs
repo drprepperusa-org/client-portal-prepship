@@ -166,10 +166,10 @@ assert(
     api.includes('canViewAudit: boolean') &&
     !api.includes('X-Portal-Audit-Source') &&
     !api.includes('backgroundRequest') &&
-    api.includes('auditLog: (token: string') &&
+    api.includes('auditLog: (token: RequestAuth') &&
     api.includes('storeId: opts.storeId') &&
     api.includes("'/api/client-portal/audit-log'") &&
-    api.includes('auditClick: (token: string'),
+    api.includes('auditClick: (token: RequestAuth'),
   'portal API exposes audit-log scope fields and backend-owned capabilities without spoofable audit tagging',
 );
 assert(

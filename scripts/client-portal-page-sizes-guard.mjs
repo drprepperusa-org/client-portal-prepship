@@ -14,6 +14,7 @@ const invoices = read('portal-client/src/pages/Invoices.tsx');
 const invoiceLines = read('portal-client/src/components/billing/invoices/InvoiceLineItems.tsx');
 const inboundReceipts = read('portal-client/src/components/inbound/useInboundReceipts.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
+const queryKeys = read('portal-client/src/lib/query-keys.ts');
 const inventoryApi = read('portal-client/src/lib/api/domains/inventory.ts');
 const queryParams = read('src/lib/client-portal/query-params.ts');
 
@@ -58,9 +59,11 @@ check(
   'Inbound receipt cache key and request include page size',
 );
 for (const key of ["['shipments'", "['inventory'", "['inventory-history'", "['returns'"]) {
-  const line = hooks.split('\n').find((value) => value.includes(key)) ?? '';
+  const source = key === "['inventory'" ? queryKeys : hooks;
+  const line = source.split('\n').find((value) => value.includes(key)) ?? '';
   check(line.includes('pageSize'), `${key.slice(2, -1)} cache key includes page size`);
 }
+check(hooks.includes('portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock)'), 'Inventory reads use the shared key with page size and filters');
 check(inventoryApi.includes('pageSize: opts.pageSize ?? 50'), 'Inventory history API forwards page size');
 check(
   shipments.includes('ids.slice(index, index + 100)'),

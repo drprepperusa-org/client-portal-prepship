@@ -1,3 +1,4 @@
+import type { RequestAuth } from '../transport';
 import type {
   IntegrationValidationResult,
   NewIntegrationInput,
@@ -7,14 +8,14 @@ import type {
 import { apiDelete, apiGet, apiPatch, apiPost } from '../transport';
 
 export const connectionsApi = {
-  syncStatus: (token: string) =>
+  syncStatus: (token: RequestAuth) =>
     apiGet<SyncStatus>(token, '/api/client-portal/sync-status'),
-  integrations: (token: string) =>
+  integrations: (token: RequestAuth) =>
     apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
-  createIntegration: (token: string, body: NewIntegrationInput) =>
+  createIntegration: (token: RequestAuth, body: NewIntegrationInput) =>
     apiPost<{ data: PortalIntegration }>(token, '/api/client-portal/integrations', body),
   validateIntegration: (
-    token: string,
+    token: RequestAuth,
     body: { provider: string; credentials: Record<string, string> },
   ) =>
     apiPost<{ data: IntegrationValidationResult }>(
@@ -22,24 +23,24 @@ export const connectionsApi = {
       '/api/client-portal/integrations/validate',
       body,
     ),
-  reconnectIntegration: (token: string, id: number, credentials: Record<string, string>) =>
+  reconnectIntegration: (token: RequestAuth, id: number, credentials: Record<string, string>) =>
     apiPatch<{ data: { ok: boolean } }>(
       token,
       `/api/client-portal/integrations/${id}/credentials`,
       { credentials },
     ),
-  renameIntegration: (token: string, id: number, label: string) =>
+  renameIntegration: (token: RequestAuth, id: number, label: string) =>
     apiPatch<{ data: PortalIntegration }>(
       token,
       `/api/client-portal/integrations/${id}/label`,
       { label },
     ),
-  approveIntegration: (token: string, id: number) =>
+  approveIntegration: (token: RequestAuth, id: number) =>
     apiPost<{ data: PortalIntegration }>(
       token,
       `/api/client-portal/integrations/${id}/approve`,
     ),
-  disconnectIntegration: (token: string, id: number) =>
+  disconnectIntegration: (token: RequestAuth, id: number) =>
     apiDelete<{ data: { id: number; deleted: boolean; cascadedClientId: number | null } }>(
       token,
       `/api/client-portal/integrations/${id}`,

@@ -122,7 +122,7 @@ assert(
 );
 const mainRoute = read('src/main.ts');
 assert(
-  mainRoute.includes("isSafeClientError && err.message ? err.message : 'Internal server error'") &&
+  mainRoute.includes("(isSafeClientError || err instanceof AnalyticsSchemaUnavailable) && err.message ? err.message : 'Internal server error'") &&
     mainRoute.includes('app.onError'),
   'uncaught portal query failures use the shared redacted 500 response',
 );

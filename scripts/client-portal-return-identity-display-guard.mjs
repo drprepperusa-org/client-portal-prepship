@@ -5,13 +5,13 @@
 // per-surface convention that PrepShip's operator table adds for itself; the customer exports
 // and this portal render the bare value. The portal never mints, strips or prefixes anything,
 // and its detail grain is PrepShip's canonical billing EVENTS — one Outbound row and one Return
-// row per order with a return — where the total is the length of the very array the rows come
-// from. This guard holds those three facts against the real files:
+// row per return event. The count covers that whole canonical set, including when only a page
+// is served. This guard holds those three facts against the real files:
 //   1. the grid's Reference cell and the printable invoice render displayReference verbatim
 //      and contain no '#' prefix, not even on the orderless fallback;
 //   2. the contract documents the bare form and forbids local minting;
 //   3. the order-grain count read model is gone and nothing calls it; the canonical events
-//      read model's total is the row array's length.
+//      read model preserves the producer's page total and counts full unpaged event arrays.
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -61,9 +61,9 @@ check('the order-grain count read model is retired and nothing calls it', () => 
   assert.doesNotMatch(code(read(READ_MODEL)), /portalInvoiceDetailCount/, 'still declared');
   assert.doesNotMatch(code(read(ROUTE)), /portalInvoiceDetailCount/, 'still referenced by the route');
 });
-check('the canonical events read model counts the rows it serves (total = all.length)', () => {
+check('the canonical events read model preserves producer totals for pages and event counts for exports', () => {
   const src = code(read(EVENTS));
-  assert.match(src, /const total = all\.length;/);
+  assert.match(src, /const total = upstream\.pagination\?\.total \?\? all\.length;/);
   assert.match(src, /return \{ ok: true, rows, total, totals: upstream\.totals \};/);
 });
 check('the portal never mints a return suffix anywhere in its src', () => {

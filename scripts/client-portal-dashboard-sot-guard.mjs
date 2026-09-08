@@ -119,7 +119,7 @@ assert(
   'the capped visual sample is removed',
 );
 assert(
-  readModelFlat.includes('buildDashboardDailyRows(') && readModelFlat.includes('getSkuBreakdownFromOrderItems(salesQuery)'),
+  readModelFlat.includes('buildDashboardDailyRows(') && readModelFlat.includes('getSkuBreakdownFromOrderItems(salesQuery, read, { includeOrderCount: false })'),
   'daily orders/units come from complete backend aggregates',
 );
 assert(

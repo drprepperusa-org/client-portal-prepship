@@ -28,6 +28,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const root = process.cwd();
 const WORKFLOW = '.github/workflows/integration-tests.yml';
@@ -227,6 +228,39 @@ check('fixture: a job without the postgres service or TEST_DATABASE_URL is rejec
   const r = verify({ suiteFiles: fixtureFiles, scripts: fixtureScripts, workflow: wf });
   assert.ok(r.problems.includes('the job has no postgres service'), r.problems.join('; '));
   assert.ok(r.problems.includes('the job does not set TEST_DATABASE_URL'), r.problems.join('; '));
+});
+
+// Native transport gates live outside scripts/integration but must still execute in CI.
+const nativeScripts = ['test:database-pipeline:pg17', 'test:shared-db-native:returns'];
+function verifyNative(body, staticNames) {
+  const problems = [];
+  if (!/image: postgres:17\b/.test(body)) problems.push('native PostgreSQL 17 service missing');
+  for (const key of ['RATE_PIPELINE_PG_ADMIN_URL', 'SHARED_DB_TEST_ADMIN_URL']) {
+    const value = body.match(new RegExp(`^\\s+${key}: (\\S+)`, 'm'))?.[1];
+    if (!value || new URL(value).hostname !== '127.0.0.1') problems.push(`${key} loopback fixture missing`);
+  }
+  for (const name of nativeScripts) {
+    if (!runSteps(body).includes(name)) problems.push(`${name} native step missing`);
+    if (staticNames.includes(name)) problems.push(`${name} selected by static lane`);
+  }
+  if (/continue-on-error:\s*true|\|\|\s*true/.test(body)) problems.push('native failure is waived');
+  return problems;
+}
+const nativeBody = jobBody(workflow, 'shared-db-native');
+const staticNames = execFileSync(process.execPath, ['scripts/run-guards.mjs', '--list'], { encoding: 'utf8' }).split(/\r?\n/);
+check('native DB gates execute with fixture URLs and are excluded only from the static lane', () => {
+  assert.deepEqual(verifyNative(nativeBody, staticNames), []);
+});
+check('native wiring rejects missing steps, missing fixture URLs, static admission and waived failures', () => {
+  for (const name of nativeScripts) {
+    assert.ok(verifyNative(nativeBody.replace(`run: npm run ${name}`, 'run: echo removed'), staticNames).length);
+    assert.ok(verifyNative(nativeBody, [...staticNames, name]).length);
+  }
+  for (const key of ['RATE_PIPELINE_PG_ADMIN_URL', 'SHARED_DB_TEST_ADMIN_URL']) {
+    assert.ok(verifyNative(nativeBody.replace(key, 'REMOVED_FIXTURE_URL'), staticNames).length);
+  }
+  assert.ok(verifyNative(nativeBody.replace('image: postgres:17', 'image: absent'), staticNames).length);
+  assert.ok(verifyNative(nativeBody + '\n    continue-on-error: true', staticNames).length);
 });
 
 console.log(`\nCP-064 CI wiring guard: ${passed} passed, ${failed} failed`);

@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { BottomNav } from './BottomNav';
 import { LiquidBackground } from './LiquidBackground';
 import { ConnectionStatus } from '../ConnectionStatus';
 import { NAV, COMPONENTS_NAV } from '@/nav';
-import { pageVariants } from '@/lib/motion';
 import { usePrefetchPortal } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import { useDialogFocus } from '@/components/ui/useDialogFocus';
@@ -60,17 +58,13 @@ export function Layout() {
         {/* Main column */}
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:gap-4">
           <Topbar title={title} onOpenMenu={() => setDrawer(true)} />
-          {/* Enter-only page transition, keyed by path. We intentionally do NOT
-              wrap <Outlet/> in <AnimatePresence mode="wait">: because Outlet
-              renders the *incoming* route's content even inside the exiting
-              element, the mode="wait" handoff could mount the new page stuck at
-              its `initial` (opacity:0) state → a blank content area on nav.
-              Re-keying the motion.div replays initial→enter on every route. */}
+          {/* Route content is readable as soon as its queries resolve. Keep
+              route remounting without hiding results behind an entry animation. */}
           {/* pb-24 on phones clears the fixed bottom tab bar; none at lg+. */}
           <main id="portal-main" tabIndex={-1} className="min-h-[calc(100vh-6rem)] min-w-0 overflow-x-hidden pb-24 lg:pb-0">
-            <motion.div key={pathname} variants={pageVariants} initial="initial" animate="enter">
+            <div key={pathname}>
               <Outlet />
-            </motion.div>
+            </div>
           </main>
         </div>
       </div>

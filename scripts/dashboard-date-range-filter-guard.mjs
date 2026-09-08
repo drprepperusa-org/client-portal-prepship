@@ -62,9 +62,9 @@ assert(/portalApi\.dailyShipments\(t,\s*dateRange,\s*clientId\)/.test(hooks), 'u
 assert(/export interface PortalDateRange/.test(contracts), 'portal API exports PortalDateRange');
 assert(/function dashboardRangeParams\(range: PortalDateRange\)/.test(apiScope), 'portal API has dashboard timestamp range params');
 assert(/function dailyRangeParams\(range: PortalDateRange\)/.test(apiScope), 'portal API has daily-count plain-day range params');
-assert(/function dashboard\(token: string, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dashboard accepts explicit range');
-assert(/function dailyCounts\(token: string, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dailyCounts accepts explicit range');
-assert(/dailyShipments:\s*\(token: string, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dailyShipments accepts explicit range');
+assert(/function dashboard\(token: RequestAuth, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dashboard accepts explicit range');
+assert(/function dailyCounts\(token: RequestAuth, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dailyCounts accepts explicit range');
+assert(/dailyShipments:\s*\(token: RequestAuth, range: PortalDateRange, clientId\?: number\)/.test(dashboardApi), 'portalApi.dailyShipments accepts explicit range');
 
 if (failed) process.exit(1);
 console.log('\nDashboard date-range filter guard passed.');

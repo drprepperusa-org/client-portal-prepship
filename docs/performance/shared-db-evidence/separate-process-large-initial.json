@@ -1,0 +1,1852 @@
+{
+  "runId": "2026-09-08T08:31:57.641Z",
+  "iterations": 50,
+  "processIds": [
+    8424,
+    5976
+  ],
+  "notes": "Separate loopback HTTP owner servers on one local PostgreSQL fixture; alternating paired runs. Full nested ESM/CJS query traces. Acquisition includes connection establishment and pool wait; after-acquisition includes network/execution/decoding. Not browser timings. First measured request is not guaranteed cold. Small PrepShip list is a 3-row page over 200 rows; margin remains 300 + 10,000 historical. Portal datasets contain 30 and 3,000 rows.",
+  "results": [
+    {
+      "app": "prepship",
+      "workflow": "margin",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 96.68090000000029,
+        "queryCount": 2,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 52.352600000000166,
+        "afterAcquisitionMs": 38.70669999999973,
+        "samples": [
+          {
+            "acquisitionMs": 52.262800000000425,
+            "afterAcquisitionMs": 33.2529999999997,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.08979999999974098,
+            "afterAcquisitionMs": 5.453700000000026,
+            "failed": false
+          }
+        ],
+        "httpMs": 126.40229999998701,
+        "bytes": 192572
+      },
+      "medianMs": 15.063299999994342,
+      "p95Ms": 20.409700000003795,
+      "companionP95Ms": 80.16900000000896,
+      "queriesPerRequest": 1,
+      "acquisitionMedianMs": 0.006299999999100692,
+      "acquisitionP95Ms": 0.012300000000323053,
+      "afterAcquisitionMedianMs": 9.730599999999868
+    },
+    {
+      "app": "prepship",
+      "workflow": "margin",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 12.540899999999965,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.03300000000035652,
+        "afterAcquisitionMs": 8.010999999999513,
+        "samples": [
+          {
+            "acquisitionMs": 0.03300000000035652,
+            "afterAcquisitionMs": 8.010999999999513,
+            "failed": false
+          }
+        ],
+        "httpMs": 13.45810000000347,
+        "bytes": 1636
+      },
+      "medianMs": 10.473800000007031,
+      "p95Ms": 18.16930000000866,
+      "companionP95Ms": 79.31930000000284,
+      "queriesPerRequest": 1,
+      "acquisitionMedianMs": 0.006400000000212458,
+      "acquisitionP95Ms": 0.010800000000017462,
+      "afterAcquisitionMedianMs": 7.360999999999876
+    },
+    {
+      "app": "prepship",
+      "workflow": "margin",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 16.62409999999909,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.006999999999607098,
+        "afterAcquisitionMs": 14.851699999999255,
+        "samples": [
+          {
+            "acquisitionMs": 0.006999999999607098,
+            "afterAcquisitionMs": 14.851699999999255,
+            "failed": false
+          }
+        ],
+        "httpMs": 19.16139999999723,
+        "bytes": 192487
+      },
+      "medianMs": 30.150299999993877,
+      "p95Ms": 51.99439999999595,
+      "companionP95Ms": 109.8295999999973,
+      "queriesPerRequest": 1.015,
+      "acquisitionMedianMs": 0.004199999999400461,
+      "acquisitionP95Ms": 0.007099999998899875,
+      "afterAcquisitionMedianMs": 24.044600000001083
+    },
+    {
+      "app": "prepship",
+      "workflow": "margin",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 22.635800000000017,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.007799999999406282,
+        "afterAcquisitionMs": 18.38249999999971,
+        "samples": [
+          {
+            "acquisitionMs": 0.007799999999406282,
+            "afterAcquisitionMs": 18.38249999999971,
+            "failed": false
+          }
+        ],
+        "httpMs": 33.47030000000086,
+        "bytes": 1638
+      },
+      "medianMs": 24.311999999990803,
+      "p95Ms": 31.89429999999993,
+      "companionP95Ms": 93.50289999999222,
+      "queriesPerRequest": 1,
+      "acquisitionMedianMs": 0.0042000000012194505,
+      "acquisitionP95Ms": 0.007100000000718865,
+      "afterAcquisitionMedianMs": 20.295399999999063
+    },
+    {
+      "app": "prepship",
+      "workflow": "list",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 291.65880000000107,
+        "queryCount": 19,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 62.32999999999083,
+        "afterAcquisitionMs": 94.27060000001075,
+        "samples": [
+          {
+            "acquisitionMs": 62.15099999999802,
+            "afterAcquisitionMs": 2.3304000000025553,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.06999999999970896,
+            "afterAcquisitionMs": 4.594800000002579,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0272000000004482,
+            "afterAcquisitionMs": 13.786800000001676,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00810000000274158,
+            "afterAcquisitionMs": 4.586999999999534,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.008399999998800922,
+            "afterAcquisitionMs": 3.176400000000285,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.007099999998899875,
+            "afterAcquisitionMs": 2.369200000001001,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0031000000017229468,
+            "afterAcquisitionMs": 2.8440000000009604,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.005399999998189742,
+            "afterAcquisitionMs": 20.386500000000524,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002899999999499414,
+            "afterAcquisitionMs": 16.34270000000106,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.006999999997788109,
+            "afterAcquisitionMs": 7.568500000001222,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004899999999906868,
+            "afterAcquisitionMs": 1.3888999999981024,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004799999998795101,
+            "afterAcquisitionMs": 1.5793999999987136,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.005399999998189742,
+            "afterAcquisitionMs": 3.0341000000007625,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0036999999974796083,
+            "afterAcquisitionMs": 0.6294999999990978,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 1.4671000000016647,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003400000001420267,
+            "afterAcquisitionMs": 1.4247999999970489,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0036000000000058208,
+            "afterAcquisitionMs": 1.304100000001199,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.006000000001222361,
+            "afterAcquisitionMs": 3.9470000000001164,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004299999996874249,
+            "afterAcquisitionMs": 1.5094000000026426,
+            "failed": false
+          }
+        ],
+        "httpMs": 334.9545999999973,
+        "bytes": 3498764
+      },
+      "medianMs": 148.30440000000817,
+      "p95Ms": 192.41629999999714,
+      "companionP95Ms": 129.49070000000938,
+      "queriesPerRequest": 9,
+      "acquisitionMedianMs": 0.05160000000250875,
+      "acquisitionP95Ms": 0.16479999999137362,
+      "afterAcquisitionMedianMs": 17.227099999996426
+    },
+    {
+      "app": "prepship",
+      "workflow": "list",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 164.74599999999919,
+        "queryCount": 9,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.1061000000081549,
+        "afterAcquisitionMs": 37.69999999999345,
+        "samples": [
+          {
+            "acquisitionMs": 0.01810000000114087,
+            "afterAcquisitionMs": 23.386099999999715,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.034899999998742715,
+            "afterAcquisitionMs": 2.1077000000004773,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.02990000000136206,
+            "afterAcquisitionMs": 3.495999999999185,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.006300000000919681,
+            "afterAcquisitionMs": 1.152699999998731,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003200000002834713,
+            "afterAcquisitionMs": 1.9074999999975262,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002899999999499414,
+            "afterAcquisitionMs": 1.6362999999983003,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0027000000009138603,
+            "afterAcquisitionMs": 1.3333999999995285,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00450000000273576,
+            "afterAcquisitionMs": 0.7408999999970547,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0036000000000058208,
+            "afterAcquisitionMs": 1.9394000000029337,
+            "failed": false
+          }
+        ],
+        "httpMs": 207.54769999999553,
+        "bytes": 3497832
+      },
+      "medianMs": 163.41410000000906,
+      "p95Ms": 217.38619999999355,
+      "companionP95Ms": 119.3067999999912,
+      "queriesPerRequest": 9,
+      "acquisitionMedianMs": 0.052000000006955815,
+      "acquisitionP95Ms": 0.09690000000045984,
+      "afterAcquisitionMedianMs": 19.755700000001525
+    },
+    {
+      "app": "prepship",
+      "workflow": "list",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 56.91220000000612,
+        "queryCount": 9,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.03440000000409782,
+        "afterAcquisitionMs": 8.732499999990978,
+        "samples": [
+          {
+            "acquisitionMs": 0.004699999997683335,
+            "afterAcquisitionMs": 2.913300000000163,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0026999999972758815,
+            "afterAcquisitionMs": 1.1869000000006054,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.005900000003748573,
+            "afterAcquisitionMs": 1.1581999999980326,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004300000000512227,
+            "afterAcquisitionMs": 0.8853999999992084,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003299999996670522,
+            "afterAcquisitionMs": 0.6707999999998719,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002599999999802094,
+            "afterAcquisitionMs": 0.6584000000002561,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002700000004551839,
+            "afterAcquisitionMs": 0.3849999999947613,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.005800000006274786,
+            "afterAcquisitionMs": 0.5187999999980093,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0023999999975785613,
+            "afterAcquisitionMs": 0.35570000000006985,
+            "failed": false
+          }
+        ],
+        "httpMs": 83.45850000000792,
+        "bytes": 3497837
+      },
+      "medianMs": 200.25320000000647,
+      "p95Ms": 292.31059999999707,
+      "companionP95Ms": 53.68319999999949,
+      "queriesPerRequest": 9.015,
+      "acquisitionMedianMs": 4.56150000001071,
+      "acquisitionP95Ms": 16.107699999985925,
+      "afterAcquisitionMedianMs": 100.05479999998352
+    },
+    {
+      "app": "prepship",
+      "workflow": "list",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 64.91630000000441,
+        "queryCount": 9,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.07899999999062857,
+        "afterAcquisitionMs": 15.733200000002398,
+        "samples": [
+          {
+            "acquisitionMs": 0.00960000000486616,
+            "afterAcquisitionMs": 2.972299999993993,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0026999999972758815,
+            "afterAcquisitionMs": 1.24380000000383,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.03979999999864958,
+            "afterAcquisitionMs": 4.47609999999986,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003400000001420267,
+            "afterAcquisitionMs": 3.3306999999986147,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00480000000243308,
+            "afterAcquisitionMs": 1.532099999996717,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0036999999938416295,
+            "afterAcquisitionMs": 0.6687000000019907,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0026999999972758815,
+            "afterAcquisitionMs": 0.5122000000046683,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00819999999657739,
+            "afterAcquisitionMs": 0.6567999999970198,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004099999998288695,
+            "afterAcquisitionMs": 0.34050000000570435,
+            "failed": false
+          }
+        ],
+        "httpMs": 91.39479999999458,
+        "bytes": 3497830
+      },
+      "medianMs": 224.14360000001034,
+      "p95Ms": 331.6267999999982,
+      "companionP95Ms": 53.569699999992736,
+      "queriesPerRequest": 9,
+      "acquisitionMedianMs": 17.33020000000397,
+      "acquisitionP95Ms": 28.654799999996612,
+      "afterAcquisitionMedianMs": 144.91799999999057
+    },
+    {
+      "app": "prepship",
+      "workflow": "detail",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 89.18619999999646,
+        "queryCount": 25,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.08090000000811415,
+        "afterAcquisitionMs": 75.68769999998767,
+        "samples": [
+          {
+            "acquisitionMs": 0.0044999999954598024,
+            "afterAcquisitionMs": 0.9766999999992549,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0033000000039464794,
+            "afterAcquisitionMs": 0.4951999999975669,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0005999999993946403,
+            "afterAcquisitionMs": 1.8271999999997206,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0031000000017229468,
+            "afterAcquisitionMs": 0.5569999999934225,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0026999999972758815,
+            "afterAcquisitionMs": 5.7937999999994645,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0031999999991967343,
+            "afterAcquisitionMs": 3.094700000001467,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004899999999906868,
+            "afterAcquisitionMs": 0.4504000000015367,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003400000001420267,
+            "afterAcquisitionMs": 0.47679999999672873,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0023999999975785613,
+            "afterAcquisitionMs": 0.3083000000042375,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002899999999499414,
+            "afterAcquisitionMs": 4.285500000005413,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004000000000814907,
+            "afterAcquisitionMs": 0.8393999999971129,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0028000000020256266,
+            "afterAcquisitionMs": 6.751899999995658,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00450000000273576,
+            "afterAcquisitionMs": 2.668199999992794,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003400000001420267,
+            "afterAcquisitionMs": 0.5385999999998603,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0019000000029336661,
+            "afterAcquisitionMs": 5.5899999999965075,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0026999999972758815,
+            "afterAcquisitionMs": 1.9576000000015483,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 1.5293999999994412,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0031000000017229468,
+            "afterAcquisitionMs": 0.9004999999961001,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002300000000104774,
+            "afterAcquisitionMs": 13.546200000004319,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 7.523300000000745,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0034999999988940544,
+            "afterAcquisitionMs": 4.728800000004412,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0023999999975785613,
+            "afterAcquisitionMs": 3.5789999999979045,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 2.415500000002794,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004899999999906868,
+            "afterAcquisitionMs": 2.532500000001164,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0033000000039464794,
+            "afterAcquisitionMs": 2.3211999999984982,
+            "failed": false
+          }
+        ],
+        "httpMs": 90.06889999998384,
+        "bytes": 11323
+      },
+      "medianMs": 14.477799999993294,
+      "p95Ms": 18.022699999972247,
+      "companionP95Ms": 40.338999999978114,
+      "queriesPerRequest": 19,
+      "acquisitionMedianMs": 0.04159999998228159,
+      "acquisitionP95Ms": 0.08200000000215368,
+      "afterAcquisitionMedianMs": 9.248899999976857
+    },
+    {
+      "app": "prepship",
+      "workflow": "detail",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 23.075700000001234,
+        "queryCount": 12,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.033000000010360964,
+        "afterAcquisitionMs": 23.38249999997788,
+        "samples": [
+          {
+            "acquisitionMs": 0.0037999999985913746,
+            "afterAcquisitionMs": 0.6008999999976368,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0031000000017229468,
+            "afterAcquisitionMs": 0.3783000000039465,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0005999999993946403,
+            "afterAcquisitionMs": 1.7964999999967404,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002899999999499414,
+            "afterAcquisitionMs": 0.6172000000005937,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.000800000001618173,
+            "afterAcquisitionMs": 0.3289999999979045,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0031000000017229468,
+            "afterAcquisitionMs": 0.7314999999944121,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0017000000007101335,
+            "afterAcquisitionMs": 3.385499999996682,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002599999999802094,
+            "afterAcquisitionMs": 0.36559999999735737,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0022000000026309863,
+            "afterAcquisitionMs": 2.5841999999975087,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 3.2197999999989406,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0039000000033411197,
+            "afterAcquisitionMs": 7.446299999995972,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004600000000209548,
+            "afterAcquisitionMs": 1.9277000000001863,
+            "failed": false
+          }
+        ],
+        "httpMs": 23.93510000000242,
+        "bytes": 10103
+      },
+      "medianMs": 9.305000000022119,
+      "p95Ms": 11.51459999999497,
+      "companionP95Ms": 41.329899999982445,
+      "queriesPerRequest": 12,
+      "acquisitionMedianMs": 0.027800000010756776,
+      "acquisitionP95Ms": 0.03920000001380686,
+      "afterAcquisitionMedianMs": 7.5490000000281725
+    },
+    {
+      "app": "prepship",
+      "workflow": "detail",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 13.729200000001583,
+        "queryCount": 19,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.035200000056647696,
+        "afterAcquisitionMs": 9.641499999954249,
+        "samples": [
+          {
+            "acquisitionMs": 0.005199999999604188,
+            "afterAcquisitionMs": 0.8885999999911292,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004500000010011718,
+            "afterAcquisitionMs": 0.6399999999994179,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0010000000038417056,
+            "afterAcquisitionMs": 1.7943000000086613,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002099999997881241,
+            "afterAcquisitionMs": 0.4890999999915948,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001999999993131496,
+            "afterAcquisitionMs": 0.3706999999994878,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001799999998183921,
+            "afterAcquisitionMs": 0.305000000007567,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0011000000085914508,
+            "afterAcquisitionMs": 0.32529999999678694,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.45229999998991843,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0011999999987892807,
+            "afterAcquisitionMs": 0.30560000000696164,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0014999999984866008,
+            "afterAcquisitionMs": 0.3083000000042375,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.5752999999967869,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0011000000085914508,
+            "afterAcquisitionMs": 0.4583999999886146,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0027000000118277967,
+            "afterAcquisitionMs": 0.5509999999922002,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.4785999999876367,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.3742000000056578,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.37119999999413267,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0011999999987892807,
+            "afterAcquisitionMs": 0.263200000001234,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.3107999999920139,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.37960000000020955,
+            "failed": false
+          }
+        ],
+        "httpMs": 14.571700000000419,
+        "bytes": 10769
+      },
+      "medianMs": 24.01740000001155,
+      "p95Ms": 30.079100000002654,
+      "companionP95Ms": 49.68290000001434,
+      "queriesPerRequest": 19,
+      "acquisitionMedianMs": 0.6306999999796972,
+      "acquisitionP95Ms": 2.9259000000020023,
+      "afterAcquisitionMedianMs": 18.02009999997972
+    },
+    {
+      "app": "prepship",
+      "workflow": "detail",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 8.982099999993807,
+        "queryCount": 12,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.021099999983562157,
+        "afterAcquisitionMs": 8.447500000038417,
+        "samples": [
+          {
+            "acquisitionMs": 0.002099999997881241,
+            "afterAcquisitionMs": 0.5812000000005355,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0022000000026309863,
+            "afterAcquisitionMs": 0.4478999999992084,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0004000000044470653,
+            "afterAcquisitionMs": 1.9318999999959487,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003400000001420267,
+            "afterAcquisitionMs": 0.7652000000089174,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0007999999943422154,
+            "afterAcquisitionMs": 1.118800000011106,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002299999992828816,
+            "afterAcquisitionMs": 0.5026999999972759,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002099999997881241,
+            "afterAcquisitionMs": 0.5841999999975087,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0014999999984866008,
+            "afterAcquisitionMs": 0.6129000000073574,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001799999998183921,
+            "afterAcquisitionMs": 0.6083999999973457,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.5743000000074971,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.38060000000405125,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0012999999889871106,
+            "afterAcquisitionMs": 0.3394000000116648,
+            "failed": false
+          }
+        ],
+        "httpMs": 9.783300000010058,
+        "bytes": 10101
+      },
+      "medianMs": 16.494799999985844,
+      "p95Ms": 20.88430000000517,
+      "companionP95Ms": 42.70829999999842,
+      "queriesPerRequest": 12,
+      "acquisitionMedianMs": 4.7863000000070315,
+      "acquisitionP95Ms": 7.379300000000512,
+      "afterAcquisitionMedianMs": 12.603699999992386
+    },
+    {
+      "app": "prepship",
+      "workflow": "full",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 11.840400000000955,
+        "queryCount": 18,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.030199999993783422,
+        "afterAcquisitionMs": 8.040999999968335,
+        "samples": [
+          {
+            "acquisitionMs": 0.004199999995762482,
+            "afterAcquisitionMs": 0.666800000006333,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0028000000020256266,
+            "afterAcquisitionMs": 0.3826999999873806,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0005999999993946403,
+            "afterAcquisitionMs": 1.76140000000305,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0019000000029336661,
+            "afterAcquisitionMs": 0.47899999999208376,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0019000000029336661,
+            "afterAcquisitionMs": 0.3698000000003958,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0015999999886844307,
+            "afterAcquisitionMs": 0.45160000000032596,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.2937999999994645,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0012999999889871106,
+            "afterAcquisitionMs": 0.3601000000053318,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0010000000038417056,
+            "afterAcquisitionMs": 0.24209999998856802,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013999999937368557,
+            "afterAcquisitionMs": 0.25359999999636784,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.6451999999990221,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0018999999883817509,
+            "afterAcquisitionMs": 0.3018000000010943,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013999999937368557,
+            "afterAcquisitionMs": 0.31410000000323635,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.3983999999909429,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.3113000000012107,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001700000007986091,
+            "afterAcquisitionMs": 0.3610999999946216,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.22269999999844003,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013999999937368557,
+            "afterAcquisitionMs": 0.22550000000046566,
+            "failed": false
+          }
+        ],
+        "httpMs": 12.508499999996275,
+        "bytes": 10644
+      },
+      "medianMs": 13.403900000004796,
+      "p95Ms": 18.072199999995064,
+      "companionP95Ms": 40.65189999999711,
+      "queriesPerRequest": 18,
+      "acquisitionMedianMs": 0.03339999995660037,
+      "acquisitionP95Ms": 0.0480000000243308,
+      "afterAcquisitionMedianMs": 8.831499999971129
+    },
+    {
+      "app": "prepship",
+      "workflow": "full",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 6.651800000006915,
+        "queryCount": 11,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.015400000003864989,
+        "afterAcquisitionMs": 5.635199999989709,
+        "samples": [
+          {
+            "acquisitionMs": 0.0023000000073807314,
+            "afterAcquisitionMs": 0.544499999989057,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0018999999883817509,
+            "afterAcquisitionMs": 0.3149000000121305,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00039999998989515007,
+            "afterAcquisitionMs": 1.6771000000007916,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001700000007986091,
+            "afterAcquisitionMs": 0.531299999987823,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0007000000041443855,
+            "afterAcquisitionMs": 0.2986000000091735,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.458199999993667,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0010999999940395355,
+            "afterAcquisitionMs": 0.5160000000032596,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.5239000000001397,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001500000013038516,
+            "afterAcquisitionMs": 0.2703999999939697,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.2893999999942025,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0012999999889871106,
+            "afterAcquisitionMs": 0.2109000000054948,
+            "failed": false
+          }
+        ],
+        "httpMs": 7.328899999993155,
+        "bytes": 9974
+      },
+      "medianMs": 8.471300000004703,
+      "p95Ms": 10.434999999997672,
+      "companionP95Ms": 41.51380000001518,
+      "queriesPerRequest": 11,
+      "acquisitionMedianMs": 0.021499999973457307,
+      "acquisitionP95Ms": 0.02899999999499414,
+      "afterAcquisitionMedianMs": 6.873200000001816
+    },
+    {
+      "app": "prepship",
+      "workflow": "full",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 12.642699999996694,
+        "queryCount": 18,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.030900000041583553,
+        "afterAcquisitionMs": 8.9430999999895,
+        "samples": [
+          {
+            "acquisitionMs": 0.004100000005564652,
+            "afterAcquisitionMs": 0.7415999999939231,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 0.737699999997858,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0004999999946448952,
+            "afterAcquisitionMs": 1.99210000000312,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0020000000076834112,
+            "afterAcquisitionMs": 0.5320999999967171,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002099999997881241,
+            "afterAcquisitionMs": 0.3451000000059139,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.2721999999921536,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0012000000133411959,
+            "afterAcquisitionMs": 0.4822999999887543,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.3273999999946682,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0011999999987892807,
+            "afterAcquisitionMs": 0.2649999999994179,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.2308000000048196,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.47320000000763685,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001400000008288771,
+            "afterAcquisitionMs": 0.4113999999972293,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.482399999993504,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.45500000000174623,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013999999937368557,
+            "afterAcquisitionMs": 0.2873000000108732,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0023999999975785613,
+            "afterAcquisitionMs": 0.36469999999098945,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0014999999984866008,
+            "afterAcquisitionMs": 0.2781000000104541,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0010999999940395355,
+            "afterAcquisitionMs": 0.2646999999997206,
+            "failed": false
+          }
+        ],
+        "httpMs": 13.458000000013271,
+        "bytes": 10636
+      },
+      "medianMs": 21.932200000010198,
+      "p95Ms": 27.660299999988638,
+      "companionP95Ms": 45.57730000000447,
+      "queriesPerRequest": 18,
+      "acquisitionMedianMs": 0.5146999999706168,
+      "acquisitionP95Ms": 1.9809999999706633,
+      "afterAcquisitionMedianMs": 16.872700000036275
+    },
+    {
+      "app": "prepship",
+      "workflow": "full",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 6.755099999994854,
+        "queryCount": 11,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.015599999998812564,
+        "afterAcquisitionMs": 6.217100000008941,
+        "samples": [
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.534799999993993,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001600000003236346,
+            "afterAcquisitionMs": 0.39680000000225846,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.00029999999969732016,
+            "afterAcquisitionMs": 1.9165000000066357,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0019000000029336661,
+            "afterAcquisitionMs": 0.6013999999995576,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0025999999925261363,
+            "afterAcquisitionMs": 0.3200000000069849,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0019000000029336661,
+            "afterAcquisitionMs": 0.569999999992433,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.5472000000008848,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013999999937368557,
+            "afterAcquisitionMs": 0.5510999999969499,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0008999999990919605,
+            "afterAcquisitionMs": 0.2776000000012573,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0013000000035390258,
+            "afterAcquisitionMs": 0.2790999999997439,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0010999999940395355,
+            "afterAcquisitionMs": 0.2226000000082422,
+            "failed": false
+          }
+        ],
+        "httpMs": 7.385099999984959,
+        "bytes": 9979
+      },
+      "medianMs": 15.517600000021048,
+      "p95Ms": 20.35969999997178,
+      "companionP95Ms": 42.71150000000489,
+      "queriesPerRequest": 11,
+      "acquisitionMedianMs": 4.361800000013318,
+      "acquisitionP95Ms": 7.349100000021281,
+      "afterAcquisitionMedianMs": 11.666700000016135
+    },
+    {
+      "app": "portal",
+      "workflow": "billing",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 793.2914000000019,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.004500000010011718,
+        "afterAcquisitionMs": 6.524199999999837,
+        "samples": [
+          {
+            "acquisitionMs": 0.004500000010011718,
+            "afterAcquisitionMs": 6.524199999999837,
+            "failed": false
+          }
+        ],
+        "httpMs": 795.4446000000171,
+        "bytes": 80505
+      },
+      "medianMs": 529.9373999999953,
+      "p95Ms": 581.2905000000028,
+      "companionP95Ms": 16.421899999986636,
+      "queriesPerRequest": 1,
+      "acquisitionMedianMs": 0.006800000002840534,
+      "acquisitionP95Ms": 0.011299999998300336,
+      "afterAcquisitionMedianMs": 2.307300000000396
+    },
+    {
+      "app": "portal",
+      "workflow": "billing",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 435.9441000000079,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.0044999999954598024,
+        "afterAcquisitionMs": 0.9716999999945983,
+        "samples": [
+          {
+            "acquisitionMs": 0.0044999999954598024,
+            "afterAcquisitionMs": 0.9716999999945983,
+            "failed": false
+          }
+        ],
+        "httpMs": 437.2027999999991,
+        "bytes": 80509
+      },
+      "medianMs": 418.33520000000135,
+      "p95Ms": 452.64590000000317,
+      "companionP95Ms": 15.904500000004191,
+      "queriesPerRequest": 1,
+      "acquisitionMedianMs": 0.004899999999906868,
+      "acquisitionP95Ms": 0.007199999992735684,
+      "afterAcquisitionMedianMs": 0.9787000000069384
+    },
+    {
+      "app": "portal",
+      "workflow": "billing",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 565.6396999999997,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.006999999997788109,
+        "afterAcquisitionMs": 4.907200000001467,
+        "samples": [
+          {
+            "acquisitionMs": 0.006999999997788109,
+            "afterAcquisitionMs": 4.907200000001467,
+            "failed": false
+          }
+        ],
+        "httpMs": 567.6564000000071,
+        "bytes": 80505
+      },
+      "medianMs": 1767.6944000000076,
+      "p95Ms": 1924.7039000000223,
+      "companionP95Ms": 21.054899999988265,
+      "queriesPerRequest": 1,
+      "acquisitionMedianMs": 0.006800000002840534,
+      "acquisitionP95Ms": 0.010000000009313226,
+      "afterAcquisitionMedianMs": 3.1222000000125263
+    },
+    {
+      "app": "portal",
+      "workflow": "billing",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 415.91939999999886,
+        "queryCount": 1,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.004799999995157123,
+        "afterAcquisitionMs": 0.9545999999972992,
+        "samples": [
+          {
+            "acquisitionMs": 0.004799999995157123,
+            "afterAcquisitionMs": 0.9545999999972992,
+            "failed": false
+          }
+        ],
+        "httpMs": 417.0769999999902,
+        "bytes": 80508
+      },
+      "medianMs": 1545.8572999999742,
+      "p95Ms": 1657.7391999999818,
+      "companionP95Ms": 20.133999999961816,
+      "queriesPerRequest": 1.01,
+      "acquisitionMedianMs": 0.005100000009406358,
+      "acquisitionP95Ms": 0.00950000001466833,
+      "afterAcquisitionMedianMs": 0.9205000000074506
+    },
+    {
+      "app": "portal",
+      "workflow": "analysis",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 91.20819999999367,
+        "queryCount": 3,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.00969999999506399,
+        "afterAcquisitionMs": 90.03119999996852,
+        "samples": [
+          {
+            "acquisitionMs": 0.0031000000308267772,
+            "afterAcquisitionMs": 70.68699999997625,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0032999999821186066,
+            "afterAcquisitionMs": 14.456799999985378,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0032999999821186066,
+            "afterAcquisitionMs": 4.887400000006892,
+            "failed": false
+          }
+        ],
+        "httpMs": 92.08539999998175,
+        "bytes": 11436
+      },
+      "medianMs": 38.87260000000242,
+      "p95Ms": 45.67230000003474,
+      "companionP95Ms": 14.9039000000339,
+      "queriesPerRequest": 3,
+      "acquisitionMedianMs": 0.01089999993564561,
+      "acquisitionP95Ms": 0.01640000002225861,
+      "afterAcquisitionMedianMs": 37.12420000002021
+    },
+    {
+      "app": "portal",
+      "workflow": "analysis",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 79.70919999998296,
+        "queryCount": 4,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.014600000053178519,
+        "afterAcquisitionMs": 83.89689999999246,
+        "samples": [
+          {
+            "acquisitionMs": 0.004899999999906868,
+            "afterAcquisitionMs": 27.678000000014435,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.004700000048615038,
+            "afterAcquisitionMs": 50.242899999953806,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0027000000118277967,
+            "afterAcquisitionMs": 1.3160999999963678,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002299999992828816,
+            "afterAcquisitionMs": 4.6599000000278465,
+            "failed": false
+          }
+        ],
+        "httpMs": 80.46850000001723,
+        "bytes": 11531
+      },
+      "medianMs": 31.98369999998249,
+      "p95Ms": 35.2443000000203,
+      "companionP95Ms": 13.364200000010896,
+      "queriesPerRequest": 3,
+      "acquisitionMedianMs": 0.009200000029522926,
+      "acquisitionP95Ms": 0.011900000041350722,
+      "afterAcquisitionMedianMs": 36.573199999984354
+    },
+    {
+      "app": "portal",
+      "workflow": "analysis",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 38.241399999998976,
+        "queryCount": 3,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.01069999998435378,
+        "afterAcquisitionMs": 37.48910000000615,
+        "samples": [
+          {
+            "acquisitionMs": 0.003700000001117587,
+            "afterAcquisitionMs": 31.84380000003148,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003599999996367842,
+            "afterAcquisitionMs": 1.261899999983143,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0033999999868683517,
+            "afterAcquisitionMs": 4.383399999991525,
+            "failed": false
+          }
+        ],
+        "httpMs": 38.99320000002626,
+        "bytes": 11434
+      },
+      "medianMs": 43.51400000002468,
+      "p95Ms": 54.93320000002859,
+      "companionP95Ms": 24.23609999998007,
+      "queriesPerRequest": 3.005,
+      "acquisitionMedianMs": 0.00829999998677522,
+      "acquisitionP95Ms": 0.014300000038929284,
+      "afterAcquisitionMedianMs": 40.8739999999525
+    },
+    {
+      "app": "portal",
+      "workflow": "analysis",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 31.73579999996582,
+        "queryCount": 3,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.007499999948777258,
+        "afterAcquisitionMs": 36.616399999998976,
+        "samples": [
+          {
+            "acquisitionMs": 0.0030999999726191163,
+            "afterAcquisitionMs": 31.18410000001313,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002199999988079071,
+            "afterAcquisitionMs": 1.0402999999932945,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002199999988079071,
+            "afterAcquisitionMs": 4.391999999992549,
+            "failed": false
+          }
+        ],
+        "httpMs": 32.48259999998845,
+        "bytes": 11436
+      },
+      "medianMs": 38.320300000021234,
+      "p95Ms": 50.182299999985844,
+      "companionP95Ms": 18.51520000002347,
+      "queriesPerRequest": 3.02,
+      "acquisitionMedianMs": 0.006700000027194619,
+      "acquisitionP95Ms": 0.013399999996181577,
+      "afterAcquisitionMedianMs": 44.385399999970105
+    },
+    {
+      "app": "portal",
+      "workflow": "dashboard",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 41.2155999999959,
+        "queryCount": 6,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.011899999983143061,
+        "afterAcquisitionMs": 49.6146000000881,
+        "samples": [
+          {
+            "acquisitionMs": 0.002799999958369881,
+            "afterAcquisitionMs": 5.194600000046194,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0017000000225380063,
+            "afterAcquisitionMs": 6.694699999992736,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.000800000037997961,
+            "afterAcquisitionMs": 1.1809999999823049,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0006000000284984708,
+            "afterAcquisitionMs": 30.706200000015087,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0030999999726191163,
+            "afterAcquisitionMs": 1.2785000000149012,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002899999963119626,
+            "afterAcquisitionMs": 4.55960000003688,
+            "failed": false
+          }
+        ],
+        "httpMs": 42.13709999999264,
+        "bytes": 37603
+      },
+      "medianMs": 37.665599999949336,
+      "p95Ms": 41.0168999999878,
+      "companionP95Ms": 12.808200000028592,
+      "queriesPerRequest": 6,
+      "acquisitionMedianMs": 0.013600000005681068,
+      "acquisitionP95Ms": 0.02569999999832362,
+      "afterAcquisitionMedianMs": 43.25030000001425
+    },
+    {
+      "app": "portal",
+      "workflow": "dashboard",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "firstMeasured": {
+        "ms": 34.839899999962654,
+        "queryCount": 5,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.0110999999451451,
+        "afterAcquisitionMs": 41.50459999998566,
+        "samples": [
+          {
+            "acquisitionMs": 0.002999999967869371,
+            "afterAcquisitionMs": 4.569799999997485,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002199999988079071,
+            "afterAcquisitionMs": 0.6539999999804422,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002299999992828816,
+            "afterAcquisitionMs": 2.7179999999934807,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0018000000272877514,
+            "afterAcquisitionMs": 29.194799999997485,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0017999999690800905,
+            "afterAcquisitionMs": 4.368000000016764,
+            "failed": false
+          }
+        ],
+        "httpMs": 35.7166000000434,
+        "bytes": 37511
+      },
+      "medianMs": 35.2725999999675,
+      "p95Ms": 37.10659999999916,
+      "companionP95Ms": 12.163500000024214,
+      "queriesPerRequest": 5,
+      "acquisitionMedianMs": 0.012199999997392297,
+      "acquisitionP95Ms": 0.01600000000325963,
+      "afterAcquisitionMedianMs": 41.830600000103004
+    },
+    {
+      "app": "portal",
+      "workflow": "dashboard",
+      "dataset": "large",
+      "callers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 36.00200000003679,
+        "queryCount": 6,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.04149999999208376,
+        "afterAcquisitionMs": 42.63300000008894,
+        "samples": [
+          {
+            "acquisitionMs": 0.0031999999773688614,
+            "afterAcquisitionMs": 2.997299999988172,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0018000000272877514,
+            "afterAcquisitionMs": 4.255999999993946,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.003499999991618097,
+            "afterAcquisitionMs": 0.6712000000406988,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.02710000000661239,
+            "afterAcquisitionMs": 28.803400000033434,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0030999999726191163,
+            "afterAcquisitionMs": 1.32740000000922,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002800000016577542,
+            "afterAcquisitionMs": 4.577700000023469,
+            "failed": false
+          }
+        ],
+        "httpMs": 37.12349999998696,
+        "bytes": 37602
+      },
+      "medianMs": 49.13530000002356,
+      "p95Ms": 60.76199999998789,
+      "companionP95Ms": 30.412699999986216,
+      "queriesPerRequest": 6.01,
+      "acquisitionMedianMs": 0.019900000013876706,
+      "acquisitionP95Ms": 14.380200000072364,
+      "afterAcquisitionMedianMs": 58.48769999988144
+    },
+    {
+      "app": "portal",
+      "workflow": "dashboard",
+      "dataset": "large",
+      "callers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "firstMeasured": {
+        "ms": 33.681699999957345,
+        "queryCount": 5,
+        "outstanding": 0,
+        "queryErrors": 0,
+        "acquisitionMs": 0.010400000028312206,
+        "afterAcquisitionMs": 41.272300000011455,
+        "samples": [
+          {
+            "acquisitionMs": 0.0027000000118277967,
+            "afterAcquisitionMs": 4.553699999989476,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0017000000225380063,
+            "afterAcquisitionMs": 0.5363999999826774,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.002199999988079071,
+            "afterAcquisitionMs": 2.6172000000369735,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.001999999978579581,
+            "afterAcquisitionMs": 29.320000000006985,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.0018000000272877514,
+            "afterAcquisitionMs": 4.244999999995343,
+            "failed": false
+          }
+        ],
+        "httpMs": 34.58079999999609,
+        "bytes": 37515
+      },
+      "medianMs": 43.59279999998398,
+      "p95Ms": 57.5795999999973,
+      "companionP95Ms": 33.68420000001788,
+      "queriesPerRequest": 5,
+      "acquisitionMedianMs": 0.008900000073481351,
+      "acquisitionP95Ms": 0.014000000024680048,
+      "afterAcquisitionMedianMs": 54.166599999938626
+    }
+  ],
+  "rawSamples": {
+    "file": "separate-process-large-initial.json.gz",
+    "sha256": "3e5a50e1c0d539e75c6fbf95d317f06a1fa2885132b1cd9397a49e537842abf3",
+    "uncompressedSha256": "bccbd6bea1df17b45b70f7de1552ed1fd1560cfeaa26e74ae093e3e510807ab5"
+  }
+}

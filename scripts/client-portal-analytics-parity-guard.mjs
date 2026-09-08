@@ -89,7 +89,7 @@ assert(
 // ── 4. /dashboard KPIs come from the owner — never from the .limit(1000) rows ──
 assert(
   routeFlat.includes('getClientPortalDashboardSummary') &&
-    dashboardReadModelFlat.includes('getSkuBreakdownFromOrderItems(salesQuery)'),
+    dashboardReadModelFlat.includes('getSkuBreakdownFromOrderItems(salesQuery, read, { includeOrderCount: false })'),
   '/dashboard delegates to a read model backed by the canonical Analysis owner',
 );
 assert(
@@ -133,7 +133,7 @@ assert(
   'useAnalysis includes clientId in its query key + request (parity with useDashboard)',
 );
 assert(
-  /analysis: \(token: string, range: PortalDateRange, clientId\?: number\)/.test(api),
+  /analysis: \(token: RequestAuth, range: PortalDateRange, clientId\?: number\)/.test(api),
   'api.analysis accepts and forwards clientId',
 );
 assert(

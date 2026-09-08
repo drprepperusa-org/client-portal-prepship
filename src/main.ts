@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { env } from './lib/env';
+import { ensureAnalyticsSchemaCapability, AnalyticsSchemaUnavailable } from './services/analytics-schema-capability';
 import { isAllowedCorsOrigin } from './lib/http/cors';
 import { observeApiTiming } from './lib/http/api-metrics';
 import { appendServerTiming, elapsedMs, nowMs } from './lib/http/timing';
@@ -223,7 +224,7 @@ app.onError((err, c) => {
   if (err instanceof Error && err.stack) console.error(err.stack);
   const isSafeClientError = status >= 400 && status < 500;
   const message =
-    isSafeClientError && err.message ? err.message : 'Internal server error';
+    (isSafeClientError || err instanceof AnalyticsSchemaUnavailable) && err.message ? err.message : 'Internal server error';
   return c.json({ error: message }, status as 500);
 });
 
@@ -258,6 +259,9 @@ process.on('uncaughtException', (err) => {
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`API listening on http://localhost:${info.port}`);
+  void ensureAnalyticsSchemaCapability().catch(() => {
+    console.warn('[analytics] required schema capability unavailable; unrelated routes remain enabled');
+  });
   // Runtime split: the Web API should serve user traffic, while the Render
   // Worker owns sync/reporting jobs once RUN_SYNC_SCHEDULER is disabled here.
   if (clientPortalOnly) {

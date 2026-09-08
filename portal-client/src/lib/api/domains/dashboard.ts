@@ -1,16 +1,17 @@
+import type { RequestAuth } from '../transport';
 import type { PortalDateRange } from '@client-portal-contracts/common';
 import type { DailyCount, DashboardSummary } from '@client-portal-contracts/dashboard';
 import { apiGet } from '../transport';
 import { dailyRangeParams, dashboardRangeParams } from '../scope';
 
-function dashboard(token: string, range: PortalDateRange, clientId?: number) {
+function dashboard(token: RequestAuth, range: PortalDateRange, clientId?: number) {
   return apiGet<DashboardSummary>(token, '/api/client-portal/dashboard', {
     ...dashboardRangeParams(range),
     clientId,
   });
 }
 
-function dailyCounts(token: string, range: PortalDateRange, clientId?: number) {
+function dailyCounts(token: RequestAuth, range: PortalDateRange, clientId?: number) {
   return apiGet<{ data: DailyCount[] }>(token, '/api/client-portal/daily-counts', {
     ...dailyRangeParams(range),
     clientId,
@@ -22,7 +23,7 @@ export const dashboardApi = {
   dailyCounts,
   backgroundDashboard: dashboard,
   backgroundDailyCounts: dailyCounts,
-  dailyShipments: (token: string, range: PortalDateRange, clientId?: number) =>
+  dailyShipments: (token: RequestAuth, range: PortalDateRange, clientId?: number) =>
     apiGet<{ data: Array<{ day: string; shipments: number }> }>(
       token,
       '/api/client-portal/daily-shipments',

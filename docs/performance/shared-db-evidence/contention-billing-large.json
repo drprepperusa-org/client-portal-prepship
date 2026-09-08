@@ -1,0 +1,298 @@
+{
+  "runId": "2026-09-08T09:06:56.707Z",
+  "iterations": 50,
+  "processIds": [
+    51192,
+    53692
+  ],
+  "notes": "Separate loopback HTTP owner servers, one application pool per process, on one local PostgreSQL fixture; alternating paired runs. Nested driver query traces include separate upstream producer metrics for billing. Acquisition includes connection establishment and pool wait; after-acquisition includes network/execution/decoding. Scenarios with initial companion p95 >10% receive two additional 50-pair rounds, retaining all samples. Not browser timings. First measured request is not guaranteed cold. Small PrepShip list is a 3-row page over 200 rows; margin remains 300 + 10,000 historical. Portal datasets contain 30 and 3,000 rows.",
+  "results": [
+    {
+      "app": "portal",
+      "workflow": "billing",
+      "dataset": "large",
+      "callers": 1,
+      "version": "baseline",
+      "runs": 150,
+      "rounds": 3,
+      "companionRounds": [
+        {
+          "round": 1,
+          "p95Ms": 17.916799999999057
+        },
+        {
+          "round": 2,
+          "p95Ms": 18.222399999998743
+        },
+        {
+          "round": 3,
+          "p95Ms": 16.051300000021
+        }
+      ],
+      "firstMeasured": {
+        "ms": 829.0365000000002,
+        "queryCount": 2,
+        "outstanding": 0,
+        "upstream": [
+          {
+            "ms": 634.2530999999999,
+            "queryCount": 19,
+            "outstanding": 0,
+            "upstream": [],
+            "queryErrors": 0,
+            "acquisitionMs": 48.279600000000755,
+            "afterAcquisitionMs": 141.20370000000185,
+            "samples": [
+              {
+                "acquisitionMs": 48.11450000000059,
+                "afterAcquisitionMs": 4.119999999999891,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.05959999999959109,
+                "afterAcquisitionMs": 4.710799999999836,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.018299999999726424,
+                "afterAcquisitionMs": 1.4784000000008746,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.004200000000309956,
+                "afterAcquisitionMs": 15.15980000000036,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.006199999999807915,
+                "afterAcquisitionMs": 4.2476000000006024,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0027000000000043656,
+                "afterAcquisitionMs": 2.501100000000406,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.002500000000509317,
+                "afterAcquisitionMs": 1.9167999999999665,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0024999999995998223,
+                "afterAcquisitionMs": 2.006100000000515,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.003800000000410364,
+                "afterAcquisitionMs": 48.256499999999505,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.010000000000218279,
+                "afterAcquisitionMs": 14.039300000000367,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0039999999999054126,
+                "afterAcquisitionMs": 5.3189000000002125,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.006999999999607098,
+                "afterAcquisitionMs": 3.8797999999997046,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.011100000000624277,
+                "afterAcquisitionMs": 3.1526999999996406,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.005400000000008731,
+                "afterAcquisitionMs": 3.2782999999999447,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.004500000000007276,
+                "afterAcquisitionMs": 5.0263999999997395,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.009900000000016007,
+                "afterAcquisitionMs": 5.08219999999983,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.005699999999706051,
+                "afterAcquisitionMs": 8.03610000000026,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.004600000000209548,
+                "afterAcquisitionMs": 2.3476000000000568,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0030999999999039574,
+                "afterAcquisitionMs": 6.645300000000134,
+                "failed": false
+              }
+            ]
+          }
+        ],
+        "queryErrors": 0,
+        "acquisitionMs": 60.25990000000047,
+        "afterAcquisitionMs": 11.573499999999967,
+        "samples": [
+          {
+            "acquisitionMs": 60.18100000000004,
+            "afterAcquisitionMs": 6.917400000000271,
+            "failed": false
+          },
+          {
+            "acquisitionMs": 0.07890000000043074,
+            "afterAcquisitionMs": 4.656099999999697,
+            "failed": false
+          }
+        ],
+        "httpMs": 838.2828999999983,
+        "bytes": 82555
+      },
+      "medianMs": 531.799500000001,
+      "p95Ms": 632.9833000000071,
+      "companionP95Ms": 17.916799999999057,
+      "queriesPerRequest": 1,
+      "upstreamQueriesPerRequest": 12.006666666666666,
+      "acquisitionMedianMs": 0.007499999992433004,
+      "acquisitionP95Ms": 0.011700000002747402,
+      "afterAcquisitionMedianMs": 2.348899999999958
+    },
+    {
+      "app": "portal",
+      "workflow": "billing",
+      "dataset": "large",
+      "callers": 1,
+      "version": "candidate",
+      "runs": 150,
+      "rounds": 3,
+      "companionRounds": [
+        {
+          "round": 1,
+          "p95Ms": 19.570599999999104
+        },
+        {
+          "round": 2,
+          "p95Ms": 16.67479999999341
+        },
+        {
+          "round": 3,
+          "p95Ms": 15.098599999997532
+        }
+      ],
+      "firstMeasured": {
+        "ms": 485.0996,
+        "queryCount": 1,
+        "outstanding": 0,
+        "upstream": [
+          {
+            "ms": 477.71859999999924,
+            "queryCount": 12,
+            "outstanding": 0,
+            "upstream": [],
+            "queryErrors": 0,
+            "acquisitionMs": 0.05969999999979336,
+            "afterAcquisitionMs": 61.46399999999903,
+            "samples": [
+              {
+                "acquisitionMs": 0.006099999999605643,
+                "afterAcquisitionMs": 0.6635999999998603,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0036000000000058208,
+                "afterAcquisitionMs": 24.295500000000175,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0065999999997075065,
+                "afterAcquisitionMs": 9.216899999999441,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.003299999999399006,
+                "afterAcquisitionMs": 0.43209999999999127,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.004299999999602733,
+                "afterAcquisitionMs": 0.6666999999997643,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0027000000000043656,
+                "afterAcquisitionMs": 1.2342999999991662,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.002500000000509317,
+                "afterAcquisitionMs": 1.2280000000000655,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0037000000002080924,
+                "afterAcquisitionMs": 4.0645000000004075,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.00980000000072323,
+                "afterAcquisitionMs": 3.4038000000000466,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.006900000000314321,
+                "afterAcquisitionMs": 6.517499999999927,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.004899999999906868,
+                "afterAcquisitionMs": 2.0788000000002285,
+                "failed": false
+              },
+              {
+                "acquisitionMs": 0.0052999999998064595,
+                "afterAcquisitionMs": 7.662299999999959,
+                "failed": false
+              }
+            ]
+          }
+        ],
+        "queryErrors": 0,
+        "acquisitionMs": 0.02169999999978245,
+        "afterAcquisitionMs": 1.3267000000000735,
+        "samples": [
+          {
+            "acquisitionMs": 0.02169999999978245,
+            "afterAcquisitionMs": 1.3267000000000735,
+            "failed": false
+          }
+        ],
+        "httpMs": 486.8024000000005,
+        "bytes": 81814
+      },
+      "medianMs": 433.9042999999947,
+      "p95Ms": 488.5940999999875,
+      "companionP95Ms": 16.67479999999341,
+      "queriesPerRequest": 1,
+      "upstreamQueriesPerRequest": 12,
+      "acquisitionMedianMs": 0.005600000004051253,
+      "acquisitionP95Ms": 0.011300000000119326,
+      "afterAcquisitionMedianMs": 0.987699999997858
+    }
+  ],
+  "rawSamples": {
+    "file": "contention-billing-large.json.gz",
+    "sha256": "c13fcf4a7c9421a2d14815a2dbf0236a906503251d8626422ecab638c94da0d1",
+    "uncompressedSha256": "be7c14127eef5f351017ecad60da35596c70eef02341e0f9d0cfd892aba35d82"
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "checkedAt": "2026-09-08",
+  "deploy": "dep-dadmvuoejobc7393t8e0",
+  "logCount": 56,
+  "postgresVersions": [],
+  "signals": [
+    {
+      "timestamp": "2026-09-05T01:27:31.53700926Z",
+      "nodeVersion": "26.8.1",
+      "noLockfile": false,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:27:31.537110072Z",
+      "nodeVersion": "26.8.1",
+      "noLockfile": false,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:27:32.899387297Z",
+      "yarnVersion": "1.22.22",
+      "noLockfile": false,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:27:32.916259349Z",
+      "noLockfile": true,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:27:50.635475889Z",
+      "noLockfile": false,
+      "savedLockfile": true
+    },
+    {
+      "timestamp": "2026-09-05T01:28:26.305352316Z",
+      "nodeVersion": "26.8.1",
+      "noLockfile": false,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:28:26.305485032Z",
+      "nodeVersion": "26.8.1",
+      "noLockfile": false,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:28:27.674731115Z",
+      "yarnVersion": "1.22.22",
+      "noLockfile": false,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:28:27.691198278Z",
+      "noLockfile": true,
+      "savedLockfile": false
+    },
+    {
+      "timestamp": "2026-09-05T01:28:45.518005588Z",
+      "noLockfile": false,
+      "savedLockfile": true
+    }
+  ],
+  "conclusion": "Installed postgres 3.4.9 verified directly. Deployed client prepares no statements and lacks the candidate max_pipeline setting. Existing logs identify Node 26.8.1 / Yarn 1.22.22, with no pre-existing Yarn lockfile.",
+  "installedInspection": {
+    "service": "srv-d8b3kejeo5us73aip7mg",
+    "instance": "k2c2s",
+    "method": "Existing Render dashboard Web Shell, read-only package/config inspection",
+    "postgresVersion": "3.4.9",
+    "databasePort": 6543,
+    "prepare": false,
+    "maxPipelineExplicitlyConfigured": false,
+    "commands": [
+      "head -8 node_modules/postgres/package.json",
+      "node -p 'new URL(process.env.DATABASE_URL).port'",
+      "head -18 src/db/client.ts"
+    ],
+    "note": "No credentials printed, database queries issued, SSH keys added, hosting settings changed, or deploy triggered. Port 6543 agrees with the configured Supavisor transaction-pool transport. Version/port were observed directly; no app DB client was imported."
+  }
+}

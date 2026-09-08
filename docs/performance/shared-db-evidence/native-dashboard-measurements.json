@@ -1,0 +1,112 @@
+{
+  "baseline": "164f5520b04c78241ae6edf529d58741c9258b76",
+  "runId": "2026-09-08T08:04:12.768Z",
+  "iterations": 50,
+  "notes": "Full Dashboard owner, same shared native fixture; unchanged companion Shipping Margin. Owner timings, not browser timings.",
+  "results": [
+    {
+      "phase": 6,
+      "dataset": "small",
+      "concurrentUsers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "coldMs": 13.06239999999525,
+      "medianMs": 12.572699999989709,
+      "p95Ms": 14.98169999998936,
+      "companionMedianMs": 9.709399999992456,
+      "companionP95Ms": 11.38990000000922,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "small",
+      "concurrentUsers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "coldMs": 9.070000000006985,
+      "medianMs": 9.842399999994086,
+      "p95Ms": 12.97939999999653,
+      "companionMedianMs": 9.310400000002119,
+      "companionP95Ms": 12.415399999998044,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "small",
+      "concurrentUsers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "coldMs": 13.05480000001262,
+      "medianMs": 17.167600000000675,
+      "p95Ms": 21.79330000000482,
+      "companionMedianMs": 15.138399999996182,
+      "companionP95Ms": 18.33169999999518,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "small",
+      "concurrentUsers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "coldMs": 11.25099999998929,
+      "medianMs": 14.338199999998324,
+      "p95Ms": 18.07709999999497,
+      "companionMedianMs": 13.097500000003492,
+      "companionP95Ms": 15.593800000002375,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "large",
+      "concurrentUsers": 1,
+      "version": "baseline",
+      "runs": 50,
+      "coldMs": 41.46850000001723,
+      "medianMs": 39.42099999997299,
+      "p95Ms": 46.306500000006054,
+      "companionMedianMs": 9.925799999968149,
+      "companionP95Ms": 14.166499999992084,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "large",
+      "concurrentUsers": 1,
+      "version": "candidate",
+      "runs": 50,
+      "coldMs": 35.712100000004284,
+      "medianMs": 36.03369999997085,
+      "p95Ms": 38.56999999994878,
+      "companionMedianMs": 9.374500000034459,
+      "companionP95Ms": 11.850699999951757,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "large",
+      "concurrentUsers": 4,
+      "version": "baseline",
+      "runs": 200,
+      "coldMs": 36.24670000001788,
+      "medianMs": 41.17480000003707,
+      "p95Ms": 54.166299999982584,
+      "companionMedianMs": 13.625900000042748,
+      "companionP95Ms": 15.46840000001248,
+      "errors": 0
+    },
+    {
+      "phase": 6,
+      "dataset": "large",
+      "concurrentUsers": 4,
+      "version": "candidate",
+      "runs": 200,
+      "coldMs": 34.838999999978114,
+      "medianMs": 39.87310000002617,
+      "p95Ms": 50.76040000002831,
+      "companionMedianMs": 10.675099999993108,
+      "companionP95Ms": 14.355400000000373,
+      "errors": 0
+    }
+  ]
+}

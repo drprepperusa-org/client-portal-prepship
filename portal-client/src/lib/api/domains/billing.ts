@@ -1,3 +1,4 @@
+import type { RequestAuth } from '../transport';
 import type {
   BillingInvoiceDetailRow,
   BillingInvoicePeriodSummaryRow,
@@ -41,7 +42,7 @@ const BILLING_GENERATE_POLL_MS = 2_000;
 const BILLING_GENERATE_MAX_WAIT_MS = 180_000;
 
 async function runBillingGenerate(
-  token: string,
+  token: RequestAuth,
   dateFrom: string,
   dateTo: string,
   clientId?: number,
@@ -76,22 +77,22 @@ async function runBillingGenerate(
 }
 
 export const billingApi = {
-  reports: (token: string, range: PortalDateRange) =>
+  reports: (token: RequestAuth, range: PortalDateRange) =>
     apiGet<PortalReports>(token, '/api/client-portal/reports', {
       ...billingRangeFromPortal(range),
     }),
-  reportsRange: (token: string, dateFrom: string, dateTo: string) =>
+  reportsRange: (token: RequestAuth, dateFrom: string, dateTo: string) =>
     apiGet<PortalReports>(token, '/api/client-portal/reports', {
       ...billingRangeParams({ from: dateFrom, to: dateTo }),
     }),
-  invoiceDetails: (token: string, range: PortalDateRange, clientId?: number) =>
+  invoiceDetails: (token: RequestAuth, range: PortalDateRange, clientId?: number) =>
     apiGet<{ data: BillingInvoiceDetailRow[]; billingVisible?: boolean }>(
       token,
       '/api/client-portal/invoice-details',
       { ...billingRangeFromPortal(range), clientId },
     ),
   invoiceDetailsRange: (
-    token: string,
+    token: RequestAuth,
     dateFrom: string,
     dateTo: string,
     clientId?: number,
@@ -109,14 +110,14 @@ export const billingApi = {
       sortBy: opts.sortBy,
       sortDir: opts.sortDir,
     }),
-  invoiceSummaryRange: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
+  invoiceSummaryRange: (token: RequestAuth, dateFrom: string, dateTo: string, clientId?: number) =>
     apiGet<{ data: BillingInvoiceSummaryRow[]; billingVisible?: boolean }>(
       token,
       '/api/client-portal/invoice-summary',
       { ...billingRangeParams({ from: dateFrom, to: dateTo }), clientId },
     ),
   invoicePeriodSummaryRange: (
-    token: string,
+    token: RequestAuth,
     dateFrom: string,
     dateTo: string,
     clientId?: number,
@@ -132,13 +133,13 @@ export const billingApi = {
       groupBy: 'period',
       granularity,
     }),
-  invoiceHtml: (token: string, clientId: number, days = 30) =>
+  invoiceHtml: (token: RequestAuth, clientId: number, days = 30) =>
     apiText(token, '/api/client-portal/invoice', {
       clientId,
       ...billingRangeParams(defaultRange(days)),
     }),
   invoiceHtmlRange: (
-    token: string,
+    token: RequestAuth,
     clientId: number,
     dateFrom: string,
     dateTo: string,
@@ -152,16 +153,16 @@ export const billingApi = {
    * The portal used to assemble its own .xlsx from /invoice-details rows; that was a second
    * serializer of invoice money. The bytes here are the same file PrepShip's own Export serves.
    */
-  invoiceWorkbookRange: (token: string, clientId: number, dateFrom: string, dateTo: string) =>
+  invoiceWorkbookRange: (token: RequestAuth, clientId: number, dateFrom: string, dateTo: string) =>
     apiBlob(
       token,
       '/api/client-portal/invoice.xlsx',
       { clientId, ...billingRangeParams({ from: dateFrom, to: dateTo }) },
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     ),
-  generateBilling: (token: string, dateFrom: string, dateTo: string, clientId?: number) =>
+  generateBilling: (token: RequestAuth, dateFrom: string, dateTo: string, clientId?: number) =>
     runBillingGenerate(token, dateFrom, dateTo, clientId),
-  billingStatus: (token: string) =>
+  billingStatus: (token: RequestAuth) =>
     apiGet<{ lastGenerated: BillingLastGenerated | null }>(
       token,
       '/api/client-portal/billing/status',

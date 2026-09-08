@@ -35,7 +35,7 @@ const route = (read('src/routes/client-portal/dashboard.ts') + '\n' + read('src/
 const dashboardReadModel = read('src/lib/client-portal/read-models/dashboard.ts').replace(/\s+/g, ' ');
 assert(
   route.includes('getClientPortalDashboardSummary') &&
-    dashboardReadModel.includes('getSkuBreakdownFromOrderItems(salesQuery)') &&
+    dashboardReadModel.includes('getSkuBreakdownFromOrderItems(salesQuery, read, { includeOrderCount: false })') &&
     route.includes('totalRevenue: result.totalRevenue'),
   '/dashboard + /analysis routes consume the canonical owner (no route-local revenue reduction)',
 );

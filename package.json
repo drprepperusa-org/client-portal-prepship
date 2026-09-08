@@ -268,7 +268,13 @@
     "watchdog:production": "node scripts/production-watchdog.mjs",
     "test:client-portal-invoice-canonical-totals": "tsx scripts/client-portal-invoice-canonical-totals-guard.ts",
     "test:client-portal-billing-summary-canonical": "tsx scripts/client-portal-billing-summary-canonical-guard.ts",
-    "test:client-portal-billing-summary-canonical:mutations": "node scripts/client-portal-billing-summary-canonical-mutations.mjs"
+    "test:client-portal-billing-summary-canonical:mutations": "node scripts/client-portal-billing-summary-canonical-mutations.mjs",
+    "postinstall": "node scripts/apply-postgres-transaction-compat.mjs",
+    "test:database-pipeline": "tsx scripts/database-pipeline-behavior.ts && node scripts/database-transaction-compat-guard.mjs",
+    "test:database-pipeline:pg17": "tsx scripts/database-pipeline-pg17.ts",
+    "test:shared-db-boundaries": "tsx scripts/shared-db-boundaries.ts",
+    "test:shared-db-reads:browser": "playwright test web/e2e/shared-db-reads.spec.js --reporter=line",
+    "test:shared-db-native:returns": "tsx scripts/shared-db-portal-integration.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -289,7 +295,7 @@
     "lucide-react": "^0.469.0",
     "pdf-lib": "^1.17.1",
     "pg-boss": "^10.1.5",
-    "postgres": "^3.4.5",
+    "postgres": "3.4.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.6.0",

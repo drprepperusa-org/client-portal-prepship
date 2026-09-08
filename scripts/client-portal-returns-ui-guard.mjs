@@ -212,7 +212,7 @@ assert(
 
 // ── 7. The create flow POSTs to the backend ──
 assert(
-  /createReturn:\s*\(token: string, body: NewReturnInput\)\s*=>\s*\n?\s*apiPost/.test(api) ||
+  /createReturn:\s*\(token: RequestAuth, body: NewReturnInput\)\s*=>\s*\n?\s*apiPost/.test(api) ||
     (/createReturn:/.test(api) && /apiPost<\{[^}]*\}>\(token, '\/api\/client-portal\/returns'/.test(api)),
   'portalApi.createReturn POSTs to /api/client-portal/returns',
 );

@@ -60,10 +60,11 @@ assert(
 
 const hooksSource = read('portal-client/src/lib/hooks.ts');
 assert(
-  hooksSource.includes('const { accessToken } = useAuth();') &&
-    hooksSource.includes('fn(accessToken as string)') &&
-    hooksSource.includes('enabled: Boolean(accessToken)'),
-  'data hooks pass the cached token into the API client and gate queries on it',
+  hooksSource.includes('const { accessToken, userId } = useAuth();') &&
+    hooksSource.includes('queryKey: portalQueryKey(userId, key)') &&
+    hooksSource.includes('queryFn: ({ signal }) => fn({ accessToken: accessToken as string, signal })') &&
+    hooksSource.includes('enabled: Boolean(accessToken) && enabled'),
+  'data hooks pass the cached token and cancellation signal, scope the cache by user, and gate queries on the token',
 );
 
 const apiSource = readActiveClientPortalApiSource();

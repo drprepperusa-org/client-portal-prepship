@@ -397,7 +397,12 @@ export interface CanonicalBillingDetailsQuery {
   dateFrom: string;
   dateTo: string;
   clientId?: number;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string | null;
+  sortDir?: string | null;
 }
+export type CanonicalBillingPagination = { page: number; pageSize: number; total: number; totalPages: number };
 
 /**
  * PrepShip's CANONICAL invoice totals, returned alongside the rows by `GET /billing/details`.
@@ -457,7 +462,7 @@ export function parseCanonicalBillingTotals(raw: unknown): CanonicalBillingTotal
 }
 
 export type CanonicalBillingDetailsResult =
-  | { ok: true; rows: CanonicalBillingEventRow[]; totals: CanonicalBillingTotals | null }
+  | { ok: true; rows: CanonicalBillingEventRow[]; totals: CanonicalBillingTotals | null; pagination?: CanonicalBillingPagination }
   | { ok: false; status: number; error: string; code: string };
 
 /**
@@ -484,6 +489,12 @@ export async function fetchCanonicalBillingDetails(
 
   const params = new URLSearchParams({ dateFrom: query.dateFrom, dateTo: query.dateTo });
   if (query.clientId !== undefined) params.set('clientId', String(query.clientId));
+  if (query.page !== undefined) {
+    params.set('page', String(query.page));
+    params.set('pageSize', String(query.pageSize ?? 100));
+    if (query.sortBy) params.set('sortBy', query.sortBy);
+    if (query.sortDir) params.set('sortDir', query.sortDir);
+  }
 
   let upstream: Response;
   try {
@@ -587,5 +598,16 @@ export async function fetchCanonicalBillingDetails(
   // Carry PrepShip's canonical totals through. The rows and the totals must come from the SAME
   // upstream response or they can describe different periods — which is what happened when the
   // portal paired proxied rows with its own locally-computed money.
-  return { ok: true, rows, totals: parseCanonicalBillingTotals(body?.totals) };
+  let pagination: CanonicalBillingPagination | undefined;
+  if (query.page !== undefined) {
+    const p = body?.pagination as CanonicalBillingPagination | undefined;
+    const size = query.pageSize ?? 100;
+    const expectedRows = p ? Math.max(0, Math.min(size, p.total - (query.page - 1) * size)) : -1;
+    if (!p || p.page !== query.page || p.pageSize !== size || !Number.isSafeInteger(p.total) || p.total < 0
+      || p.totalPages !== Math.max(1, Math.ceil(p.total / size)) || rows.length !== expectedRows) {
+      return { ok: false, status: 502, code: 'prep_ship_billing_contract_mismatch', error: 'PrepShip billing pagination is unavailable or invalid.' };
+    }
+    pagination = p;
+  }
+  return { ok: true, rows, totals: parseCanonicalBillingTotals(body?.totals), ...(pagination ? { pagination } : {}) };
 }

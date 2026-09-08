@@ -78,12 +78,16 @@ ok('invoiceWorkbookDownload hands the sink the identical Blob it received (senti
     createElement: () => anchor,
     body: { appendChild: (node: unknown) => { appended.push(node); } },
   };
-  (globalThis as { window?: unknown }).window = globalThis;
+  const scheduled: Array<{ callback: () => void; delay: number }> = [];
+  (globalThis as { window?: unknown }).window = {
+    setTimeout: (callback: () => void, delay: number) => { scheduled.push({ callback, delay }); return 1; },
+  };
   let objectUrlOf: unknown = null;
   const originalCreate = URL.createObjectURL;
   const originalRevoke = URL.revokeObjectURL;
   URL.createObjectURL = ((blob: unknown) => { objectUrlOf = blob; return 'blob:sentinel'; }) as typeof URL.createObjectURL;
-  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  const revoked: string[] = [];
+  URL.revokeObjectURL = ((url: string) => { revoked.push(url); }) as typeof URL.revokeObjectURL;
   try {
     const { downloadFile } = await import('../portal-client/src/lib/downloadFile');
     const sentinel = new Blob(['sentinel']);
@@ -93,6 +97,11 @@ ok('invoiceWorkbookDownload hands the sink the identical Blob it received (senti
     assert.equal(anchor.download, 'invoice-Acme.xlsx');
     assert.equal(anchor.clicks, 1);
     assert.equal(appended.length, 1);
+    assert.equal(scheduled.length, 1, 'one deferred object-URL cleanup');
+    assert.equal(scheduled[0]!.delay, 60_000, 'preserve the browser download grace period');
+    assert.deepEqual(revoked, [], 'do not revoke before the download starts');
+    scheduled[0]!.callback();
+    assert.deepEqual(revoked, ['blob:sentinel'], 'cleanup revokes the same object URL');
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
@@ -162,7 +171,7 @@ ok('the export path (hook, module, downloadFile, API domain, transport) joins no
 //      return and the domain file may not construct, chain or read bytes anywhere. ──────────────
 const domainSource = read(DOMAIN);
 const bareApiBlobCall = new RegExp([
-  'invoiceWorkbookRange: \\(token: string, clientId: number, dateFrom: string, dateTo: string\\) =>',
+  'invoiceWorkbookRange: \\(token: RequestAuth, clientId: number, dateFrom: string, dateTo: string\\) =>',
   "\\s*apiBlob\\(\\s*token,\\s*'/api/client-portal/invoice\\.xlsx',[\\s\\S]{0,200}?",
   "'application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet',\\s*\\),\\s*generateBilling:",
 ].join(''));

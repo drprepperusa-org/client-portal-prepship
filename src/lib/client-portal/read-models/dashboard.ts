@@ -1,3 +1,5 @@
+import { createReadBudget } from '../../read-budget';
+import { ensureAnalyticsSchemaCapability } from '../../../services/analytics-schema-capability';
 // Dashboard analytics read-model (CP-021).
 //
 // SOT rule: the Dashboard's Top-SKUs ranking, per-SKU units, and per-SKU Avg
@@ -110,6 +112,8 @@ export interface DashboardSummaryQuery {
 export async function getClientPortalDashboardSummary(
   input: DashboardSummaryQuery,
 ): Promise<DashboardSummary> {
+  await ensureAnalyticsSchemaCapability();
+  const read = createReadBudget(2);
   const { scope, dateFrom, dateTo, clientId, storeId } = input;
   const filters = { clientId, storeId };
   const orderDay = sql<string>`to_char(${orders.orderDate} at time zone 'UTC', 'YYYY-MM-DD')`;
@@ -131,8 +135,8 @@ export async function getClientPortalDashboardSummary(
   };
 
   const [analysis, statusRows, shipmentRows, openOrderCount] = await Promise.all([
-    getSkuBreakdownFromOrderItems(salesQuery),
-    db
+    getSkuBreakdownFromOrderItems(salesQuery, read, { includeOrderCount: false }),
+    read(() => db
       .select({
         day: orderDay,
         awaiting: sql<number>`count(*) filter (
@@ -151,8 +155,8 @@ export async function getClientPortalDashboardSummary(
         lte(orders.orderDate, dateTo),
       ))
       .groupBy(orderDay)
-      .orderBy(orderDay),
-    db
+      .orderBy(orderDay)),
+    read(() => db
       .select({
         day: shipmentDay,
         shipments: sql<number>`count(*)::int`,
@@ -165,8 +169,8 @@ export async function getClientPortalDashboardSummary(
         lte(shipments.shipDate, dateTo),
       ))
       .groupBy(shipmentDay)
-      .orderBy(shipmentDay),
-    awaitingActiveOrderCount(scope, filters),
+      .orderBy(shipmentDay)),
+    read(() => awaitingActiveOrderCount(scope, filters)),
   ]);
 
   const { daily, period } = buildDashboardDailyRows(

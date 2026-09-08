@@ -1,0 +1,280 @@
+{
+  "runId": "2026-09-08T08:40:35.243Z",
+  "notes": "Actual isolated production builds and native Shipping Margin/Dashboard owners over HTTP on shared PostgreSQL. Auth and other shell endpoints are fixed offline fixtures. Timing is first native widget visible / two animation frames later, NOT full-page completion. Fresh browser context cold sample; backend is warm. Warm navigations preserve HTTP asset cache but reset page query cache. One browser user plus one companion request. No production calls.",
+  "results": [
+    {
+      "app": "prepship",
+      "version": "baseline",
+      "dataset": "large",
+      "runs": 50,
+      "coldBrowser": {
+        "usefulMs": 332.16400000001886,
+        "widgetCompleteMs": 361.15200000000186,
+        "companionHttpMs": 133.68959999998333,
+        "apiRequests": 11,
+        "apiBytes": 192567,
+        "calls": [
+          {
+            "path": "/api/health/ready",
+            "ms": 0.05659999998169951,
+            "bytes": 2
+          },
+          {
+            "path": "/api/init/stores",
+            "ms": 0.11689999999362044,
+            "bytes": 68
+          },
+          {
+            "path": "/api/clients",
+            "ms": 0.15700000000651926,
+            "bytes": 100
+          },
+          {
+            "path": "/api/settings/markups",
+            "ms": 0.06919999999809079,
+            "bytes": 2
+          },
+          {
+            "path": "/api/billing/update-activity",
+            "ms": 0.07890000002225861,
+            "bytes": 2
+          },
+          {
+            "path": "/api/billing/preset-window",
+            "ms": 0.04939999998896383,
+            "bytes": 39
+          },
+          {
+            "path": "/api/billing/config",
+            "ms": 0.030900000012479722,
+            "bytes": 2
+          },
+          {
+            "path": "/api/packages",
+            "ms": 0.027799999981652945,
+            "bytes": 11
+          },
+          {
+            "path": "/api/billing/summary",
+            "ms": 0.11400000000139698,
+            "bytes": 29
+          },
+          {
+            "path": "/api/clients",
+            "ms": 0.07929999998304993,
+            "bytes": 100
+          },
+          {
+            "path": "/api/billing/shipping-margin",
+            "ms": 89.05869999999413,
+            "bytes": 192212
+          }
+        ],
+        "outstanding": 0,
+        "errors": []
+      },
+      "usefulMedianMs": 112.64610000001267,
+      "usefulP95Ms": 129.32500000001164,
+      "widgetCompleteMedianMs": 145.77550000001793,
+      "widgetCompleteP95Ms": 161.68530000001192
+    },
+    {
+      "app": "prepship",
+      "version": "candidate",
+      "dataset": "large",
+      "runs": 50,
+      "coldBrowser": {
+        "usefulMs": 282.07600000000093,
+        "widgetCompleteMs": 303.81440000000293,
+        "companionHttpMs": 39.11999999999534,
+        "apiRequests": 11,
+        "apiBytes": 1719,
+        "calls": [
+          {
+            "path": "/api/health/ready",
+            "ms": 0.0948000000207685,
+            "bytes": 2
+          },
+          {
+            "path": "/api/billing/update-activity",
+            "ms": 0.09209999997983687,
+            "bytes": 2
+          },
+          {
+            "path": "/api/billing/preset-window",
+            "ms": 0.05479999998351559,
+            "bytes": 39
+          },
+          {
+            "path": "/api/billing/config",
+            "ms": 0.03399999998509884,
+            "bytes": 2
+          },
+          {
+            "path": "/api/packages",
+            "ms": 0.06259999997564591,
+            "bytes": 11
+          },
+          {
+            "path": "/api/init/stores",
+            "ms": 0.03969999999389984,
+            "bytes": 68
+          },
+          {
+            "path": "/api/clients",
+            "ms": 0.02809999999590218,
+            "bytes": 100
+          },
+          {
+            "path": "/api/settings/markups",
+            "ms": 0.04549999997834675,
+            "bytes": 2
+          },
+          {
+            "path": "/api/billing/summary",
+            "ms": 0.10310000000754371,
+            "bytes": 29
+          },
+          {
+            "path": "/api/clients",
+            "ms": 0.047200000000884756,
+            "bytes": 100
+          },
+          {
+            "path": "/api/billing/shipping-margin",
+            "ms": 11.715299999981653,
+            "bytes": 1364
+          }
+        ],
+        "outstanding": 0,
+        "errors": []
+      },
+      "usefulMedianMs": 128.40730000002077,
+      "usefulP95Ms": 146.09760000000824,
+      "widgetCompleteMedianMs": 150.33879999999772,
+      "widgetCompleteP95Ms": 174.77390000000014
+    },
+    {
+      "app": "portal",
+      "version": "baseline",
+      "dataset": "large",
+      "runs": 50,
+      "coldBrowser": {
+        "usefulMs": 354.2019000000146,
+        "widgetCompleteMs": 363.86819999999716,
+        "companionHttpMs": 15.458400000003166,
+        "apiRequests": 8,
+        "apiBytes": 37699,
+        "calls": [
+          {
+            "path": "/api/client-portal/me",
+            "ms": 0.12709999998332933,
+            "bytes": 250
+          },
+          {
+            "path": "/api/client-portal/orders/awaiting-active-count",
+            "ms": 0.10540000000037253,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/clients",
+            "ms": 0.06700000001001172,
+            "bytes": 52
+          },
+          {
+            "path": "/api/client-portal/sync-status",
+            "ms": 0.11089999999967404,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/dashboard",
+            "ms": 167.4305999999924,
+            "bytes": 36862
+          },
+          {
+            "path": "/api/client-portal/daily-counts",
+            "ms": 0.10490000000572763,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/orders",
+            "ms": 0.10860000000684522,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/inventory",
+            "ms": 0.08790000001317821,
+            "bytes": 107
+          }
+        ],
+        "outstanding": 0,
+        "errors": []
+      },
+      "usefulMedianMs": 159.01420000000508,
+      "usefulP95Ms": 199.56450000000768,
+      "widgetCompleteMedianMs": 237.77529999997932,
+      "widgetCompleteP95Ms": 298.93410000001313
+    },
+    {
+      "app": "portal",
+      "version": "candidate",
+      "dataset": "large",
+      "runs": 50,
+      "coldBrowser": {
+        "usefulMs": 336.2527000000118,
+        "widgetCompleteMs": 421.5672000000486,
+        "companionHttpMs": 17.04470000002766,
+        "apiRequests": 7,
+        "apiBytes": 37592,
+        "calls": [
+          {
+            "path": "/api/client-portal/me",
+            "ms": 0.16939999995520338,
+            "bytes": 250
+          },
+          {
+            "path": "/api/client-portal/orders/awaiting-active-count",
+            "ms": 0.06630000000586733,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/clients",
+            "ms": 0.1658999999635853,
+            "bytes": 52
+          },
+          {
+            "path": "/api/client-portal/sync-status",
+            "ms": 0.09419999999227002,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/dashboard",
+            "ms": 54.66070000000764,
+            "bytes": 36862
+          },
+          {
+            "path": "/api/client-portal/orders",
+            "ms": 0.13820000004488975,
+            "bytes": 107
+          },
+          {
+            "path": "/api/client-portal/inventory",
+            "ms": 0.09879999997792765,
+            "bytes": 107
+          }
+        ],
+        "outstanding": 0,
+        "errors": []
+      },
+      "usefulMedianMs": 182.4435999999987,
+      "usefulP95Ms": 226.9728999999934,
+      "widgetCompleteMedianMs": 274.47529999999097,
+      "widgetCompleteP95Ms": 330.11060000001453
+    }
+  ],
+  "rawSamples": {
+    "file": "browser-widgets-large-initial.json.gz",
+    "sha256": "00c69056f23ee085fb8e8c889011a79c35c0ff37d62d24fe4ce86b4722d8bf19",
+    "uncompressedSha256": "52f9898546a4ccd356bcabb6e4fccfe7da612812a7ceb470a3c0781a55d758f6"
+  }
+}

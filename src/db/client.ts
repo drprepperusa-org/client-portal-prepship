@@ -5,6 +5,10 @@ import * as schema from './schema/index';
 
 const sql = postgres(env.DATABASE_URL, {
   prepare: false,
+  // Shared Supavisor transaction pool: allow only the active query per socket.
+  // postinstall applies the pinned reservation fix required for BEGIN at zero.
+  // Pool size and transaction/statement timeout policies remain unchanged.
+  ...{ max_pipeline: 0 },
   max: env.DB_POOL_MAX,
   idle_timeout: env.DB_IDLE_TIMEOUT_SECONDS,
   connect_timeout: env.DB_CONNECT_TIMEOUT_SECONDS,

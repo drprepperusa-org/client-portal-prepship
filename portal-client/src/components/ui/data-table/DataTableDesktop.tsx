@@ -1,8 +1,6 @@
-import { motion } from 'framer-motion';
 import { ChevronDown, ChevronRight, ChevronsUpDown, ChevronUp, GripVertical } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
-import { staggerContainer, staggerItem } from '@/lib/motion';
 import type { ColumnLayout } from '@/lib/useColumnLayout';
 import { DataTableColumnControls } from '../DataTableColumnControls';
 import type { Column, SortState } from './types';
@@ -227,11 +225,11 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
             sort={props.sort}
             onToggleSort={props.onToggleSort}
           />
-          <motion.tbody variants={staggerContainer} initial="initial" animate="enter">
+          {/* Returned rows are immediately readable, including on busy frames. */}
+          <tbody>
             {props.rows.map((row) => (
-              <motion.tr
+              <tr
                 key={props.rowKey(row)}
-                variants={staggerItem}
                 onClick={() => props.onRowClick?.(row)}
                 className={cn(
                   'border-b border-slate-100 transition-colors last:border-0 hover:bg-brand-50/50',
@@ -265,9 +263,9 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
                     </button>
                   </td>
                 )}
-              </motion.tr>
+              </tr>
             ))}
-          </motion.tbody>
+          </tbody>
           <DataTableFooter
             ordered={props.ordered}
             footer={props.footer}

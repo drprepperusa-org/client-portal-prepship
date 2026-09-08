@@ -12,6 +12,7 @@
  * No production data. No billing regeneration. No network beyond the stub.
  */
 import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
 import { sql as rawSql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { setupTestEnv } from './guard';
@@ -79,8 +80,31 @@ const canonical = (over: Record<string, unknown> = {}) => ({
   displayQty: '1', qty: 1, ...over,
 });
 
-const stub = (rows: unknown[]) => {
-  globalThis.fetch = (async () => new Response(JSON.stringify({ data: rows }), {
+/** Model the producer's page envelope, without calling the consumer's sorting code. */
+function fixtureResponse(payload: { data?: unknown[]; totals?: unknown }, input: unknown) {
+  const params = new URL(String(input)).searchParams;
+  if (!params.has('page') || !Array.isArray(payload.data)) return payload;
+  const page = Number(params.get('page'));
+  const pageSize = Number(params.get('pageSize') ?? 100);
+  const key = params.get('sortBy');
+  const direction = params.get('sortDir') === 'desc' ? -1 : 1;
+  const sorted = [...payload.data] as Array<Record<string, unknown>>;
+  sorted.sort((a, b) => {
+    const av = key ? a[key] : null, bv = key ? b[key] : null;
+    const compared = av == null ? (bv == null ? 0 : 1) : bv == null ? -1
+      : direction * (typeof av === 'number' && typeof bv === 'number'
+        ? av - bv : String(av).localeCompare(String(bv)));
+    return compared || String(a.canonicalEventId).localeCompare(String(b.canonicalEventId));
+  });
+  return {
+    ...payload,
+    data: sorted.slice((page - 1) * pageSize, page * pageSize),
+    pagination: { page, pageSize, total: sorted.length, totalPages: Math.max(1, Math.ceil(sorted.length / pageSize)) },
+  };
+}
+
+const stub = (rows: unknown[], totals: unknown = null) => {
+  globalThis.fetch = (async (input: unknown) => new Response(JSON.stringify(fixtureResponse({ data: rows, totals }, input)), {
     status: 200, headers: { 'content-type': 'application/json' },
   })) as typeof fetch;
 };
@@ -188,11 +212,16 @@ async function main(): Promise<void> {
   ok('an order with no item rows keeps both canonical rows and all canonical money');
 
   // --- 6. pagination slices without dropping or duplicating --------------------------------
+  const pageTotals = {
+    orderCount: 1, pickPackTotal: 7.5, additionalTotal: 0, packageTotal: 0, shippingTotal: 18.3,
+    storageTotal: 0, adjustmentTotal: 0, replacePostageTotal: 0, replacePickPackTotal: 0,
+    returnTotal: 0, returnPostageTotal: 0, returnProcessingTotal: 0, grandTotal: 25.8,
+  };
   stub([
     canonical({ rowType: 'Outbound', returnId: null, displayReference: '9001' }),
     canonical({ rowType: 'Return', returnId: 501, displayReference: '9001-RETURN' }),
     canonical({ rowType: 'Return', returnId: 502, displayReference: '9001-RETURN-2' }),
-  ]);
+  ], pageTotals);
   const p1 = await portalCanonicalInvoiceEvents(scope, 'Bearer t', { ...range, page: 1, pageSize: 2 });
   const p2 = await portalCanonicalInvoiceEvents(scope, 'Bearer t', { ...range, page: 2, pageSize: 2 });
   if (!p1.ok || !p2.ok) throw new Error('paged reads must succeed');
@@ -202,7 +231,33 @@ async function main(): Promise<void> {
   if (p1.total !== 3 || p2.total !== 3) throw new Error('total must be the full event count on every page');
   const seen = [...p1.rows, ...p2.rows].map((r) => r.displayReference);
   if (new Set(seen).size !== 3) throw new Error(`pages must not duplicate or drop rows: ${seen.join('|')}`);
+  for (const result of [p1, p2]) {
+    assert.deepEqual(result.totals, pageTotals, 'page changed whole-range canonical totals');
+  }
   ok('pagination yields 2 + 1 across 3 events, no duplicates, total stays the event count');
+
+  const sortedInput = { ...range, page: 1, pageSize: 2, sortBy: 'displayReference', sortDir: 'desc' };
+  const sortedPage = await portalCanonicalInvoiceEvents(scope, 'Bearer t', sortedInput);
+  if (!sortedPage.ok || sortedPage.rows.map(r => r.displayReference).join('|') !== '9001-RETURN-2|9001-RETURN') {
+    throw new Error('producer sorting intent/order must survive the consumer unchanged');
+  }
+  const beyond = await portalCanonicalInvoiceEvents(scope, 'Bearer t', { ...range, page: 3, pageSize: 2 });
+  if (!beyond.ok || beyond.rows.length !== 0 || beyond.total !== 3 || beyond.totals?.grandTotal !== 25.8) {
+    throw new Error('out-of-range page must be empty with unchanged totals');
+  }
+  ok('producer sort is forwarded and an empty out-of-range page preserves whole-range totals');
+
+  for (const pagination of [undefined, { page: 2, pageSize: 2, total: 3, totalPages: 2 },
+    { page: 1, pageSize: 2, total: 3, totalPages: 99 }]) {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return Response.json({ data: [canonical(), canonical({ displayReference: '9002' })], pagination });
+    };
+    const rejected = await portalCanonicalInvoiceEvents(scope, 'Bearer t', { ...range, page: 1, pageSize: 2 });
+    if (rejected.ok || rejected.status !== 502 || calls !== 1) throw new Error('malformed page must fail without a full-download retry');
+  }
+  ok('missing, mismatched and inconsistent page metadata fail closed without a full-download fallback');
 
   // --- 7. ROUTE-LEVEL PROOF ----------------------------------------------------------------
   // Sections 1-6 call the read model directly, which leaves the HTTP layer unproven. Bearer
@@ -221,7 +276,7 @@ async function main(): Promise<void> {
       upstream.calls += 1;
       upstream.url = typeof input === 'string' ? input : String((input as { url?: string })?.url ?? input);
       upstream.authorization = new Headers(init?.headers ?? {}).get('authorization');
-      return new Response(JSON.stringify(payload), {
+      return new Response(JSON.stringify(fixtureResponse(payload as { data?: unknown[]; totals?: unknown }, upstream.url)), {
         status, headers: { 'content-type': 'application/json' },
       });
     }) as typeof fetch;
@@ -834,7 +889,7 @@ async function main(): Promise<void> {
     await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
   }
 
-  const EXPECTED_CHECKS = 25;
+  const EXPECTED_CHECKS = 27;
   if (checks !== EXPECTED_CHECKS) {
     throw new Error(`expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   }

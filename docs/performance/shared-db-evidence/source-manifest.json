@@ -1,0 +1,169 @@
+{
+  "method": "SHA-256 of UTF-8 source normalized to LF",
+  "files": {
+    "prepship": [
+      {
+        "file": "package.json",
+        "sha256": "0ed083f87d263e9619480c9c04c1aa21d0eb48ed6e59c98fdb85da43d96bca40"
+      },
+      {
+        "file": "src/lib/read-budget.ts",
+        "sha256": "610644aa0d1cc15539578171ffd70a355af14dca77c6a68893ad5f985d06cb9f"
+      },
+      {
+        "file": "src/routes/billing.ts",
+        "sha256": "a3bb3befb3752afbfed67ad9c6e6f8b05f1466537ffbd28ef4d33cc148de6c5e"
+      },
+      {
+        "file": "src/routes/orders.ts",
+        "sha256": "90d2dbcd80ac12e7ac3c4e7d74fd362803df3943bb161062b483217ab3c3c1e3"
+      },
+      {
+        "file": "src/services/billing-detail-pagination.ts",
+        "sha256": "836d3fd1ff2869d2ee3683a177a3bf52b73c88ba4335a7e44e2133f006d6a848"
+      },
+      {
+        "file": "src/services/billing-detail-row-sot.ts",
+        "sha256": "221128938d222494b11f601a05d7ba9da63056b5972f9f066417923eae4842ad"
+      },
+      {
+        "file": "src/services/billing-summary-refresh-flight.ts",
+        "sha256": "77ae181f8e16755cf0f5bd3826e1826e4adcccd5d44892b71e8eeb5333eb8b63"
+      },
+      {
+        "file": "src/services/billing.ts",
+        "sha256": "eb33c81f305ac1491e95d8a0f544a0728f1518c762f3949dc5850bdb1b36fb77"
+      },
+      {
+        "file": "src/services/combo-package-defaults.ts",
+        "sha256": "b81f14e736d938282ed0fdaa963ca82399f5acd1530623206f97cf13756833bb"
+      },
+      {
+        "file": "src/services/order-dims-defaults.ts",
+        "sha256": "e7931d07a9eae1cef3948653857badb8f469300e7fe6cd1ec35b0c72deee2afa"
+      },
+      {
+        "file": "src/services/shipping-margin-analytics.ts",
+        "sha256": "a9b80fccbe860090e8fd01b8fb03f31a87158eed3841f20562c6268aa10a7a6f"
+      },
+      {
+        "file": "web/src/components/Views/BillingShippingMarginReconciliation.tsx",
+        "sha256": "141e8b3bbf4898a328333a5c944f1329a4bd24725b6019f71aaf4569a250a33c"
+      },
+      {
+        "file": "web/src/components/Views/BillingView.tsx",
+        "sha256": "748e712caa02907c252bb372299dd45fdf76df323a726089d8a71fd8b5e39a2c"
+      },
+      {
+        "file": "web/src/lib/v2-apiClient.ts",
+        "sha256": "b36ff526f0559c103f416d12f7c0884c761c2e8abebf04b8c4a37950211a0a46"
+      }
+    ],
+    "portal": [
+      {
+        "file": "package-lock.json",
+        "sha256": "5aa4a173b7e5f138a563d8b093b1f1e326eb75e099e0ca2e2d6f4b35e2f70f94"
+      },
+      {
+        "file": "package.json",
+        "sha256": "f17ea03c3080b029293c723888585bcbef9aaccbec5e78b007c97caa562537a5"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/access.ts",
+        "sha256": "835a1c4ff6c1cccb08fef6884a8800f0aba08ed85f1c70b6408f67ff430aa30a"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/analysis.ts",
+        "sha256": "5a1447df5f796aa8707905d30303297c8643612d5cdcba28a4999fe700c7a43f"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/billing.ts",
+        "sha256": "48887924a8b57995559e23d14ac02d313dbef1a171bfd10b0d1360b6165f3fb8"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/connections.ts",
+        "sha256": "47ab58c10b3b405ba352831fb8d12f4dfb2df5d1ec6434b9c752d899a7220179"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/dashboard.ts",
+        "sha256": "2aa5aa662dce14f2f6d5bde57871c31fa980603f59b53300a02f4314d414e0d3"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/inbound.ts",
+        "sha256": "68afcb175d77213c3e63b6a52c072141cdd38fb169d944358ba89d71518da538"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/inventory.ts",
+        "sha256": "422ea283259a0c31e9c456fb4ac30f96b631aa000ea41996f8cc35738ac7ef6c"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/orders.ts",
+        "sha256": "a748070fcd7e330fc214a33fe6ce8d7b0039b72c6e1f44039627d7e5430afd69"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/replacements.ts",
+        "sha256": "1e544ef69ac5068445e3e090c53e8782d013137f62a377c362133c3ed95660be"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/returns.ts",
+        "sha256": "558878e87e0f3e3f38843ffc889db0be18d60e65760a788005d84c25e42c8769"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/shipments.ts",
+        "sha256": "d99d73c4e7857e6dbdfa251ac6e6b63219d02294b6e240550b455884379f39f8"
+      },
+      {
+        "file": "portal-client/src/lib/api/scope.ts",
+        "sha256": "15769cb6e59d8a7dead16bc8cd410e67f506b6a811e72410fed702df996acfbb"
+      },
+      {
+        "file": "portal-client/src/lib/api/transport.ts",
+        "sha256": "360523ea48afd5f32fe102aabf5c8a26713b5c57c6ad1963af3d4150553de0b3"
+      },
+      {
+        "file": "portal-client/src/lib/hooks.ts",
+        "sha256": "1bc17a4f40a331e72ea906c26bda50acd34ddc67a2fdff80073f2355ae270c48"
+      },
+      {
+        "file": "portal-client/src/lib/query-keys.ts",
+        "sha256": "56dbb4590e67b13d670fd5ba87c7db29d4e2e7a8467ec51419386c52828cb485"
+      },
+      {
+        "file": "scripts/apply-postgres-transaction-compat.mjs",
+        "sha256": "a6a539b57a449854a3cedf2a6d7a6745dcb26446483dcc4c631344ab15cc6b1c"
+      },
+      {
+        "file": "src/db/client.ts",
+        "sha256": "aa5189990e23bd702dfb1be9ba6e4dc2fc6c85c990b6cbcf17fdcf0bdba5c1de"
+      },
+      {
+        "file": "src/lib/client-portal/prepship-billing-details-proxy.ts",
+        "sha256": "5e7de9414241ff6531dbcd6e0324f4d41a507a36e022dca482b516ea6f12c7e2"
+      },
+      {
+        "file": "src/lib/client-portal/read-models/canonical-invoice-events.ts",
+        "sha256": "15055e47c6185c2fe7013ccd1925cba17b74a5776b6bb44ccb2c9379fe7328e2"
+      },
+      {
+        "file": "src/lib/client-portal/read-models/dashboard.ts",
+        "sha256": "522c0a3a8e1faaf43f33996e777b91f23945831ecc33680178c62c020514b3bd"
+      },
+      {
+        "file": "src/lib/read-budget.ts",
+        "sha256": "610644aa0d1cc15539578171ffd70a355af14dca77c6a68893ad5f985d06cb9f"
+      },
+      {
+        "file": "src/main.ts",
+        "sha256": "08ebcac6795ca041dbb1b4e316b94698dbc51b16abde205a4555428d9d31d69e"
+      },
+      {
+        "file": "src/routes/analysis.ts",
+        "sha256": "34460883ae67e1f39b190230c1fb05365b974d03740aaf2e5a373741d27b1935"
+      },
+      {
+        "file": "src/services/analytics-schema-capability.ts",
+        "sha256": "4b4bf45df67b33cf7516254b819b2b03aacddcfc14dd87cb1351762bd8a04be6"
+      }
+    ]
+  }
+}

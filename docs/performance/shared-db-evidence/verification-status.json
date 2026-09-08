@@ -1,0 +1,306 @@
+{
+  "recordedAt": "2026-09-08T09:11:01.061Z",
+  "applicationSourcesMatchSotSnapshot": true,
+  "verificationSnapshot": "cd1975494a966aac75caa6303f991f009166b2c1",
+  "prepshipChecks": [
+    {
+      "command": "test:database-pipeline:pg17",
+      "exit": 0,
+      "ms": 1853,
+      "record": "checks-1788849120851.json"
+    },
+    {
+      "command": "test:rate-source-of-truth",
+      "exit": 0,
+      "ms": 4451,
+      "record": "checks-1788849067883.json"
+    },
+    {
+      "command": "test:orders-query-round2",
+      "exit": 0,
+      "ms": 342,
+      "record": "checks-1788849067883.json"
+    },
+    {
+      "command": "test:orders-startup-requests",
+      "exit": 0,
+      "ms": 350,
+      "record": "checks-1788849067883.json"
+    },
+    {
+      "command": "test:ps-380-billing-summary-cache-freshness",
+      "exit": 0,
+      "ms": 682,
+      "record": "checks-1788849537658.json"
+    },
+    {
+      "command": "test:ps-520-invoice-routes-pg17",
+      "exit": 0,
+      "ms": 24585,
+      "record": "checks-1788849120851.json"
+    },
+    {
+      "command": "test:shared-db-boundaries",
+      "exit": 0,
+      "ms": 1656,
+      "record": "checks-1788853997363.json"
+    },
+    {
+      "command": "test:sot-guard-pack",
+      "exit": 1,
+      "ms": 561387,
+      "record": "checks-1788851960414.json"
+    },
+    {
+      "command": "test:ps-186-test-label-authority",
+      "exit": 0,
+      "ms": 886,
+      "record": "checks-1788850852235.json"
+    },
+    {
+      "command": "test:shared-db-native",
+      "exit": 0,
+      "ms": 179680,
+      "record": "checks-1788858595751.json"
+    },
+    {
+      "command": "test:ps-205-package-facts-precedence",
+      "exit": 0,
+      "ms": 580,
+      "record": "checks-1788853221425.json"
+    },
+    {
+      "command": "test:ps-304-shipping-display-facts-authority",
+      "exit": 0,
+      "ms": 647,
+      "record": "checks-1788853221425.json"
+    },
+    {
+      "command": "test:ps-177-dims-defaults",
+      "exit": 0,
+      "ms": 602,
+      "record": "checks-1788853590351.json"
+    },
+    {
+      "command": "typecheck",
+      "exit": 0,
+      "ms": 36903,
+      "record": "checks-1788853221425.json"
+    },
+    {
+      "command": "build:web",
+      "exit": 0,
+      "ms": 21283,
+      "record": "checks-1788850590868.json"
+    },
+    {
+      "command": "test:combo-package-default",
+      "exit": 0,
+      "ms": 602,
+      "record": "checks-1788850852235.json"
+    },
+    {
+      "command": "test:ps-332-shipping-margin-account-labels:browser",
+      "exit": 1,
+      "ms": 25103,
+      "record": "checks-1788851206872.json"
+    },
+    {
+      "command": "test:shared-db-margin:browser",
+      "exit": 0,
+      "ms": 5022,
+      "record": "checks-1788851267416.json"
+    },
+    {
+      "command": "test:ps-433-frontend-source-of-truth",
+      "exit": 0,
+      "ms": 4239,
+      "record": "checks-1788851267416.json"
+    },
+    {
+      "command": "test:multi-sku-product-dims-rate-fallback",
+      "exit": 0,
+      "ms": 627,
+      "record": "checks-1788853997363.json"
+    }
+  ],
+  "portalChecks": [
+    {
+      "command": "test:database-pipeline:pg17",
+      "exit": 0,
+      "ms": 2426,
+      "record": "checks-1788852605849.json"
+    },
+    {
+      "command": "guard:client-portal-architecture",
+      "exit": 0,
+      "ms": 312,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:client-portal-contract-drift",
+      "exit": 0,
+      "ms": 12531,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:client-portal-shadow-renderer",
+      "exit": 0,
+      "ms": 297,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:portal-query-session-scope",
+      "exit": 0,
+      "ms": 261,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:client-portal-dashboard-full-scope",
+      "exit": 0,
+      "ms": 572,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:billing-line-item-sort-pagination",
+      "exit": 0,
+      "ms": 2185,
+      "record": "checks-1788849071276.json"
+    },
+    {
+      "command": "test:cp-059-canonical-billing-render",
+      "exit": 0,
+      "ms": 708,
+      "record": "checks-1788849071276.json"
+    },
+    {
+      "command": "test:cp-059-producer-contract",
+      "exit": 0,
+      "ms": 1016,
+      "record": "checks-1788849071276.json"
+    },
+    {
+      "command": "typecheck",
+      "exit": 0,
+      "ms": 26226,
+      "record": "checks-1788852571979.json"
+    },
+    {
+      "command": "build:web",
+      "exit": 0,
+      "ms": 15187,
+      "record": "checks-1788852571979.json"
+    },
+    {
+      "command": "test:client-portal-analytics-parity",
+      "exit": 0,
+      "ms": 284,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:client-portal-dashboard-sot",
+      "exit": 0,
+      "ms": 271,
+      "record": "checks-1788850053377.json"
+    },
+    {
+      "command": "test:runtime-ddl",
+      "exit": 0,
+      "ms": 287,
+      "record": "checks-1788850053377.json"
+    },
+    {
+      "command": "test:client-portal-billing-totals",
+      "exit": 0,
+      "ms": 304,
+      "record": "checks-1788849715524.json"
+    },
+    {
+      "command": "test:client-portal-invoice-canonical-totals",
+      "exit": 0,
+      "ms": 664,
+      "record": "checks-1788849715524.json"
+    },
+    {
+      "command": "test:shared-db-boundaries",
+      "exit": 0,
+      "ms": 1301,
+      "record": "checks-1788855096349.json"
+    },
+    {
+      "command": "test:shared-db-reads:browser",
+      "exit": 0,
+      "ms": 6678,
+      "record": "checks-1788852605849.json"
+    },
+    {
+      "command": "test:cp-059-billing:browser",
+      "exit": 0,
+      "ms": 10643,
+      "record": "checks-1788850192454.json"
+    },
+    {
+      "command": "test:client-portal-order-status",
+      "exit": 0,
+      "ms": 617,
+      "record": "checks-1788850683075.json"
+    },
+    {
+      "command": "test:database-pipeline",
+      "exit": 0,
+      "ms": 3480,
+      "record": "checks-1788851755333.json"
+    },
+    {
+      "command": "test:ps486-return-eligibility:integration",
+      "exit": 1,
+      "ms": 1521,
+      "record": "checks-1788851755333.json"
+    },
+    {
+      "command": "test:ps486-status:browser",
+      "exit": 0,
+      "ms": 7424,
+      "record": "checks-1788851755333.json"
+    },
+    {
+      "command": "test:shared-db-native:returns",
+      "exit": 0,
+      "ms": 9205,
+      "record": "checks-1788852571979.json"
+    },
+    {
+      "command": "test:database-pipeline-pg17",
+      "exit": 1,
+      "ms": 274,
+      "record": "checks-1788852571979.json"
+    }
+  ],
+  "cleanSnapshotChecks": [
+    {
+      "command": "test:sot-guard-pack",
+      "exit": 0,
+      "ms": 590543,
+      "record": "checks-1788854611631.json"
+    },
+    {
+      "command": "typecheck",
+      "exit": 0,
+      "ms": 22247,
+      "record": "checks-1788854611631.json"
+    },
+    {
+      "command": "build:web",
+      "exit": 0,
+      "ms": 15779,
+      "record": "checks-1788853278497.json"
+    },
+    {
+      "command": "test:shared-db-margin:browser",
+      "exit": 0,
+      "ms": 7625,
+      "record": "checks-1788853278497.json"
+    }
+  ],
+  "interpretation": "Latest outcomes by command. A mistyped portal test:database-pipeline-pg17 invocation is not a gate; the correct test:database-pipeline:pg17 passed. The full old Dashboard browser fixture failure is disclosed in the report. Native timing is not browser or production certification."
+}

@@ -19,7 +19,6 @@ Current status: inventory and guard created. Phase 11 Batch 4 moved reporting me
 
 | File | Runtime DDL Surface | Classification | Next Action |
 |---|---|---|---|
-| `src/routes/analysis.ts` | selling-fee order columns | requires separate shipped/label review | Move to migration-readiness only after shipped-fee reporting is reviewed |
 | `api/_lib/walmart-fees-sync.ts` | selling-fee order columns | requires separate shipped/label review | Move to migration-readiness only after shipped-fee sync is reviewed |
 | `api/carriers/walmart/fees.ts` | selling-fee order columns | requires separate shipped/label review | Move to migration-readiness only after shipped-fee sync is reviewed |
 | `api/cron/sync-walmart-fees.ts` | selling-fee order columns | requires separate shipped/label review | Move to migration-readiness only after shipped-fee sync is reviewed |
@@ -29,6 +28,7 @@ Current status: inventory and guard created. Phase 11 Batch 4 moved reporting me
 
 | File | Previous Runtime DDL Surface | Resolution | Verification |
 |---|---|---|---|
+| `src/routes/analysis.ts` | four selling-fee order columns | Per user override `unlock shipped data` on 2026-09-08: read-only boot capability check; missing columns return controlled Analytics unavailability. No migration or production schema change. Other fee writers retain their existing safeguards. | `test:runtime-ddl`, `test:shared-db-boundaries`, shared native PostgreSQL parity |
 | `src/services/reporting-metrics.ts` | reporting refresh, daily sales, SKU velocity, inventory risk, billing summary metrics | moved to `drizzle/0029_reporting_metrics.sql`; runtime code now verifies tables are present instead of creating them | `npm run test:runtime-ddl` |
 | `src/routes/analysis.ts` | `orders_selling_fee_source_idx` | removed request-time index creation; index remains owned by `drizzle/0019_selling_fees.sql` | `npm run test:runtime-ddl` |
 | `api/_lib/walmart-fees-sync.ts` | `orders_selling_fee_source_idx` | removed request-time index creation; helper still leaves column fallback untouched | `npm run test:runtime-ddl` |

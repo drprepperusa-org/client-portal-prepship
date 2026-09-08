@@ -1,0 +1,25 @@
+{
+  "runtime": "26.8.1",
+  "platform": "Windows x64",
+  "source": "https://nodejs.org/dist/v26.8.1/win-x64/node.exe",
+  "checksumSource": "https://nodejs.org/dist/v26.8.1/SHASUMS256.txt",
+  "sha256": "5cba0ea928508c65ddadefc0681d2fb6d95f1f3beea4428f04397631140ee8e5",
+  "checks": [
+    {
+      "command": "test:database-pipeline",
+      "exit": 0,
+      "ms": 3271,
+      "log": "node26-test-database-pipeline.log.gz",
+      "sha256": "0e5de1b64fcc64c68a90e5345bd81a678b7b42bb03cf11e44e36470fe6b065f8",
+      "uncompressedSha256": "b955e95a58e4e205e66d609cad1c3a4536030b1b5046bfc11c8865289108c5f1"
+    },
+    {
+      "command": "test:database-pipeline:pg17",
+      "exit": 0,
+      "ms": 2014,
+      "log": "node26-test-database-pipeline-pg17.log.gz",
+      "sha256": "8bed80979b9396a19744423506ed766ef8f449a30eb004bc8b62ca2f77f95487",
+      "uncompressedSha256": "92e3fd4677cc84089379691bc2f3bc25e9c67a6ae082990909261c7c8ac31461"
+    }
+  ]
+}

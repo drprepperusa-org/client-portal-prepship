@@ -1,10 +1,11 @@
+import type { RequestAuth } from '../transport';
 import type { ListOpts } from '@client-portal-contracts/common';
 import type { PortalShipment } from '@client-portal-contracts/shipments';
 import { scopedList } from '../scope';
 import { apiGet, apiPost } from '../transport';
 
 export const shipmentsApi = {
-  shipments: (token: string, opts: ListOpts = {}) =>
+  shipments: (token: RequestAuth, opts: ListOpts = {}) =>
     scopedList<PortalShipment>(token, '/api/client-portal/shipments', {
       page: opts.page ?? 1,
       pageSize: opts.pageSize ?? 50,
@@ -12,12 +13,12 @@ export const shipmentsApi = {
       clientId: opts.clientId,
       status: opts.status || undefined,
     }),
-  orderShipments: (token: string, orderId: number) =>
+  orderShipments: (token: RequestAuth, orderId: number) =>
     apiGet<{ data: PortalShipment[] }>(
       token,
       `/api/client-portal/orders/${orderId}/shipments`,
     ),
-  refreshShipmentTracking: (token: string, shipmentIds: number[]) =>
+  refreshShipmentTracking: (token: RequestAuth, shipmentIds: number[]) =>
     apiPost<{
       checked: number;
       failed: number;

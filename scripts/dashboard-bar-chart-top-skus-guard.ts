@@ -30,7 +30,7 @@ const aggregate = read('src/lib/client-portal/dashboard-aggregate.ts');
 const readModel = read('src/lib/client-portal/read-models/dashboard.ts');
 const route = read('src/routes/client-portal/dashboard.ts');
 assert(!aggregate.includes('topSkuRows'), 'legacy capped-array Top-SKUs owner is absent');
-assert(readModel.includes('getSkuBreakdownFromOrderItems(salesQuery)'), 'Dashboard reuses the canonical Analysis SKU query');
+assert(readModel.includes('getSkuBreakdownFromOrderItems(salesQuery, read, { includeOrderCount: false })'), 'Dashboard reuses the canonical Analysis SKU query');
 assert(readModel.includes('projectDashboardTopSkus(analysis.rows, 10)'), 'backend projects the canonical ranked rows');
 assert(route.includes('getClientPortalDashboardSummary'), 'route delegates to the full-scope Dashboard owner');
 assert(!route.includes('limit(1000)') && !route.includes('dailyOrderUnitsRows'), 'route has no capped visual sample');

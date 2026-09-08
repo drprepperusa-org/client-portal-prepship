@@ -1,0 +1,894 @@
+{
+  "recordedAt": "2026-09-08T22:31:25.528Z",
+  "verificationSnapshot": "749c2c79d833994cb26cccbd8f79da77bf8f5abd",
+  "prepshipRuntimeUnchanged": true,
+  "files": {
+    "prepship": [
+      {
+        "file": "package.json",
+        "sha256": "0ed083f87d263e9619480c9c04c1aa21d0eb48ed6e59c98fdb85da43d96bca40"
+      },
+      {
+        "file": "src/lib/read-budget.ts",
+        "sha256": "610644aa0d1cc15539578171ffd70a355af14dca77c6a68893ad5f985d06cb9f"
+      },
+      {
+        "file": "src/routes/billing.ts",
+        "sha256": "a3bb3befb3752afbfed67ad9c6e6f8b05f1466537ffbd28ef4d33cc148de6c5e"
+      },
+      {
+        "file": "src/routes/orders.ts",
+        "sha256": "90d2dbcd80ac12e7ac3c4e7d74fd362803df3943bb161062b483217ab3c3c1e3"
+      },
+      {
+        "file": "src/services/billing-detail-pagination.ts",
+        "sha256": "836d3fd1ff2869d2ee3683a177a3bf52b73c88ba4335a7e44e2133f006d6a848"
+      },
+      {
+        "file": "src/services/billing-detail-row-sot.ts",
+        "sha256": "221128938d222494b11f601a05d7ba9da63056b5972f9f066417923eae4842ad"
+      },
+      {
+        "file": "src/services/billing-summary-refresh-flight.ts",
+        "sha256": "77ae181f8e16755cf0f5bd3826e1826e4adcccd5d44892b71e8eeb5333eb8b63"
+      },
+      {
+        "file": "src/services/billing.ts",
+        "sha256": "0ad1f22b922f7a153c325323f825182a9429ff0b7cd958dee16b7326ecabda52"
+      },
+      {
+        "file": "src/services/combo-package-defaults.ts",
+        "sha256": "b81f14e736d938282ed0fdaa963ca82399f5acd1530623206f97cf13756833bb"
+      },
+      {
+        "file": "src/services/order-dims-defaults.ts",
+        "sha256": "e7931d07a9eae1cef3948653857badb8f469300e7fe6cd1ec35b0c72deee2afa"
+      },
+      {
+        "file": "src/services/shipping-margin-analytics.ts",
+        "sha256": "a9b80fccbe860090e8fd01b8fb03f31a87158eed3841f20562c6268aa10a7a6f"
+      },
+      {
+        "file": "web/src/components/Views/BillingShippingMarginReconciliation.tsx",
+        "sha256": "141e8b3bbf4898a328333a5c944f1329a4bd24725b6019f71aaf4569a250a33c"
+      },
+      {
+        "file": "web/src/components/Views/BillingView.tsx",
+        "sha256": "748e712caa02907c252bb372299dd45fdf76df323a726089d8a71fd8b5e39a2c"
+      },
+      {
+        "file": "web/src/lib/v2-apiClient.ts",
+        "sha256": "b36ff526f0559c103f416d12f7c0884c761c2e8abebf04b8c4a37950211a0a46"
+      }
+    ],
+    "portal": [
+      {
+        "file": "package-lock.json",
+        "sha256": "5aa4a173b7e5f138a563d8b093b1f1e326eb75e099e0ca2e2d6f4b35e2f70f94"
+      },
+      {
+        "file": "package.json",
+        "sha256": "f17ea03c3080b029293c723888585bcbef9aaccbec5e78b007c97caa562537a5"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/access.ts",
+        "sha256": "835a1c4ff6c1cccb08fef6884a8800f0aba08ed85f1c70b6408f67ff430aa30a"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/analysis.ts",
+        "sha256": "5a1447df5f796aa8707905d30303297c8643612d5cdcba28a4999fe700c7a43f"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/billing.ts",
+        "sha256": "48887924a8b57995559e23d14ac02d313dbef1a171bfd10b0d1360b6165f3fb8"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/connections.ts",
+        "sha256": "47ab58c10b3b405ba352831fb8d12f4dfb2df5d1ec6434b9c752d899a7220179"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/dashboard.ts",
+        "sha256": "2aa5aa662dce14f2f6d5bde57871c31fa980603f59b53300a02f4314d414e0d3"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/inbound.ts",
+        "sha256": "68afcb175d77213c3e63b6a52c072141cdd38fb169d944358ba89d71518da538"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/inventory.ts",
+        "sha256": "422ea283259a0c31e9c456fb4ac30f96b631aa000ea41996f8cc35738ac7ef6c"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/orders.ts",
+        "sha256": "a748070fcd7e330fc214a33fe6ce8d7b0039b72c6e1f44039627d7e5430afd69"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/replacements.ts",
+        "sha256": "1e544ef69ac5068445e3e090c53e8782d013137f62a377c362133c3ed95660be"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/returns.ts",
+        "sha256": "558878e87e0f3e3f38843ffc889db0be18d60e65760a788005d84c25e42c8769"
+      },
+      {
+        "file": "portal-client/src/lib/api/domains/shipments.ts",
+        "sha256": "d99d73c4e7857e6dbdfa251ac6e6b63219d02294b6e240550b455884379f39f8"
+      },
+      {
+        "file": "portal-client/src/lib/api/scope.ts",
+        "sha256": "15769cb6e59d8a7dead16bc8cd410e67f506b6a811e72410fed702df996acfbb"
+      },
+      {
+        "file": "portal-client/src/lib/api/transport.ts",
+        "sha256": "360523ea48afd5f32fe102aabf5c8a26713b5c57c6ad1963af3d4150553de0b3"
+      },
+      {
+        "file": "portal-client/src/lib/hooks.ts",
+        "sha256": "1bc17a4f40a331e72ea906c26bda50acd34ddc67a2fdff80073f2355ae270c48"
+      },
+      {
+        "file": "portal-client/src/lib/query-keys.ts",
+        "sha256": "56dbb4590e67b13d670fd5ba87c7db29d4e2e7a8467ec51419386c52828cb485"
+      },
+      {
+        "file": "scripts/apply-postgres-transaction-compat.mjs",
+        "sha256": "a6a539b57a449854a3cedf2a6d7a6745dcb26446483dcc4c631344ab15cc6b1c"
+      },
+      {
+        "file": "src/db/client.ts",
+        "sha256": "aa5189990e23bd702dfb1be9ba6e4dc2fc6c85c990b6cbcf17fdcf0bdba5c1de"
+      },
+      {
+        "file": "src/lib/client-portal/prepship-billing-details-proxy.ts",
+        "sha256": "5e7de9414241ff6531dbcd6e0324f4d41a507a36e022dca482b516ea6f12c7e2"
+      },
+      {
+        "file": "src/lib/client-portal/read-models/canonical-invoice-events.ts",
+        "sha256": "15055e47c6185c2fe7013ccd1925cba17b74a5776b6bb44ccb2c9379fe7328e2"
+      },
+      {
+        "file": "src/lib/client-portal/read-models/dashboard.ts",
+        "sha256": "522c0a3a8e1faaf43f33996e777b91f23945831ecc33680178c62c020514b3bd"
+      },
+      {
+        "file": "src/lib/read-budget.ts",
+        "sha256": "610644aa0d1cc15539578171ffd70a355af14dca77c6a68893ad5f985d06cb9f"
+      },
+      {
+        "file": "src/main.ts",
+        "sha256": "08ebcac6795ca041dbb1b4e316b94698dbc51b16abde205a4555428d9d31d69e"
+      },
+      {
+        "file": "src/routes/analysis.ts",
+        "sha256": "34460883ae67e1f39b190230c1fb05365b974d03740aaf2e5a373741d27b1935"
+      },
+      {
+        "file": "src/services/analytics-schema-capability.ts",
+        "sha256": "4b4bf45df67b33cf7516254b819b2b03aacddcfc14dd87cb1351762bd8a04be6"
+      },
+      {
+        "file": "portal-client/src/components/layout/Layout.tsx",
+        "sha256": "8bbee7f6749e376796b7cf087784e79ee20fb9987e8223860c6af2b50d4ac937"
+      },
+      {
+        "file": "portal-client/src/components/ui/data-table/DataTableDesktop.tsx",
+        "sha256": "0ee1eb26f5e80d2e37ac7c8f6ba3e64fc3a06d1d62d1be1f4d9fdf59de8f7643"
+      },
+      {
+        "file": "portal-client/src/components/ui/data-table/DataTableMobile.tsx",
+        "sha256": "c636cbcd95c4cb6ea07e39206db9714eb9dad05e87913c92cfe9d66d2ebf34bf"
+      }
+    ]
+  },
+  "testFiles": [
+    {
+      "file": "web/e2e/shared-db-reads.spec.js",
+      "sha256": "89ed91f7f7b9f83098262ca54851fd732ad7e5133349988805b8ed5a8e6e34fa"
+    },
+    {
+      "file": "scripts/frontend-auth-cache-guard.mjs",
+      "sha256": "06e6df91a4743ba983cc5c83d7ee01c90553f9f621040812611233b19bb54d8e"
+    }
+  ],
+  "checks": [
+    {
+      "command": "typecheck",
+      "exit": 0,
+      "ms": 22462,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-typecheck.log.gz",
+        "sha256": "a4aef4f82962e5d7acb2f750cec735bc16b42461528da9b6ffe3913070aa29e3",
+        "uncompressedSha256": "c227bdb96396bcc0f8c6f61421fa993fd31594a470e53e2fc780faadea8979d3"
+      }
+    },
+    {
+      "command": "build:web",
+      "exit": 0,
+      "ms": 6963,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-build-web.log.gz",
+        "sha256": "7e1387c029633578080d4676e36376aec5054114ad8cc791e224c8aba437c9ee",
+        "uncompressedSha256": "e739f5f6bc08a1e7b15ee3571c4fd9b84f3c366fc4ec159ba890df34a2a35aff"
+      }
+    },
+    {
+      "command": "guard:client-portal-architecture",
+      "exit": 0,
+      "ms": 303,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-guard-client-portal-architecture.log.gz",
+        "sha256": "8d88677ff38da754fe7a21599acdef18212bec80303eebf7addbcdc23c671248",
+        "uncompressedSha256": "4f1a0af0863c42097f4f3e452d35576f3df2eb0a4eda03f8a3e55ffcf50216b5"
+      }
+    },
+    {
+      "command": "test:client-portal-shadow-renderer",
+      "exit": 0,
+      "ms": 295,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-test-client-portal-shadow-renderer.log.gz",
+        "sha256": "0015ed061e8369ef62ada756927bb0e2471f8db91a2871893edd23d2436c4173",
+        "uncompressedSha256": "1bb8a44a4f3cc43b389b633419d94329b2b7f10251a9b1bedce822c6650efbef"
+      }
+    },
+    {
+      "command": "test:client-portal-contract-drift",
+      "exit": 0,
+      "ms": 11885,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-test-client-portal-contract-drift.log.gz",
+        "sha256": "ab6b4b6dc67199ff449efcad121961359bbbce41506cfb2f57777b826f292a2a",
+        "uncompressedSha256": "dd9da8a2281a15737f34afb3a3ed3b07fe85139e663d68bd70d1da965416b891"
+      }
+    },
+    {
+      "command": "test:portal-query-session-scope",
+      "exit": 0,
+      "ms": 277,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-test-portal-query-session-scope.log.gz",
+        "sha256": "c1f8cefe1eaf1798ee10156f831c41cf56f0ecca125e8ac88e1009525fc3d0a0",
+        "uncompressedSha256": "504065e03a0a6b3bca579e9107c53e52d1fc01fb84b21207ef6d6cc5f7f9bc20"
+      }
+    },
+    {
+      "command": "test:frontend-auth-cache",
+      "exit": 0,
+      "ms": 299,
+      "receipt": "checks-1788905860000.json",
+      "log": {
+        "file": "render-test-frontend-auth-cache.log.gz",
+        "sha256": "edf56d1c32a8d2dc797ebb76fb797407550689314558dbfe66de11adfb8d3fb5",
+        "uncompressedSha256": "5b24ac3a18ad6d4e921c52ad2bc2f46a9be40a0a2178ca600ca8258bcab46e99"
+      }
+    },
+    {
+      "command": "test:cp-059-billing:browser",
+      "exit": 0,
+      "ms": 10145,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-test-cp-059-billing-browser.log.gz",
+        "sha256": "e89ac9f30cb8827dda967d5fa1c775d48f993c4bca7f9b32c6a176adb57bca27",
+        "uncompressedSha256": "3c281ec90e3a685c589a279d448b0ec284448f276818b27e7956b9619f641ed8"
+      }
+    },
+    {
+      "command": "test:client-portal-client-nav-connections",
+      "exit": 0,
+      "ms": 264,
+      "receipt": "checks-1788905785725.json",
+      "log": {
+        "file": "render-test-client-portal-client-nav-connections.log.gz",
+        "sha256": "c41cf9f3049df964f73c6e86dd8c81bbd1df91117bc06861eea2882237e4be67",
+        "uncompressedSha256": "4f3bcf6ac85886af9fb843f298aaed39269a22b1cd030f46dfdc7c97e14750cc"
+      }
+    },
+    {
+      "command": "test:shared-db-reads:browser",
+      "exit": 0,
+      "ms": 8371,
+      "receipt": "checks-1788906672611.json",
+      "log": {
+        "file": "render-test-shared-db-reads-browser.log.gz",
+        "sha256": "c02ff7d2e332f04bf0146ab62c64b91d5f8cd03c624c82468657ce003e95f221",
+        "uncompressedSha256": "019982b49422e8810495f4eec126a1eb095b144ee19eac3cd9804c3ba346a9c2"
+      }
+    },
+    {
+      "command": "guard:portal-scope-fail-closed",
+      "exit": 0,
+      "ms": 272,
+      "receipt": "checks-1788905860000.json",
+      "log": {
+        "file": "render-guard-portal-scope-fail-closed.log.gz",
+        "sha256": "11f5c42b1b566dd334707983148da2e28d22806ba83873f304a6f8b381849751",
+        "uncompressedSha256": "17feb2771b7bee7568f5e66f7b6c2fbfc9da56e68dccae979cf6dff6da99af1b"
+      }
+    },
+    {
+      "command": "test:billing-client-scope",
+      "exit": 0,
+      "ms": 302,
+      "receipt": "checks-1788905860000.json",
+      "log": {
+        "file": "render-test-billing-client-scope.log.gz",
+        "sha256": "d111f03c6b390a230d248eb5a3d5c74a5dd17eeca4c075783c584d98baa6dec3",
+        "uncompressedSha256": "9b3069f24bfef0487874b0274b3158429616a1b4fe50bf16af167bbc7668393e"
+      }
+    },
+    {
+      "command": "test:client-portal-billing-totals",
+      "exit": 0,
+      "ms": 282,
+      "receipt": "checks-1788905860000.json",
+      "log": {
+        "file": "render-test-client-portal-billing-totals.log.gz",
+        "sha256": "ffb2707e9dcf9968a38a097d35d29d2d9bf49135a23527f89dff9118a3fb666d",
+        "uncompressedSha256": "db52d02b5a02365e149f2e3f9bbf88593c77ea3ea45bf6839895ecb3ff1b0b7a"
+      }
+    },
+    {
+      "command": "test:cp-059-canonical-billing-render",
+      "exit": 0,
+      "ms": 811,
+      "receipt": "checks-1788905860000.json",
+      "log": {
+        "file": "render-test-cp-059-canonical-billing-render.log.gz",
+        "sha256": "f1983b01077e855aad61c98f375b09ebacbffb8c1142f7bc151fca08c4713e12",
+        "uncompressedSha256": "fe85be81881a3cf80815ade3403c43a0343356f4421371d9c0e01198445a2c1a"
+      }
+    },
+    {
+      "command": "test:shared-db-boundaries",
+      "exit": 0,
+      "ms": 1335,
+      "receipt": "checks-1788905860000.json",
+      "log": {
+        "file": "render-test-shared-db-boundaries.log.gz",
+        "sha256": "8062fe67d8e647e8f451b622f320e9c88801f6c4b1763307f12553c57cce9a66",
+        "uncompressedSha256": "0ea784b4d8709311d832998f405fb32740afb0e3999e06ff01e28438fb284be1"
+      }
+    }
+  ],
+  "negative": {
+    "file": "render-negative-control.log.gz",
+    "sha256": "c0860b333a9fe82416f1d6c43dfb84bcb141e064b5c29b3d0597653706138aaf",
+    "uncompressedSha256": "1d1aa161bfe56f6b38fb1a6d13bba0f931bc95be7d9581bb08de82e376f5f046"
+  },
+  "nativeLogs": [
+    {
+      "file": "render-native-first.log.gz",
+      "sha256": "a9a971e9457aa623ca251ad02761357ae2cabe8b59931b82dbc3facc8f814408",
+      "uncompressedSha256": "c31a82744d11d4f861cf5b84013e86b3225237b4dd71f79d864f56b4ae41f3b5"
+    },
+    {
+      "file": "test-shared-db-native.log.gz",
+      "sha256": "1c8ea1fb26ccce414af5f80928e175b3258c50bef90d35556829dee4983223ef",
+      "uncompressedSha256": "a54fa5d852daab8b159c9b9942a24fd9213e4392f57bcac610d34040edb2e5cc"
+    }
+  ],
+  "evidence": [
+    {
+      "file": "browser-pages-small-recheck-render-first.json",
+      "raw": {
+        "file": "browser-pages-small-recheck-render-first.json.gz",
+        "sha256": "7472759ca4a1167cd58d8355bcc20344b4dccc30d0f12f82d908d0d5ae34c6e0",
+        "uncompressedSha256": "54de7694cacb0ae3d40c3a776d06990574fd373fca713b6b3bea6a6b005815a4"
+      },
+      "results": [
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "baseline",
+          "dataset": "small",
+          "callers": 4,
+          "warmLoads": 52,
+          "usefulMedianMs": 828.2000000476837,
+          "usefulP95Ms": 1262.5,
+          "completeMedianMs": 1670.8000001907349,
+          "completeP95Ms": 2093.7999999523163,
+          "detailMedianMs": 786.7999999523163,
+          "detailP95Ms": 1134.5,
+          "pairedWarmBursts": 13,
+          "companionP95Ms": 166.55029999998806,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 130559,
+            "p95": 130559
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 0.32159999998111743,
+            "p95": 38.96190000002389
+          },
+          "afterAcquisitionMs": {
+            "median": 916.3790000000372,
+            "p95": 1414.0981999999958
+          },
+          "cold": [
+            {
+              "usefulMs": 1720.7999999523163,
+              "completeMs": 2663.0999999046326,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1498.5,
+              "completeMs": 2356.7999999523163,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1826,
+              "completeMs": 2907.199999809265,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1439,
+              "completeMs": 2402.2000000476837,
+              "requests": 10,
+              "bytes": 130559
+            }
+          ],
+          "successfulLoads": 56,
+          "errors": 0,
+          "outstanding": 0
+        },
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "candidate",
+          "dataset": "small",
+          "callers": 4,
+          "warmLoads": 52,
+          "usefulMedianMs": 481.7999999523163,
+          "usefulP95Ms": 626.1000001430511,
+          "completeMedianMs": 1401.2999999523163,
+          "completeP95Ms": 1599.9000000953674,
+          "detailMedianMs": 654.7999999523163,
+          "detailP95Ms": 1006.5999999046326,
+          "pairedWarmBursts": 13,
+          "companionP95Ms": 189.9551999999967,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 130559,
+            "p95": 130559
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 0.4222999999910826,
+            "p95": 41.60189999998693
+          },
+          "afterAcquisitionMs": {
+            "median": 964.6910999999964,
+            "p95": 1237.788799999994
+          },
+          "cold": [
+            {
+              "usefulMs": 1159.3000001907349,
+              "completeMs": 2120.5,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1107.1999998092651,
+              "completeMs": 2086.399999856949,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1209,
+              "completeMs": 2055.0999999046326,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1053.7000000476837,
+              "completeMs": 2058.2999999523163,
+              "requests": 10,
+              "bytes": 130559
+            }
+          ],
+          "successfulLoads": 56,
+          "errors": 0,
+          "outstanding": 0
+        }
+      ]
+    },
+    {
+      "file": "browser-pages-large-recheck-render.json",
+      "raw": {
+        "file": "browser-pages-large-recheck-render.json.gz",
+        "sha256": "e0c916243b2d9510b26551f59c50baa4362156102ecffa0572753c8459443340",
+        "uncompressedSha256": "3b1398db56875e4ffe1029da766fef9cd702010533bc36b205717e52cdd76b71"
+      },
+      "results": [
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "baseline",
+          "dataset": "large",
+          "callers": 1,
+          "warmLoads": 50,
+          "usefulMedianMs": 253.29999995231628,
+          "usefulP95Ms": 477,
+          "completeMedianMs": 1361.2000000476837,
+          "completeP95Ms": 1604.7999999523163,
+          "detailMedianMs": 1088.7000000476837,
+          "detailP95Ms": 1181.2999999523163,
+          "pairedWarmBursts": 50,
+          "companionP95Ms": 115.02999999999884,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 221941,
+            "p95": 221941
+          },
+          "queries": {
+            "median": 40,
+            "p95": 41
+          },
+          "acquisitionMs": {
+            "median": 0.21159999995143153,
+            "p95": 0.46669999994628597
+          },
+          "afterAcquisitionMs": {
+            "median": 497.513599999962,
+            "p95": 774.6323000000011
+          },
+          "cold": [
+            {
+              "usefulMs": 696.8000001907349,
+              "completeMs": 2109.5,
+              "requests": 10,
+              "bytes": 221941
+            }
+          ],
+          "successfulLoads": 51,
+          "errors": 0,
+          "outstanding": 0
+        },
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "candidate",
+          "dataset": "large",
+          "callers": 1,
+          "warmLoads": 50,
+          "usefulMedianMs": 193.79999995231628,
+          "usefulP95Ms": 315.30000019073486,
+          "completeMedianMs": 1102.0999999046326,
+          "completeP95Ms": 1262.2000000476837,
+          "detailMedianMs": 661.2000000476837,
+          "detailP95Ms": 773.6999998092651,
+          "pairedWarmBursts": 50,
+          "companionP95Ms": 113.21710000000894,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 221941,
+            "p95": 221941
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 0.22140000003855675,
+            "p95": 0.8064000000003944
+          },
+          "afterAcquisitionMs": {
+            "median": 488.39849999998114,
+            "p95": 731.635400000021
+          },
+          "cold": [
+            {
+              "usefulMs": 683.4000000953674,
+              "completeMs": 1695.1000001430511,
+              "requests": 10,
+              "bytes": 221941
+            }
+          ],
+          "successfulLoads": 51,
+          "errors": 0,
+          "outstanding": 0
+        },
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "baseline",
+          "dataset": "large",
+          "callers": 4,
+          "warmLoads": 52,
+          "usefulMedianMs": 916.5,
+          "usefulP95Ms": 9837.399999856949,
+          "completeMedianMs": 3017.300000190735,
+          "completeP95Ms": 12105.399999856949,
+          "detailMedianMs": 2026.2000000476837,
+          "detailP95Ms": 2588.5,
+          "pairedWarmBursts": 13,
+          "companionP95Ms": 388.6198999999906,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 221941,
+            "p95": 221941
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 13.605799999997544,
+            "p95": 79.29279999999562
+          },
+          "afterAcquisitionMs": {
+            "median": 1753.988000000012,
+            "p95": 9282.095799999981
+          },
+          "cold": [
+            {
+              "usefulMs": 1357.6999998092651,
+              "completeMs": 3822.5999999046326,
+              "requests": 10,
+              "bytes": 221941
+            },
+            {
+              "usefulMs": 1407.5999999046326,
+              "completeMs": 3788,
+              "requests": 10,
+              "bytes": 221941
+            },
+            {
+              "usefulMs": 1458.7000000476837,
+              "completeMs": 3838.9000000953674,
+              "requests": 10,
+              "bytes": 221941
+            },
+            {
+              "usefulMs": 1355.2999999523163,
+              "completeMs": 3851.699999809265,
+              "requests": 10,
+              "bytes": 221941
+            }
+          ],
+          "successfulLoads": 56,
+          "errors": 0,
+          "outstanding": 0
+        },
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "candidate",
+          "dataset": "large",
+          "callers": 4,
+          "warmLoads": 52,
+          "usefulMedianMs": 590.3000001907349,
+          "usefulP95Ms": 959,
+          "completeMedianMs": 2619.7000000476837,
+          "completeP95Ms": 2926.9000000953674,
+          "detailMedianMs": 1834.5,
+          "detailP95Ms": 2201.7999999523163,
+          "pairedWarmBursts": 13,
+          "companionP95Ms": 366.21940000000177,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 221941,
+            "p95": 221941
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 16.327200000028824,
+            "p95": 97.92119999999704
+          },
+          "afterAcquisitionMs": {
+            "median": 1752.7692000000025,
+            "p95": 2144.563399999992
+          },
+          "cold": [
+            {
+              "usefulMs": 1406.0999999046326,
+              "completeMs": 4037.7000000476837,
+              "requests": 10,
+              "bytes": 221941
+            },
+            {
+              "usefulMs": 1405.6999998092651,
+              "completeMs": 3808.0999999046326,
+              "requests": 10,
+              "bytes": 221941
+            },
+            {
+              "usefulMs": 1328.5999999046326,
+              "completeMs": 4476.299999952316,
+              "requests": 10,
+              "bytes": 221941
+            },
+            {
+              "usefulMs": 1275.2999999523163,
+              "completeMs": 3881.0999999046326,
+              "requests": 10,
+              "bytes": 221941
+            }
+          ],
+          "successfulLoads": 56,
+          "errors": 0,
+          "outstanding": 0
+        }
+      ]
+    },
+    {
+      "file": "browser-pages-small-recheck-render.json",
+      "raw": {
+        "file": "browser-pages-small-recheck-render.json.gz",
+        "sha256": "307f5137632c17b2e6ccb486f1d83785e3d90882d7749435e7619a259cdcea36",
+        "uncompressedSha256": "1b2e204ec5c8fcccb74f29cfafe9fa72114da18e5106f4fed5d854084f7fd162"
+      },
+      "results": [
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "baseline",
+          "dataset": "small",
+          "callers": 4,
+          "warmLoads": 52,
+          "usefulMedianMs": 761.0999999046326,
+          "usefulP95Ms": 1196.2999999523163,
+          "completeMedianMs": 1689.9000000953674,
+          "completeP95Ms": 2385.9000000953674,
+          "detailMedianMs": 799.3999998569489,
+          "detailP95Ms": 1125.2000000476837,
+          "pairedWarmBursts": 13,
+          "companionP95Ms": 200.0118999999977,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 130559,
+            "p95": 130559
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 0.29589999999279826,
+            "p95": 68.31600000000253
+          },
+          "afterAcquisitionMs": {
+            "median": 787.0526999999965,
+            "p95": 1711.5716000000175
+          },
+          "cold": [
+            {
+              "usefulMs": 1283.2000000476837,
+              "completeMs": 2283.5,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1440,
+              "completeMs": 2477.5999999046326,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1386.5999999046326,
+              "completeMs": 2282,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1581.7999999523163,
+              "completeMs": 2877.399999856949,
+              "requests": 10,
+              "bytes": 130559
+            }
+          ],
+          "successfulLoads": 56,
+          "errors": 0,
+          "outstanding": 0
+        },
+        {
+          "workflow": "billing",
+          "app": "portal",
+          "version": "candidate",
+          "dataset": "small",
+          "callers": 4,
+          "warmLoads": 52,
+          "usefulMedianMs": 477.40000009536743,
+          "usefulP95Ms": 652.5999999046326,
+          "completeMedianMs": 1304,
+          "completeP95Ms": 1717.7000000476837,
+          "detailMedianMs": 674.0999999046326,
+          "detailP95Ms": 1140.0999999046326,
+          "pairedWarmBursts": 13,
+          "companionP95Ms": 202.9644999999946,
+          "requests": {
+            "median": 10,
+            "p95": 10
+          },
+          "bytes": {
+            "median": 130559,
+            "p95": 130559
+          },
+          "queries": {
+            "median": 40,
+            "p95": 40
+          },
+          "acquisitionMs": {
+            "median": 0.2643000000007305,
+            "p95": 56.590100000004895
+          },
+          "afterAcquisitionMs": {
+            "median": 730.7181999999739,
+            "p95": 1277.0694000000003
+          },
+          "cold": [
+            {
+              "usefulMs": 1481.7000000476837,
+              "completeMs": 1992.5,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1337.0999999046326,
+              "completeMs": 1961,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1237.3999998569489,
+              "completeMs": 1808.6999998092651,
+              "requests": 10,
+              "bytes": 130559
+            },
+            {
+              "usefulMs": 1286.7999999523163,
+              "completeMs": 1855.2000000476837,
+              "requests": 10,
+              "bytes": 130559
+            }
+          ],
+          "successfulLoads": 56,
+          "errors": 0,
+          "outstanding": 0
+        }
+      ]
+    }
+  ],
+  "productionChanges": false
+}

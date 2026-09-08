@@ -92,12 +92,12 @@ assert(
 
 const api = readFileSync('portal-client/src/lib/api/domains/connections.ts', 'utf8').replace(/\r\n/g, '\n');
 assert(
-  api.includes('disconnectIntegration: (token: string, id: number)') &&
+  api.includes('disconnectIntegration: (token: RequestAuth, id: number)') &&
     /apiDelete<\{ data: \{ id: number; deleted: boolean; cascadedClientId: number \| null \} \}>\([\s\S]*?`\/api\/client-portal\/integrations\/\$\{id\}`/.test(api),
   'portal API client must expose DELETE /client-portal/integrations/:id',
 );
 assert(
-  api.includes('approveIntegration: (token: string, id: number)') &&
+  api.includes('approveIntegration: (token: RequestAuth, id: number)') &&
     /apiPost<\{ data: PortalIntegration \}>\([\s\S]*?`\/api\/client-portal\/integrations\/\$\{id\}\/approve`/.test(api),
   'portal API client must expose POST /client-portal/integrations/:id/approve',
 );

@@ -1,0 +1,287 @@
+{
+  "runId": "2026-09-08T22:19:31.263Z",
+  "smoke": false,
+  "notes": "Actual production bundles and native mounted GET routes, real local HS256 verification and scope/audit writes. Supabase identity endpoint, provider/rate catalog and worker/queue status remain explicit offline boundaries; readiness probes the local database only. Fixed browser business date June 20. Baseline application owners with current fixed transport in both variants. Completion includes body settlement, delayed exact Orders count, visible result and prefetch, not chart-animation completion. Useful timestamps use browser animation frames. Fresh browser context and restarted API processes before each cold burst; shared PostgreSQL buffers are not cold-reset. At least 50 warm page loads per scenario; concurrent samples cluster in 13 four-user bursts. Companion is single-flight with 50 ms gaps across the entire page load. No production calls.",
+  "results": [
+    {
+      "workflow": "billing",
+      "app": "portal",
+      "version": "baseline",
+      "dataset": "large",
+      "callers": 1,
+      "warmLoads": 50,
+      "usefulMedianMs": 253.29999995231628,
+      "usefulP95Ms": 477,
+      "completeMedianMs": 1361.2000000476837,
+      "completeP95Ms": 1604.7999999523163,
+      "detailMedianMs": 1088.7000000476837,
+      "detailP95Ms": 1181.2999999523163,
+      "pairedWarmBursts": 50,
+      "companionP95Ms": 115.02999999999884,
+      "requests": {
+        "median": 10,
+        "p95": 10
+      },
+      "bytes": {
+        "median": 221941,
+        "p95": 221941
+      },
+      "queries": {
+        "median": 40,
+        "p95": 41
+      },
+      "acquisitionMs": {
+        "median": 0.21159999995143153,
+        "p95": 0.46669999994628597
+      },
+      "afterAcquisitionMs": {
+        "median": 497.513599999962,
+        "p95": 774.6323000000011
+      },
+      "cold": [
+        {
+          "usefulMs": 696.8000001907349,
+          "completeMs": 2109.5,
+          "requests": 10,
+          "bytes": 221941
+        }
+      ],
+      "successfulLoads": 51,
+      "errors": 0,
+      "outstanding": 0
+    },
+    {
+      "workflow": "billing",
+      "app": "portal",
+      "version": "candidate",
+      "dataset": "large",
+      "callers": 1,
+      "warmLoads": 50,
+      "usefulMedianMs": 193.79999995231628,
+      "usefulP95Ms": 315.30000019073486,
+      "completeMedianMs": 1102.0999999046326,
+      "completeP95Ms": 1262.2000000476837,
+      "detailMedianMs": 661.2000000476837,
+      "detailP95Ms": 773.6999998092651,
+      "pairedWarmBursts": 50,
+      "companionP95Ms": 113.21710000000894,
+      "requests": {
+        "median": 10,
+        "p95": 10
+      },
+      "bytes": {
+        "median": 221941,
+        "p95": 221941
+      },
+      "queries": {
+        "median": 40,
+        "p95": 40
+      },
+      "acquisitionMs": {
+        "median": 0.22140000003855675,
+        "p95": 0.8064000000003944
+      },
+      "afterAcquisitionMs": {
+        "median": 488.39849999998114,
+        "p95": 731.635400000021
+      },
+      "cold": [
+        {
+          "usefulMs": 683.4000000953674,
+          "completeMs": 1695.1000001430511,
+          "requests": 10,
+          "bytes": 221941
+        }
+      ],
+      "successfulLoads": 51,
+      "errors": 0,
+      "outstanding": 0
+    },
+    {
+      "workflow": "billing",
+      "app": "portal",
+      "version": "baseline",
+      "dataset": "large",
+      "callers": 4,
+      "warmLoads": 52,
+      "usefulMedianMs": 916.5,
+      "usefulP95Ms": 9837.399999856949,
+      "completeMedianMs": 3017.300000190735,
+      "completeP95Ms": 12105.399999856949,
+      "detailMedianMs": 2026.2000000476837,
+      "detailP95Ms": 2588.5,
+      "pairedWarmBursts": 13,
+      "companionP95Ms": 388.6198999999906,
+      "requests": {
+        "median": 10,
+        "p95": 10
+      },
+      "bytes": {
+        "median": 221941,
+        "p95": 221941
+      },
+      "queries": {
+        "median": 40,
+        "p95": 40
+      },
+      "acquisitionMs": {
+        "median": 13.605799999997544,
+        "p95": 79.29279999999562
+      },
+      "afterAcquisitionMs": {
+        "median": 1753.988000000012,
+        "p95": 9282.095799999981
+      },
+      "cold": [
+        {
+          "usefulMs": 1357.6999998092651,
+          "completeMs": 3822.5999999046326,
+          "requests": 10,
+          "bytes": 221941
+        },
+        {
+          "usefulMs": 1407.5999999046326,
+          "completeMs": 3788,
+          "requests": 10,
+          "bytes": 221941
+        },
+        {
+          "usefulMs": 1458.7000000476837,
+          "completeMs": 3838.9000000953674,
+          "requests": 10,
+          "bytes": 221941
+        },
+        {
+          "usefulMs": 1355.2999999523163,
+          "completeMs": 3851.699999809265,
+          "requests": 10,
+          "bytes": 221941
+        }
+      ],
+      "successfulLoads": 56,
+      "errors": 0,
+      "outstanding": 0
+    },
+    {
+      "workflow": "billing",
+      "app": "portal",
+      "version": "candidate",
+      "dataset": "large",
+      "callers": 4,
+      "warmLoads": 52,
+      "usefulMedianMs": 590.3000001907349,
+      "usefulP95Ms": 959,
+      "completeMedianMs": 2619.7000000476837,
+      "completeP95Ms": 2926.9000000953674,
+      "detailMedianMs": 1834.5,
+      "detailP95Ms": 2201.7999999523163,
+      "pairedWarmBursts": 13,
+      "companionP95Ms": 366.21940000000177,
+      "requests": {
+        "median": 10,
+        "p95": 10
+      },
+      "bytes": {
+        "median": 221941,
+        "p95": 221941
+      },
+      "queries": {
+        "median": 40,
+        "p95": 40
+      },
+      "acquisitionMs": {
+        "median": 16.327200000028824,
+        "p95": 97.92119999999704
+      },
+      "afterAcquisitionMs": {
+        "median": 1752.7692000000025,
+        "p95": 2144.563399999992
+      },
+      "cold": [
+        {
+          "usefulMs": 1406.0999999046326,
+          "completeMs": 4037.7000000476837,
+          "requests": 10,
+          "bytes": 221941
+        },
+        {
+          "usefulMs": 1405.6999998092651,
+          "completeMs": 3808.0999999046326,
+          "requests": 10,
+          "bytes": 221941
+        },
+        {
+          "usefulMs": 1328.5999999046326,
+          "completeMs": 4476.299999952316,
+          "requests": 10,
+          "bytes": 221941
+        },
+        {
+          "usefulMs": 1275.2999999523163,
+          "completeMs": 3881.0999999046326,
+          "requests": 10,
+          "bytes": 221941
+        }
+      ],
+      "successfulLoads": 56,
+      "errors": 0,
+      "outstanding": 0
+    }
+  ],
+  "recheck": true,
+  "visibilityProbe": false,
+  "renderRecheck": true,
+  "comparison": "Previous optimization Portal bundle versus immediate-visibility bundle. BOTH use the same current candidate Portal API and PrepShip producer. Unchanged PrepShip margin companion.",
+  "manifest": [
+    {
+      "app": "prepship",
+      "version": "baseline",
+      "base": "dc3b243566d0296d7bb87056b8b27fb9e6d9a7a6",
+      "directory": "X:\\Private\\prepship-final\\shared-db-v4\\tmp\\shared-db\\browser-builds\\prepship-baseline\\web\\dist"
+    },
+    {
+      "app": "prepship",
+      "version": "candidate",
+      "base": "dc3b243566d0296d7bb87056b8b27fb9e6d9a7a6",
+      "directory": "X:\\Private\\prepship-final\\shared-db-v4\\tmp\\shared-db\\browser-builds\\prepship-candidate\\web\\dist"
+    },
+    {
+      "app": "portal",
+      "version": "baseline",
+      "base": "164f5520b04c78241ae6edf529d58741c9258b76",
+      "directory": "X:\\Private\\prepship-final\\shared-db-v4\\tmp\\shared-db\\browser-builds\\portal-candidate\\portal-client\\dist",
+      "apiVersion": "candidate",
+      "comparison": "previous optimization candidate"
+    },
+    {
+      "app": "portal",
+      "version": "candidate",
+      "base": "164f5520b04c78241ae6edf529d58741c9258b76",
+      "directory": "X:\\Private\\prepship-final\\shared-db-v4\\tmp\\shared-db\\render-builds\\portal-candidate\\portal-client\\dist",
+      "apiVersion": "candidate",
+      "comparison": "immediate visibility",
+      "sources": [
+        {
+          "file": "portal-client/src/components/layout/Layout.tsx",
+          "before": "8dd0eb99e98745a03146926eb86a6dc345e98095455d2751f7898b5febe0180b",
+          "after": "8bbee7f6749e376796b7cf087784e79ee20fb9987e8223860c6af2b50d4ac937"
+        },
+        {
+          "file": "portal-client/src/components/ui/data-table/DataTableDesktop.tsx",
+          "before": "52c5e060b636a110b02be47be558284360b6695fea0d6fc22902dc4d2711cb65",
+          "after": "0ee1eb26f5e80d2e37ac7c8f6ba3e64fc3a06d1d62d1be1f4d9fdf59de8f7643"
+        },
+        {
+          "file": "portal-client/src/components/ui/data-table/DataTableMobile.tsx",
+          "before": "2c021bda33aa58c1f0df8e3cd89f976d5d0c96cdfcd2d7e5d116eea6a09d9a8c",
+          "after": "c636cbcd95c4cb6ea07e39206db9714eb9dad05e87913c92cfe9d66d2ebf34bf"
+        }
+      ]
+    }
+  ],
+  "raw": {
+    "file": "browser-pages-large-recheck-render.json.gz",
+    "sha256": "e0c916243b2d9510b26551f59c50baa4362156102ecffa0572753c8459443340",
+    "uncompressedSha256": "3b1398db56875e4ffe1029da766fef9cd702010533bc36b205717e52cdd76b71"
+  }
+}

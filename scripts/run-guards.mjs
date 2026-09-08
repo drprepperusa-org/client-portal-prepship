@@ -26,6 +26,8 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
 const DENY_PATTERNS = [
   '^test:guards',                   // THIS runner's own entries, so it never recurses
   ':browser',
+  '^test:database-pipeline:pg17$',  // disposable PostgreSQL job
+  '^test:shared-db-native:returns$', // disposable PostgreSQL job
   'smoke',
   'integration',
   'web-bundle-budget',

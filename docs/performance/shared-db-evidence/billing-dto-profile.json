@@ -1,0 +1,21 @@
+{
+  "method": "Node 20 sampling CPU profile, sequential separate diagnostic runs, 20 candidate canonical Billing reads each; not a paired page percentile benchmark",
+  "profiles": [
+    {
+      "file": "CPU.20260908.183748.28788.0.001.cpuprofile.gz",
+      "sha256": "8cbcc823e709e581477c9b53d13f9554794487488fac708f8d3e098b385811c3",
+      "uncompressedSha256": "7470bec48c1e0901766d2b305d08adfcfe8f902dd45addc787a924cce34d3822",
+      "reads": 20,
+      "callbackSelfMs": 4694.513999999984,
+      "gcSelfMs": 1594.8859999999968
+    },
+    {
+      "file": "CPU.20260908.184319.53464.0.001.cpuprofile.gz",
+      "sha256": "e4879b3c1825e12223b13a7ab3a6bc677c69819e4414ab50ffff7f5f35c96a12",
+      "uncompressedSha256": "b29a1d07e8f7517d154158bfce951fa70a10a29d7e9715a4a5058c71707b073e",
+      "reads": 20,
+      "callbackSelfMs": 274.5039999999998,
+      "gcSelfMs": 361.68699999999995
+    }
+  ]
+}

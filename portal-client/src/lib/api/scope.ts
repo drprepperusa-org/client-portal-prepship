@@ -1,3 +1,4 @@
+import type { RequestAuth } from './transport';
 import type {
   Paginated,
   PortalDateRange,
@@ -37,7 +38,7 @@ export function billingRangeFromPortal(range: PortalDateRange) {
 
 /** The backend owns JWT scope and whole-set pagination; clientId can only narrow it. */
 export function scopedList<T>(
-  token: string,
+  token: RequestAuth,
   path: string,
   params: Record<string, QueryValue>,
 ): Promise<Paginated<T>> {

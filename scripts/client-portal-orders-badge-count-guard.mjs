@@ -65,7 +65,7 @@ assert(
 assert(
   hooks.includes('export function useOrders') &&
     hooks.includes('const qc = useQueryClient()') &&
-    hooks.includes("qc.setQueryData(['awaiting-count'") &&
+    hooks.includes("qc.setQueryData(portalQueryKey(userId, ['awaiting-count', merged.clientId ?? 'scope'])") &&
     hooks.includes("merged.status !== 'awaiting_shipment'") &&
     hooks.includes('query.data.pagination.total'),
   'Awaiting Orders list seeds the sidebar badge cache from its backend pagination total',

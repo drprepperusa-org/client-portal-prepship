@@ -7,7 +7,7 @@
  * return amount became `0`. PrepShip already decides both, differently.
  *
  * WHAT THIS MODULE OWNS: forwarding scoped read intent, presentation-only enrichment,
- * deterministic sort, and pagination.
+ * deterministic ordering for unpaged exports. PrepShip owns paginated ordering.
  *
  * WHAT IT MUST NEVER OWN: row grain, Outbound-vs-Return identity, reference strings,
  * destination classification, fee presence, or any arithmetic on money. Every one of those
@@ -173,19 +173,19 @@ export async function portalCanonicalInvoiceEvents(
       dateFrom: input.dateFrom,
       dateTo: input.dateTo,
       ...(input.clientId ? { clientId: input.clientId } : {}),
+      ...(input.page ? { page: input.page, pageSize: input.pageSize ?? 100, sortBy: input.sortBy, sortDir: input.sortDir } : {}),
     },
     requestId,
   );
   if (!upstream.ok) return upstream;
 
-  // Deterministic order before any slicing.
-  const all = orderCanonicalEvents(upstream.rows, input.sortBy, input.sortDir);
+  // A requested page must already be ordered by the validated producer.
+  const all = input.page ? upstream.rows : orderCanonicalEvents(upstream.rows, input.sortBy, input.sortDir);
 
-  const total = all.length;
+  const total = upstream.pagination?.total ?? all.length;
 
-  const page = Math.max(1, Number(input.page) || 1);
-  const pageSize = Math.max(1, Number(input.pageSize) || total || 1);
-  const slice = input.page ? all.slice((page - 1) * pageSize, page * pageSize) : all;
+  // The validated producer page is already ordered at canonical event grain.
+  const slice = all;
 
   const orderIds = [...new Set(slice.map((r) => r.orderId).filter((id): id is number => typeof id === 'number'))];
   const enrichment = await itemTextByOrderId(orderIds);

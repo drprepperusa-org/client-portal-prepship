@@ -1,3 +1,5 @@
+import { portalQueryKey, portalReadKeys } from './query-keys';
+import type { RequestAuth } from './api/transport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/auth';
@@ -12,11 +14,11 @@ type TokenQueryOpts = {
 };
 
 /** Wraps a portal query so it only runs once we have an access token. */
-function useTokenQuery<T>(key: unknown[], fn: (token: string) => Promise<T>, enabled = true, opts: TokenQueryOpts = {}) {
-  const { accessToken } = useAuth();
+function useTokenQuery<T>(key: unknown[], fn: (token: RequestAuth) => Promise<T>, enabled = true, opts: TokenQueryOpts = {}) {
+  const { accessToken, userId } = useAuth();
   return useQuery({
-    queryKey: [...key, Boolean(accessToken)],
-    queryFn: () => fn(accessToken as string),
+    queryKey: portalQueryKey(userId, key),
+    queryFn: ({ signal }) => fn({ accessToken: accessToken as string, signal }),
     enabled: Boolean(accessToken) && enabled,
     refetchInterval: opts.refetchInterval,
     refetchOnWindowFocus: opts.refetchOnWindowFocus,
@@ -57,7 +59,7 @@ export function useAwaitingCount() {
 
 export function useDashboard() {
   const { dateRange, clientId } = usePortalFilters();
-  return useTokenQuery(['dashboard', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.dashboard(t, dateRange, clientId));
+  return useTokenQuery(portalReadKeys.dashboard(dateRange.dateFrom, dateRange.dateTo, clientId), (t) => portalApi.dashboard(t, dateRange, clientId));
 }
 export function useDailyCounts() {
   const { dateRange, clientId } = usePortalFilters();
@@ -149,14 +151,14 @@ export function useInvoicePeriodSummaryRange(
 
 export function useOrders(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
-  const { accessToken } = useAuth();
+  const { userId } = useAuth();
   const qc = useQueryClient();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
   const query = useTokenQuery(
     // pageSize MUST be in the key: the Dashboard "Open orders" peek requests this
     // same status/page with pageSize 6, and without it that 6-row response would
     // alias the full Orders list (refetchOnMount:false → sticky truncation).
-    ['orders', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.clientId ?? 'scope'],
+    portalReadKeys.orders(merged.clientId, merged.status ?? 'all', merged.search, merged.page, merged.pageSize),
     (t) => portalApi.orders(t, merged),
     true,
     // CP-037: refetchOnWindowFocus false so returning to the tab can't trigger an
@@ -168,10 +170,10 @@ export function useOrders(opts: ListOpts = {}) {
   useEffect(() => {
     if (merged.status !== 'awaiting_shipment' || merged.search) return;
     if (!query.data?.pagination) return;
-    qc.setQueryData(['awaiting-count', merged.clientId ?? 'scope', Boolean(accessToken)], {
+    qc.setQueryData(portalQueryKey(userId, ['awaiting-count', merged.clientId ?? 'scope']), {
       count: query.data.pagination.total,
     });
-  }, [accessToken, merged.clientId, merged.search, merged.status, qc, query.data?.pagination]);
+  }, [userId, merged.clientId, merged.search, merged.status, qc, query.data?.pagination]);
 
   return query;
 }
@@ -194,7 +196,7 @@ export function useOrderShipments(orderId: number | null) {
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(['inventory', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 100, merged.lowStock ? 'low' : 'all', merged.clientId ?? 'scope'], (t) => portalApi.inventory(t, merged));
+  return useTokenQuery(portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock), (t) => portalApi.inventory(t, merged));
 }
 
 export function useInventoryHistory(opts: { page?: number; pageSize?: number; sku?: string; type?: string } = {}) {
@@ -269,53 +271,50 @@ export function useOrder(id: number | null) {
 }
 
 /**
- * Warms the cache for the highest-traffic pages right after the shell mounts,
- * so the first navigation to Orders/Inventory/Dashboard is instant.
+ * Warms the highest-traffic pages after foreground work, one visible-tab
+ * request at a time. Navigation can reuse the same user-scoped query.
  */
 export function usePrefetchPortal() {
-  const { accessToken } = useAuth();
-  const { dateRange } = usePortalFilters();
+  const { accessToken, userId } = useAuth();
+  const { dateRange, clientId } = usePortalFilters();
   const qc = useQueryClient();
   useEffect(() => {
-    if (!accessToken) return;
-    const t = accessToken;
+    if (!accessToken || !userId) return;
     let cancelled = false;
-    let pollTimer: number | undefined;
-
-    const waitForForegroundQueries = async () => {
-      while (!cancelled && qc.isFetching() > 0) {
-        await new Promise<void>((resolve) => {
-          pollTimer = window.setTimeout(resolve, 250);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let wake: (() => void) | undefined;
+    let activeKey: unknown[] | undefined;
+    const cancelSpeculation = () => {
+      if (!activeKey) return;
+      const query = qc.getQueryCache().find({ queryKey: activeKey, exact: true });
+      // Navigation may have promoted this request to a visible query.
+      if (query && query.getObserversCount() === 0) void qc.cancelQueries({ queryKey: activeKey, exact: true });
+    };
+    const onVisibility = () => { if (document.hidden) cancelSpeculation(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    const pause = () => new Promise<void>(resolve => { wake = resolve; timer = setTimeout(resolve, 250); });
+    const prefetch = async () => {
+      await pause();
+      const reads = [
+        { key: portalReadKeys.dashboard(dateRange.dateFrom, dateRange.dateTo, clientId), read: (auth: RequestAuth) => portalApi.backgroundDashboard(auth, dateRange, clientId) },
+        { key: portalReadKeys.orders(clientId), read: (auth: RequestAuth) => portalApi.backgroundOrders(auth, { status: 'awaiting_shipment', clientId }) },
+        { key: portalReadKeys.inventory(clientId), read: (auth: RequestAuth) => portalApi.backgroundInventory(auth, { clientId }) },
+      ];
+      for (const { key, read } of reads) {
+        while (!cancelled && (document.hidden || qc.isFetching() > 0)) await pause();
+        if (cancelled) return;
+        activeKey = portalQueryKey(userId, key);
+        await qc.prefetchQuery<unknown>({
+          queryKey: activeKey,
+          queryFn: ({ signal }) => read({ accessToken, signal }),
         });
+        activeKey = undefined;
       }
     };
-
-    const prefetch = async () => {
-      // The shell already starts the current page plus its clients, sync, user,
-      // and badge reads. Let those customer-visible requests finish first, then
-      // warm the other pages one at a time so a small backend pool is not
-      // exhausted by speculative work.
-      await new Promise<void>((resolve) => {
-        pollTimer = window.setTimeout(resolve, 500);
-      });
-      await waitForForegroundQueries();
-      if (cancelled) return;
-
-      await qc.prefetchQuery({ queryKey: ['dashboard', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDashboard(t, dateRange) });
-      if (cancelled) return;
-      await qc.prefetchQuery({ queryKey: ['daily-counts', dateRange.dateFrom, dateRange.dateTo, 'scope', true], queryFn: () => portalApi.backgroundDailyCounts(t, dateRange) });
-      if (cancelled) return;
-      // Match the Orders page's first view exactly (awaiting tab, default pageSize)
-      // so the prefetch actually warms it instead of a key nothing reads.
-      await qc.prefetchQuery({ queryKey: ['orders', 'awaiting_shipment', '', 1, 50, 'scope', true], queryFn: () => portalApi.backgroundOrders(t, { status: 'awaiting_shipment' }) });
-      if (cancelled) return;
-      await qc.prefetchQuery({ queryKey: ['inventory', '', 1, 'all', 'scope', true], queryFn: () => portalApi.backgroundInventory(t, {}) });
-    };
-
     void prefetch();
     return () => {
-      cancelled = true;
-      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+      cancelled = true; clearTimeout(timer); wake?.(); cancelSpeculation();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [accessToken, dateRange, qc]);
+  }, [accessToken, userId, dateRange.dateFrom, dateRange.dateTo, clientId, qc]);
 }

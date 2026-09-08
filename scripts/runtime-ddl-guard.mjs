@@ -68,7 +68,6 @@ const expectedRuntimeDdlFiles = [
   'api/carriers/walmart/fees.ts',
   'api/cron/sync-walmart-fees.ts',
   'src/services/orders-performance-maintenance.ts',
-  'src/routes/analysis.ts',
 ];
 
 const requiredClassifications = [
@@ -226,6 +225,7 @@ const discovered = scanRoots
   .sort();
 
 const expected = [...expectedRuntimeDdlFiles].sort();
+assert(!discovered.includes('src/routes/analysis.ts'), 'Analytics requests execute no DDL; capability readiness is read-only');
 const unexpected = discovered.filter((file) => !expected.includes(file));
 const missing = expected.filter((file) => !discovered.includes(file));
 

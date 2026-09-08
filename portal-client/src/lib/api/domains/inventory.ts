@@ -1,9 +1,10 @@
+import type { RequestAuth } from '../transport';
 import type { ListOpts, Paginated, PortalDateRange } from '@client-portal-contracts/common';
 import type { InventoryMovement, PortalInventory } from '@client-portal-contracts/inventory';
 import { defaultRange, scopedList } from '../scope';
 import { apiGet } from '../transport';
 
-function inventory(token: string, opts: ListOpts = {}) {
+function inventory(token: RequestAuth, opts: ListOpts = {}) {
   return scopedList<PortalInventory>(token, '/api/client-portal/inventory', {
     page: opts.page ?? 1,
     pageSize: opts.pageSize ?? 100,
@@ -17,7 +18,7 @@ export const inventoryApi = {
   inventory,
   backgroundInventory: inventory,
   inventoryHistory: (
-    token: string,
+    token: RequestAuth,
     opts: {
       page?: number;
       pageSize?: number;

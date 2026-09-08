@@ -1,3 +1,5 @@
+import { createReadBudget } from '../lib/read-budget';
+import { ensureAnalyticsSchemaCapability } from '../services/analytics-schema-capability';
 import { Hono, type Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -554,6 +556,7 @@ function formatCombinationLabel(items: AnalysisOrderCombinationItem[]): string {
 
 export async function getOrderCombinationsFromOrderItems(
   q: SkuBreakdownQuery,
+  read = createReadBudget(2),
 ): Promise<AnalysisOrderCombination[]> {
   const fromIso = new Date(q.dateFrom).toISOString();
   const toIso = new Date(q.dateTo).toISOString();
@@ -570,7 +573,7 @@ export async function getOrderCombinationsFromOrderItems(
       )`
     : sql``;
 
-  const rows = await db.execute<OrderCombinationSqlRow>(sql`
+  const rows = await read(() => db.execute<OrderCombinationSqlRow>(sql`
     with order_sku_rows as (
       select
         o.id                                                               as order_id,
@@ -619,7 +622,7 @@ export async function getOrderCombinationsFromOrderItems(
     group by combination_key
     order by order_count desc, total_units desc, combination_key asc
     limit 50
-  `);
+  `));
 
   return rows.map((row) => {
     const items = normalizeCombinationItems(row.items);
@@ -667,7 +670,7 @@ export interface ClientPortalSalesMetrics extends ClientPortalSalesTotals {
   daily: ClientPortalDailySales[];
 }
 
-export async function getClientPortalSalesMetrics(q: SalesTotalsQuery): Promise<ClientPortalSalesMetrics> {
+export async function getClientPortalSalesMetrics(q: SalesTotalsQuery, read = createReadBudget(2)): Promise<ClientPortalSalesMetrics> {
   const fromIso = new Date(q.dateFrom).toISOString();
   const toIso = new Date(q.dateTo).toISOString();
   const cid: number | null = q.clientId ?? null;
@@ -685,7 +688,7 @@ export async function getClientPortalSalesMetrics(q: SalesTotalsQuery): Promise<
       )`
     : sql``;
 
-  const rows = await db.execute<{
+  const rows = await read(() => db.execute<{
     day: string;
     revenue: string;
     units: number;
@@ -740,7 +743,7 @@ export async function getClientPortalSalesMetrics(q: SalesTotalsQuery): Promise<
       coalesce(sum(orders) over (), 0)::int as period_orders
     from dense_daily
     order by day asc
-  `);
+  `));
 
   const first = rows[0];
   const canViewFinancials = q.canViewFinancials !== false;
@@ -834,38 +837,15 @@ type SkuBreakdownRow = {
   daily_qty_map: Record<string, number> | null;
 };
 
-// Runtime schema-bootstrap for the selling-fee columns. Idempotent
-// — ADD COLUMN IF NOT EXISTS is essentially free when the column
-// already exists (catalog lookup, no table rewrite). This belt-and-
-// suspenders pattern keeps the route self-healing if the formal
-// migration (drizzle/0019_selling_fees.sql) hasn't been applied yet:
-// the SELECT below references o.selling_fee, so without these
-// columns the query fails with "column o.selling_fee does not
-// exist" and the whole Analysis page breaks (2026-05-13 operator
-// report). The selling_fee_source index is migration-owned, not
-// request-time DDL. Cached behind a module-level flag so we only hit
-// the DB catalog once per process lifetime.
-let sellingFeeColumnsEnsured = false;
-async function ensureSellingFeeColumns(): Promise<void> {
-  if (sellingFeeColumnsEnsured) return;
-  try {
-    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_fee NUMERIC(10, 2) NOT NULL DEFAULT 0`);
-    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_fee_breakdown JSONB NOT NULL DEFAULT '{}'::jsonb`);
-    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_fee_synced_at TIMESTAMPTZ`);
-    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_fee_source TEXT`);
-    sellingFeeColumnsEnsured = true;
-  } catch (err) {
-    // Don't break the analysis page if bootstrap fails (e.g. DB
-    // role can't ALTER TABLE). The downstream SELECT will fail with
-    // its original error message in that case — surfacing the real
-    // problem rather than the bootstrap symptom.
-    console.warn('[analysis] selling_fee column bootstrap failed:',
-      err instanceof Error ? err.message : err);
-  }
-}
-
-export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
-  await ensureSellingFeeColumns();
+// Analytics depends on migration-owned selling-fee columns. A read-only
+// capability check shares boot work and returns a controlled unavailable
+// response when the schema is not ready; page requests never create columns.
+export async function getSkuBreakdownFromOrderItems(
+  q: SkuBreakdownQuery,
+  read = createReadBudget(2),
+  options: { includeOrderCount?: boolean } = {},
+) {
+  await ensureAnalyticsSchemaCapability();
 
   const fromIso = new Date(q.dateFrom).toISOString();
   const toIso = new Date(q.dateTo).toISOString();
@@ -906,7 +886,7 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
     q.shippingBasis === 'customer_billed' ? 'customer_billed' : 'house_markup'
   );
 
-  const rows = await db.execute<SkuBreakdownRow>(sql`
+  const rowsPending = read(() => db.execute<SkuBreakdownRow>(sql`
     with item_rows as (
       select
         o.id                                                                as order_id,
@@ -1044,9 +1024,10 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
     group by a.sku_key
     order by total_qty desc
     limit ${q.limit}
-  `);
+  `));
 
-  const totalOrders = await db.execute<{ count: number }>(sql`
+  // Dashboard consumes daily sales and units, not this separate order count.
+  const totalOrdersPending = options.includeOrderCount === false ? Promise.resolve([]) : read(() => db.execute<{ count: number }>(sql`
     select count(*)::int as count from orders o
     where ${cancelledFilter}
       and o.order_date >= ${fromIso}::timestamptz
@@ -1060,15 +1041,16 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
           where c.id = o.client_id and coalesce(c.active, true) = true
         )
       )
-  `);
+  `));
 
   // CP-010: canonical KPI totals from the single sales-metrics owner. These are
   // set-based (no LIMIT), so the Revenue/Units KPI never truncates and always
   // equals the roll-up of the per-SKU rows above (same filter set).
-  const [salesMetrics, orderCombinations] = await Promise.all([
-    getClientPortalSalesMetrics(q),
+  const [rows, totalOrders, salesMetrics, orderCombinations] = await Promise.all([
+    rowsPending, totalOrdersPending,
+    getClientPortalSalesMetrics(q, read),
     q.includeOrderCombinations === true
-      ? getOrderCombinationsFromOrderItems(q)
+      ? getOrderCombinationsFromOrderItems(q, read)
       : Promise.resolve([] as AnalysisOrderCombination[]),
   ]);
 
@@ -1097,7 +1079,7 @@ export async function getSkuBreakdownFromOrderItems(q: SkuBreakdownQuery) {
     rows: enrichedRows,
     dateBuckets,
     totalSkus: enrichedRows.length,
-    totalOrders: totalOrders[0]?.count ?? 0,
+    totalOrders: options.includeOrderCount === false ? undefined : totalOrders[0]?.count ?? 0,
     // CP-010: backend-owned canonical KPI totals (already financially redacted).
     totalRevenue: salesMetrics.revenue,
     totalUnits: salesMetrics.units,
