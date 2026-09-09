@@ -23,7 +23,9 @@ export async function verifyPortalSharedDatabase(seed: any, companion: {
   assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/ps520_invoice_routes');
   const { db, sql } = await import('../src/db/client');
   // Only local fixture provisioning. No migration or deployed schema change.
-  await seed.unsafe('alter table orders add column if not exists selling_fee numeric, add column if not exists selling_fee_breakdown jsonb, add column if not exists selling_fee_synced_at timestamptz, add column if not exists selling_fee_source text');
+  await seed.unsafe(
+    'alter table orders add column if not exists selling_fee numeric, add column if not exists selling_fee_breakdown jsonb, add column if not exists selling_fee_synced_at timestamptz, add column if not exists selling_fee_source text',
+  );
   let queries = 0, active = 0, peak = 0, operationMs = 0;
   const measuredDb = { execute: async (statement: any) => {
     queries++; active++; peak = Math.max(peak, active); const start = performance.now();
@@ -240,10 +242,38 @@ export async function verifyPortalSharedDatabase(seed: any, companion: {
       }
     }
     mkdirSync(path.join(root, 'reports/shared-db'), { recursive: true });
-    if (iterations > 0) writeFileSync(path.join(root, 'reports/shared-db/native-analytics-measurements.json'), JSON.stringify({ baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations, notes: 'Same disposable native PostgreSQL as PrepShip; owner timing, not browser. Companion is Shipping Margin. DB operation duration includes wait. Cold first measured use follows schema/fixture setup.', results }, null, 2));
-    if (iterations > 0) writeFileSync(path.join(root, 'reports/shared-db/native-pagination-measurements.json'), JSON.stringify({ baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations, notes: 'Actual producer route and consumer owner, shared native database. Both use the prerequisite canonical ID contract; baseline consumer downloads full rows then slices. No reduction in canonical backend assembly claimed.', results: billingResults }, null, 2));
-    if (iterations > 0) writeFileSync(path.join(root, 'reports/shared-db/native-dashboard-measurements.json'), JSON.stringify({ baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations, notes: 'Full Dashboard owner, same shared native fixture; unchanged companion Shipping Margin. Owner timings, not browser timings.', results: dashboardResults }, null, 2));
-    if (iterations > 0) writeFileSync(path.join(root, 'reports/shared-db/native-companion-measurements.json'), JSON.stringify({ baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations, notes: 'PrepShip margin and Orders workflows with an unchanged baseline portal Analysis read per batch. Shared native database, 50 iterations; warm owner timings, not browser timings.', results: companionResults }, null, 2));
+    if (iterations > 0) writeFileSync(
+      path.join(root, 'reports/shared-db/native-analytics-measurements.json'),
+      JSON.stringify({
+        baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations,
+        notes: 'Same disposable native PostgreSQL as PrepShip; owner timing, not browser. Companion is Shipping Margin. DB operation duration includes wait. Cold first measured use follows schema/fixture setup.',
+        results,
+      }, null, 2),
+    );
+    if (iterations > 0) writeFileSync(
+      path.join(root, 'reports/shared-db/native-pagination-measurements.json'),
+      JSON.stringify({
+        baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations,
+        notes: 'Actual producer route and consumer owner, shared native database. Both use the prerequisite canonical ID contract; baseline consumer downloads full rows then slices. No reduction in canonical backend assembly claimed.',
+        results: billingResults,
+      }, null, 2),
+    );
+    if (iterations > 0) writeFileSync(
+      path.join(root, 'reports/shared-db/native-dashboard-measurements.json'),
+      JSON.stringify({
+        baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations,
+        notes: 'Full Dashboard owner, same shared native fixture; unchanged companion Shipping Margin. Owner timings, not browser timings.',
+        results: dashboardResults,
+      }, null, 2),
+    );
+    if (iterations > 0) writeFileSync(
+      path.join(root, 'reports/shared-db/native-companion-measurements.json'),
+      JSON.stringify({
+        baseline: BASE, runId: process.env.SHARED_DB_MEASUREMENT_ID, iterations,
+        notes: 'PrepShip margin and Orders workflows with an unchanged baseline portal Analysis read per batch. Shared native database, 50 iterations; warm owner timings, not browser timings.',
+        results: companionResults,
+      }, null, 2),
+    );
     if (rechecks.length) writeFileSync(path.join(root, 'reports/shared-db/native-companion-recheck.json'), JSON.stringify({
       runId: process.env.SHARED_DB_MEASUREMENT_ID, notes: 'Three rounds of 50 paired iterations, alternating version order, same shared native fixture. Full first-run evidence remains unchanged.', results: rechecks,
     }, null, 2));
