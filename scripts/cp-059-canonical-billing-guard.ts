@@ -148,6 +148,9 @@ assert.equal(
 
 const needsReview = toCanonicalBillingEventRow(canonical({ destination: 'Needs Review' }))!;
 assert.equal(needsReview.destination, 'Needs Review', "'Needs Review' is a real value, not an error");
+const notApplicable = toCanonicalBillingEventRow(canonical({ destination: 'N/A' }))!;
+assert.equal(notApplicable.destination, 'N/A', 'PS-522 canonical N/A passes through without local classification');
+assert.equal(notApplicable.grandTotal, toCanonicalBillingEventRow(canonical())!.grandTotal, 'N/A compatibility changes no monetary field');
 
 // AC-3: a return on an international order stays International even though the parcel is
 // travelling to a US warehouse. The portal renders what it is given and does not re-derive.

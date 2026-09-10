@@ -109,8 +109,8 @@ export interface BillingInvoiceDetailRow {
   rowType?: 'Outbound' | 'Return' | null;
   /** e.g. 1234, 1234-RETURN, 1234-RETURN-2. Rendered verbatim, never minted locally. */
   displayReference?: string | null;
-  /** 'Domestic' | 'International' | 'Needs Review'. No portal country/territory comparison. */
-  destination?: 'Domestic' | 'International' | 'Needs Review' | null;
+  /** PrepShip-issued applicability/classification. No portal country/territory comparison. */
+  destination?: 'Domestic' | 'International' | 'Needs Review' | 'N/A' | null;
   /**
    * Fee PRESENCE, which is not the same fact as fee AMOUNT.
    *
