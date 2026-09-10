@@ -187,7 +187,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={query.isLoading}
           isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
@@ -197,7 +197,9 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           emptyTitle="No SKUs found"
           emptyMessage="No inventory matches this view."
         >
-          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange} tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
+          <DataTable isUpdating={query.isFetching && !query.isLoading}
+            sort={tableSort.sort} onSortChange={tableSort.onSortChange} tableId="inventory" columns={columns}
+            rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && (
             <Pagination
               page={pg.page}
@@ -269,7 +271,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={query.isLoading}
           isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
@@ -279,7 +281,9 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
           emptyTitle="No movements"
           emptyMessage="No inventory movements for the selected filters and date range."
         >
-          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange} tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
+          <DataTable isUpdating={query.isFetching && !query.isLoading}
+            sort={tableSort.sort} onSortChange={tableSort.onSortChange} tableId="inventory-history" columns={columns}
+            rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && (
             <Pagination
               page={pg.page}

@@ -99,7 +99,7 @@ export default function Inbound() {
             <p className="text-xs text-ink-3">Canonical receipts recorded in PrepShip</p>
           </div>
         </div>
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={receiptQuery.isLoading}
           isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
           isError={receiptQuery.isError}
@@ -109,7 +109,7 @@ export default function Inbound() {
           emptyTitle="No received inventory"
           emptyMessage="No PrepShip receipts have been recorded."
         >
-          <DataTable
+          <DataTable isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
             tableId="inbound-receipts"
             sort={receiptSort.sort} onSortChange={receiptSort.onSortChange}
             columns={INBOUND_RECEIPT_COLUMNS}
@@ -139,7 +139,7 @@ export default function Inbound() {
             <p className="text-xs text-ink-3">Purchase orders and ASNs arriving at the warehouse</p>
           </div>
         </div>
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={query.isLoading}
           isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
@@ -149,7 +149,7 @@ export default function Inbound() {
           emptyTitle="No inbound shipments"
           emptyMessage={isAdmin ? 'Click “New inbound” to record an expected purchase order, or Import a CSV feed.' : 'Inbound purchase orders will appear here once your operator records them.'}
         >
-          <DataTable
+          <DataTable isUpdating={query.isFetching && !query.isLoading}
             tableId="inbound"
             columns={INBOUND_COLUMNS}
             rows={rows}

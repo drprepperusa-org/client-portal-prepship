@@ -100,7 +100,7 @@ export function InvoicePeriodList(props: InvoicePeriodListProps) {
           </button>
         </div>
       </div>
-      <QueryState
+      <QueryState showUpdateStatus={false}
         isLoading={props.isLoading}
         isUpdating={props.isUpdating}
         isError={props.isError}
@@ -110,7 +110,7 @@ export function InvoicePeriodList(props: InvoicePeriodListProps) {
         emptyTitle="No billing available"
         emptyMessage="There are no billing periods available for this date range."
       >
-        <DataTable
+        <DataTable isUpdating={props.isUpdating}
           tableId="invoices-summary"
           columns={summaryColumns}
           rows={props.summary}

@@ -238,7 +238,7 @@ export default function Shipments() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={query.isLoading}
           isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
@@ -252,7 +252,7 @@ export default function Shipments() {
               : 'Outbound shipments will appear here once orders ship.'
           }
         >
-          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange}
+          <DataTable isUpdating={query.isFetching && !query.isLoading} sort={tableSort.sort} onSortChange={tableSort.onSortChange}
             tableId="shipments"
             columns={columns}
             rows={rows}

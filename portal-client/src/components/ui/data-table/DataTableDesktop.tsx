@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import type { ColumnLayout } from '@/lib/useColumnLayout';
 import { DataTableColumnControls } from '../DataTableColumnControls';
+import { TableUpdateStatus } from '../TableUpdateStatus';
 import type { Column, SortState } from './types';
 import {
   useDataTableInteractions,
@@ -171,6 +172,7 @@ function DataTableFooter<T>({
 }
 
 interface DataTableDesktopProps<T> {
+  isUpdating: boolean;
   ordered: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
@@ -192,9 +194,9 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
   const hasRowAction = props.onRowClick != null;
   return (
     <div className="hidden min-w-0 max-w-full md:block">
-      {props.customizable && (
-        <DataTableColumnControls layout={props.layout} byKey={props.byKey} />
-      )}
+      {props.customizable
+        ? <DataTableColumnControls layout={props.layout} byKey={props.byKey} isUpdating={props.isUpdating} />
+        : <TableUpdateStatus updating={props.isUpdating} />}
       <div
         className={cn(
           'max-w-full rounded-glass',

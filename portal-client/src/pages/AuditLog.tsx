@@ -332,7 +332,7 @@ export default function AuditLog() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
-        <TableUpdateStatus updating={audit.isFetching && !audit.isLoading && !audit.isError} />
+        <TableUpdateStatus updating={!visibleRows.length && audit.isFetching && !audit.isLoading && !audit.isError} />
         {audit.isLoading ? (
           <div className="space-y-3 p-5">
             {Array.from({ length: 8 }).map((_, index) => (
@@ -353,6 +353,7 @@ export default function AuditLog() {
         ) : visibleRows.length ? (
           <DataTable
             tableId="audit-log"
+            isUpdating={audit.isFetching}
             columns={columns}
             rows={visibleRows}
             rowKey={(row) => String(row.id)}

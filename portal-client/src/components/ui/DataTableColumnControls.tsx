@@ -4,13 +4,16 @@ import { Check, ChevronLeft, ChevronRight, Columns3, RotateCcw } from 'lucide-re
 import type { ColumnLayout } from '@/lib/useColumnLayout';
 import { cn } from '@/lib/cn';
 import type { Column } from './data-table/types';
+import { TableUpdateStatus } from './TableUpdateStatus';
 
 export function DataTableColumnControls<T>({
   layout,
   byKey,
+  isUpdating = false,
 }: {
   layout: ColumnLayout;
   byKey: Record<string, Column<T>>;
+  isUpdating?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -36,6 +39,7 @@ export function DataTableColumnControls<T>({
           <RotateCcw size={13} aria-hidden="true" /> Reset
         </button>
       )}
+      <TableUpdateStatus updating={isUpdating} />
       <div className="relative" ref={rootRef}>
         <button
           type="button"

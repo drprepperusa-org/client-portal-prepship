@@ -77,7 +77,7 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
           </button>
         </div>
       </div>
-      <QueryState
+      <QueryState showUpdateStatus={false}
         isLoading={props.isLoading}
         isUpdating={props.isUpdating}
         isError={props.isError}
@@ -87,7 +87,7 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
         emptyTitle="No line items"
         emptyMessage="No billable lines for this client in this billing period."
       >
-        <DataTable
+        <DataTable isUpdating={props.isUpdating}
           tableId="invoices-lines"
           columns={lineColumns}
           rows={props.lineItems}

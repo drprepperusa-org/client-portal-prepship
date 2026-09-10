@@ -214,7 +214,7 @@ export default function Dashboard() {
           <GlassPanel className="p-5">
             {/* CP-021: backend-ranked by ordered units using the same query as Analysis Top SKUs. */}
             <SectionTitle title="Top SKUs" subtitle={`By ordered units - matches Analysis (last ${days} days)`} />
-            <TableUpdateStatus updating={dash.isFetching && !loading && !dash.isError} />
+            <TableUpdateStatus updating={topSkuRows.length === 0 && dash.isFetching && !loading && !dash.isError} />
             <div className="mt-4">
               {loading ? (
                 <Skeleton className="h-40" />
@@ -223,6 +223,7 @@ export default function Dashboard() {
               ) : (
                 <DataTable
                   tableId="dashboard-top-skus"
+                  isUpdating={dash.isFetching}
                   columns={topSkuColumns}
                   rows={topSkuRows}
                   rowKey={(s) => s.sku}

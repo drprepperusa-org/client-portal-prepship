@@ -75,7 +75,7 @@ export function DataTable<T>({
 
   return (
     <div aria-busy={isUpdating}>
-      <TableUpdateStatus updating={isUpdating} />
+      <div className="md:hidden"><TableUpdateStatus updating={isUpdating} /></div>
       <DataTableDesktop
         ordered={ordered}
         rows={sortedRows}
@@ -87,6 +87,7 @@ export function DataTable<T>({
         layout={layout}
         byKey={byKey}
         customizable={customizable}
+        isUpdating={isUpdating}
         stickyHeader={stickyHeader}
         maxBodyHeight={maxBodyHeight}
         sort={sort}

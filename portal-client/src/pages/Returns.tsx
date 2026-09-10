@@ -312,7 +312,7 @@ export default function Returns() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={query.isLoading && !returnsFetchFailed}
           isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError || returnsFetchFailed}
@@ -322,7 +322,7 @@ export default function Returns() {
           emptyTitle={statusFilter || debouncedSearch ? 'No matching returns' : 'No returns yet'}
           emptyMessage="Start a return from an order or shipment, and it will appear here."
         >
-          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange}
+          <DataTable isUpdating={query.isFetching && !query.isLoading} sort={tableSort.sort} onSortChange={tableSort.onSortChange}
             tableId="returns"
             columns={columns}
             rows={rows}

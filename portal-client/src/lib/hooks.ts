@@ -214,7 +214,10 @@ export function useOrderShipments(orderId: number | null) {
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock, merged.sortBy, merged.sortDir), (t) => portalApi.inventory(t, merged), true, { retainDataScope: ['inventory', merged.clientId ?? 'scope'] });
+  return useTokenQuery(
+    portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock, merged.sortBy, merged.sortDir),
+    (t) => portalApi.inventory(t, merged), true, { retainDataScope: ['inventory', merged.clientId ?? 'scope'] },
+  );
 }
 
 export function useInventoryHistory(opts: { sortBy?: string; sortDir?: 'asc' | 'desc'; page?: number; pageSize?: number; sku?: string; type?: string } = {}) {

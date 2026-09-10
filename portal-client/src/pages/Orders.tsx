@@ -257,7 +257,7 @@ export default function Orders() {
       )}
 
       <GlassPanel className="p-2 sm:p-3">
-        <QueryState
+        <QueryState showUpdateStatus={false}
           isLoading={query.isLoading}
           isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
@@ -267,7 +267,7 @@ export default function Orders() {
           emptyTitle="No orders"
           emptyMessage={tab === 'all' ? 'No orders match this search.' : 'No orders match this tab and search.'}
         >
-          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange}
+          <DataTable isUpdating={query.isFetching && !query.isLoading} sort={tableSort.sort} onSortChange={tableSort.onSortChange}
             tableId="orders"
             columns={columns}
             rows={rows}

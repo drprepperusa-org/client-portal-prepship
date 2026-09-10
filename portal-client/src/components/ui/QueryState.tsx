@@ -7,6 +7,7 @@ import { TableUpdateStatus } from './TableUpdateStatus';
 interface QueryStateProps {
   isLoading: boolean;
   isUpdating?: boolean;
+  showUpdateStatus?: boolean;
   isError: boolean;
   error?: unknown;
   isEmpty?: boolean;
@@ -21,6 +22,7 @@ interface QueryStateProps {
 export function QueryState({
   isLoading,
   isUpdating = false,
+  showUpdateStatus = true,
   isError,
   isEmpty,
   onRetry,
@@ -42,7 +44,7 @@ export function QueryState({
   }
   return (
     <div aria-busy={isUpdating}>
-      <TableUpdateStatus updating={isUpdating} />
+      {(showUpdateStatus || isEmpty) && <TableUpdateStatus updating={isUpdating} />}
       {isEmpty ? (!isUpdating && <EmptyState icon={<Inbox size={26} />} title={emptyTitle} message={emptyMessage} />) : children}
     </div>
   );
