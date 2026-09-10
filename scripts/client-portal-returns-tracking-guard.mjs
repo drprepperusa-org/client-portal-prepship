@@ -126,7 +126,7 @@ assert(
   'Returns.tsx refreshes tracking on page load (useReturnTrackingRefresh) for label_created / in_transit rows in 100-id batches',
 );
 assert(
-  returnsAdapter.includes("'/api/client-portal/returns/refresh-tracking'") && /refreshReturnTracking:\s*\(token: string, returnIds: number\[\]\)/.test(returnsAdapter),
+  returnsAdapter.includes("'/api/client-portal/returns/refresh-tracking'") && /refreshReturnTracking:\s*\(token: (?:string|RequestAuth), returnIds: number\[\]\)/.test(returnsAdapter),
   'the returns adapter posts return ids to /api/client-portal/returns/refresh-tracking',
 );
 assert(

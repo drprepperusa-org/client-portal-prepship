@@ -99,9 +99,17 @@ try {
   await db.insert(schema.shipments).values({orderId:null,orderNumber:foreign.orderNumber,clientId:other!.id,voided:false,isReturn:false});
   check((await getPortalOrder(scope,foreign.id))?.fulfillmentStatus,'pending','foreign orphan cannot supply fulfillment');
   check((await post(foreign.id)).status,409,'foreign orphan cannot grant return');
+  // CP-069: a label row alone never proves an order shipped (AC-2). A same-client outbound
+  // orphan still counts as the order's outbound evidence — proven on a SHIPPED order below —
+  // but an awaiting order stays Awaiting shipment and cannot start a return.
   const ownOrphan=await seed('awaiting_shipment');
   await db.insert(schema.shipments).values({orderId:null,orderNumber:ownOrphan.orderNumber,clientId,voided:false,isReturn:false});
-  check((await post(ownOrphan.id)).status,201,'same-client outbound orphan compatibility retained');
+  check((await getPortalOrder(scope,ownOrphan.id))?.fulfillmentStatus,'pending','same-client orphan label on an awaiting order does not promote it (CP-069)');
+  check((await post(ownOrphan.id)).status,409,'an awaiting order with only an orphan label cannot start a return (CP-069)');
+  const shippedOrphan=await seed('shipped',[{voided:true}]);
+  await db.insert(schema.shipments).values({orderId:null,orderNumber:shippedOrphan.orderNumber,clientId,voided:false,isReturn:false});
+  check((await getPortalOrder(scope,shippedOrphan.id))?.fulfillmentStatus,'shipped','same-client outbound orphan is active outbound evidence for a shipped order (not Voided)');
+  check((await post(shippedOrphan.id)).status,201,'same-client outbound orphan compatibility retained for a shipped order');
   check(networkCalls,0,'no provider, storage, postage or external calls');
   console.log(`PASS ${checks} PS486 PostgreSQL route/read-model checks`);
 } finally { await pg.end({timeout:5}); }

@@ -1339,8 +1339,13 @@ test('CP-069 AC-3: the Shipments list renders the five-value contract and filter
   await expect(table.getByText('Cancelled', { exact: true })).toHaveCount(0);
   await expect(table.getByText('Unavailable', { exact: true })).toHaveCount(0);
   await expect(table.getByRole('button', { name: /^View shipment / })).toHaveCount(1);
-  // The initial load asked for no status, and nothing sent a legacy carrier alias.
-  expect(listRequests.map(statusParamOf)).toEqual([null, 'shipped']);
+  // The initial load asked for no status, the filter asked for the contract value, and nothing
+  // ever sent a legacy carrier alias. (React Query may re-issue an identical request while it
+  // retains the previous rows, so the sequence is checked by shape, not by exact count.)
+  const statuses = listRequests.map(statusParamOf);
+  expect(statuses[0]).toBeNull();
+  expect(statuses.at(-1)).toBe('shipped');
+  expect(statuses.every((status) => status === null || status === 'shipped')).toBe(true);
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

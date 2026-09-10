@@ -209,6 +209,34 @@ landed, adjusted by the deliberate scope decisions listed at the end.
   (deferred follow-up); `orderStatusMeta` is therefore retained for the Analysis
   raw `order_status` rendering, with its `delivered` arm removed.
 
+### Integration with PS-486 (landed on `main` while CP-069 was in review)
+
+PS-486 ("align portal order status and enforce return eligibility") shipped the
+same architectural stance in the old vocabulary. CP-069 was rebased onto it and
+carries its intent forward on the new contract:
+
+- `src/services/return-eligibility.ts` keys on the resolver's four values:
+  `shipped` → allowed; `pending` / `cancelled` / `voided` → denied with PS-486's
+  reasons. Carrier telemetry is not an input. Consequence (AC-2): an awaiting
+  order whose only evidence is a label row can no longer start a return.
+- `src/lib/client-portal/order-fulfillment-signals.ts` (PS-486's one shared
+  projection for list, detail and the transactional return-request recheck) now
+  exports exactly the two OUTBOUND signals from `order-lifecycle.ts`;
+  `return-request.ts` re-reads `order_status`, `canonical_status`,
+  `externally_shipped`, `raw` and those two signals inside its lock.
+- `orderFulfillmentStatusSql()` (the SQL projection PS-486 added for sorting the
+  Orders table by Status) is now the resolver above written in SQL — PrepShip's
+  effective CASE, the two outbound signals, and `raw->externallyFulfilled` read
+  with `booleanOrNull` semantics; `client-portal-table-sort-guard.ts` executes
+  it against the TS twin on 1,280 signal combinations (the matrix found a NULL
+  handling bug in the first version).
+- The shared `OrderStatusBadge` component PS-486 introduced renders through
+  `fulfillmentStatusMeta`; its private label map (with In Transit / Delivered)
+  is gone. `docs/ps486-portal-status-return-eligibility.md` carries a
+  vocabulary note; its browser and PostgreSQL proofs are re-expressed
+  ("delivered" reads Shipped; the same-client orphan case is proven on a shipped
+  order and denied on an awaiting one).
+
 ### Deliberate scope decisions (do not "fix" in review)
 
 - Dashboard per-day awaiting/shipped/cancelled counters, `GET /daily-counts`,

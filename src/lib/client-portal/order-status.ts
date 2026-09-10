@@ -110,10 +110,12 @@ export function resolveOrderFulfillmentStatus(signals: OrderFulfillmentSignals):
 export function orderFulfillmentStatusSql(): SQL<OrderFulfillmentStatus> {
   const effective = orderLifecycleEffectiveStatusSql();
   const signals = orderFulfillmentSignalSelects();
-  const externallyFulfilledTrue = sql`(
+  // coalesce(..., false): a missing key makes jsonb_typeof NULL, and a NULL inside `and not`
+  // would silently skip the voided arm (the sort guard's exhaustive matrix caught exactly that).
+  const externallyFulfilledTrue = sql`coalesce((
     jsonb_typeof(${orders.raw}->'externallyFulfilled') = 'boolean'
     and (${orders.raw}->'externallyFulfilled')::text = 'true'
-  )`;
+  ), false)`;
   return sql<OrderFulfillmentStatus>`case
     when ${effective} = 'cancelled' then 'cancelled'
     when ${effective} = 'shipped' then (case

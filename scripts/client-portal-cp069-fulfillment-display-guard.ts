@@ -408,13 +408,16 @@ check(
   "GET /orders whitelists ?status via isPortalOrderStatusFilter (undefined / 'all' = unfiltered) and answers 400 otherwise",
 );
 const ordersReadModel = read('src/lib/client-portal/read-models/orders.ts');
+const signalsProjection = stripComments(read('src/lib/client-portal/order-fulfillment-signals.ts'));
 check(
   !/tracking_status|activeTrackingStatus/.test(ordersReadModel) &&
     (stripComments(ordersReadModel).match(/orderOutboundShipmentMatchSql\('s'\)/g) ?? []).length === 2 &&
-    ordersReadModel.includes('hasActiveOutboundShipmentSql()') &&
-    ordersReadModel.includes('hasVoidedOutboundShipmentSql()') &&
+    (stripComments(ordersReadModel).match(/\.\.\.orderFulfillmentSignalSelects\(\)/g) ?? []).length === 2 &&
+    signalsProjection.includes('hasActiveOutboundShipment: hasActiveOutboundShipmentSql()') &&
+    signalsProjection.includes('hasVoidedOutboundShipment: hasVoidedOutboundShipmentSql()') &&
+    !/tracking_status|activeTrackingStatus/.test(signalsProjection) &&
     ordersReadModel.includes("PORTAL_ORDER_STATUS_FILTERS = ['awaiting_shipment', 'shipped', 'cancelled']"),
-  'read-models/orders.ts: no tracking_status subquery; tracking/carrier subqueries use orderOutboundShipmentMatchSql; signals from the shared exists() fragments; 3 tab ids',
+  'read-models/orders.ts: no tracking_status subquery; tracking/carrier subqueries use orderOutboundShipmentMatchSql; signals via the PS-486 projection = the shared exists() fragments; 3 tab ids',
 );
 
 // No SQL ::boolean cast of raw externallyFulfilled anywhere under the client-portal lib/routes.
