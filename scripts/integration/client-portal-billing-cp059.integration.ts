@@ -897,7 +897,7 @@ async function main(): Promise<void> {
     await db.execute(rawSql`delete from clients where id = ${CLIENT}`);
   }
 
-  const EXPECTED_CHECKS = 27;
+  const EXPECTED_CHECKS = 28;
   if (checks !== EXPECTED_CHECKS) {
     throw new Error(`expected ${EXPECTED_CHECKS} checks to run; ${checks} did`);
   }
