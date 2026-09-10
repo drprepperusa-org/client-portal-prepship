@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { AlertTriangle, Inbox } from 'lucide-react';
 import { SkeletonRows, EmptyState } from './Display';
 import { Button } from './Button';
+import { TableUpdateStatus } from './TableUpdateStatus';
 
 interface QueryStateProps {
   isLoading: boolean;
+  isUpdating?: boolean;
   isError: boolean;
   error?: unknown;
   isEmpty?: boolean;
@@ -18,6 +20,7 @@ interface QueryStateProps {
 /** Consistent loading / error / empty wrapper for live-data panels. */
 export function QueryState({
   isLoading,
+  isUpdating = false,
   isError,
   isEmpty,
   onRetry,
@@ -37,6 +40,10 @@ export function QueryState({
       />
     );
   }
-  if (isEmpty) return <EmptyState icon={<Inbox size={26} />} title={emptyTitle} message={emptyMessage} />;
-  return <>{children}</>;
+  return (
+    <div aria-busy={isUpdating}>
+      <TableUpdateStatus updating={isUpdating} />
+      {isEmpty ? (!isUpdating && <EmptyState icon={<Inbox size={26} />} title={emptyTitle} message={emptyMessage} />) : children}
+    </div>
+  );
 }

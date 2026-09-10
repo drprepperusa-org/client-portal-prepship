@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test:client-portal-table-sorting": "tsx scripts/client-portal-table-sort-guard.ts",
+    "test:portal-table-retention": "tsx scripts/portal-table-retention-test.ts",
     "test:client-portal-table-sorting:browser": "playwright test web/e2e/client-portal-table-sorting.spec.js --workers=1 --reporter=line",
     "audit:client-portal-maintainability": "node scripts/client-portal-maintainability-audit.mjs",
     "audit:client-portal-ui": "npm run test:client-portal-ui",

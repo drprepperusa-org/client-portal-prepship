@@ -189,6 +189,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
       <GlassPanel className="p-2 sm:p-3">
         <QueryState
           isLoading={query.isLoading}
+          isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
           error={query.error}
           isEmpty={rows.length === 0}
@@ -270,6 +271,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
       <GlassPanel className="p-2 sm:p-3">
         <QueryState
           isLoading={query.isLoading}
+          isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
           error={query.error}
           isEmpty={rows.length === 0}

@@ -314,6 +314,7 @@ export default function Returns() {
       <GlassPanel className="p-2 sm:p-3">
         <QueryState
           isLoading={query.isLoading && !returnsFetchFailed}
+          isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError || returnsFetchFailed}
           error={query.error}
           isEmpty={rows.length === 0}

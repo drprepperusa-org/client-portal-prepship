@@ -4,6 +4,7 @@ import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { Chip, EmptyState, Skeleton } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { TableUpdateStatus } from '@/components/ui/TableUpdateStatus';
 import { useAuditLog, useCanCustomizeTables } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import type { PortalAuditLogRow } from '@/lib/api';
@@ -331,6 +332,7 @@ export default function AuditLog() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
+        <TableUpdateStatus updating={audit.isFetching && !audit.isLoading && !audit.isError} />
         {audit.isLoading ? (
           <div className="space-y-3 p-5">
             {Array.from({ length: 8 }).map((_, index) => (

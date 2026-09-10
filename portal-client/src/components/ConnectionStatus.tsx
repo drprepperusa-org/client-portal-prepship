@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useIsFetching } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 
 /**
@@ -15,20 +14,10 @@ import { AnimatePresence, motion } from 'framer-motion';
  * they never trip this. It clears the instant a request succeeds.
  */
 export function ConnectionStatus() {
-  const queryClient = useQueryClient();
-  const [reconnecting, setReconnecting] = useState(false);
-
-  useEffect(() => {
-    const cache = queryClient.getQueryCache();
-    const recompute = () =>
-      setReconnecting(
-        cache
-          .getAll()
-          .some((q) => q.state.fetchStatus === 'fetching' && q.state.fetchFailureCount > 0),
-      );
-    recompute();
-    return cache.subscribe(recompute);
-  }, [queryClient]);
+  // React Query batches notifications safely when filters create queries during render.
+  const reconnecting = useIsFetching({
+    predicate: (q) => q.state.fetchStatus === 'fetching' && q.state.fetchFailureCount > 0,
+  }) > 0;
 
   return (
     <AnimatePresence>

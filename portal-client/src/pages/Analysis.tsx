@@ -7,6 +7,7 @@ import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState, Chip } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { TableUpdateStatus } from '@/components/ui/TableUpdateStatus';
 import { QueryState } from '@/components/ui/QueryState';
 import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
@@ -183,6 +184,7 @@ export default function Analysis() {
         ) : (
           <DataTable
             tableId="analysis"
+            isUpdating={analysis.isFetching && !loading}
             columns={columns}
             rows={rows}
             rowKey={(r) => `${r.sku}-${r.client_id ?? ''}`}
@@ -198,6 +200,7 @@ export default function Analysis() {
       {/* Order combinations */}
       <GlassPanel className="p-5">
         <SectionTitle title="Order combinations" subtitle={`Sold order mixes (${days}d)`} />
+        <TableUpdateStatus updating={analysis.isFetching && !loading} />
         <div className="mt-4">
           {loading ? (
             <Skeleton className="h-48" />

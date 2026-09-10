@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { invoiceRowKey } from '@/lib/invoiceRows';
-import { ChevronLeft, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
+import { ChevronLeft, FileSpreadsheet, FileText } from 'lucide-react';
 import type { InvoiceShipmentSelection } from '@/components/billing/InvoiceShipmentDrawer';
 import { DataTable } from '@/components/ui/DataTable';
 import { GlassPanel } from '@/components/ui/Glass';
@@ -55,11 +55,6 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
           Line items — {props.selected.clientName} · {periodLabel(props.selected.from, props.selected.to)}
         </p>
         <div className="flex shrink-0 items-center gap-3">
-          {props.isUpdating && (
-            <span role="status" className="inline-flex items-center gap-1 text-xs text-ink-3">
-              <Loader2 size={13} className="animate-spin" aria-hidden="true" /> Updating…
-            </span>
-          )}
           <span className="hidden text-xs text-ink-3 sm:inline">
             {(props.pagination?.total ?? props.lineItems.length).toLocaleString()} lines
           </span>
@@ -84,6 +79,7 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
       </div>
       <QueryState
         isLoading={props.isLoading}
+        isUpdating={props.isUpdating}
         isError={props.isError}
         error={props.error}
         isEmpty={props.lineItems.length === 0}

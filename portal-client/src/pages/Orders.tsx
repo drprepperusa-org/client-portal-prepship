@@ -259,6 +259,7 @@ export default function Orders() {
       <GlassPanel className="p-2 sm:p-3">
         <QueryState
           isLoading={query.isLoading}
+          isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
           error={query.error}
           isEmpty={rows.length === 0}

@@ -6,6 +6,7 @@ import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { StatCard } from '@/components/ui/StatCard';
 import { Skeleton, EmptyState, Tooltip } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { TableUpdateStatus } from '@/components/ui/TableUpdateStatus';
 import { QueryState } from '@/components/ui/QueryState';
 import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
@@ -213,6 +214,7 @@ export default function Dashboard() {
           <GlassPanel className="p-5">
             {/* CP-021: backend-ranked by ordered units using the same query as Analysis Top SKUs. */}
             <SectionTitle title="Top SKUs" subtitle={`By ordered units - matches Analysis (last ${days} days)`} />
+            <TableUpdateStatus updating={dash.isFetching && !loading && !dash.isError} />
             <div className="mt-4">
               {loading ? (
                 <Skeleton className="h-40" />

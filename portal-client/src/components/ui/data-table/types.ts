@@ -31,6 +31,7 @@ interface DataTableCommonProps<T> {
   allowColumnCustomization?: boolean;
   stickyHeader?: boolean;
   maxBodyHeight?: string;
+  isUpdating?: boolean;
 }
 
 export type DataTableProps<T> = DataTableCommonProps<T> & (

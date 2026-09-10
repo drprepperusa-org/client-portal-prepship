@@ -101,6 +101,7 @@ export default function Inbound() {
         </div>
         <QueryState
           isLoading={receiptQuery.isLoading}
+          isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
           isError={receiptQuery.isError}
           error={receiptQuery.error}
           isEmpty={receiptRows.length === 0}
@@ -140,6 +141,7 @@ export default function Inbound() {
         </div>
         <QueryState
           isLoading={query.isLoading}
+          isUpdating={query.isFetching && !query.isLoading}
           isError={query.isError}
           error={query.error}
           isEmpty={rows.length === 0}

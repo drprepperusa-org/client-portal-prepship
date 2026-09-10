@@ -11,12 +11,12 @@ type TokenQueryOpts = {
   /** Background poll interval (ms). Mirrors v4's live auto-sync. */
   refetchInterval?: number;
   refetchOnWindowFocus?: boolean;
-  /** Preserve display rows only within this exact scope while sort/page changes load. */
+  /** Preserve display rows only within this exact scope while sort/filter/page changes load. */
   retainDataScope?: readonly unknown[];
 };
 
 /** Wraps a portal query so it only runs once we have an access token. */
-function useTokenQuery<T>(key: unknown[], fn: (token: RequestAuth) => Promise<T>, enabled = true, opts: TokenQueryOpts = {}) {
+export function useTokenQuery<T>(key: unknown[], fn: (token: RequestAuth) => Promise<T>, enabled = true, opts: TokenQueryOpts = {}) {
   const { accessToken, userId } = useAuth();
   const retentionScope = opts.retainDataScope
     ? JSON.stringify(portalQueryKey(userId, opts.retainDataScope))
@@ -53,6 +53,7 @@ export function useAuditLog(search = '', limit = 100, storeId?: number | null) {
   return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores'], (t) => portalApi.auditLog(t, { search, limit, storeId }), true, {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
+    retainDataScope: ['audit-log', storeId ?? 'all-stores'],
   });
 }
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
@@ -70,7 +71,7 @@ export function useAwaitingCount() {
 
 export function useDashboard() {
   const { dateRange, clientId } = usePortalFilters();
-  return useTokenQuery(portalReadKeys.dashboard(dateRange.dateFrom, dateRange.dateTo, clientId), (t) => portalApi.dashboard(t, dateRange, clientId));
+  return useTokenQuery(portalReadKeys.dashboard(dateRange.dateFrom, dateRange.dateTo, clientId), (t) => portalApi.dashboard(t, dateRange, clientId), true, { retainDataScope: ['dashboard', clientId ?? 'scope'] });
 }
 export function useDailyCounts() {
   const { dateRange, clientId } = usePortalFilters();
@@ -85,7 +86,7 @@ export function useAnalysis() {
   // so Analysis re-fetches when the client switcher changes and stays in
   // lock-step with the Dashboard's scope.
   const { dateRange, clientId } = usePortalFilters();
-  return useTokenQuery(['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.analysis(t, dateRange, clientId));
+  return useTokenQuery(['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.analysis(t, dateRange, clientId), true, { retainDataScope: ['analysis', clientId ?? 'scope'] });
 }
 export function useReports() {
   const { dateRange } = usePortalFilters();
@@ -160,7 +161,7 @@ export function useInvoicePeriodSummaryRange(
     ['invoice-period-summary-range', dateFrom, dateTo, granularity, clientId ?? 'scope'],
     (t) => portalApi.invoicePeriodSummaryRange(t, dateFrom, dateTo, clientId, granularity),
     Boolean(dateFrom && dateTo),
-    { refetchInterval: 60_000, refetchOnWindowFocus: true },
+    { refetchInterval: 60_000, refetchOnWindowFocus: true, retainDataScope: ['invoice-period-summary-range', clientId ?? 'scope'] },
   );
 }
 
@@ -179,16 +180,17 @@ export function useOrders(opts: ListOpts = {}) {
     // CP-037: refetchOnWindowFocus false so returning to the tab can't trigger an
     // Orders refetch/render burst outside the 10-minute cadence. The Orders page
     // Sync button still invalidates + refetches immediately on click.
-    { refetchInterval: LIVE_ORDERS_MS, refetchOnWindowFocus: false },
+    { refetchInterval: LIVE_ORDERS_MS, refetchOnWindowFocus: false, retainDataScope: ['orders', merged.clientId ?? 'scope'] },
   );
 
   useEffect(() => {
     if (merged.status !== 'awaiting_shipment' || merged.search) return;
-    if (!query.data?.pagination) return;
+    // Placeholder rows belong to the previous filter and cannot update a live count.
+    if (query.isPlaceholderData || !query.data?.pagination) return;
     qc.setQueryData(portalQueryKey(userId, ['awaiting-count', merged.clientId ?? 'scope']), {
       count: query.data.pagination.total,
     });
-  }, [userId, merged.clientId, merged.search, merged.status, qc, query.data?.pagination]);
+  }, [userId, merged.clientId, merged.search, merged.status, qc, query.data?.pagination, query.isPlaceholderData]);
 
   return query;
 }
@@ -198,6 +200,7 @@ export function useShipments(opts: ListOpts = {}) {
   return useTokenQuery(
     ['shipments', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.status ?? 'all', merged.clientId ?? 'scope', merged.sortBy, merged.sortDir],
     (t) => portalApi.shipments(t, merged),
+    true, { retainDataScope: ['shipments', merged.clientId ?? 'scope'] },
   );
 }
 /** Shipments for one order — powers the Billing Order # shipment modal. */
@@ -211,14 +214,15 @@ export function useOrderShipments(orderId: number | null) {
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock, merged.sortBy, merged.sortDir), (t) => portalApi.inventory(t, merged));
+  return useTokenQuery(portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock, merged.sortBy, merged.sortDir), (t) => portalApi.inventory(t, merged), true, { retainDataScope: ['inventory', merged.clientId ?? 'scope'] });
 }
 
 export function useInventoryHistory(opts: { sortBy?: string; sortDir?: 'asc' | 'desc'; page?: number; pageSize?: number; sku?: string; type?: string } = {}) {
-  const { dateRange } = usePortalFilters();
+  const { dateRange, clientId } = usePortalFilters();
   return useTokenQuery(
-    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, opts.pageSize ?? 50, dateRange.dateFrom, dateRange.dateTo, opts.sortBy, opts.sortDir],
+    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, opts.pageSize ?? 50, dateRange.dateFrom, dateRange.dateTo, opts.sortBy, opts.sortDir, clientId ?? 'scope'],
     (t) => portalApi.inventoryHistory(t, { ...opts, dateRange }),
+    true, { retainDataScope: ['inventory-history', clientId ?? 'scope'] },
   );
 }
 export const useIntegrations = () => useTokenQuery(['integrations'], portalApi.integrations);
@@ -247,6 +251,7 @@ export function useReturns(opts: ListOpts & { orderId?: number } = {}) {
   return useTokenQuery(
     ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.orderId ?? 0, merged.clientId ?? 'scope', merged.sortBy, merged.sortDir],
     (t) => portalApi.returns(t, merged),
+    true, { retainDataScope: ['returns', merged.clientId ?? 'scope', merged.orderId ?? 0] },
   );
 }
 export function useReturnDetail(id: number | null) {

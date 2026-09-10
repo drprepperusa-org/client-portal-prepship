@@ -25,6 +25,7 @@ interface InvoicePeriodListProps {
   opening: string | null;
   canCustomizeTables: boolean;
   isLoading: boolean;
+  isUpdating: boolean;
   isError: boolean;
   error: unknown;
   onRetry: () => void;
@@ -101,6 +102,7 @@ export function InvoicePeriodList(props: InvoicePeriodListProps) {
       </div>
       <QueryState
         isLoading={props.isLoading}
+        isUpdating={props.isUpdating}
         isError={props.isError}
         error={props.error}
         isEmpty={props.summary.length === 0}

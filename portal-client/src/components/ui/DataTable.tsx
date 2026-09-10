@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useColumnLayout } from '@/lib/useColumnLayout';
 import { DataTableDesktop } from './data-table/DataTableDesktop';
 import { DataTableMobile } from './data-table/DataTableMobile';
+import { TableUpdateStatus } from './TableUpdateStatus';
 import type { Column, DataTableProps, SortState } from './data-table/types';
 
 export type { Column } from './data-table/types';
@@ -21,6 +22,7 @@ export function DataTable<T>({
   onSortChange,
   allowColumnCustomization = false,
   stickyHeader = false,
+  isUpdating = false,
   maxBodyHeight = 'calc(100vh - 15rem)',
 }: DataTableProps<T>) {
   // Structural layout remains an explicit admin/global opt-in. Without it,
@@ -69,10 +71,11 @@ export function DataTable<T>({
     });
   }, [rows, sort, columns, controlled]);
 
-  if (rows.length === 0 && empty) return <>{empty}</>;
+  if (rows.length === 0 && empty) return <div aria-busy={isUpdating}><TableUpdateStatus updating={isUpdating} />{empty}</div>;
 
   return (
-    <>
+    <div aria-busy={isUpdating}>
+      <TableUpdateStatus updating={isUpdating} />
       <DataTableDesktop
         ordered={ordered}
         rows={sortedRows}
@@ -99,6 +102,6 @@ export function DataTable<T>({
         onRowClick={onRowClick}
         rowActionLabel={rowActionLabel}
       />
-    </>
+    </div>
   );
 }

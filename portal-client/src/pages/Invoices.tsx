@@ -100,6 +100,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           opening={actions.opening}
           canCustomizeTables={canCustomizeTables}
           isLoading={summaryQuery.isLoading || clientsQuery.isLoading}
+          isUpdating={summaryQuery.isFetching && !summaryQuery.isLoading}
           isError={summaryQuery.isError || clientsQuery.isError}
           error={summaryQuery.error}
           onRetry={() => { void Promise.all([summaryQuery.refetch(), clientsQuery.refetch()]); }}

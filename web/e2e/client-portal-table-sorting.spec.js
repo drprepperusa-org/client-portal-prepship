@@ -73,6 +73,111 @@ for(const t of tables) test(`${t.api}: sorts full result, persists on page 2, re
   expect(requests.at(-1)).toMatchObject({p:1,key:t.key,dir:'desc'});
 });
 
+for (const t of tables) test(`${t.api}: pending sort retains rows and shows Updating until the response arrives`, async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const body = { data: [37, 1].map(t.row), pagination: { page: 1, pageSize: 50, total: 2, totalPages: 1 } };
+  await setup(page, url => url.pathname === `/api/client-portal${t.api}` ? body : undefined);
+  await page.goto(base + t.path);
+  if (t.history) await page.getByRole('button', { name: 'History', exact: true }).click();
+  const table = page.locator('table').filter({ has: page.getByRole('button', { name: t.header, exact: true }) });
+  const first = table.locator('tbody tr').first().locator('td').nth(t.col);
+  await expect(first).toHaveText('SORT-37');
+  await first.evaluate(node => { node.dataset.retained = 'original'; });
+  const pending = [];
+  await page.route(`**/api/client-portal${t.api}?**`, route => { pending.push(route); });
+  await table.getByRole('button', { name: t.header, exact: true }).click();
+  await expect.poll(() => pending.length).toBe(1);
+  await expect(page.getByRole('status')).toHaveText('Updating…');
+  await expect(first).toHaveText('SORT-37');
+  await expect(first).toHaveAttribute('data-retained', 'original');
+  await pending[0].fulfill({ json: { ...body, data: [1, 37].map(t.row) } });
+  await expect(first).toHaveText('SORT-1');
+  await expect(page.getByRole('status')).toHaveCount(0);
+  // Returning to a fresh cached sort requires no request or artificial spinner.
+  await table.getByRole('button', { name: t.header, exact: true }).click();
+  await expect.poll(() => pending.length).toBe(2);
+  await table.getByRole('button', { name: t.header, exact: true }).click();
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(first).toHaveText('SORT-1');
+  await pending[1].fulfill({ json: { ...body, data: [99].map(t.row) } }).catch(() => {});
+  await expect(first).toHaveText('SORT-1');
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+test('Inventory filter retains rows, an empty response clears them, and client changes hide old rows', async ({ page }) => {
+  const errors = [];
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const body = { data: [tables[1].row(37)], pagination: { page: 1, pageSize: 100, total: 1, totalPages: 1 } };
+  await setup(page, url => {
+    if (url.pathname.endsWith('/inventory')) return body;
+    if (url.pathname.endsWith('/clients')) return { data: [{ id: 1, name: 'Alpha' }, { id: 2, name: 'Beta' }] };
+  });
+  await page.goto(base + '/inventory');
+  const cell = page.getByRole('table').getByText('SORT-37', { exact: true }).first();
+  await expect(cell).toBeVisible();
+  const pending = [];
+  await page.route('**/api/client-portal/inventory?**', route => { pending.push(route); });
+  await page.getByRole('textbox', { name: 'Search inventory' }).fill('missing');
+  await expect.poll(() => pending.length).toBe(1);
+  await expect(page.getByRole('status')).toHaveText('Updating…');
+  await expect(cell).toBeVisible();
+  await pending[0].fulfill({ json: { data: [], pagination: { ...body.pagination, total: 0 } } });
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(cell).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Search inventory' }).fill('available');
+  await expect.poll(() => pending.length).toBe(2);
+  await expect(page.getByRole('status')).toHaveText('Updating…');
+  await pending[1].fulfill({ json: body });
+  await expect(cell).toBeVisible();
+  await page.getByRole('button', { name: 'All clients', exact: true }).click();
+  await page.getByRole('button', { name: 'Beta', exact: true }).click();
+  await expect.poll(() => pending.length).toBe(3);
+  await expect(cell).toHaveCount(0);
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await pending[2].fulfill({ json: { ...body, data: [tables[1].row(88)] } });
+  await expect(page.getByRole('table').getByText('SORT-88', { exact: true }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('mobile return sort shows the shared updating status', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const body = { data: [tables[3].row(37)], pagination: { page: 1, pageSize: 50, total: 1, totalPages: 1 } };
+  await setup(page, url => url.pathname.endsWith('/returns') ? body : undefined);
+  await page.goto(base + '/returns');
+  const sort = page.getByRole('combobox', { name: 'Sort by', exact: true });
+  await expect(sort).toBeVisible();
+  let pending;
+  await page.route('**/api/client-portal/returns?**', route => { pending = route; });
+  await sort.selectOption('returnReference');
+  await expect.poll(() => Boolean(pending)).toBe(true);
+  await expect(page.getByRole('status')).toBeVisible();
+  await expect(sort).toBeVisible();
+  await pending.fulfill({ json: body });
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+test('failed filter stops Updating and supports Retry', async ({ page }) => {
+  const body = { data: [tables[1].row(37)], pagination: { page: 1, pageSize: 100, total: 1, totalPages: 1 } };
+  await setup(page, url => url.pathname.endsWith('/inventory') ? body : undefined);
+  await page.goto(base + '/inventory');
+  await expect(page.getByRole('table')).toBeVisible();
+  let pending;
+  await page.route('**/api/client-portal/inventory?**', route => { pending = route; });
+  await page.getByRole('textbox', { name: 'Search inventory' }).fill('test-failure');
+  await expect.poll(() => Boolean(pending)).toBe(true);
+  await expect(page.getByRole('status')).toHaveText('Updating…');
+  await pending.fulfill({ status: 400, json: { error: 'Fixture rejection' } });
+  await expect(page.getByText("Couldn't load data")).toBeVisible();
+  await expect(page.getByRole('status')).toHaveCount(0);
+  pending = null;
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect.poll(() => Boolean(pending)).toBe(true);
+  await pending.fulfill({ json: body });
+  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
 test('Billing defaults to Reference descending and maps every header to canonical sort intent',async({page})=>{
   await page.setViewportSize({width:1440,height:900});
   const requests=[];
