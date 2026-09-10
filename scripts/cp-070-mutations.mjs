@@ -42,6 +42,9 @@ const mutations = [
   { id: 'C6-key-drops-client', description: 'the verdict cache key ignores the client filter',
     file: HOOKS, find: "    ['billing-finalization-coverage', from, to, clientId ?? 'scope', authGeneration],",
     replace: "    ['billing-finalization-coverage', from, to, authGeneration]," },
+  { id: 'C7-key-drops-auth-generation', description: 'a same-user token change reuses the verdict fetched under the old token',
+    file: HOOKS, find: "    ['billing-finalization-coverage', from, to, clientId ?? 'scope', authGeneration],",
+    replace: "    ['billing-finalization-coverage', from, to, clientId ?? 'scope']," },
 ];
 
 const suites = [

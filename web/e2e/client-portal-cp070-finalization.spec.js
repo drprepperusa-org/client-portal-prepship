@@ -38,6 +38,35 @@ const adminSession = () => ({
   },
 });
 
+/** A session for any user, with a distinct access token per `salt`. */
+const sessionFor = (userId, email, salt) => {
+  const base = adminSession();
+  return {
+    ...base,
+    access_token: [
+      encodeJwtPart({ alg: 'HS256', typ: 'JWT' }),
+      encodeJwtPart({
+        aud: 'authenticated', exp: 4_102_444_800, sub: userId, email, session_id: salt,
+        role: 'authenticated', app_metadata: { role: 'admin', permissions: ['scope:global'] },
+      }),
+      'e2e-signature',
+    ].join('.'),
+    user: { ...base.user, id: userId, email },
+  };
+};
+
+/**
+ * Deterministic auth-event seam: supabase-js relays auth events between tabs on a BroadcastChannel
+ * named after its storage key and hands them to onAuthStateChange subscribers. Posting one here
+ * drives the REAL AuthProvider -> useAuth -> query-key lifecycle, with no live token refresh and
+ * no test-only code in the app.
+ */
+const broadcastAuth = (page, event, session) => page.evaluate(({ key, event, session }) => {
+  const channel = new BroadcastChannel(key);
+  channel.postMessage({ event, session });
+  channel.close();
+}, { key: storageKey, event, session });
+
 const CLIENTS = [{ id: 1, name: 'Acme' }, { id: 2, name: 'Beta' }];
 const summary = (url) => ({
   data: [{
@@ -71,8 +100,9 @@ async function setupBilling(page, coverage, { summaryStatus = 200 } = {}) {
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === COVERAGE_PATH) {
-      requests.coverage.push(Object.fromEntries(url.searchParams));
-      const answer = await coverage(url, requests.coverage.length);
+      const authorization = route.request().headers()['authorization'] ?? null;
+      requests.coverage.push({ ...Object.fromEntries(url.searchParams), authorization });
+      const answer = await coverage(url, requests.coverage.length, authorization);
       if (answer.delayMs) await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
       await route.fulfill({
         status: answer.status ?? 200, contentType: 'application/json', body: JSON.stringify(answer.body ?? {}),
@@ -255,4 +285,47 @@ test('CP-070 AC-5 — an account that cannot see billing gets no banner and no f
   await page.waitForTimeout(1000);
   await expect(banner(page)).toHaveCount(0);
   expect(requests.coverage).toEqual([]);
+});
+
+test.describe('CP-070 AC-3 — auth transitions', () => {
+  /** Waits until a verdict was actually fetched and settled closed, so "no banner" is not "not rendered yet". */
+  async function settleClosed(page, requests) {
+    await expect(periodsHeading(page)).toBeVisible();
+    await expect.poll(() => requests.coverage.length).toBeGreaterThan(0);
+    await expect(banner(page)).toHaveCount(0, { timeout: 10_000 });
+  }
+
+  test('an account switch never shows the previous user\'s closed verdict', async ({ page }) => {
+    const other = sessionFor('e2e-other-admin', 'other-admin@portal-e2e.test', 'other-session');
+    const otherBearer = `Bearer ${other.access_token}`;
+    const { requests, errors } = await setupBilling(page, (url, _n, authorization) => (authorization === otherBearer
+      ? verdict(url, 'open', { delayMs: 1500 })
+      : verdict(url, 'closed')));
+    await page.goto(`${baseUrl}/billing`);
+    await settleClosed(page, requests);
+
+    await broadcastAuth(page, 'SIGNED_IN', other);
+    // The first user's closed verdict is gone: the new user sees a pending check, then their own answer.
+    await expect(banner(page)).toHaveText(CHECKING_COPY);
+    await expect(banner(page)).toHaveAttribute('data-state', 'open', { timeout: 10_000 });
+    expect(requests.coverage.some((request) => request.authorization === otherBearer)).toBeTruthy();
+    expect(errors).toEqual([]);
+  });
+
+  test('a same-user token change re-confirms with the new token instead of trusting the cached verdict', async ({ page }) => {
+    const refreshed = sessionFor('e2e-admin', 'admin@portal-e2e.test', 'refreshed-session');
+    const refreshedBearer = `Bearer ${refreshed.access_token}`;
+    const { requests, errors } = await setupBilling(page, (url, _n, authorization) => (authorization === refreshedBearer
+      ? verdict(url, 'closed', { delayMs: 1500 })
+      : verdict(url, 'closed')));
+    await page.goto(`${baseUrl}/billing`);
+    await settleClosed(page, requests);
+
+    await broadcastAuth(page, 'TOKEN_REFRESHED', refreshed);
+    await expect.poll(() => requests.coverage.some((request) => request.authorization === refreshedBearer)).toBeTruthy();
+    // Same user, new auth context: the closed verdict fetched under the old token is not current.
+    await expect(banner(page)).toHaveText(CHECKING_COPY);
+    await expect(banner(page)).toHaveCount(0, { timeout: 10_000 });
+    expect(errors).toEqual([]);
+  });
 });
