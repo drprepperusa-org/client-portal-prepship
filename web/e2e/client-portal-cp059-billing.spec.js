@@ -233,7 +233,7 @@ test('billing sorting keeps existing rows and count visible until the server res
   await firstRow.evaluate(node => { node.dataset.sortRetentionProbe = 'same-node'; });
   await page.getByRole('columnheader', { name: 'Reference' }).click();
   await expect.poll(() => pending.length).toBe(1);
-  expect(new URL(pending[0].request().url()).searchParams.get('sortBy')).toBe('order');
+  expect(new URL(pending[0].request().url()).searchParams.get('sortBy')).toBe('displayReference');
   await expect(page.getByRole('status')).toHaveText('Updating…');
   await expect(firstRow).toBeVisible();
   await expect(firstRow).toHaveAttribute('data-sort-retention-probe', 'same-node');
@@ -252,7 +252,8 @@ test('rapid billing sorts ignore an older response', async ({ page }) => {
   await openDetailRows(page);
   const pending = [];
   await page.route('**/api/client-portal/invoice-details?**', route => { pending.push(route); });
-  const header = page.getByRole('columnheader', { name: 'Reference' });
+  // Reference descending is already cached from the initial load; exercise two new requests.
+  const header = page.getByRole('columnheader', { name: 'Shipping', exact: true });
   await header.click();
   await expect.poll(() => pending.length).toBe(1);
   await header.click();
