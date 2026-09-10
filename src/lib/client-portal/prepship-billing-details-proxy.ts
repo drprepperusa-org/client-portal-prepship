@@ -32,7 +32,7 @@ import { env } from '../env.js';
 export type CanonicalBillingRowType = 'Outbound' | 'Return';
 
 /** Exactly the values PrepShip's `BillingDestination` can take. Not widened locally. */
-export type CanonicalBillingDestination = 'Domestic' | 'International' | 'Needs Review';
+export type CanonicalBillingDestination = 'Domestic' | 'International' | 'Needs Review' | 'N/A';
 
 /**
  * The customer-safe allowlist. Anything PrepShip sends that is not named here is DISCARDED
@@ -66,7 +66,7 @@ export interface CanonicalBillingEventRow {
   rowType: CanonicalBillingRowType | null;
   /** e.g. "1234", "1234-RETURN", "1234-RETURN-2". A LABEL, never a key. */
   displayReference: string | null;
-  /** 'Domestic' | 'International' | 'Needs Review', decided upstream. */
+  /** Domestic / International / Needs Review / N/A, decided upstream. */
   destination: CanonicalBillingDestination | null;
 
   // Fee presence — distinct from amount. A missing line is not a zero line.
@@ -138,7 +138,9 @@ const CANONICAL_EVENT_ID_PATTERN = /^[0-9a-f]{32}$/;
 export const LEGACY_EVENT_ID_PREFIX = 'cp-legacy-row-';
 
 const ROW_TYPES: readonly string[] = ['Outbound', 'Return'];
-const DESTINATIONS: readonly string[] = ['Domestic', 'International', 'Needs Review'];
+// PS-522: N/A is issued only by PrepShip's canonical non-shipping applicability
+// owner. The portal accepts and renders it; missing country still proves nothing.
+const DESTINATIONS: readonly string[] = ['Domestic', 'International', 'Needs Review', 'N/A'];
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
@@ -198,7 +200,7 @@ export function toCanonicalBillingEventRow(
    * billing activity, the three surfaces disagreed, and the boundary still claimed fail-closed.
    *
    * Each field below is stamped unconditionally by PrepShip's canonical row builder —
-   * `classifyDestinationCountry` always returns one of the three destinations ('Needs Review'
+   * The producer always returns a canonical destination ('Needs Review'
    * is a real answer, not an absent one), and both presence flags are set from the line type.
    * Requiring them cannot reject a well-formed production row.
    */

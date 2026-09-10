@@ -158,7 +158,7 @@ const EVENT_ROWS = [
   }),
 ];
 
-async function setupBilling(page) {
+async function setupBilling(page, eventRows = EVENT_ROWS) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
@@ -175,7 +175,7 @@ async function setupBilling(page) {
     if (url.pathname.startsWith('/api/client-portal/')) {
       let body = { data: [], billingVisible: true };
       if (url.pathname.includes('invoice-details')) {
-        body = { data: EVENT_ROWS, billingVisible: true };
+        body = { data: eventRows, billingVisible: true };
       } else if (url.pathname.includes('invoice-summary')) {
         // The Billing page renders PERIODS first and the event rows are a drill-in, so a
         // period has to exist before any detail row can be reached. Its money is the
@@ -222,6 +222,21 @@ async function openDetailRows(page) {
     await page.waitForLoadState('networkidle');
   }
 }
+
+test('PS-522: canonical non-shipping N/A renders while unknown outbound remains Needs Review', async ({ page }) => {
+  const errors = await setupBilling(page, [
+    ...EVENT_ROWS,
+    canonical({ canonicalEventId: 'b'.repeat(32), orderId: null, orderNumber: null, displayReference: null, destination: 'N/A',
+      pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, shippingTotal: 0,
+      storageTotal: 12.34, rowTotal: 12.34 }),
+  ]);
+  await openDetailRows(page);
+  const storageRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'N/A', exact: true }) });
+  await expect(storageRow).toHaveCount(1);
+  await expect(storageRow).toContainText('$12.34');
+  await expect(page.getByRole('cell', { name: 'Needs Review', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
 
 test('AC-1/AC-2/AC-3: canonical references, Type and Destination render as issued', async ({ page }) => {
   const errors = await setupBilling(page);
