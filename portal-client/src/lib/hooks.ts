@@ -11,17 +11,28 @@ type TokenQueryOpts = {
   /** Background poll interval (ms). Mirrors v4's live auto-sync. */
   refetchInterval?: number;
   refetchOnWindowFocus?: boolean;
+  /** Preserve display rows only within this exact scope while sort/page changes load. */
+  retainDataScope?: readonly unknown[];
 };
 
 /** Wraps a portal query so it only runs once we have an access token. */
 function useTokenQuery<T>(key: unknown[], fn: (token: RequestAuth) => Promise<T>, enabled = true, opts: TokenQueryOpts = {}) {
   const { accessToken, userId } = useAuth();
+  const retentionScope = opts.retainDataScope
+    ? JSON.stringify(portalQueryKey(userId, opts.retainDataScope))
+    : undefined;
   return useQuery({
     queryKey: portalQueryKey(userId, key),
     queryFn: ({ signal }) => fn({ accessToken: accessToken as string, signal }),
     enabled: Boolean(accessToken) && enabled,
     refetchInterval: opts.refetchInterval,
     refetchOnWindowFocus: opts.refetchOnWindowFocus,
+    meta: { retentionScope },
+    placeholderData: (previousData, previousQuery) => (
+      accessToken && userId && enabled && retentionScope
+      && previousQuery?.meta?.retentionScope === retentionScope
+        ? previousData : undefined
+    ),
   });
 }
 
@@ -114,7 +125,11 @@ export function useInvoiceDetailsRange(
     ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope', page, pageSize, sortBy ?? '', sortDir ?? ''],
     (t) => portalApi.invoiceDetailsRange(t, dateFrom, dateTo, clientId, { page, pageSize, sortBy, sortDir }),
     Boolean(dateFrom && dateTo) && (explicitClientId === undefined || explicitClientId != null),
-    { refetchInterval: 60_000, refetchOnWindowFocus: true },
+    {
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: true,
+      retainDataScope: ['invoice-details-range', dateFrom, dateTo, clientId ?? 'scope'],
+    },
   );
 }
 

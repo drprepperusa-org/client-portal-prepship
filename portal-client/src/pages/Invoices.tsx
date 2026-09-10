@@ -123,6 +123,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           exporting={actions.exporting}
           canCustomizeTables={canCustomizeTables}
           isLoading={detailQuery.isLoading}
+          isUpdating={detailQuery.isFetching && !detailQuery.isLoading}
           isError={detailQuery.isError}
           error={detailQuery.error}
           onRetry={() => { void detailQuery.refetch(); }}
