@@ -44,4 +44,9 @@ assert.match(html,/>Needs Review<\/td>/);
 assert.match(html,/12\.34/);
 assert.match(html,/17\.34/);
 console.log('PASS PS-522 actual producer -> strict CP mapper -> served DTO -> printable HTML: applicability, identity and money preserved.');
-console.log(JSON.stringify({producerFiles:Object.fromEntries(['src/services/billing-detail-row-sot.ts','src/services/billing-destination-international.ts'].map(file=>[file,createHash('sha256').update(readFileSync(path.join(producerRoot,file))).digest('hex')]))}));
+console.log(JSON.stringify({
+  producerFiles: Object.fromEntries([
+    'src/services/billing-detail-row-sot.ts',
+    'src/services/billing-destination-international.ts',
+  ].map(file => [file, createHash('sha256').update(readFileSync(path.join(producerRoot, file))).digest('hex')])),
+}));
