@@ -226,7 +226,7 @@ function OrderCombinationsTable({ rows, canCustomizeTables }: { rows: AnalysisOr
   const columns: Column<AnalysisOrderCombination>[] = useMemo(
     () => [
       {
-        key: 'combination',
+        key: 'combination', sortAccessor: (row) => row.label,
         header: 'Combination',
         defaultWidth: 420,
         minWidth: 240,
@@ -248,14 +248,14 @@ function OrderCombinationsTable({ rows, canCustomizeTables }: { rows: AnalysisOr
         ),
       },
       {
-        key: 'orders',
+        key: 'orders', sortAccessor: (row) => num(row.orderCount),
         header: 'Orders',
         defaultWidth: 110,
         className: 'text-right',
         render: (row) => <span className="tnum font-semibold text-ink">{num(row.orderCount).toLocaleString()}</span>,
       },
       {
-        key: 'units',
+        key: 'units', sortAccessor: (row) => num(row.totalUnits),
         header: 'Units',
         defaultWidth: 110,
         className: 'text-right',

@@ -1,3 +1,4 @@
+import { tableOrderBy, referenceOrder } from '../../../lib/client-portal/read-models/table-sort';
 import type { Hono } from 'hono';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
@@ -90,7 +91,17 @@ function registerReturnListRoute(app: Hono): void {
       .leftJoin(clients, eq(clients.id, returns.clientId))
       .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
       .where(where)
-      .orderBy(desc(returns.createdAt), desc(returns.id))
+      .orderBy(...tableOrderBy({ sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') }, {
+        returnReference: referenceOrder(sql`coalesce(nullif(trim(${returns.returnReference}), ''), regexp_replace(coalesce(nullif(trim(${orders.orderNumber}), ''), ${returns.orderId}::text), '\\s+', '-', 'g') || '-RETURN')`),
+        order: referenceOrder(orders.orderNumber), client: sql`lower(${clients.name})`,
+        recipientName: sql`coalesce(nullif(btrim(${orders.raw}->'shipTo'->>'name'), ''), nullif(btrim(${orders.shipToName}), ''))`,
+        returnedSkus: sql`(select string_agg(ri.sku, ', ' order by ri.id) from return_items ri where ri.return_id = ${returns.id})`,
+        returnedQuantity: sql`coalesce((select sum(ri.quantity) from return_items ri where ri.return_id = ${returns.id}), 0)`,
+        status: returns.status, delivery: returns.deliveryMethod,
+        tracking: sql`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
+        returnCustomerShippingRate: scope.canViewFinancials ? sql`(${validatedReturnCustomerShippingRateSql()})::numeric` : undefined,
+        created: returns.createdAt,
+      }, [desc(returns.createdAt), desc(returns.id)], returns.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 

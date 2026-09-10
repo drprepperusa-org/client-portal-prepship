@@ -1,3 +1,4 @@
+import type { SortOptions } from './sorting';
 export const CLIENT_PORTAL_CONTRACT_VERSION = '1' as const;
 
 export interface PortalDateRange {
@@ -20,7 +21,7 @@ export interface PortalItemIdentity {
   lineTotal?: number | string | null;
 }
 
-export interface ListOpts {
+export interface ListOpts extends SortOptions {
   status?: string;
   search?: string;
   page?: number;

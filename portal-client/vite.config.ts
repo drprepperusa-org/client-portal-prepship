@@ -11,7 +11,10 @@ export default defineConfig({
   // / VITE_API_URL come from a single source of truth.
   envDir: path.resolve(__dirname, '..'),
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      '@client-portal-contracts': path.resolve(__dirname, '../src/lib/client-portal/contracts'),
+    },
   },
   server: {
     port: 5190,
@@ -49,4 +52,3 @@ export default defineConfig({
     },
   },
 });
-

@@ -28,7 +28,8 @@ app.get('/orders', async (c) => {
   const clientId = parsePositiveInt(c.req.query('clientId'));
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const search = requestedSearch(c);
-  const result = await listPortalOrders(scope, { page, pageSize, status, clientId, storeId, search });
+  const result = await listPortalOrders(scope, {
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'), page, pageSize, status, clientId, storeId, search });
   await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, storeId, search });
   return c.json(result);
 });

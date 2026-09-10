@@ -158,7 +158,7 @@ export function useOrders(opts: ListOpts = {}) {
     // pageSize MUST be in the key: the Dashboard "Open orders" peek requests this
     // same status/page with pageSize 6, and without it that 6-row response would
     // alias the full Orders list (refetchOnMount:false → sticky truncation).
-    portalReadKeys.orders(merged.clientId, merged.status ?? 'all', merged.search, merged.page, merged.pageSize),
+    portalReadKeys.orders(merged.clientId, merged.status ?? 'all', merged.search, merged.page, merged.pageSize, merged.sortBy, merged.sortDir),
     (t) => portalApi.orders(t, merged),
     true,
     // CP-037: refetchOnWindowFocus false so returning to the tab can't trigger an
@@ -181,7 +181,7 @@ export function useShipments(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['shipments', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.status ?? 'all', merged.clientId ?? 'scope'],
+    ['shipments', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.status ?? 'all', merged.clientId ?? 'scope', merged.sortBy, merged.sortDir],
     (t) => portalApi.shipments(t, merged),
   );
 }
@@ -196,13 +196,13 @@ export function useOrderShipments(orderId: number | null) {
 export function useInventory(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
-  return useTokenQuery(portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock), (t) => portalApi.inventory(t, merged));
+  return useTokenQuery(portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock, merged.sortBy, merged.sortDir), (t) => portalApi.inventory(t, merged));
 }
 
-export function useInventoryHistory(opts: { page?: number; pageSize?: number; sku?: string; type?: string } = {}) {
+export function useInventoryHistory(opts: { sortBy?: string; sortDir?: 'asc' | 'desc'; page?: number; pageSize?: number; sku?: string; type?: string } = {}) {
   const { dateRange } = usePortalFilters();
   return useTokenQuery(
-    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, opts.pageSize ?? 50, dateRange.dateFrom, dateRange.dateTo],
+    ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, opts.pageSize ?? 50, dateRange.dateFrom, dateRange.dateTo, opts.sortBy, opts.sortDir],
     (t) => portalApi.inventoryHistory(t, { ...opts, dateRange }),
   );
 }
@@ -230,7 +230,7 @@ export function useReturns(opts: ListOpts & { orderId?: number } = {}) {
   const { clientId } = usePortalFilters();
   const merged = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.orderId ?? 0, merged.clientId ?? 'scope'],
+    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.orderId ?? 0, merged.clientId ?? 'scope', merged.sortBy, merged.sortDir],
     (t) => portalApi.returns(t, merged),
   );
 }

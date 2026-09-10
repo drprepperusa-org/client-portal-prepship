@@ -25,6 +25,7 @@ import {
   orderCanonicalEvents,
   CANONICAL_SORTABLE_KEYS,
 } from '../src/lib/client-portal/read-models/canonical-invoice-events';
+import { INVOICE_SORT_FIELDS } from '../src/lib/client-portal/contracts/sorting';
 
 const root = process.cwd();
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -77,8 +78,7 @@ const row = (over: Record<string, unknown>) => ({
 const refs = (rows: readonly Row[]) => rows.map((r) => (r as { displayReference: string }).displayReference);
 
 check(
-  ['orderNumber', 'displayReference', 'rowType', 'destination', 'grandTotal',
-    'returnPostageTotal', 'returnProcessingTotal', 'shipDate', 'billingEffectiveDate']
+  Object.values(INVOICE_SORT_FIELDS)
     .every((key) => CANONICAL_SORTABLE_KEYS.includes(key)),
   'the canonical ordering whitelists the columns the grid offers as sortable',
 );

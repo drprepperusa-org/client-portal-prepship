@@ -1,3 +1,4 @@
+import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PackageCheck, PackageOpen, Plus, Building2, Upload } from 'lucide-react';
@@ -27,6 +28,7 @@ export default function Inbound() {
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<PortalInbound | null>(null);
   const [receiptPage, setReceiptPage] = useState(1);
+  const receiptSort = useTableSort(setReceiptPage);
   const [receiptPageSize, setReceiptPageSize] = useState(50);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -47,7 +49,7 @@ export default function Inbound() {
 
   const effectiveClientId = clientFilter ?? globalClientId;
   const query = useInbound(effectiveClientId);
-  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize);
+  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize, receiptSort.sortBy, receiptSort.sortDir);
   const rows = query.data?.data ?? [];
   const receiptRows = receiptQuery.data?.data ?? [];
   const receiptPagination = receiptQuery.data?.pagination;
@@ -108,6 +110,7 @@ export default function Inbound() {
         >
           <DataTable
             tableId="inbound-receipts"
+            sort={receiptSort.sort} onSortChange={receiptSort.onSortChange}
             columns={INBOUND_RECEIPT_COLUMNS}
             rows={receiptRows}
             rowKey={(row) => String(row.id)}

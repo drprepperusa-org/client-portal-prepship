@@ -1,3 +1,4 @@
+import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
@@ -7,7 +8,7 @@ import type { PortalInboundReceipt } from '../contracts/inbound';
 import { inventoryScopePredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
 
-type ReceiptListOptions = {
+type ReceiptListOptions = SortInput & {
   page: number;
   pageSize: number;
   clientId?: number | null;
@@ -53,7 +54,11 @@ export async function listPortalInboundReceipts(
   const [rows, countRows] = await Promise.all([
     base
       .where(where)
-      .orderBy(desc(receivedAt), desc(inventoryLedger.id))
+      .orderBy(...tableOrderBy(options, {
+        receipt: inventoryLedger.id, sku: referenceOrder(inventory.sku),
+        product: sql`lower(${inventory.name})`, client: sql`lower(${clients.name})`,
+        units: inventoryLedger.qty, received: receivedAt, note: inventoryLedger.note,
+      }, [desc(receivedAt), desc(inventoryLedger.id)], inventoryLedger.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize),
     db

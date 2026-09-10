@@ -1,3 +1,6 @@
+import { sql } from 'drizzle-orm';
+import { orders } from '../../db/schema/orders';
+import { orderFulfillmentSignalSelects } from './order-fulfillment-signals';
 // Order fulfillment status — the ONE backend-owned resolver for the customer-
 // facing order lifecycle status shown in the Client Portal Orders table.
 //
@@ -68,4 +71,15 @@ export function resolveOrderFulfillmentStatus(
   if (signals.hasActiveShipment || status === 'shipped') return 'in_transit';
   // 5. Not yet shipped.
   return 'pending';
+}
+
+/** SQL projection of this owner's exact precedence, for ordering before pagination. */
+export function orderFulfillmentStatusSql() {
+  const signals = orderFulfillmentSignalSelects();
+  return sql`case
+    when lower(${orders.orderStatus}) in ('cancelled', 'canceled', 'refunded') then 'cancelled'
+    when ${signals.hasVoidedShipment} and not ${signals.hasActiveShipment} then 'voided'
+    when lower(${signals.activeTrackingStatus}) = 'delivered' then 'delivered'
+    when ${signals.hasActiveShipment} or lower(${orders.orderStatus}) = 'shipped' then 'in_transit'
+    else 'pending' end`;
 }

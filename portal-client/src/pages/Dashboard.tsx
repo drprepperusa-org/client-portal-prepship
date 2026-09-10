@@ -100,13 +100,13 @@ export default function Dashboard() {
   const topSkuColumns: Column<DashboardTopSku>[] = useMemo(
     () => [
       {
-        key: 'sku',
+        key: 'sku', sortAccessor: (s) => s.sku,
         header: 'SKU',
         defaultWidth: 160,
         render: (s) => <span className="font-medium text-ink-2">{s.sku}</span>,
       },
       {
-        key: 'units',
+        key: 'units', sortAccessor: (s) => s.units30,
         header: 'Unit Count Last 30 Days',
         defaultWidth: 210,
         className: 'text-right',
@@ -119,7 +119,7 @@ export default function Dashboard() {
         ),
       },
       {
-        key: 'avgShipping',
+        key: 'avgShipping', sortAccessor: (s) => s.avgShippingPrice,
         header: 'Avg Shipping Price',
         defaultWidth: 170,
         className: 'text-right',

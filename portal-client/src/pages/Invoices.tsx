@@ -35,7 +35,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const [detailPage, setDetailPage] = useState(1);
   const [detailPageSize, setDetailPageSize] = useState(100);
   // CP-016: line-item sorting remains server-owned across the full filtered set.
-  const [detailSort, setDetailSort] = useState<InvoiceSort>({ key: 'date', dir: 'desc' });
+  const [detailSort, setDetailSort] = useState<InvoiceSort>({ key: 'order', dir: 'desc' });
   // CP-008: billed shipping comes from the selected billing row, never label cost.
   const [shipmentModal, setShipmentModal] = useState<InvoiceShipmentSelection | null>(null);
   const [granularity, setGranularity] = useState<'half' | 'month'>('half');

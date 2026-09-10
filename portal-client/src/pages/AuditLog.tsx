@@ -219,13 +219,13 @@ export default function AuditLog() {
   const columns: Column<PortalAuditLogRow>[] = useMemo(
     () => [
       {
-        key: 'when',
+        key: 'when', sortAccessor: (row) => row.createdAt,
         header: 'When',
         defaultWidth: 190,
         render: (row) => <span className="text-xs font-medium text-ink-3">{formatDate(row.createdAt)}</span>,
       },
       {
-        key: 'event',
+        key: 'event', sortAccessor: (row) => eventLabel(row.event),
         header: 'Activity',
         defaultWidth: 280,
         render: (row) => (
@@ -238,7 +238,7 @@ export default function AuditLog() {
         ),
       },
       {
-        key: 'user',
+        key: 'user', sortAccessor: (row) => row.actorEmail ?? row.actorUserId,
         header: 'User',
         defaultWidth: 230,
         render: (row) => (
@@ -248,7 +248,7 @@ export default function AuditLog() {
         ),
       },
       {
-        key: 'scope',
+        key: 'scope', sortAccessor: (row) => scopeLabel(row),
         header: 'Session scope',
         defaultWidth: 220,
         render: (row) => (
@@ -262,7 +262,7 @@ export default function AuditLog() {
         ),
       },
       {
-        key: 'details',
+        key: 'details', sortAccessor: (row) => detailPlain(row.metadata),
         header: 'Details',
         defaultWidth: 360,
         minWidth: 240,

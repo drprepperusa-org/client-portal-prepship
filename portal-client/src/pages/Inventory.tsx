@@ -1,3 +1,4 @@
+import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
 import { History, Boxes } from 'lucide-react';
 import { Thumb } from '@/components/ui/Thumb';
@@ -88,6 +89,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
   const [q, setQ] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [page, setPage] = useState(1);
+  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(100);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
@@ -95,7 +97,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
 
   // Low/Out-only is filtered SERVER-side so it spans every page (not just the
   // current one) and the pager totals stay accurate.
-  const query = useInventory({ search: debouncedQ, page, pageSize, lowStock: lowOnly });
+  const query = useInventory({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, search: debouncedQ, page, pageSize, lowStock: lowOnly });
   const pg = query.data?.pagination;
   const rows = query.data?.data ?? [];
 
@@ -194,7 +196,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           emptyTitle="No SKUs found"
           emptyMessage="No inventory matches this view."
         >
-          <DataTable tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
+          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange} tableId="inventory" columns={columns} rows={rows} rowKey={(s) => String(s.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && (
             <Pagination
               page={pg.page}
@@ -216,6 +218,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
   const [q, setQ] = useState(initialSku);
   const [type, setType] = useState<string | string[]>('all');
   const [page, setPage] = useState(1);
+  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
@@ -223,28 +226,28 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
   // Sync when an Actions→History click changes the requested SKU.
   useEffect(() => setQ(initialSku), [initialSku]);
 
-  const query = useInventoryHistory({ sku: debouncedQ || undefined, type: type === 'all' ? undefined : (type as string), page, pageSize });
+  const query = useInventoryHistory({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, sku: debouncedQ || undefined, type: type === 'all' ? undefined : (type as string), page, pageSize });
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
 
   const columns: Column<InventoryMovement>[] = [
-    { key: 'date', header: 'Date (local)', defaultWidth: 170, render: (m) => <span className="tnum text-ink-2">{fmtDateTime(m.createdAt)}</span> },
-    { key: 'sku', header: 'SKU', defaultWidth: 180, render: (m) => <span className="font-mono text-[13px] text-ink">{m.sku ?? '—'}</span> },
+    { key: 'date', sortAccessor: (m) => m.createdAt, header: 'Date (local)', defaultWidth: 170, render: (m) => <span className="tnum text-ink-2">{fmtDateTime(m.createdAt)}</span> },
+    { key: 'sku', sortAccessor: (m) => m.sku, header: 'SKU', defaultWidth: 180, render: (m) => <span className="font-mono text-[13px] text-ink">{m.sku ?? '—'}</span> },
     {
-      key: 'type',
+      key: 'type', sortAccessor: (m) => m.type,
       header: 'Type',
       defaultWidth: 120,
       render: (m) => <Chip accent={movementAccent(m.type)} dot={false}>{m.type ?? '—'}</Chip>,
     },
     {
-      key: 'qty',
+      key: 'qty', sortAccessor: (m) => m.qty,
       header: 'Qty',
       defaultWidth: 90,
       className: 'text-right',
       render: (m) => <span className={cn('font-semibold tnum', Number(m.qty ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-600')}>{m.qty ?? 0}</span>,
     },
-    { key: 'note', header: 'Note', defaultWidth: 260, render: (m) => <span className="block truncate text-ink-2" title={m.note ?? ''}>{m.note ?? '—'}</span> },
-    { key: 'source', header: 'Source', defaultWidth: 180, render: (m) => <span className="font-mono text-xs text-ink-3">{m.source ?? '—'}</span> },
+    { key: 'note', sortAccessor: (m) => m.note, header: 'Note', defaultWidth: 260, render: (m) => <span className="block truncate text-ink-2" title={m.note ?? ''}>{m.note ?? '—'}</span> },
+    { key: 'source', sortAccessor: (m) => m.source, header: 'Source', defaultWidth: 180, render: (m) => <span className="font-mono text-xs text-ink-3">{m.source ?? '—'}</span> },
   ];
 
   return (
@@ -274,7 +277,7 @@ function InventoryHistory({ initialSku }: { initialSku: string }) {
           emptyTitle="No movements"
           emptyMessage="No inventory movements for the selected filters and date range."
         >
-          <DataTable tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
+          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange} tableId="inventory-history" columns={columns} rows={rows} rowKey={(m) => String(m.id)} allowColumnCustomization={canCustomizeTables} stickyHeader />
           {pg && (
             <Pagination
               page={pg.page}

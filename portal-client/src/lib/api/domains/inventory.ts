@@ -9,6 +9,7 @@ function inventory(token: RequestAuth, opts: ListOpts = {}) {
     page: opts.page ?? 1,
     pageSize: opts.pageSize ?? 100,
     search: opts.search,
+      sortBy: opts.sortBy, sortDir: opts.sortDir,
     clientId: opts.clientId,
     lowStock: opts.lowStock ? 1 : undefined,
   });
@@ -20,6 +21,7 @@ export const inventoryApi = {
   inventoryHistory: (
     token: RequestAuth,
     opts: {
+      sortBy?: string; sortDir?: 'asc' | 'desc';
       page?: number;
       pageSize?: number;
       sku?: string;
@@ -37,6 +39,7 @@ export const inventoryApi = {
       {
         page: opts.page ?? 1,
         pageSize: opts.pageSize ?? 50,
+        sortBy: opts.sortBy, sortDir: opts.sortDir,
         sku: opts.sku,
         type: opts.type,
         from: `${range.from}T00:00:00.000Z`,

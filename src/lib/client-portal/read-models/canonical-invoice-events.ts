@@ -40,9 +40,8 @@ export interface CanonicalInvoiceEventsInput {
 /**
  * Presentation-only enrichment, keyed by orderId ONLY.
  *
- * Item names and SKUs are display sugar the canonical row does not carry. Keying by orderId
- * means an outbound row and its returns show the same item text, which is correct — they
- * concern the same order.
+ * Item names are display enrichment. SKU text comes from the producer's itemSkus field
+ * so the displayed value and the producer's full-result sort use the same input.
  *
  * This lookup CANNOT create, drop or merge a row, and cannot touch identity, classification,
  * fee presence or money. If an order has no local item data the text is simply absent; the
@@ -80,6 +79,9 @@ const SORTABLE = new Set([
   'orderNumber', 'displayReference', 'rowType', 'destination', 'clientName',
   'shipDate', 'actualActivityDate', 'billingEffectiveDate',
   'returnPostageTotal', 'returnProcessingTotal', 'grandTotal',
+  'itemSkus', 'qty', 'boxSize', 'pickpackTotal', 'additionalTotal', 'packageTotal',
+  'shippingTotal', 'storageTotal', 'adjustmentTotal', 'returnTotal',
+  'replacePostageTotal', 'replacePickPackTotal',
 ]);
 
 function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, key: string, dir: 1 | -1): number {
@@ -90,7 +92,7 @@ function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, k
   if (av === null || av === undefined) return bv === null || bv === undefined ? 0 : 1;
   if (bv === null || bv === undefined) return -1;
   if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-  return String(av).localeCompare(String(bv)) * dir;
+  return String(av).localeCompare(String(bv), 'en', { numeric: true, sensitivity: 'base' }) * dir;
 }
 
 /**
@@ -228,7 +230,7 @@ export function toPortalDetailRow(
       recipientName: row.recipientName,
       // Presentation-only. Absent enrichment leaves these null and changes nothing else.
       itemNames: extra?.itemNames ?? null,
-      skus: extra?.skus ?? null,
+      skus: row.itemSkus ?? null,
       boxSize: row.boxSize,
       shipDate: row.shipDate,
       actualActivityDate: row.actualActivityDate,

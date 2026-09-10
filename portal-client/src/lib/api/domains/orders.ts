@@ -10,6 +10,7 @@ function orders(token: RequestAuth, opts: ListOpts = {}) {
     pageSize: opts.pageSize ?? 50,
     status: opts.status && opts.status !== 'all' ? opts.status : undefined,
     search: opts.search,
+      sortBy: opts.sortBy, sortDir: opts.sortDir,
     clientId: opts.clientId,
   });
 }

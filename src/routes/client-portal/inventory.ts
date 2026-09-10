@@ -1,3 +1,4 @@
+import { tableOrderBy, referenceOrder } from '../../lib/client-portal/read-models/table-sort';
 // Client-portal sub-router — extracted from the former single-file
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
@@ -25,6 +26,7 @@ app.get('/inventory', async (c) => {
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
   const result = await listPortalInventory(scope, {
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
     page,
     pageSize,
     clientId,
@@ -83,7 +85,10 @@ app.get('/inventory-history', async (c) => {
     .innerJoin(inventory, eq(inventory.id, inventoryLedger.inventoryId))
     .leftJoin(clients, eq(clients.id, movementClientId))
     .where(where)
-    .orderBy(desc(movementClock), desc(inventoryLedger.id))
+    .orderBy(...tableOrderBy({ sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') }, {
+      date: movementClock, sku: referenceOrder(movementSku), type: inventoryLedger.type,
+      qty: inventoryLedger.qty, note: inventoryLedger.note, source: inventoryLedger.createdBy,
+    }, [desc(movementClock), desc(inventoryLedger.id)], inventoryLedger.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
   const countRows = await db

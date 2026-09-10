@@ -1,3 +1,4 @@
+import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
@@ -88,6 +89,7 @@ export default function Orders() {
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
   const [q, setQ] = useState(params.get('q') ?? '');
   const [page, setPage] = useState(1);
+  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   const [selected, setSelected] = useState<PortalOrder | null>(null);
   // CP-029: "Start return" opens the create-return modal for the selected order.
@@ -110,7 +112,7 @@ export default function Orders() {
 
   useEffect(() => setPage(1), [debouncedQ, tab]);
 
-  const query = useOrders({ status: tab, search: debouncedQ, page, pageSize });
+  const query = useOrders({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, status: tab, search: debouncedQ, page, pageSize });
   const canCustomizeTables = useCanCustomizeTables();
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
@@ -264,7 +266,7 @@ export default function Orders() {
           emptyTitle="No orders"
           emptyMessage={tab === 'all' ? 'No orders match this search.' : 'No orders match this tab and search.'}
         >
-          <DataTable
+          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange}
             tableId="orders"
             columns={columns}
             rows={rows}

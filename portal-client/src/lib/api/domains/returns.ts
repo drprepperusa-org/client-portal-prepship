@@ -19,6 +19,7 @@ export const returnsApi = {
       page: opts.page ?? 1,
       pageSize: opts.pageSize ?? 50,
       search: opts.search,
+      sortBy: opts.sortBy, sortDir: opts.sortDir,
       status: opts.status && opts.status !== 'all' ? opts.status : undefined,
       clientId: opts.clientId,
       orderId: opts.orderId,

@@ -7,6 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-table-sorting": "tsx scripts/client-portal-table-sort-guard.ts",
+    "test:client-portal-table-sorting:browser": "playwright test web/e2e/client-portal-table-sorting.spec.js --workers=1 --reporter=line",
     "audit:client-portal-maintainability": "node scripts/client-portal-maintainability-audit.mjs",
     "audit:client-portal-ui": "npm run test:client-portal-ui",
     "audit:ps-435-return-customer-rate": "tsx scripts/ps-435-return-customer-rate-audit.ts",
@@ -305,6 +307,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@playwright/test": "^1.60.0",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",

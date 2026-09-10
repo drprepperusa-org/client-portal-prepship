@@ -1,3 +1,4 @@
+import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
@@ -11,7 +12,7 @@ import type { ClientPortalScope } from '../scope';
 /** Client Portal inventory read model over the shared ledger quantity authority. */
 export async function listPortalInventory(
   scope: ClientPortalScope,
-  opts: {
+  opts: SortInput & {
     page: number;
     pageSize: number;
     clientId?: number | null;
@@ -55,7 +56,18 @@ export async function listPortalInventory(
       .leftJoin(clients, eq(clients.id, inventory.clientId))
       .leftJoin(packages, eq(packages.id, inventory.packageId))
       .where(where)
-      .orderBy(desc(inventory.updatedAt), desc(inventory.id))
+      .orderBy(...tableOrderBy(opts, {
+        sku: referenceOrder(inventory.sku), name: sql`lower(${inventory.name})`, client: sql`lower(${clients.name})`,
+        dims: inventory.length,
+        cuft: sql`coalesce(${inventory.cuFtOverride}, round((${inventory.length} * ${inventory.width} * ${inventory.height} / 1728)::numeric, 3))`,
+        stock: quantity,
+        whseShipped30: sql`(select abs(coalesce(sum(qty), 0)) from inventory_ledger
+          where inventory_id = ${inventory.id} and lower(type) like 'ship%'
+          and coalesce(effective_at, created_at) >= now() - interval '30 days')`,
+        unitsPack: sql`coalesce(${inventory.unitsPerPack}, 1)`, min: sql`coalesce(${inventory.reorderLevel}, 0)`,
+        status: sql`case when ${quantity} <= 0 then 'out'
+          when ${quantity} <= coalesce(${inventory.reorderLevel}, 0) then 'low' else 'in' end`,
+      }, [desc(inventory.updatedAt), desc(inventory.id)], inventory.id))
       .limit(pageSize)
       .offset(offset),
     db

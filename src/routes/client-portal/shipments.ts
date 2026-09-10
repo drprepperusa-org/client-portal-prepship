@@ -28,6 +28,7 @@ app.get('/shipments', async (c) => {
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
   const result = await listPortalShipments(scope, {
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
     page,
     pageSize,
     clientId,

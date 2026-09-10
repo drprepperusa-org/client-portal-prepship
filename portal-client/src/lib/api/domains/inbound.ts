@@ -14,11 +14,12 @@ export const inboundApi = {
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   inboundReceipts: (
     token: RequestAuth,
-    options: { page?: number; pageSize?: number; clientId?: number },
+    options: { sortBy?: string; sortDir?: 'asc' | 'desc'; page?: number; pageSize?: number; clientId?: number },
   ) => apiGet<Paginated<PortalInboundReceipt>>(token, '/api/client-portal/inbound/receipts', {
     page: options.page ?? 1,
     pageSize: options.pageSize ?? 50,
     clientId: options.clientId,
+    sortBy: options.sortBy, sortDir: options.sortDir,
   }),
   receiveInventory: (token: RequestAuth, body: PortalInventoryReceiveInput) =>
     apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),

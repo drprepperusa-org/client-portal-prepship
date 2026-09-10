@@ -57,6 +57,7 @@ export interface CanonicalBillingEventRow {
   // Identity — relational, issued upstream.
   clientId: number | null;
   clientName: string | null;
+  itemSkus?: string | null;
   orderId: number | null;
   orderNumber: string | null;
   /** Relational return identity. Null on an outbound row. NEVER derived from a display string. */
@@ -101,7 +102,7 @@ export interface CanonicalBillingEventRow {
 
 /** Field names copied verbatim when present. Order is the contract; do not reorder casually. */
 const ALLOWED_STRING_FIELDS = [
-  'clientName', 'orderNumber', 'displayReference', 'shipDate', 'actualActivityDate',
+  'itemSkus', 'clientName', 'orderNumber', 'displayReference', 'shipDate', 'actualActivityDate',
   'billingEffectiveDate', 'billingPolicyVersion', 'recipientName', 'boxSize', 'displayQty',
 ] as const;
 

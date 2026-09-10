@@ -1,9 +1,11 @@
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import type { Column } from './types';
+import type { Column, SortState } from './types';
 
 interface DataTableMobileProps<T> {
   ordered: Column<T>[];
+  sort: SortState;
+  onToggleSort: (column: Column<T>) => void;
   rows: T[];
   rowKey: (row: T) => string;
   rowClassName?: (row: T) => string | undefined;
@@ -12,7 +14,7 @@ interface DataTableMobileProps<T> {
 }
 
 export function DataTableMobile<T>({
-  ordered,
+  ordered, sort, onToggleSort,
   rows,
   rowKey,
   rowClassName,
@@ -23,6 +25,21 @@ export function DataTableMobile<T>({
     <div
       className="flex flex-col gap-3 md:hidden"
     >
+      {ordered.some((column) => column.sortAccessor) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm text-ink-2">Sort by{' '}
+            <select aria-label="Sort by" className="focus-ring rounded-lg p-2" value={sort?.key ?? ''}
+              onChange={(event) => { const column = ordered.find((c) => c.key === event.target.value); if (column) onToggleSort(column); }}>
+              <option value="" disabled>Default order</option>
+              {ordered.filter((c) => c.sortAccessor).map((c) => <option key={c.key} value={c.key}>{c.header}</option>)}
+            </select>
+          </label>
+          {sort && <button type="button" className="focus-ring min-h-11 rounded-lg px-3 text-sm"
+            onClick={() => { const column = ordered.find((c) => c.key === sort.key); if (column) onToggleSort(column); }}>
+            {sort.dir === 'asc' ? 'Ascending' : 'Descending'}
+          </button>}
+        </div>
+      )}
       {rows.map((row) => (
         <div
           key={rowKey(row)}

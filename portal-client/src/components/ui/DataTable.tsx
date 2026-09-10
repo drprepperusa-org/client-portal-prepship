@@ -90,6 +90,8 @@ export function DataTable<T>({
         onToggleSort={toggleSort}
       />
       <DataTableMobile
+        sort={sort}
+        onToggleSort={toggleSort}
         ordered={ordered}
         rows={sortedRows}
         rowKey={rowKey}

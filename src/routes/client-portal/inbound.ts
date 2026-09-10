@@ -34,6 +34,7 @@ app.get('/inbound/receipts', async (c) => {
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
   const result = await listPortalInboundReceipts(scope, {
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
     page,
     pageSize,
     clientId,

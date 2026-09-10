@@ -1,3 +1,4 @@
+import { useTableSort } from '@/lib/useTableSort';
 import { StartReturnButton } from '@/components/returns/StartReturnButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
@@ -54,6 +55,7 @@ export default function Shipments() {
   const clients = useClients().data?.data ?? [];
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   // Per-page client filter (like Orders' client switcher) for fast scoping.
   // undefined = follow the global "All clients" topbar filter.
@@ -67,7 +69,7 @@ export default function Shipments() {
 
   useEffect(() => setPage(1), [debouncedQ, effectiveClientId, statusFilter]);
 
-  const query = useShipments({ search: debouncedQ, page, pageSize, clientId: effectiveClientId, status: statusFilter || undefined });
+  const query = useShipments({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, search: debouncedQ, page, pageSize, clientId: effectiveClientId, status: statusFilter || undefined });
   const canCustomizeTables = useCanCustomizeTables();
   const allRows = query.data?.data ?? [];
   const rows = allRows;
@@ -249,7 +251,7 @@ export default function Shipments() {
               : 'Outbound shipments will appear here once orders ship.'
           }
         >
-          <DataTable
+          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange}
             tableId="shipments"
             columns={columns}
             rows={rows}

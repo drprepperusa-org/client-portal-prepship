@@ -1295,6 +1295,43 @@ database / PrepShip-backed canonical owner. Any future exception must be recorde
 with the DJ approval, the exact field, and the justification, and must still document
 source inputs, event clock, and formula.
 
+### Table sorting (September 2026)
+
+Paged Orders, Inventory, movement History, Shipments, Returns, and Inbound receipts
+send column/direction intent to their scoped read models. The backend whitelists
+expressions, orders before LIMIT/OFFSET, keeps nulls last, and uses row identity
+as a deterministic tie-breaker. Financial and weight sort expressions are gated
+by the same scope permissions as their DTO fields. Sort changes reset to page 1;
+page changes preserve sort intent. Mobile uses the same controls and API contract.
+
+Sort inputs reuse the displayed field owners: normalized order_items for order
+identity/quantity, shipment status and customer-shipping-rate SQL owners, and the
+signed inventory ledger for stock. Inventory's shipped-30-days sort uses the same
+absolute signed ship-movement sum and effective_at/created_at clock as its DTO;
+cubic feet use the existing override or L×W×H/1728 rounded to three places.
+Movement history and receipts retain their canonical effective_at/created_at clock.
+Shipment first-item sorting preserves item order and excludes negative-price
+discounts, matching safeItems. Sorting never changes business rows or amounts.
+
+Billing column keys map to PrepShip fields via contracts/sorting.ts. Reference
+defaults to descending; numeric reference segments compare naturally, including
+large identifiers. Billing pages are sorted by the PrepShip producer before
+pagination. The producer must support all 19 mapped fields. SKU text is its
+itemSkus value, so ordering and display share the same source. Billing money,
+event identity, row grain, period clocks, and exports retain their existing owners.
+The companion PrepShip whitelist expansion is implemented on
+`fix/portal-billing-sort` with the user's September 10 shipped-data override.
+Both repositories' sorting changes must be released together for all Billing
+columns. Reference already exists in the previous producer whitelist.
+
+Unpaged period, Analysis, dashboard, and audit tables sort the returned visible
+dataset only; their existing endpoint limits and ranked subsets remain in effect.
+
+Regression checks: test:client-portal-table-sorting runs actual SQL in disposable
+PostgreSQL; test:client-portal-table-sorting:browser checks API intent, pagination,
+all Billing mappings, default reference order, and mobile controls with mock APIs.
+These checks do not connect to a production database or shipping provider.
+
 ### CP remediation reference
 
 - **CP-009 / CP-018** — carrier / service / provider / rate identity is

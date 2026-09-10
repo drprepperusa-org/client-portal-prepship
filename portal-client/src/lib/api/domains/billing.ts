@@ -1,3 +1,4 @@
+import { INVOICE_SORT_FIELDS } from '@client-portal-contracts/sorting';
 import type { RequestAuth } from '../transport';
 import type {
   BillingInvoiceDetailRow,
@@ -107,7 +108,7 @@ export const billingApi = {
       clientId,
       page: opts.page,
       pageSize: opts.pageSize,
-      sortBy: opts.sortBy,
+      sortBy: opts.sortBy ? INVOICE_SORT_FIELDS[opts.sortBy] : undefined,
       sortDir: opts.sortDir,
     }),
   invoiceSummaryRange: (token: RequestAuth, dateFrom: string, dateTo: string, clientId?: number) =>

@@ -1,3 +1,5 @@
+import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
+import { firstShipmentItemSql } from './shipment-item-sort';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
@@ -27,7 +29,7 @@ function shipmentStatusFilterPredicate(status?: PortalShipmentStatus | null): SQ
 /** Shipments read-model (extracted from routes/client-portal.ts). */
 export async function listPortalShipments(
   scope: ClientPortalScope,
-  opts: {
+  opts: SortInput & {
     page: number;
     pageSize: number;
     clientId?: number | null;
@@ -60,7 +62,14 @@ export async function listPortalShipments(
     .leftJoin(clients, eq(clients.id, shipments.clientId))
     .leftJoin(orders, eq(orders.id, shipments.orderId))
     .where(where)
-    .orderBy(desc(shipments.shipDate), desc(shipments.id))
+    .orderBy(...tableOrderBy(opts, {
+      order: referenceOrder(shipments.orderNumber), client: sql`lower(${clients.name})`,
+      items: firstShipmentItemSql(orders.items, 'name'), sku: firstShipmentItemSql(orders.items, 'sku'),
+      customerShippingRate: scope.canViewFinancials ? sql`(${shipmentCustomerShippingRateSql()})::numeric` : undefined,
+      tracking: sql`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
+      status: portalShipmentStatusSql(),
+      shipped: sql`coalesce(${shipments.shipDate}, ${shipments.labelShipDate}, ${shipments.createDate})`,
+    }, [desc(shipments.shipDate), desc(shipments.id)], shipments.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
   const countRows = await db

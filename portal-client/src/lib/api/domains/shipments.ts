@@ -10,6 +10,7 @@ export const shipmentsApi = {
       page: opts.page ?? 1,
       pageSize: opts.pageSize ?? 50,
       search: opts.search,
+      sortBy: opts.sortBy, sortDir: opts.sortDir,
       clientId: opts.clientId,
       status: opts.status || undefined,
     }),

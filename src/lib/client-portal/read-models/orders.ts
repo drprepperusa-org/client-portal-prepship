@@ -1,3 +1,5 @@
+import { orderFulfillmentStatusSql } from '../order-status';
+import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
 import { orderFulfillmentSignalSelects } from '../order-fulfillment-signals';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
@@ -81,7 +83,7 @@ const activeShipmentCarrierCodeSql = () => sql<string | null>`(
 
 export async function listPortalOrders(
   scope: ClientPortalScope,
-  opts: { page: number; pageSize: number; status?: string | null; clientId?: number | null; storeId?: number | null; search: string },
+  opts: SortInput & { page: number; pageSize: number; status?: string | null; clientId?: number | null; storeId?: number | null; search: string },
 ) {
   const { page, pageSize, status, clientId, storeId, search } = opts;
   // CP-061: badge selects must be constants while the shared prod DB lacks the
@@ -126,7 +128,16 @@ export async function listPortalOrders(
     .leftJoin(clients, eq(clients.id, orders.clientId))
     .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
     .where(where)
-    .orderBy(desc(orders.orderDate), desc(orders.id))
+    .orderBy(...tableOrderBy(opts, {
+      date: orders.orderDate, client: sql`lower(${clients.name})`,
+      status: orderFulfillmentStatusSql(), order: referenceOrder(orders.orderNumber),
+      items: sql`(select lower(oi.name) from order_items oi where oi.order_id = ${orders.id} order by oi.line_index limit 1)`,
+      sku: sql`(select lower(oi.sku) from order_items oi where oi.order_id = ${orders.id} order by oi.line_index limit 1)`,
+      qty: sql`coalesce((select sum(oi.quantity) from order_items oi where oi.order_id = ${orders.id}), 0)`,
+      weight: scope.isGlobal ? orders.weightOz : undefined,
+      total: scope.canViewFinancials ? orders.orderTotal : undefined,
+      customerShipping: scope.canViewFinancials ? sql`(${orderCustomerShippingRateSql()})::numeric` : undefined,
+    }, [desc(orders.orderDate), desc(orders.id)], orders.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
   const [countRows, canonicalItemsByOrder] = await Promise.all([

@@ -1,3 +1,4 @@
+import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Building2, Download, ExternalLink, Filter, PackageCheck } from 'lucide-react';
@@ -40,6 +41,7 @@ export default function Returns() {
   const [params] = useSearchParams();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState('');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
@@ -60,7 +62,7 @@ export default function Returns() {
     setPage(1);
   }, [debouncedSearch, effectiveClientId, statusFilter, orderFilter]);
 
-  const query = useReturns({
+  const query = useReturns({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
     search: debouncedSearch,
     page,
     pageSize,
@@ -231,7 +233,6 @@ export default function Returns() {
             {row.status === 'label_failed' ? 'Needs retry' : 'Label pending'}
           </span>
         ),
-        sortAccessor: (row) => row.pdfAvailable ? 1 : 0,
       },
       {
         key: 'returnCustomerShippingRate',
@@ -320,7 +321,7 @@ export default function Returns() {
           emptyTitle={statusFilter || debouncedSearch ? 'No matching returns' : 'No returns yet'}
           emptyMessage="Start a return from an order or shipment, and it will appear here."
         >
-          <DataTable
+          <DataTable sort={tableSort.sort} onSortChange={tableSort.onSortChange}
             tableId="returns"
             columns={columns}
             rows={rows}
