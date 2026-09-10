@@ -14,9 +14,14 @@ import {
 import type { InvoiceSelection, InvoiceSort } from '@/components/billing/invoices/types';
 import { useInvoiceActions } from '@/components/billing/invoices/useInvoiceActions';
 import type { BillingTotals, PeriodSummary } from '@/components/billing/invoiceColumns';
+import {
+  BillingFinalizationBanner,
+  finalizationView,
+} from '@/components/billing/BillingFinalizationBanner';
 import { EmptyState } from '@/components/ui/Display';
 import { GlassPanel } from '@/components/ui/Glass';
 import {
+  useBillingFinalizationCoverage,
   useCanCustomizeTables,
   useClients,
   useInvoiceDetailsRange,
@@ -46,6 +51,22 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity, clientFilter);
   const billingDenied = summaryQuery.isError && errorStatus(summaryQuery.error) === 403;
   const billingVisible = summaryQuery.data?.billingVisible !== false && !billingDenied;
+  // CP-070: PrepShip's finalization verdict for exactly the days and client this list shows.
+  // Not requested for accounts that cannot see billing, so it discloses nothing to them: it waits
+  // for the summary's first answer, which is where a billing denial arrives.
+  const coverageQuery = useBillingFinalizationCoverage(
+    from,
+    to,
+    clientFilter,
+    billingVisible && !summaryQuery.isPending,
+  );
+  const coverage = finalizationView({
+    data: coverageQuery.data,
+    isError: coverageQuery.isError,
+    isFetching: coverageQuery.isFetching,
+    from,
+    to,
+  });
   const summary: PeriodSummary[] = useMemo(
     () => toPeriodSummaries(summaryQuery.data?.data ?? []),
     [summaryQuery.data],
@@ -88,6 +109,13 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   return (
     <div className="space-y-4">
       {selected == null ? (
+        <>
+        {/* List scope only: never shown as a verdict about one drilled-in period. */}
+        <BillingFinalizationBanner
+          view={coverage}
+          retrying={coverageQuery.isFetching}
+          onRetry={() => { void coverageQuery.refetch(); }}
+        />
         <InvoicePeriodList
           clients={clients}
           clientFilter={clientFilter}
@@ -115,6 +143,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
             void actions.viewInvoice(row.clientId, row.periodStart, row.periodEnd, key);
           }}
         />
+        </>
       ) : (
         <InvoiceLineItems
           selected={selected}

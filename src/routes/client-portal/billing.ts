@@ -21,6 +21,7 @@ import { env } from '../../lib/env';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { requestedClientId, scopeOrResponse } from '../../lib/client-portal/query-params';
 import { getBillingLastGenerated } from '../../lib/client-portal/read-models/billing-status';
+import { fetchBillingFinalizationCoverage } from '../../lib/client-portal/prepship-billing-finalization-proxy';
 
 const app = new Hono();
 
@@ -372,6 +373,44 @@ app.get('/billing/status', async (c) => {
     );
     return c.json({ error: 'billing_status_unavailable' }, 503);
   }
+});
+
+const BILLING_DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+function isCalendarDay(day: string): boolean {
+  if (!BILLING_DAY_ONLY.test(day) || day.startsWith('0000-')) return false;
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day;
+}
+
+// CP-070 — PrepShip's billing finalization verdict for the Billing banner. PrepShip owns the
+// coverage rule and resolves scope from the forwarded bearer; this handler only gates financial
+// visibility, checks the applied days' shape and passes the answer through. No coverage math and
+// no read of billing_finalizations here.
+app.get('/billing/finalization-coverage', async (c) => {
+  c.header('Cache-Control', 'private, no-store');
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.canViewFinancials) return c.json({ error: 'Billing access required' }, 403);
+
+  const dateFrom = c.req.query('dateFrom') ?? '';
+  const dateTo = c.req.query('dateTo') ?? '';
+  if (!isCalendarDay(dateFrom) || !isCalendarDay(dateTo) || dateFrom > dateTo) {
+    return c.json({ error: 'Invalid dateFrom/dateTo; expected YYYY-MM-DD with dateFrom on or before dateTo' }, 400);
+  }
+  const rawClientId = c.req.query('clientId');
+  const clientId = rawClientId === undefined ? null : requestedClientId(c);
+  if (rawClientId !== undefined && clientId === null) return c.json({ error: 'Invalid clientId' }, 400);
+
+  const authorization = c.req.header('authorization');
+  if (!authorization) return c.json({ error: 'Missing bearer token' }, 401);
+  const result = await fetchBillingFinalizationCoverage(
+    authorization,
+    { dateFrom, dateTo, clientId },
+    c.req.header('x-request-id') ?? undefined,
+    c.req.raw.signal,
+  );
+  if (result.ok) return c.json(result.coverage);
+  return c.json({ error: result.error, code: result.code }, result.status);
 });
 
 export default app;

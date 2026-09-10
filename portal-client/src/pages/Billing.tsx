@@ -76,6 +76,8 @@ export default function Billing() {
       qc.invalidateQueries({ queryKey: ['invoice-summary-range'] }),
       qc.invalidateQueries({ queryKey: ['invoice-period-summary-range'] }),
       qc.invalidateQueries({ queryKey: ['billing-status'] }),
+      // CP-070: re-confirm finalization after an update; invalidating never triggers generation.
+      qc.invalidateQueries({ queryKey: ['billing-finalization-coverage'] }),
     ]);
   }
 

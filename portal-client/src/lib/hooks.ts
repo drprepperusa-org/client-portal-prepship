@@ -1,7 +1,7 @@
 import { portalQueryKey, portalReadKeys } from './query-keys';
 import type { RequestAuth } from './api/transport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '@/auth';
 import { portalApi, type ListOpts } from './api';
 // ListOpts is re-used by useReturns below (returns filter shape mirrors it).
@@ -13,6 +13,8 @@ type TokenQueryOpts = {
   refetchOnWindowFocus?: boolean;
   /** Preserve display rows only within this exact scope while sort/filter/page changes load. */
   retainDataScope?: readonly unknown[];
+  /** Always re-confirm with the server on mount/re-entry instead of serving a cached answer as fresh. */
+  alwaysRefetch?: boolean;
 };
 
 /** Wraps a portal query so it only runs once we have an access token. */
@@ -27,6 +29,7 @@ export function useTokenQuery<T>(key: unknown[], fn: (token: RequestAuth) => Pro
     enabled: Boolean(accessToken) && enabled,
     refetchInterval: opts.refetchInterval,
     refetchOnWindowFocus: opts.refetchOnWindowFocus,
+    ...(opts.alwaysRefetch ? { staleTime: 0, refetchOnMount: 'always' as const } : {}),
     meta: { retentionScope },
     placeholderData: (previousData, previousQuery) => (
       accessToken && userId && enabled && retentionScope
@@ -102,6 +105,32 @@ export const useBillingStatus = () =>
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
+
+/** Counts access-token changes for this mount without putting the token in a key or a log. */
+function useAuthGeneration(): number {
+  const { accessToken } = useAuth();
+  const seen = useRef({ token: accessToken, generation: 0 });
+  if (seen.current.token !== accessToken) {
+    seen.current = { token: accessToken, generation: seen.current.generation + 1 };
+  }
+  return seen.current.generation;
+}
+
+/**
+ * CP-070 — PrepShip's billing finalization verdict for the applied Billing days and client filter.
+ * Keyed by user (portalQueryKey), days, client and an auth generation, so an account switch or a
+ * token refresh never reuses an earlier verdict. No retained/placeholder data: a new key starts with
+ * no verdict. BillingFinalizationBanner decides what a pending or failed request may show.
+ */
+export function useBillingFinalizationCoverage(from: string, to: string, clientId: number | undefined, enabled: boolean) {
+  const authGeneration = useAuthGeneration();
+  return useTokenQuery(
+    ['billing-finalization-coverage', from, to, clientId ?? 'scope', authGeneration],
+    (t) => portalApi.finalizationCoverage(t, from, to, clientId),
+    enabled && Boolean(from && to),
+    { refetchOnWindowFocus: true, alwaysRefetch: true },
+  );
+}
 
 export function useInvoiceDetails() {
   const { dateRange, clientId } = usePortalFilters();

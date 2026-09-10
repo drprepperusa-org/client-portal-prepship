@@ -4,6 +4,7 @@ import type {
   BillingInvoiceDetailRow,
   BillingInvoicePeriodSummaryRow,
   BillingInvoiceSummaryRow,
+  BillingFinalizationCoverage,
   BillingInvoiceTotals,
   BillingLastGenerated,
   PortalReports,
@@ -133,6 +134,13 @@ export const billingApi = {
       clientId,
       groupBy: 'period',
       granularity,
+    }),
+  /** CP-070 — PrepShip's finalization verdict for the applied inclusive days and optional client. */
+  finalizationCoverage: (token: RequestAuth, dateFrom: string, dateTo: string, clientId?: number) =>
+    apiGet<BillingFinalizationCoverage>(token, '/api/client-portal/billing/finalization-coverage', {
+      dateFrom,
+      dateTo,
+      clientId,
     }),
   invoiceHtml: (token: RequestAuth, clientId: number, days = 30) =>
     apiText(token, '/api/client-portal/invoice', {

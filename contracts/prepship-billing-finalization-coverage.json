@@ -1,0 +1,20 @@
+{
+  "contract": "billing-finalization-coverage",
+  "version": 1,
+  "note": "CP-070. Pinned copy of PrepShip's recorded finalization-coverage answers. prepship-v4 asserts every case equals its REAL route (scripts/billing-finalization-coverage-native.ts, PG17). scripts/prepship-billing-finalization-parity.ts runs this repo's real proxy and parser over each case and, with PREPSHIP_CONTRACT_TOKEN, checks the upstream file at the pinned ref is unchanged. `today` is normalised to TODAY.",
+  "upstream": {
+    "repo": "drprepperusa-org/prepship-v4",
+    "ref": "84cfc7f0a747af548bb9fc9e1b7b8dc4ce4734a5",
+    "path": "contracts/billing-finalization-coverage.v1.json"
+  },
+  "request": { "dateFrom": "2026-08-01", "dateTo": "2026-08-15" },
+  "cases": [
+    { "name": "closed", "httpStatus": 200, "body": { "status": "closed", "dateFrom": "2026-08-01", "dateTo": "2026-08-15", "today": "TODAY" } },
+    { "name": "mixed", "httpStatus": 200, "body": { "status": "mixed", "dateFrom": "2026-08-01", "dateTo": "2026-08-15", "today": "TODAY" } },
+    { "name": "open", "httpStatus": 200, "body": { "status": "open", "dateFrom": "2026-08-01", "dateTo": "2026-08-15", "today": "TODAY" } },
+    { "name": "unavailable", "httpStatus": 200, "body": { "status": "unavailable", "dateFrom": "2026-08-01", "dateTo": "2026-08-15", "today": "TODAY" } },
+    { "name": "out-of-scope-client", "httpStatus": 404, "body": { "error": "Client not found" } },
+    { "name": "no-claims", "httpStatus": 403, "body": { "error": "Forbidden" } },
+    { "name": "reversed-range", "httpStatus": 400, "body": { "error": "Choose valid start and end dates, with start on or before end" } }
+  ]
+}

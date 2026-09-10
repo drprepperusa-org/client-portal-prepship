@@ -111,6 +111,20 @@ jobs:
       # share one bucket expression.
       - name: Run CP-069 orders/shipments fulfillment display integration suite
         run: npm run test:client-portal-orders-fulfillment-cp069:integration
+      # CP-070. The Billing finalization banner's verdict is PrepShip's. Proves through the real
+      # route that financial visibility and input shape are gated before any upstream call, the
+      # bearer and only the applied inclusive days reach PrepShip, a valid verdict passes through
+      # unchanged, denials lose their detail, and every other outcome is "unable to confirm" —
+      # never closed.
+      - name: Run CP-070 billing finalization verdict integration suite
+        run: npm run test:client-portal-billing-cp070:integration
+      # CP-070 cross-repo contract. The real proxy/parser runs over PrepShip's recorded answers
+      # (asserted equal to the real route by prepship-v4's PG17 fixtures); the remote half proves the
+      # pinned upstream file has not moved. Fail-closed arming, same rule as the parity gates below.
+      - name: Check PrepShip billing finalization contract parity
+        env:
+          PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+        run: npm run test:cp-070:parity
       # Cross-repo classification ownership. Runs the local half always; the
       # upstream half only when PREPSHIP_CONTRACT_TOKEN is configured (prepship-v4
       # is private, so the default GITHUB_TOKEN cannot read it). Without the

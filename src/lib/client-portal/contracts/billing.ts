@@ -141,3 +141,21 @@ export interface BillingLastGenerated {
   total?: number;
   by?: string | null;
 }
+
+/**
+ * CP-070 — PrepShip's customer-safe billing finalization verdict, passed through unchanged.
+ *
+ * Source: GET /billing/finalization-coverage in prepship-v4 (billingFinalizationCoverageForScope in
+ * billing-finalization-policy.ts), evaluated over EVERY client in the caller's authorized scope for
+ * the applied days. Days are inclusive YYYY-MM-DD; `today` is the Los Angeles billing day.
+ * `unavailable` means PrepShip could not confirm coverage — it never means finalized. The portal
+ * computes none of this; last-generated freshness (BillingLastGenerated) is a separate fact.
+ */
+export type BillingFinalizationCoverageStatus = 'open' | 'mixed' | 'closed' | 'unavailable';
+
+export interface BillingFinalizationCoverage {
+  status: BillingFinalizationCoverageStatus;
+  dateFrom: string;
+  dateTo: string;
+  today: string;
+}
