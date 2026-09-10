@@ -253,7 +253,7 @@ test('rapid billing sorts ignore an older response', async ({ page }) => {
   const pending = [];
   await page.route('**/api/client-portal/invoice-details?**', route => { pending.push(route); });
   // Reference descending is already cached from the initial load; exercise two new requests.
-  const header = page.getByRole('columnheader', { name: 'Shipping', exact: true });
+  const header = page.getByRole('button', { name: 'Shipping', exact: true });
   await header.click();
   await expect.poll(() => pending.length).toBe(1);
   await header.click();
