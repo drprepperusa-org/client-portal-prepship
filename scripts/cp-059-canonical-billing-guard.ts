@@ -348,6 +348,12 @@ stubUpstream({ data: [
 ] });
 const distinct = await fetchCanonicalBillingDetails('Bearer t', { dateFrom: '2026-08-01', dateTo: '2026-09-01' });
 assert.ok(distinct.ok, 'distinct identities must still succeed');
+for (const canonicalEventId of [undefined, null]) {
+  stubUpstream({ data: [canonical({ canonicalEventId })] });
+  const missing = await fetchCanonicalBillingDetails('Bearer t', { dateFrom: '2026-08-01', dateTo: '2026-09-01' });
+  assert.equal(missing.ok, false, 'the response path must never substitute a positional row identity');
+  if (!missing.ok) assert.match(missing.code, /contract_mismatch/);
+}
 ok('duplicate event identities reject the response; distinct ones still succeed');
 
 // --- 8. MALFORMED ROWS FAIL CLOSED. The counterexample review found. --------------------------

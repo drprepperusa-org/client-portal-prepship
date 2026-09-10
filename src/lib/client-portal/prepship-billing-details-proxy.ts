@@ -130,12 +130,6 @@ const ALLOWED_BOOLEAN_FIELDS = [
 
 /** The exact identity format PrepShip publishes: 32 lowercase hex characters. */
 const CANONICAL_EVENT_ID_PATTERN = /^[0-9a-f]{32}$/;
-/**
- * Marks an identity the PORTAL substituted because the deployed producer emitted none.
- * Deliberately cannot match CANONICAL_EVENT_ID_PATTERN, so a substituted id can never be
- * mistaken for producer truth. Temporary — see toCanonicalBillingEventRow.
- */
-export const LEGACY_EVENT_ID_PREFIX = 'cp-legacy-row-';
 
 const ROW_TYPES: readonly string[] = ['Outbound', 'Return'];
 // PS-522: N/A is issued only by PrepShip's canonical non-shipping applicability
@@ -183,7 +177,6 @@ function asInteger(value: unknown): number | null {
  */
 export function toCanonicalBillingEventRow(
   input: unknown,
-  rowIndex?: number,
 ): CanonicalBillingEventRow | null {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
   const row = input as Record<string, unknown>;
@@ -227,39 +220,9 @@ export function toCanonicalBillingEventRow(
   // The producer publishes exactly 32 lowercase hex characters. Checking only for a non-empty
   // string accepted "x", which is not an identity from this producer and would sail through to
   // the React keys. A contract gate that accepts anything shaped vaguely right is not a gate.
-  /*
-   * TEMPORARY MITIGATION — 2026-08-30. REMOVE WHEN THE PRODUCER SHIPS.
-   *
-   * CP-059 was deployed ahead of its producer, violating the card's own stated order
-   * ("PS-488 first, then CP-059"). The deployed PrepShip — prepshipv4-stable @ 953f20bf, live
-   * since 2026-08-28 — does not emit canonicalEventId at all; the field exists only in commits
-   * ahead of that branch. Requiring it therefore failed row 0 of every response, and because one
-   * bad row fails the whole response, Billing line items returned 502 for every client for ~12
-   * hours.
-   *
-   * So: an identity that is PRESENT must still be exactly 32 lowercase hex. A malformed or
-   * truncated id is still rejected — that gate is intact and is what stops "x" reaching a React
-   * key. Only a WHOLLY ABSENT field is tolerated, and only by substituting a per-response
-   * identity derived from the row's position.
-   *
-   * Why the index is a safe substitute for the ONE property that matters here: it is unique
-   * within a response by construction, so two distinct charges can never collapse into a single
-   * row. That collapse — not the hex format — is the defect the identity was introduced to
-   * remove, and the pre-CP-059 key (orderId|returnId|rowType) is what caused it by giving two
-   * orderless storage lines the same key.
-   *
-   * What is genuinely worse than a producer-issued identity, stated rather than glossed: an
-   * index is positional, so it is not stable across sorting or pagination and React may reuse
-   * DOM nodes when rows reorder. That is a rendering cost, not a money-correctness one, and it
-   * is strictly better than either collapsing rows or serving 502.
-   *
-   * The prefix keeps these impossible to confuse with a real identity — it can never match
-   * CANONICAL_EVENT_ID_PATTERN — so nothing downstream can mistake one for producer truth.
-   */
-  const identityAbsent = row.canonicalEventId === undefined || row.canonicalEventId === null;
-  const canonicalEventId = identityAbsent && typeof rowIndex === 'number'
-    ? `${LEGACY_EVENT_ID_PREFIX}${rowIndex}`
-    : typeof row.canonicalEventId === 'string'
+  // The deployed producer now supplies identity for every event, including storage.
+  // A positional substitute would reuse identities when sorting or changing pages.
+  const canonicalEventId = typeof row.canonicalEventId === 'string'
       && CANONICAL_EVENT_ID_PATTERN.test(row.canonicalEventId)
       ? row.canonicalEventId
       : null;
@@ -555,7 +518,7 @@ export async function fetchCanonicalBillingDetails(
   // is worse than showing an error, because nobody can tell it happened.
   const rows: CanonicalBillingEventRow[] = [];
   for (const [index, entry] of raw.entries()) {
-    const row = toCanonicalBillingEventRow(entry, index);
+    const row = toCanonicalBillingEventRow(entry);
     if (!row) {
       console.error(
         `[client-portal] canonical billing row ${index} failed contract validation; `
