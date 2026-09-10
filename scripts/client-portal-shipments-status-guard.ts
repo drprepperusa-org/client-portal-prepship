@@ -1,6 +1,8 @@
-// CP-006 guard: Client Portal shipment delivery status is backend-owned and
-// provider-backed — never derived in React from tracking-number presence when
-// live status exists.
+// CP-006 / CP-042 / CP-051 / CP-069 guard: Client Portal outbound shipment status is
+// backend-owned — since CP-069 it is PrepShip's fulfillment truth (voided | the linked order's
+// lifecycle bucket), never carrier telemetry or tracking-number presence, and never derived in
+// React. Sections 1-3 keep the CP-042 official-carrier collector pinned (the Returns surface
+// still depends on it); sections 4-8 pin the CP-069 outbound display contract.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,8 +20,10 @@ function check(condition: boolean, message: string) {
 }
 
 function read(rel: string) {
-  return fs.readFileSync(path.join(root, rel), 'utf8');
+  return fs.readFileSync(path.join(root, rel), 'utf8').replace(/\r\n/g, '\n');
 }
+const stripComments = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1');
 
 // 1) Backend normalization: provider label statuses -> portal vocabulary.
 const {
@@ -233,7 +237,10 @@ check(
   'CP-042: manual refresh is immediate and emits safe backend diagnostics',
 );
 
-// 3) Worker owns the periodic refresh (no browser-driven carrier calls).
+/// 3) Worker owns the periodic refresh — no browser-driven carrier calls on OUTBOUND surfaces.
+//    (CP-069: the Returns page drives a returns-scoped refresh because its CP-062 arrival signal
+//    depends on telemetry — pinned in client-portal-returns-tracking-guard.mjs. The outbound
+//    Shipments page and adapter issue none — pinned in §8 below.)
 const worker = read('src/worker.ts');
 check(worker.includes('startShipmentTrackingSweep()'), 'worker starts the shipment tracking sweep');
 check(
@@ -241,19 +248,29 @@ check(
   'CP-042: worker startup reports official USPS readiness without exposing credentials',
 );
 
-// 4) One backend expression owns both filter and DTO status projection.
+// 4) One backend expression owns both filter and DTO status projection (CP-069 contract):
+//    voided -> 'voided'; else the linked order's PrepShip fulfillment bucket via the left-joined
+//    orders row (or a same-client order_number fallback when order_id is null): cancelled ->
+//    'cancelled', shipped -> 'shipped', pending -> 'label_created'; no order -> 'unavailable'.
 const statusOwner = read('src/lib/client-portal/shipment-status.ts');
-const { normalizePortalShipmentStatus } = await import('../src/lib/client-portal/shipment-status');
-const statusFixtures = [
-  'delivered',
-  'in_transit',
-  'exception',
-  'attempted',
-  'label_created',
-  'voided',
-] as const;
-for (const status of statusFixtures) {
-  check(normalizePortalShipmentStatus(status) === status, `CP-051: ${status} survives DTO validation`);
+const statusOwnerCode = stripComments(statusOwner);
+const {
+  normalizePortalShipmentStatus,
+  resolveShipmentStatusFilterParam,
+  LEGACY_SHIPMENT_STATUS_FILTER_ALIASES,
+  PORTAL_SHIPMENT_STATUSES: OWNER_STATUSES,
+} = await import('../src/lib/client-portal/shipment-status');
+const CONTRACT_STATUSES = ['shipped', 'label_created', 'cancelled', 'voided', 'unavailable'] as const;
+const LEGACY_FILTER_VALUES = ['delivered', 'in_transit', 'exception', 'attempted'] as const;
+check(
+  [...OWNER_STATUSES].join(',') === CONTRACT_STATUSES.join(','),
+  'CP-069: PORTAL_SHIPMENT_STATUSES is exactly shipped | label_created | cancelled | voided | unavailable',
+);
+for (const status of CONTRACT_STATUSES) {
+  check(normalizePortalShipmentStatus(status) === status, `CP-069: ${status} survives DTO validation`);
+}
+for (const legacy of LEGACY_FILTER_VALUES) {
+  check(normalizePortalShipmentStatus(legacy) === 'unavailable', `CP-069: projected carrier vocabulary '${legacy}' fails closed (never a rendered status)`);
 }
 check(
   normalizePortalShipmentStatus(null) === 'unavailable' &&
@@ -262,67 +279,170 @@ check(
 );
 check(
   statusOwner.includes('export function portalShipmentStatusSql') &&
-    statusOwner.includes("then 'label_created'") &&
-    statusOwner.includes("else 'unavailable'") &&
-    !statusOwner.includes('trackingNumber') &&
-    !statusOwner.includes('labelTracking'),
-  'CP-051: backend lifecycle formula covers fixtures and never uses tracking-number presence',
+    statusOwnerCode.includes("then 'voided'") &&
+    statusOwnerCode.includes("then 'cancelled'") &&
+    statusOwnerCode.includes("then 'shipped'") &&
+    statusOwnerCode.includes("then 'label_created'") &&
+    statusOwnerCode.includes("else 'unavailable'"),
+  'CP-069: the shipment status formula has the voided / cancelled / shipped / label_created / unavailable arms',
+);
+check(
+  statusOwnerCode.includes('portalOrderFulfillmentBucketSql()') &&
+    statusOwnerCode.includes("portalOrderFulfillmentBucketAliasSql('o')") &&
+    statusOwnerCode.includes("orderLifecycleEffectiveStatusAliasSql('o')") &&
+    /from '\.\/order-lifecycle'/.test(statusOwnerCode),
+  'CP-069: the shipment status delegates to the order-lifecycle owner (joined orders row + same-client order_number fallback)',
+);
+check(
+  statusOwnerCode.includes('o.order_number = ${shipments.orderNumber}') &&
+    statusOwnerCode.includes('o.client_id = ${shipments.clientId}') &&
+    /order by case when \$\{orderLifecycleEffectiveStatusAliasSql\('o'\)\} = 'shipped' then 0 else 1 end, o\.id desc/.test(statusOwnerCode),
+  'CP-069: the order_number fallback is tenant-scoped and prefers an effective-shipped order, then the newest',
+);
+check(
+  !statusOwnerCode.includes('trackingNumber') &&
+    !statusOwnerCode.includes('labelTracking') &&
+    !/tracking_status|trackingStatus|delivered_at|deliveredAt|ship_date|shipDate/.test(statusOwnerCode),
+  'CP-069: the formula never reads tracking-number presence, carrier telemetry, or ship dates',
 );
 
 const readModel = read('src/lib/client-portal/read-models/shipments.ts');
 check(
   readModel.includes('return status ? eq(portalShipmentStatusSql(), status)') &&
     readModel.includes('shipmentStatus: portalShipmentStatusSql()'),
-  'CP-051: filtering and DTO projection call the same backend status expression',
+  'CP-051/CP-069: filtering and DTO projection call the same backend status expression',
+);
+check(
+  readModel.includes('outboundShipmentPredicate()') &&
+    (readModel.match(/\.leftJoin\(orders, eq\(orders\.id, shipments\.orderId\)\)/g) ?? []).length === 2,
+  'CP-069: the Shipments list admits outbound rows only and left-joins orders on list AND count',
 );
 
-// 5) DTO exposes intent-named lifecycle/tracking fields and no competing raw fields.
+// 5) DTO exposes intent-named lifecycle/tracking fields and no competing raw fields; the
+//    carrier-telemetry fields (shipmentStatusDetail / deliveredAt) are ABSENT, not null.
 const dto = read('src/lib/client-portal/dto.ts');
+const shipmentDtoBlock = stripComments(/export function toPortalShipmentDto[\s\S]*?\n\}/.exec(dto)?.[0] ?? '');
 check(
-  dto.includes('displayTrackingNumber') &&
-    dto.includes('shipmentStatus: normalizePortalShipmentStatus(row.shipmentStatus)') &&
-    dto.includes('shipmentStatusDetail: row.trackingStatusDetail ?? null') &&
-    dto.includes('deliveredAt: iso(row.deliveredAt)'),
+  shipmentDtoBlock.includes('displayTrackingNumber') &&
+    shipmentDtoBlock.includes('shipmentStatus: normalizePortalShipmentStatus(row.shipmentStatus)'),
   'CP-051: shipment DTO exposes displayTrackingNumber + normalized shipmentStatus',
 );
+check(
+  shipmentDtoBlock.length > 0 &&
+    !shipmentDtoBlock.includes('shipmentStatusDetail') &&
+    !shipmentDtoBlock.includes('deliveredAt') &&
+    !shipmentDtoBlock.includes('trackingStatusDetail'),
+  'CP-069: shipment DTO projects NO shipmentStatusDetail / deliveredAt (absence)',
+);
+const shipmentsContract = stripComments(read('src/lib/client-portal/contracts/shipments.ts'));
+check(
+  !shipmentsContract.includes('deliveredAt') &&
+    !shipmentsContract.includes('shipmentStatusDetail') &&
+    shipmentsContract.includes('shipmentStatus: PortalShipmentStatus'),
+  'CP-069: PortalShipment contract has no deliveredAt / shipmentStatusDetail',
+);
 
-// 6) Server-side status filter whitelist includes every rendered enum value.
+// 6) Server-side status filter whitelist is the shared enum; the route resolves legacy aliases.
 check(
   readModel.includes('new Set<PortalShipmentStatus>(PORTAL_SHIPMENT_STATUSES)'),
   'CP-051: shipments read-model derives its filter whitelist from the shared enum',
 );
+check(
+  shipmentsRoute.includes("resolveShipmentStatusFilterParam(c.req.query('status'))") &&
+    shipmentsRoute.includes('SHIPMENT_STATUS_FILTERS.has(resolvedStatus)'),
+  'CP-069: GET /shipments resolves ?status through resolveShipmentStatusFilterParam and the shared whitelist',
+);
+for (const status of CONTRACT_STATUSES) {
+  check(resolveShipmentStatusFilterParam(status) === status, `CP-069: ?status=${status} filters on ${status}`);
+}
+for (const legacy of LEGACY_FILTER_VALUES) {
+  check(
+    resolveShipmentStatusFilterParam(legacy) === 'shipped' && LEGACY_SHIPMENT_STATUS_FILTER_ALIASES[legacy] === 'shipped',
+    `CP-069: legacy ?status=${legacy} aliases to 'shipped' (one release)`,
+  );
+}
+check(
+  resolveShipmentStatusFilterParam('bogus') === undefined &&
+    resolveShipmentStatusFilterParam('') === undefined &&
+    resolveShipmentStatusFilterParam(undefined) === undefined,
+  'CP-069: unknown ?status values mean no filter',
+);
+check(
+  Object.keys(LEGACY_SHIPMENT_STATUS_FILTER_ALIASES).sort().join(',') === 'attempted,delivered,exception,in_transit',
+  'CP-069: the legacy alias map is exactly delivered | in_transit | exception | attempted',
+);
+{
+  const aliasIdx = statusOwner.indexOf('export const LEGACY_SHIPMENT_STATUS_FILTER_ALIASES');
+  check(
+    aliasIdx > 0 && /transitional|legacy|one release/i.test(statusOwner.slice(Math.max(0, aliasIdx - 900), aliasIdx)),
+    'CP-069: the legacy alias map carries its TRANSITIONAL / removal marker',
+  );
+}
 
 // 7) Frontend maps the enum to presentation only.
 const statusLib = read('portal-client/src/lib/status.ts');
-const metaBody = /shipmentStatusMeta[\s\S]*?\n\}/.exec(statusLib)?.[0] ?? '';
+const metaBody = statusLib.slice(statusLib.indexOf('const SHIPMENT_STATUS_META'), statusLib.indexOf('function prettify'));
+check(metaBody.length > 0, 'shipmentStatusMeta block found');
 check(
-  metaBody.includes("case 'in_transit':") &&
-    metaBody.includes("label: 'Unavailable'") &&
-    !metaBody.includes('trackingNumber') &&
+  /shipped:\s*\{\s*label:\s*'Shipped'/.test(metaBody) &&
+    /label_created:\s*\{\s*label:\s*'Label Created'/.test(metaBody) &&
+    /cancelled:\s*\{\s*label:\s*'Cancelled'/.test(metaBody) &&
+    /voided:\s*\{\s*label:\s*'Voided'/.test(metaBody) &&
+    /unavailable:\s*\{\s*label:\s*'Unavailable'/.test(metaBody),
+  'CP-069: shipmentStatusMeta maps exactly the 5 contract values (Shipped / Label Created / Cancelled / Voided / Unavailable)',
+);
+check(
+  !metaBody.includes('trackingNumber') &&
     !metaBody.includes('labelTracking') &&
-    !metaBody.includes('trackingStatus'),
+    !metaBody.includes('trackingStatus') &&
+    metaBody.includes("?? 'unavailable'"),
   'CP-051: shipmentStatusMeta only maps backend enum values and fails closed visibly',
 );
-check(metaBody.includes("label: 'Delivered'"), 'Delivered is a rendered shipment status');
+check(
+  !/['"`]In Transit['"`]|['"`]Delivered['"`]/.test(stripComments(metaBody)),
+  'CP-069: no In Transit / Delivered LABEL is rendered for an outbound shipment (transitional legacy KEYS map to Shipped)',
+);
+{
+  const legacyIdx = statusLib.indexOf('const LEGACY_SHIPMENT_KEYS');
+  check(
+    legacyIdx > 0 &&
+      /TRANSITIONAL/.test(statusLib.slice(Math.max(0, legacyIdx - 1200), legacyIdx)) &&
+      /in_transit:\s*'shipped'/.test(metaBody) &&
+      /delivered:\s*'shipped'/.test(metaBody),
+    'CP-069: transitional legacy keys (in_transit / delivered / exception / attempted -> shipped) carry the removal marker',
+  );
+}
 
 // 8) Both shipment UIs render only the intent-named customer contract.
 const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
 const billingDrawer = read('portal-client/src/components/billing/InvoiceShipmentDrawer.tsx');
+const statusOptions = /const STATUS_OPTIONS[\s\S]*?;\n/.exec(shipmentsPage)?.[0] ?? '';
 check(
-  shipmentsPage.includes("value: 'delivered'") &&
-    shipmentsPage.includes("value: 'unavailable'") &&
-    shipmentsPage.includes('status: statusFilter || undefined') &&
+  statusOptions.length > 0 &&
+    CONTRACT_STATUSES.every((s) => statusOptions.includes(`'${s}'`)) &&
+    !/'delivered'|'in_transit'|'exception'|'attempted'/.test(statusOptions) &&
+    statusOptions.includes('shipmentStatusMeta(value).label'),
+  "CP-069: Shipments status filter offers exactly the 5 contract values (incl. 'shipped' and 'unavailable') labelled by shipmentStatusMeta",
+);
+check(
+  shipmentsPage.includes('status: statusFilter || undefined') &&
     shipmentsPage.includes('shipmentStatusMeta(s.shipmentStatus)') &&
     shipmentsPage.includes('s.displayTrackingNumber') &&
     shipmentsPage.includes('allRows.find((shipment) => shipment.id === current.id)'),
   'CP-051: Shipments render backend status and refresh an open drawer from the latest DTO',
 );
 check(
+  !/refreshShipmentTracking|refresh-tracking|deliveredAt|shipmentStatusDetail/.test(shipmentsPage) &&
+    !/['"`]Delivered['"`]|['"`]In Transit['"`]/.test(stripComments(shipmentsPage)),
+  'CP-069: Shipments page issues no tracking refresh and renders no Delivered / tracking-status fields',
+);
+check(
   billingDrawer.includes('shipmentStatusMeta(shipment.shipmentStatus)') &&
     billingDrawer.includes('shipment.displayTrackingNumber') &&
     !billingDrawer.includes('shipment.trackingNumber') &&
-    !billingDrawer.includes('shipment.labelTracking'),
-  'CP-051: Billing shipment drawer uses the same backend-owned contract',
+    !billingDrawer.includes('shipment.labelTracking') &&
+    !/deliveredAt|shipmentStatusDetail/.test(stripComments(billingDrawer)),
+  'CP-051/CP-069: Billing shipment drawer uses the same backend-owned contract and shows no deliveredAt',
 );
 
 // 8) No frontend code talks to carrier/tracking APIs directly.
@@ -382,4 +502,4 @@ check(
 );
 
 if (failed) process.exit(1);
-console.log('\nCP-006/CP-042/CP-051 client portal shipment status guard passed.');
+console.log('\nCP-006/CP-042/CP-051/CP-069 client portal shipment status guard passed.');

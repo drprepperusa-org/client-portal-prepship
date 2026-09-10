@@ -8,6 +8,7 @@ import { db } from '../db/client';
 import { EXCLUDED_STORE_IDS_SQL } from '../config/prepship';
 import { getClientStoreScope, type ClientStoreScope } from '../lib/client-store-scope';
 import { rawVisibleAwaitingOrdersPredicateForAlias } from '../lib/client-portal/predicates';
+import { portalOrderFulfillmentBucketAliasPredicateSql } from '../lib/client-portal/order-lifecycle';
 import { hasAppPermission } from '../middleware/auth';
 
 export { EXPEDITED_SERVICES_SQL } from '../lib/shipping-class';
@@ -899,7 +900,10 @@ export async function getSkuBreakdownFromOrderItems(
         labels.active_label_count                                           as active_label_count,
         ${moneyColumns}
         case
-          when coalesce(o.order_status, '') = 'awaiting_shipment'
+          -- CP-069: the SAME awaiting SOT as the Orders tab / sidebar badge — PrepShip's
+          -- effective lifecycle pending bucket (not shipped, not cancelled, canonical
+          -- cancellations honoured) plus the portal's placeholder suppression.
+          when ${portalOrderFulfillmentBucketAliasPredicateSql('o', 'pending')}
             and ${rawVisibleAwaitingOrdersPredicateForAlias()}
             then true
           else false

@@ -1,12 +1,30 @@
 import type { PortalItemIdentity } from './common';
 import type { ReturnEligibility } from '../../../services/return-eligibility';
 
-export type PortalOrderFulfillmentStatus =
-  | 'pending'
-  | 'in_transit'
-  | 'delivered'
-  | 'cancelled'
-  | 'voided';
+/**
+ * CP-069 — the customer fulfillment display contract for an ORDER.
+ *
+ * Source: PrepShip's effective order lifecycle (orders.order_status, orders.canonical_status,
+ * orders.externally_shipped) collapsed to the customer vocabulary, plus PrepShip's shipped-label
+ * display state over the order's OUTBOUND shipment rows (voided / is_return) for the voided case.
+ * Event clock: PrepShip's fulfillment writes. Formula/owner: src/lib/client-portal/order-status.ts
+ * over src/lib/client-portal/order-lifecycle.ts (a pinned port of prepship-v4).
+ *
+ *   pending   — PrepShip has neither shipped nor cancelled the order (awaiting_shipment, on_hold,
+ *               awaiting_payment, pending_fulfillment, …). A label row, a tracking number, a ship
+ *               date or elapsed time alone never promote an order out of this bucket.
+ *   shipped   — PrepShip's effective status is shipped (order_status = shipped, or marked shipped
+ *               externally), including orders whose marketplace confirmation is still pending or
+ *               failed, and orders shipped outside PrepShip.
+ *   cancelled — PrepShip's effective status is cancelled (local, or cancelled upstream by the
+ *               marketplace while still awaiting locally).
+ *   voided    — shipped, but the only outbound label(s) were voided and nothing replaced them
+ *               (PrepShip's 'voided_label' display state).
+ *
+ * Carrier telemetry (shipments.tracking_status / delivered_at) is NOT an input: the portal never
+ * promises "In Transit" or "Delivered" as a carrier-tracking service.
+ */
+export type PortalOrderFulfillmentStatus = 'pending' | 'shipped' | 'cancelled' | 'voided';
 
 export interface PortalOrderCostSummaryRow {
   label: string;

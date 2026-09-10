@@ -13,7 +13,14 @@ import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { shipmentScopePredicate } from '../../lib/client-portal/predicates';
 import { toPortalShipmentDto } from '../../lib/client-portal/dto';
 import { portalShipmentStatusSql } from '../../lib/client-portal/shipment-status';
-import { awaitingActiveOrderCount, getPortalOrder, listPortalOrders } from '../../lib/client-portal/read-models/orders';
+import { outboundShipmentPredicate } from '../../lib/client-portal/order-lifecycle';
+import {
+  awaitingActiveOrderCount,
+  getPortalOrder,
+  isPortalOrderStatusFilter,
+  listPortalOrders,
+  PORTAL_ORDER_STATUS_FILTERS,
+} from '../../lib/client-portal/read-models/orders';
 import { startBackfillBestRates, getActiveBackfillJob, getLatestBackfillJob, type BackfillJob } from '../../services/rates-backfill';
 import { parsePage, parsePageSize, parsePositiveInt, requestedSearch, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
@@ -24,7 +31,14 @@ app.get('/orders', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
-  const status = c.req.query('status');
+  // CP-069: the status filter is a whitelist of the three customer buckets (undefined / 'all'
+  // = every order). Anything else is a 400, never a silent unfiltered list and never a raw
+  // order_status equality.
+  const statusParam = c.req.query('status');
+  const status = statusParam && statusParam !== 'all' ? statusParam : undefined;
+  if (status !== undefined && !isPortalOrderStatusFilter(status)) {
+    return c.json({ error: `Unknown status filter. Expected one of: ${PORTAL_ORDER_STATUS_FILTERS.join(', ')}` }, 400);
+  }
   const clientId = parsePositiveInt(c.req.query('clientId'));
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const search = requestedSearch(c);
@@ -72,6 +86,7 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
+      // CP-069: customer fulfillment display from the left-joined order's PrepShip lifecycle.
       shipmentStatus: portalShipmentStatusSql(),
       // Frozen billed shipping first; otherwise PrepShip's policy-versioned
       // shipment snapshot. No customer-rate formula exists in this route.
@@ -80,7 +95,8 @@ app.get('/orders/:id{[0-9]+}/shipments', async (c) => {
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
     .leftJoin(orders, eq(orders.id, shipments.orderId))
-    .where(and(eq(shipments.orderId, orderId), eq(shipments.voided, false), shipmentScopePredicate(scope)))
+    // CP-069: outbound rows only — return / replacement labels have their own surfaces.
+    .where(and(eq(shipments.orderId, orderId), eq(shipments.voided, false), outboundShipmentPredicate(), shipmentScopePredicate(scope)))
     .orderBy(desc(shipments.id))
     .limit(20);
   await recordPortalAudit('portal.billing.order_shipments.view', scope, {

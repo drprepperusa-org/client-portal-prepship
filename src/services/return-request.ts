@@ -4,6 +4,7 @@ import { orders } from '../db/schema/orders';
 import { returnItems, returns, type Return } from '../db/schema/returns';
 import { orderScopePredicate } from '../lib/client-portal/predicates';
 import { orderFulfillmentSignalSelects } from '../lib/client-portal/order-fulfillment-signals';
+import { rawExternallyFulfilled } from '../lib/client-portal/order-lifecycle';
 import type { ClientPortalScope } from '../lib/client-portal/scope';
 import { resolveReturnEligibility } from './return-eligibility';
 
@@ -26,10 +27,25 @@ export async function createReturnRequest(input: {
       .where(and(eq(orders.id, input.orderId), orderScopePredicate(input.scope)))
       .for('update').limit(1);
     if (!locked) throw new ReturnRequestRejectedError('Order not found or outside your access scope', 404);
-    const [facts] = await tx.select({ orderStatus: orders.orderStatus, ...orderFulfillmentSignalSelects() })
+    // CP-069: the same six signals the DTO badge reads — PrepShip's lifecycle columns and the
+    // order's OUTBOUND rows; no carrier telemetry.
+    const [facts] = await tx.select({
+      orderStatus: orders.orderStatus,
+      canonicalStatus: orders.canonicalStatus,
+      externallyShipped: orders.externallyShipped,
+      raw: orders.raw,
+      ...orderFulfillmentSignalSelects(),
+    })
       .from(orders).where(eq(orders.id, locked.id)).limit(1);
     if (!facts) throw new ReturnRequestRejectedError('Order not found', 404);
-    const eligibility = resolveReturnEligibility(facts);
+    const eligibility = resolveReturnEligibility({
+      orderStatus: facts.orderStatus,
+      canonicalStatus: facts.canonicalStatus,
+      externallyShipped: facts.externallyShipped === true,
+      externallyFulfilled: rawExternallyFulfilled(facts.raw),
+      hasActiveOutboundShipment: facts.hasActiveOutboundShipment,
+      hasVoidedOutboundShipment: facts.hasVoidedOutboundShipment,
+    });
     if (!eligibility.allowed) throw new ReturnRequestRejectedError(eligibility.reason, 409);
     const [created] = await tx.insert(returns).values({ ...input.values, orderId: locked.id }).returning();
     if (!created) throw new Error('Return creation did not return a record');

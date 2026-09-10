@@ -1,6 +1,6 @@
 import { useTableSort } from '@/lib/useTableSort';
 import { StartReturnButton } from '@/components/returns/StartReturnButton';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapPin, Copy, Building2, ExternalLink, Truck } from 'lucide-react';
 import { ItemNameLines, SkuLines } from '@/components/ItemIdentityLines';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
-import { useAuth } from '@/auth';
 import { useCanCustomizeTables, useShipments, useClients } from '@/lib/hooks';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
@@ -21,7 +20,7 @@ import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
-import { portalApi, type PortalShipment } from '@/lib/api';
+import type { PortalShipment } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
@@ -37,17 +36,12 @@ function clientAccent(name: string | null): Accent {
 // link. When trackingUrl is null (unknown carrier), the number renders as
 // copyable text with no external link. Carrier identity itself stays redacted.
 
-// Server-side status filter: values match the backend's SHIPMENT_STATUS_FILTERS,
-// so "Delivered" searches all shipments — not just the loaded page.
-const STATUS_OPTIONS = [
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'in_transit', label: 'In Transit' },
-  { value: 'exception', label: 'Exception' },
-  { value: 'attempted', label: 'Attempted' },
-  { value: 'label_created', label: 'Label Created' },
-  { value: 'voided', label: 'Voided' },
-  { value: 'unavailable', label: 'Unavailable' },
-] as const;
+// Server-side status filter: values are the backend's CP-069 outbound contract
+// (SHIPMENT_STATUS_FILTERS), so "Shipped" searches all shipments — not just the loaded page.
+// Labels come from the shared shipmentStatusMeta map; this list only orders the options.
+const STATUS_OPTIONS = (['shipped', 'label_created', 'cancelled', 'voided', 'unavailable'] as const).map(
+  (value) => ({ value, label: shipmentStatusMeta(value).label }),
+);
 
 export default function Shipments() {
   const toast = useToast();
@@ -82,38 +76,9 @@ export default function Shipments() {
     );
   }, [allRows]);
 
-  // Live tracking: when a page of shipments loads, ask the backend to refresh
-  // carrier tracking for undelivered rows. Targeted per-label lookups make the
-  // forced refresh cheap; changed rows trigger one DTO refetch.
-  const { accessToken } = useAuth();
-  const lastTrackingKey = useRef('');
-  useEffect(() => {
-    if (!accessToken || !allRows.length) return;
-    const ids = allRows
-      .filter(
-        (s) =>
-          s.shipmentStatus !== 'voided' &&
-          s.shipmentStatus !== 'delivered' &&
-          s.displayTrackingNumber,
-      )
-      .map((s) => s.id);
-    if (!ids.length) return;
-    const key = ids.join(',');
-    if (lastTrackingKey.current === key) return;
-    lastTrackingKey.current = key;
-    const refreshPageTracking = async () => {
-      let changed = false;
-      for (let index = 0; index < ids.length; index += 100) {
-        const result = await portalApi.refreshShipmentTracking(accessToken, ids.slice(index, index + 100));
-        changed ||= result.updated.length > 0;
-      }
-      if (changed) await query.refetch();
-    };
-    void refreshPageTracking().catch(() => {
-      // Non-fatal: the table still shows the last persisted status.
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, accessToken]);
+  // CP-069: no carrier-tracking refresh from this page. The outbound status is PrepShip's
+  // fulfillment truth, not carrier progress, so nothing here depends on telemetry. The
+  // Returns page (whose CP-062 arrival signal does) drives the refresh for return labels.
 
   const showClientFilter = clients.length > 1;
   const columns: Column<PortalShipment>[] = useMemo(
@@ -248,7 +213,7 @@ export default function Shipments() {
           emptyTitle={statusFilter ? 'No matching shipments' : 'No shipments yet'}
           emptyMessage={
             statusFilter
-              ? `No shipments with status “${STATUS_OPTIONS.find((s) => s.value === statusFilter)?.label ?? statusFilter}” in this view — tracking refreshes in the background, so check back shortly.`
+              ? `No shipments with status “${STATUS_OPTIONS.find((s) => s.value === statusFilter)?.label ?? statusFilter}” in this view.`
               : 'Outbound shipments will appear here once orders ship.'
           }
         >
@@ -324,14 +289,11 @@ export default function Shipments() {
             )}
 
             {/* CP-009: customer-facing — the carrier identity is never shown.
-                Only the customer-safe shipping cost + dates + tracking status. */}
+                CP-069: only the customer-safe shipping cost + ship date; no delivered
+                date or carrier progress detail is promised here. */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Customer Shipping Rate" value={selected.customerShippingRate != null ? money(selected.customerShippingRate) : selected.customerShippingRatePending ? 'Pending' : '—'} />
               <Field label="Ship date" value={shortDate(selected.shipDate)} />
-              {selected.deliveredAt && <Field label="Delivered" value={shortDate(selected.deliveredAt)} />}
-              {selected.shipmentStatusDetail && !selected.deliveredAt && (
-                <Field label="Tracking status" value={selected.shipmentStatusDetail} />
-              )}
             </div>
 
             {/* CP-029: start-return entry point from the shipment — opens the

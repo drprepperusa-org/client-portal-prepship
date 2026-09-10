@@ -81,8 +81,9 @@ try {
     check(await counts(o.id),{headers:0,items:0},status+' has no return writes');
   }
   const delivered=await seed('shipped',[{voided:false,delivered:true}]);
-  check((await getPortalOrder(scope,delivered.id))?.fulfillmentStatus,'delivered','delivered status retained');
-  check((await post(delivered.id)).status,201,'delivered request remains available');
+  // CP-069: carrier telemetry is not a fulfillment signal; a delivered parcel on a shipped order reads Shipped.
+  check((await getPortalOrder(scope,delivered.id))?.fulfillmentStatus,'shipped','delivered telemetry reads Shipped (CP-069)');
+  check((await post(delivered.id)).status,201,'shipped request remains available');
   const external=await seed('shipped');
   check((await post(external.id)).status,201,'existing external shipped-without-label workflow retained');
 

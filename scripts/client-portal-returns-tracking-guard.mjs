@@ -90,6 +90,51 @@ assert(
   'the Returns page never maps the carrier trackingStatus into the lifecycle status',
 );
 
+// ── 4. CP-069: the Returns page owns the browser-driven tracking refresh ──
+// The outbound Shipments page no longer lists return labels and no longer depends on carrier
+// telemetry, so it stopped refreshing tracking. The CP-033 advance above and the CP-062 arrival
+// signal still need a live driver in production (no worker runs this repo; the API refuses the
+// sweep) — a RETURNS-scoped endpoint, resolved to return shipment ids server-side.
+const returnsTrackingRoute = read('src/routes/client-portal/returns/tracking.ts');
+const returnsIndexRoute = read('src/routes/client-portal/returns.ts');
+const returnsPageOnly = read('portal-client/src/pages/Returns.tsx');
+const returnsRefreshHook = read('portal-client/src/lib/useReturnTrackingRefresh.ts');
+const returnsAdapter = read('portal-client/src/lib/api/domains/returns.ts');
+const shipmentsPage = read('portal-client/src/pages/Shipments.tsx');
+const shipmentsAdapter = read('portal-client/src/lib/api/domains/shipments.ts');
+assert(
+  /app\.post\('\/returns\/refresh-tracking'/.test(returnsTrackingRoute) &&
+    returnsTrackingRoute.includes('returnScopePredicate(scope)') &&
+    returnsTrackingRoute.includes('returns.returnShipmentId') &&
+    /refreshShipmentTracking\(shipmentIds,\s*\{\s*forceRefresh:\s*false/.test(returnsTrackingRoute) &&
+    returnsTrackingRoute.includes("recordPortalAudit('portal.returns.refresh_tracking'"),
+  'POST /returns/refresh-tracking is scope-checked (returnScopePredicate), resolves return shipment ids server-side, and refreshes them under the service cooldown (never forced)',
+);
+assert(
+  returnsIndexRoute.includes('registerReturnTrackingRefreshRoute(app)'),
+  'the returns sub-router registers the tracking-refresh route',
+);
+assert(
+  !/trackingStatus|deliveredAt/.test(returnsTrackingRoute.replace(/\/\/[^\n]*/g, '')),
+  'the refresh response carries counts only (no carrier telemetry crosses from this route)',
+);
+assert(
+  returnsPageOnly.includes('useReturnTrackingRefresh(rows') &&
+    returnsRefreshHook.includes('portalApi.refreshReturnTracking(') &&
+    /r\.status === 'label_created' \|\| r\.status === 'in_transit'/.test(returnsRefreshHook) &&
+    returnsRefreshHook.includes('ids.slice(index, index + 100)'),
+  'Returns.tsx refreshes tracking on page load (useReturnTrackingRefresh) for label_created / in_transit rows in 100-id batches',
+);
+assert(
+  returnsAdapter.includes("'/api/client-portal/returns/refresh-tracking'") && /refreshReturnTracking:\s*\(token: string, returnIds: number\[\]\)/.test(returnsAdapter),
+  'the returns adapter posts return ids to /api/client-portal/returns/refresh-tracking',
+);
+assert(
+  !/refresh-tracking|refreshShipmentTracking|refreshReturnTracking/.test(shipmentsPage) &&
+    !/refresh-tracking|refreshShipmentTracking/.test(shipmentsAdapter.replace(/\/\/[^\n]*/g, '')),
+  'the outbound Shipments page and adapter issue no tracking refresh (CP-069)',
+);
+
 // ── package.json wiring ──
 assert(
   pkg.scripts?.['test:client-portal-returns-tracking'] ===

@@ -1,5 +1,14 @@
 # PS-486: consistent order status and return eligibility
 
+> **Vocabulary note (CP-069, 2026-09-10).** The customer fulfillment vocabulary is now PrepShip's
+> own: `pending` (Awaiting shipment) | `shipped` | `cancelled` | `voided`. "In Transit" and
+> "Delivered" no longer exist on outbound surfaces and carrier tracking is not a signal. Where this
+> note says in-transit / delivered orders can request a return, read **shipped** orders; the
+> shared shipment projection (`order-fulfillment-signals.ts`) now carries only the two OUTBOUND
+> row signals from `order-lifecycle.ts`. Everything else here (placement, transactional recheck,
+> UI role, no raw-status fallback) still holds. See
+> `docs/superpowers/specs/2026-09-10-cp-069-shipped-display-contract-design.md`.
+
 Order #1298 exposed two problems: the Orders table consumed `fulfillmentStatus`,
 but its detail drawer rendered the historical `orderStatus=shipped`; the drawer
 also offered return creation without a backend eligibility decision.

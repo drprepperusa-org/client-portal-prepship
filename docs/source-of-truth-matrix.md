@@ -320,9 +320,14 @@ Frozen/snapshot truth:
 Derived/read-model/cache truth:
 - Label PDFs, print queue state, shipment status chips, and analytics are
   derived from durable shipment records and queue state. Client Portal
-  shipment status uses the backend `portalShipmentStatusSql` expression over
-  `shipments.voided` plus persisted `shipments.tracking_status`; tracking-number
-  presence is not a lifecycle input.
+  shipment status uses the backend `portalShipmentStatusSql` expression
+  (CP-069): `shipments.voided` wins, otherwise the status is PrepShip's
+  effective lifecycle over the LINKED ORDER (`orderLifecycleEffectiveStatusSql`,
+  ported verbatim in `src/lib/client-portal/order-lifecycle.ts`) — never
+  carrier telemetry. `shipments.tracking_status` / `delivered_at`,
+  tracking-number presence and ship dates are not lifecycle inputs. Return
+  labels (`is_return = true`) are never outbound rows: the Returns surface owns
+  them via `returns.return_shipment_id`.
 
 Mutation owner:
 - `src/services/labels.ts`
@@ -995,9 +1000,10 @@ does not fan out, cap, merge, total, average, share, or rank them. Guard:
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
 | Order # | `orderNumber` | `orderNumber` | `orders.order_number` | order date | presentation-only |
-| Status | `orderStatus` | `orderStatus` | `orders.order_status` | order state | presentation-only |
+| Status | `fulfillmentStatus` | `fulfillmentStatus` (`pending` \| `shipped` \| `cancelled` \| `voided`) | `resolveOrderFulfillmentStatus` over PrepShip's effective lifecycle. Source inputs: `orders.order_status`, `orders.canonical_status` (PrepShip fulfillment outbox), `orders.externally_shipped`, `orders.raw->externallyFulfilled` (read in TypeScript), and EXISTS of non-voided / voided OUTBOUND rows (`is_return = false`) via `orderOutboundShipmentMatchSql`. Formula: effective CASE (order_status cancelled → cancelled; canonical_status cancelled → cancelled; order_status shipped → shipped; externally_shipped → shipped; else awaiting) → bucket → `resolveShippedLabelDisplayState` only where PrepShip consults it — the shipped bucket AND `order_status` locally shipped AND `canonical_status` not `confirmation_failed` / `shipped_pending_confirmation` (voided_label → `voided`, else `shipped`; an externally-shipped-but-locally-awaiting order or a pending/failed-confirmation order is `shipped` even with voided-only rows); everything not shipped/cancelled → `pending`. Carrier telemetry is NOT an input. Owner: `src/lib/client-portal/order-lifecycle.ts` (pinned port of `prepship-v4` @ `dfc6809e`). | PrepShip fulfillment writes | backend-owned-truth (CP-069) |
+| (not rendered) | — | `orderStatus` | `orders.order_status`, kept on the DTO for the server-side cost summary only; `portal-client` no longer renders it as a status on Orders or order detail (guard-pinned, CP-069) | order state | backend-owned-truth (CP-069) |
 | Order date | `orderDate` | `orderDate` (ISO) | `orders.order_date` | order date | presentation-only |
-| Tracking | `displayTrackingNumber` | `displayTrackingNumber` | latest active `shipments.label_tracking` → legacy `shipments.tracking_number`; documented `order_overrides.trackingNumber` fallback only when no active shipment tracking exists | label time | backend-owned-truth (CP-052) |
+| Tracking | `displayTrackingNumber` | `displayTrackingNumber` | latest active OUTBOUND (`is_return = false`, CP-069) `shipments.label_tracking` → legacy `shipments.tracking_number`; documented `order_overrides.trackingNumber` fallback only when no active shipment tracking exists; a return label's number is never the order's | label time | backend-owned-truth (CP-052/CP-069) |
 | Ordered units | `orderedUnits` | `orderedUnits` | Σ complete `order_items.quantity` in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-052) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode`/`shippingService` = **null** | hard-nulled in `toPortalOrderDto` | n/a | backend-owned-truth (redaction) |
 | Ship-to | `shipToName/City/State` | same | `orders` columns + raw `shipTo` jsonb (client's own recipient) | order time | presentation-only |
@@ -1006,10 +1012,22 @@ does not fan out, cap, merge, total, average, share, or rank them. Guard:
 
 Owner: `src/lib/client-portal/dto.ts` (`toPortalOrderDto`) over `orders` /
 `order_items` / `order_overrides`. Route: `src/routes/client-portal/orders.ts`.
+Tabs / counts (CP-069): `?status` is whitelisted to `awaiting_shipment | shipped |
+cancelled` (absent / `all` = unfiltered; anything else → 400) and every tab
+predicate plus `awaitingActiveOrderCount` renders on the same effective CASE
+(`orderStatusFilterPredicate`), so the tab always equals the badge; awaiting
+additionally applies the portal's `visibleAwaitingOrdersPredicate()` (SEAuto
+suppression — PrepShip's eBay rule is not ported). `pending` is the complement
+bucket, so `on_hold` / `awaiting_payment` / `pending_fulfillment` read "Awaiting
+shipment".
 Guards: `client-portal-orders-canonical-data-guard.ts` (complete canonical
 items, ordered units, and shipment tracking), `client-portal-orders-selected-rate-guard.mjs` (no internal
 selected/label/best rate leaks), `client-portal-orders-search-guard.mjs`,
-`client-portal-carrier-redaction-guard.ts` (CP-009/CP-018 redaction).
+`client-portal-carrier-redaction-guard.ts` (CP-009/CP-018 redaction),
+`client-portal-cp069-fulfillment-display-guard.ts` (CP-069 resolver matrix +
+static pins), `prepship-order-lifecycle-parity.mjs` and
+`scripts/integration/client-portal-order-lifecycle-parity.ts` (rendered-SQL and
+semantic parity with `prepship-v4` @ `dfc6809e`).
 
 ### Order Detail
 
@@ -1019,6 +1037,7 @@ selected/label/best rate leaks), `client-portal-orders-search-guard.mjs`,
 | Line total | `lineTotal` | `lineTotal` | normalized `order_items.line_total` | order time | backend-owned-truth (CP-014/CP-052) |
 | Product subtotal | `productSubtotal` | `productSubtotal` | Σ line totals in `toPortalOrderDto` | order time | derived-from-canonical (backend-owned, CP-014) |
 | Charge summary receipt | `chargeSummary[]` | `chargeSummary[]` | `buildCostSummary` — reconciles to `orders.orderTotal` to the cent | order time | backend-owned-truth (CP-017/CP-038) |
+| Status chip | `fulfillmentStatus` | `fulfillmentStatus` | the SAME DTO field and `fulfillmentStatusMeta` map as the Orders table row (CP-069); `orderStatus` is not rendered as a status in the detail panel | PrepShip fulfillment writes | backend-owned-truth (CP-069) |
 
 Owner: one canonical loader — every entry point (Orders list, Shipments drawer)
 fetches `/orders/:id` and renders the shared `OrderDetailLoader` /
@@ -1030,23 +1049,44 @@ Guard: `client-portal-order-detail-guard.ts`.
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
 | Tracking # | `displayTrackingNumber` | `displayTrackingNumber` | `toPortalShipmentDto`: frozen `shipments.label_tracking`, else legacy `shipments.tracking_number` | label time | backend-owned-truth (CP-051) |
-| Ship date | `shipDate` | `shipDate` | `shipments.ship_date`/`label_ship_date`/`create_date` | ship date | presentation-only |
-| Delivery status | `shipmentStatus` | `shipmentStatus` | `portalShipmentStatusSql`: voided wins; known persisted carrier status passes through; no carrier movement = `label_created`; invalid persisted value = `unavailable` | carrier event; forced manual refresh or hourly background recheck | backend-owned-truth (CP-042/CP-051) |
-| Delivered at | `deliveredAt` | `deliveredAt` | `shipments.delivered_at`, using the official carrier or ShipStation per-label delivery event time when available | carrier delivery event | backend-owned-truth (CP-042) |
+| Ship date | `shipDate` | `shipDate` | `shipments.ship_date` → `label_ship_date` → `create_date` (fallback chain UNCHANGED by CP-069; `create_date` is label-creation time and PrepShip's `shipping.shipDate` reads `ship_date` only — open for DJ whether to drop it). Not a status input. | ship date | presentation-only |
+| Fulfillment status | `shipmentStatus` | `shipmentStatus` (`shipped` \| `label_created` \| `cancelled` \| `voided` \| `unavailable`) | `portalShipmentStatusSql` (`src/lib/client-portal/shipment-status.ts`): `CASE WHEN coalesce(shipments.voided,false) THEN 'voided' WHEN linked_bucket = 'cancelled' THEN 'cancelled' WHEN linked_bucket = 'shipped' THEN 'shipped' WHEN linked_bucket IS NOT NULL THEN 'label_created' ELSE 'unavailable' END`, where `linked_bucket` is the LEFT-JOINED order's `portalOrderFulfillmentBucketSql()` (callers must `leftJoin(orders, orders.id = shipments.order_id)`), or — only when `shipments.order_id IS NULL` — the same-client order with the same `order_number` (effective-shipped first, then newest id). Inputs: `shipments.voided`, `order_id`, `order_number`, `client_id`, and the linked order's `order_status` / `canonical_status` / `externally_shipped`. Carrier telemetry, tracking-number presence and ship dates are NOT inputs. The same expression projects the field AND evaluates `?status`; legacy `?status=delivered\|in_transit\|exception\|attempted` alias to `shipped` for one release. Owner: `order-lifecycle.ts` (pinned PrepShip port). PrepShip-unattributed labels (`order_id` NULL AND `client_id` NULL) never match the tenant-scoped fallback: `unavailable` for a global scope, invisible to client scopes, never the order's tracking number. | PrepShip fulfillment writes | backend-owned-truth (CP-069, supersedes CP-042/CP-051 customer display) |
+| Outbound row admission | (list membership) | — | `outboundShipmentPredicate()`: only `coalesce(is_return,false) = false AND coalesce(source,'') <> 'replacement'` rows reach `listPortalShipments` (list + count) and `GET /orders/:id/shipments`; return labels belong to the Returns surface, replacement vessels to the Replace surface (CP-061). Voided rows stay hidden unless `?status=voided`. | label persistence | backend-owned-truth (CP-069) |
 | Carrier / service | (hidden) | `carrierCode`/`serviceCode` = **null** | hard-nulled in `toPortalShipmentDto` | n/a | backend-owned-truth (redaction) |
 | Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot; return labels stay `customerShippingMoneyPolicyVersion='ps-437-v1'`, while ordinary outbound accepts the version-specific `ps-437-v1`, `ps-508-v1`, and `ps-509-v1` provenance contracts; never raw cost or a Client Portal formula | PrepShip label/billing freeze | backend-owned-truth (PS-437/508/509, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
 
-Owner: `toPortalShipmentDto` over `shipments`. Route:
+Owner: `toPortalShipmentDto` over `shipments` LEFT-JOINED to `orders`. Route:
 `src/routes/client-portal/shipments.ts` + read-model
-`read-models/shipments.ts`. Tracking writer: `shipment-tracking.ts`; the Client
-Portal only renders its persisted result. Writer input order is official carrier
-tracking when configured, then ShipStation `/v2/labels/{label_id}/track` using
-persisted `shipments.shipstation_label_id`; tracking-number lookup resolves only
-a missing label ID. Successful lookups advance `tracking_checked_at`; failures
-write `tracking_failed_at`/`tracking_error` without advancing the success clock,
-so retry remains eligible. Delivered is terminal. Guards: `client-portal-shipments-status-guard.ts`,
-`client-portal-shipments-item-identity-guard.ts`.
+`read-models/shipments.ts`. `deliveredAt` and `shipmentStatusDetail` are no
+longer on the DTO (CP-069): the customer surface carries no carrier telemetry
+and no delivered date. Tracking writer: `shipment-tracking.ts` still persists
+`tracking_status` / `delivered_at` for operators and for the Returns surface
+(CP-062), but no outbound surface renders or refreshes them; the Shipments page
+issues no tracking refresh on load, and the only browser-driven refresh is the
+Returns-scoped `POST /returns/refresh-tracking` (return ids → their
+`return_shipment_id`; counts only in the response). Guards:
+`client-portal-shipments-status-guard.ts`,
+`client-portal-shipments-item-identity-guard.ts`,
+`client-portal-cp069-fulfillment-display-guard.ts` (both surfaces use
+`outboundShipmentPredicate` + `portalShipmentStatusSql` + `leftJoin orders`;
+DTO lacks `deliveredAt` / `shipmentStatusDetail`; no "In Transit" / "Delivered"
+label in outbound maps), `prepship-order-lifecycle-parity.mjs`.
+
+#### Dashboard / Analysis counters (declared divergence, CP-069 follow-up)
+
+The Dashboard per-day awaiting / shipped / cancelled counters,
+`GET /daily-counts`, the Dashboard "Shipments created" bar, the Analysis
+daily-shipments counter and the Analysis / Dashboard revenue-and-units
+population (`includeCancelled:false` → raw `order_status <> 'cancelled'`) still
+read raw `orders.order_status` and ALL non-voided `shipments` rows (return
+labels included) — not the CP-069 effective expression /
+`outboundShipmentPredicate()`. Only the Analysis `is_awaiting_order` flag moved
+onto the shared awaiting predicate. On the 2026-09-10 production data the two
+rule sets agree on every row; the divergence is declared here and in the CP-069
+design doc (the dashboard / analytics guards were deliberately left pinning the
+raw policy) and is an owner-reported follow-up (money population under the
+CP-010/CP-060 owner needs DJ's nod), not a silent fallback.
 
 ### Inventory
 
@@ -1358,6 +1398,12 @@ These checks do not connect to a production database or shipping provider.
 - **CP-068** — the Excel / CSV exports are PrepShip's own files, passed
   through byte-for-byte; the portal builds no spreadsheet cells (see the open
   carrier-column decision above).
+- **CP-069** — order and shipment fulfillment status are PrepShip's effective
+  lifecycle (`orderLifecycleEffectiveStatusSql` ported verbatim), never carrier
+  telemetry; `deliveredAt` / `shipmentStatusDetail` left the shipment DTO; return
+  labels and replacement vessels are never outbound rows; the Orders tabs, badge
+  count and Analysis awaiting flag share one expression. See
+  `docs/superpowers/specs/2026-09-10-cp-069-shipped-display-contract-design.md`.
 - **CP-026 → CP-031** — returns workflow/item/inspection/media tables own only
   workflow detail; label money + tracking stay on `shipments`; no portal-side
   rate-shopping; offline-mock labels only for test clients; operator-gated receiving.

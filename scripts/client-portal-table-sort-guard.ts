@@ -77,19 +77,49 @@ try {
   }
 
   // Execute the SQL and JS forms of the status owner against the same exhaustive signals.
+  // CP-069: the owner reads PrepShip's lifecycle columns (order_status, canonical_status,
+  // externally_shipped), the raw externallyFulfilled flag (booleanOrNull semantics) and the two
+  // OUTBOUND row signals; carrier tracking is not an input. The SQL projection must agree with
+  // the TS resolver on every combination, including the display-state gate.
+  const ordersFixture = { orders: {
+    id: sql`id`, orderNumber: sql`order_number`, clientId: sql`client_id`,
+    orderStatus: sql`order_status`, canonicalStatus: sql`canonical_status`,
+    externallyShipped: sql`externally_shipped`, raw: sql`raw`,
+  } };
+  const lifecycle = loadFixtureModule('src/lib/client-portal/order-lifecycle.ts', {
+    '../../db/schema/orders': ordersFixture,
+    '../../db/schema/shipments': { shipments: {
+      isReturn: sql`is_return`, source: sql`source`, voided: sql`voided`,
+      orderId: sql`order_id`, orderNumber: sql`order_number`, clientId: sql`client_id`,
+    } },
+  });
   const status = loadFixtureModule('src/lib/client-portal/order-status.ts', {
-    '../../db/schema/orders': { orders: { orderStatus: sql`order_status` } },
+    '../../db/schema/orders': ordersFixture,
+    './order-lifecycle': lifecycle,
     './order-fulfillment-signals': { orderFulfillmentSignalSelects: () => ({
-      activeTrackingStatus: sql`tracking`, hasActiveShipment: sql`active`, hasVoidedShipment: sql`voided`,
+      hasActiveOutboundShipment: sql`active`, hasVoidedOutboundShipment: sql`voided`,
     }) },
   });
-  for (const orderStatus of [null, 'cancelled', 'CANCELED', 'refunded', 'shipped', 'awaiting_shipment']) {
-    for (const activeTrackingStatus of [null, 'DELIVERED', 'in_transit']) {
-      for (const hasActiveShipment of [false, true]) for (const hasVoidedShipment of [false, true]) {
-        const [actual] = await run(sql`select ${status.orderFulfillmentStatusSql()} as status from
-          (select ${orderStatus}::text as order_status, ${activeTrackingStatus}::text as tracking,
-            ${hasActiveShipment}::boolean as active, ${hasVoidedShipment}::boolean as voided) signals`);
-        assert.equal(actual.status, status.resolveOrderFulfillmentStatus({ orderStatus, activeTrackingStatus, hasActiveShipment, hasVoidedShipment }));
+  let statusCases = 0;
+  for (const orderStatus of [null, 'cancelled', 'CANCELED', 'refunded', 'shipped', 'Shipped', 'awaiting_shipment', 'on_hold']) {
+    for (const canonicalStatus of [null, 'cancelled', 'shipped', 'shipped_pending_confirmation', 'confirmation_failed']) {
+      for (const externallyShipped of [false, true]) {
+        for (const externallyFulfilled of [undefined, true, false, 'yes']) {
+          for (const active of [false, true]) for (const voided of [false, true]) {
+            const raw = externallyFulfilled === undefined ? {} : { externallyFulfilled };
+            const [actual] = await run(sql`select ${status.orderFulfillmentStatusSql()} as status from
+              (select ${orderStatus}::text as order_status, ${canonicalStatus}::text as canonical_status,
+                ${externallyShipped}::boolean as externally_shipped, ${JSON.stringify(raw)}::jsonb as raw,
+                ${active}::boolean as active, ${voided}::boolean as voided) signals`);
+            const expected = status.resolveOrderFulfillmentStatus({
+              orderStatus, canonicalStatus, externallyShipped,
+              externallyFulfilled: lifecycle.rawExternallyFulfilled(raw),
+              hasActiveOutboundShipment: active, hasVoidedOutboundShipment: voided,
+            });
+            assert.equal(actual.status, expected, JSON.stringify({ orderStatus, canonicalStatus, externallyShipped, raw, active, voided }));
+            statusCases++;
+          }
+        }
       }
     }
   }
@@ -104,7 +134,7 @@ try {
   assert.deepEqual(portalReadKeys.orders(1), portalReadKeys.orders(1, undefined, undefined, 1, 50, undefined, undefined));
   assert.notDeepEqual(portalReadKeys.orders(1), portalReadKeys.orders(1, undefined, undefined, 1, 50, 'order', 'asc'));
   assert.notDeepEqual(portalReadKeys.inventory(1), portalReadKeys.inventory(1, '', 1, 100, false, 'sku', 'asc'));
-  console.log('PASS PostgreSQL sorting: all six column maps, permission gates, natural references, page boundaries, nulls, identity ties, item identity, 72 status cases, 19 Billing keys');
+  console.log(`PASS PostgreSQL sorting: all six column maps, permission gates, natural references, page boundaries, nulls, identity ties, item identity, ${statusCases} status cases, 19 Billing keys`);
 } finally {
   await db.close();
 }

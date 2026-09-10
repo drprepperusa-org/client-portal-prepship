@@ -53,9 +53,12 @@ const baseRow: any = {
   // canonical item list or orderedUnits.
   items: [{ sku: 'RAW-WRONG', quantity: 999_999, qty: 888_888, unitPrice: 0.01 }],
   canonicalItems,
-  activeTrackingStatus: 'in_transit',
-  hasActiveShipment: true,
-  hasVoidedShipment: false,
+  // CP-069: the fulfillment signals are PrepShip's lifecycle columns + OUTBOUND row existence;
+  // carrier tracking status is no longer a DTO input.
+  canonicalStatus: null,
+  externallyShipped: false,
+  hasActiveOutboundShipment: true,
+  hasVoidedOutboundShipment: false,
   activeShipmentTrackingNumber: '9400-CANONICAL',
   activeShipmentCarrierCode: 'usps',
   override: { trackingNumber: '1Z-LEGACY' },
@@ -96,6 +99,26 @@ check(
     (readModel.match(/activeShipmentTrackingNumber:/g) ?? []).length === 4,
   'list and detail select the latest non-voided shipment display tracking identity',
 );
+// CP-069: the tracking-number and carrier-code subqueries pick from OUTBOUND rows only — the ONE
+// shared PrepShip aggregate match (order_id, or client-scoped order_number, AND is_return = false)
+// — so a return label's number can never become the order's displayTrackingNumber.
+const trackingSubqueries = readModel.slice(
+  readModel.indexOf('const activeShipmentTrackingNumberSql'),
+  readModel.indexOf('export const PORTAL_ORDER_STATUS_FILTERS'),
+);
+check(
+  (trackingSubqueries.match(/orderOutboundShipmentMatchSql\('s'\)/g) ?? []).length === 2 &&
+    !/s\.order_id = \$\{orders\.id\}/.test(trackingSubqueries),
+  'CP-069: both tracking/carrier subqueries match rows through orderOutboundShipmentMatchSql (no local order match)',
+);
+const lifecycle = read('src/lib/client-portal/order-lifecycle.ts');
+const matchFragment = lifecycle.slice(lifecycle.indexOf('export function orderOutboundShipmentMatchSql'), lifecycle.indexOf('export function hasActiveOutboundShipmentSql'));
+check(
+  matchFragment.includes('coalesce(${isReturn}, false) = false') && matchFragment.includes('${clientId} = ${orders.clientId}'),
+  'CP-069: orderOutboundShipmentMatchSql excludes is_return rows and scopes the order_number fallback to the client',
+);
+check(!/tracking_status|activeTrackingStatus/.test(readModel), 'CP-069: the Orders read-model reads no carrier tracking status');
+check(dto.fulfillmentStatus === 'shipped', 'CP-069: a shipped order with an active outbound row resolves to the customer status "shipped"');
 
 const dtoSource = read('src/lib/client-portal/dto.ts');
 const orderDtoSource = dtoSource.slice(

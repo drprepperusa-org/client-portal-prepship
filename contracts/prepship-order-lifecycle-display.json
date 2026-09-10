@@ -1,0 +1,152 @@
+{
+  "note": "CP-069 — the canonical ORDER-LIFECYCLE display contract, owned by PrepShip. Do not hand-edit: re-pin from upstream and let scripts/prepship-order-lifecycle-parity.mjs (rendered SQL + upstream blobs) and scripts/integration/client-portal-order-lifecycle-parity.ts (the REAL PrepShip functions, sibling checkout) prove the copy.",
+  "why": "The Client Portal is a shadow renderer. A customer-facing 'Shipped' / 'Awaiting shipment' / 'Cancelled' / 'Voided' must come from the SAME evidence PrepShip's own Orders list, daily counts, dashboard and billing use — the effective-status CASE, the shipped-label display precedence and the active-outbound rule — never from carrier telemetry, tracking-number presence or the mere existence of a label row. PrepShip 0057 builds orders_effective_status_date_id_idx on the byte-identical CASE text, so the port must stay byte-identical for the shared production database to keep using that index.",
+  "upstream": {
+    "repo": "drprepperusa-org/prepship-v4",
+    "ref": "dfc6809e456826599a28e8b530e3673911d4d3e9",
+    "deployedRef": "prepshipv4-stable",
+    "files": {
+      "orderLifecycleStatus": {
+        "path": "src/services/order-lifecycle-status.ts",
+        "blobSha": "03615a698c17ce5f65db763387c0b7dd7d557e9c",
+        "exports": ["orderLifecycleEffectiveStatusSql", "orderLifecycleEffectiveStatusAliasSql", "resolveOrderLifecycleStatus"]
+      },
+      "shippedLabelDisplayState": {
+        "path": "src/services/shipping-workflow/shipped-label-display-state.ts",
+        "blobSha": "585852d7cfb54d6bbf61abffcd791b4f9991bdd8",
+        "exports": ["resolveShippedLabelDisplayState"]
+      },
+      "shipmentAggregate": {
+        "path": "src/services/shipment-aggregate.ts",
+        "blobSha": "bf4a98152a819a681b99741308bc4e8f6967c65d",
+        "exports": ["activeOutboundShipmentPredicate"]
+      }
+    }
+  },
+  "portal": {
+    "owner": "src/lib/client-portal/order-lifecycle.ts",
+    "resolver": "src/lib/client-portal/order-status.ts",
+    "renderHelper": "scripts/cp-069-render-lifecycle-sql.ts",
+    "exports": {
+      "effective": "orderLifecycleEffectiveStatusSql",
+      "alias": "orderLifecycleEffectiveStatusAliasSql",
+      "bucketPredicate": "portalOrderFulfillmentBucketPredicateSql",
+      "displayState": "resolveShippedLabelDisplayState",
+      "outbound": "outboundShipmentPredicate",
+      "orderMatch": "orderOutboundShipmentMatchSql"
+    }
+  },
+  "effectiveStatusCase": {
+    "normalisation": "Both sides are compared after: CRLF -> LF; every whitespace run -> one space; trim. The pinned `source` / `aliasSource` texts are PrepShip's template literals exactly as its source spells them (`${orders.orderStatus}` / `${orderStatus}` interpolations). To compare a SOURCE template with RENDERED SQL, every column reference is reduced to its bare column name: `${orders.orderStatus}` and `${orderStatus}` -> order_status, `${orders.canonicalStatus}` and `${canonicalStatus}` -> canonical_status, `${orders.externallyShipped}` and `${externallyShipped}` -> externally_shipped; drizzle's rendered `\"orders\".\"<column>\"` -> <column>; an alias-qualified `<alias>.<column>` -> <column>. After that reduction the table form, the alias form and the rendered forms must all equal `canonical`.",
+    "source": "case when lower(coalesce(${orders.orderStatus}, '')) = 'cancelled' then 'cancelled' when lower(coalesce(${orders.canonicalStatus}, '')) = 'cancelled' then 'cancelled' when lower(coalesce(${orders.orderStatus}, '')) = 'shipped' then 'shipped' when coalesce(${orders.externallyShipped}, false) = true then 'shipped' else coalesce(nullif(lower(${orders.orderStatus}), ''), 'awaiting_shipment') end",
+    "aliasSource": "case when lower(coalesce(${orderStatus}, '')) = 'cancelled' then 'cancelled' when lower(coalesce(${canonicalStatus}, '')) = 'cancelled' then 'cancelled' when lower(coalesce(${orderStatus}, '')) = 'shipped' then 'shipped' when coalesce(${externallyShipped}, false) = true then 'shipped' else coalesce(nullif(lower(${orderStatus}), ''), 'awaiting_shipment') end",
+    "canonical": "case when lower(coalesce(order_status, '')) = 'cancelled' then 'cancelled' when lower(coalesce(canonical_status, '')) = 'cancelled' then 'cancelled' when lower(coalesce(order_status, '')) = 'shipped' then 'shipped' when coalesce(externally_shipped, false) = true then 'shipped' else coalesce(nullif(lower(order_status), ''), 'awaiting_shipment') end",
+    "bucketPredicates": {
+      "note": "Orders tabs / counts render their WHERE on the INNER effective CASE (never on the wrapping bucket CASE). The shipped / cancelled equalities are served by PS 0057's expression index; the pending predicate is the complement (a negation a btree cannot serve) by design, so the tab and the badge can never disagree — admin-scope awaiting counts scan their scope, client-scoped callers use the client_id indexes. `{effective}` is the canonical CASE above.",
+      "shipped": "{effective} = 'shipped'",
+      "cancelled": "{effective} = 'cancelled'",
+      "pending": "{effective} not in ('shipped', 'cancelled')"
+    }
+  },
+  "shippedLabelDisplayState": {
+    "gate": "Evaluated ONLY where PrepShip evaluates it: inside resolveOrderLifecycleStatus's `orderStatus === 'shipped'` branch (order-lifecycle-status.ts:93-165), AFTER the canonical_status confirmation_failed / shipped_pending_confirmation checks. So an externally_shipped order that is not locally shipped, or a shipped order whose confirmation is pending/failed, is 'externally_shipped' / 'shipped_pending_confirmation' / 'confirmation_failed' (all → shipped) even with voided-only rows; the portal's order-status.ts mirrors that gate before calling resolveShippedLabelDisplayState (the sibling parity lane proves it over 1,680 cells).",
+    "precedence": [
+      { "rank": 1, "when": "hasActiveShipment && hasExternalShipment === true", "returns": "external_label" },
+      { "rank": 2, "when": "hasActiveShipment", "returns": "active_label" },
+      { "rank": 3, "when": "hasVoidedShipment && externallyFulfilled !== true", "returns": "voided_label" },
+      { "rank": 4, "when": "externallyFulfilled === true || externallyShipped", "returns": "external_label" },
+      { "rank": 5, "when": "otherwise", "returns": "missing_shipment_sync" }
+    ],
+    "body": [
+      "if (input.hasActiveShipment && input.hasExternalShipment === true) return 'external_label';",
+      "if (input.hasActiveShipment) return 'active_label';",
+      "if (input.hasVoidedShipment && input.externallyFulfilled !== true) return 'voided_label';",
+      "if (input.externallyFulfilled === true || input.externallyShipped) return 'external_label';",
+      "return 'missing_shipment_sync';"
+    ]
+  },
+  "activeOutboundPredicate": {
+    "rule": "voided = false AND is_return = false — returns and voided labels are never active outbound evidence (PrepShip shipment-aggregate.ts activeOutboundShipmentPredicate).",
+    "upstreamSource": ["eq(shipments.voided, false)", "eq(shipments.isReturn, false)"],
+    "portalOrderMatchArms": {
+      "isReturn": "coalesce(${isReturn}, false) = false",
+      "tenantScope": "${clientId} = ${orders.clientId}"
+    },
+    "portalListAdmission": "( coalesce(is_return, false) = false and coalesce(source, '') <> 'replacement' )",
+    "portalListAdmissionNote": "outboundShipmentPredicate() is the customer LIST admission (Shipments list + count, GET /orders/:id/shipments). voided is applied per surface (hidden unless ?status=voided) and is therefore not part of this fragment; is_return is PrepShip's arm; source <> 'replacement' is deviation D2 below."
+  },
+  "projection": {
+    "note": "PrepShip OrderLifecycleStatus (resolveOrderLifecycleStatus().orderLifecycleStatus) -> Client Portal PortalOrderFulfillmentStatus. Every one of PrepShip's twelve statuses must appear here; scripts/integration/client-portal-order-lifecycle-parity.ts asserts portal.resolveOrderFulfillmentStatus(matrix) === this[PS.resolveOrderLifecycleStatus(matrix)].",
+    "cancelled": "cancelled",
+    "upstream_cancelled": "cancelled",
+    "voided_label": "voided",
+    "shipped": "shipped",
+    "externally_shipped": "shipped",
+    "shipped_pending_confirmation": "shipped",
+    "confirmation_failed": "shipped",
+    "missing_shipment_sync": "shipped",
+    "awaiting": "pending",
+    "on_hold": "pending",
+    "awaiting_payment": "pending",
+    "pending_fulfillment": "pending"
+  },
+  "portalStatuses": ["pending", "shipped", "cancelled", "voided"],
+  "deviations": [
+    {
+      "id": "D1-is-return-exclusion",
+      "what": "Every order-grain shipment subquery (hasActiveOutboundShipment, hasVoidedOutboundShipment, displayTrackingNumber, carrier for trackingUrl) excludes coalesce(is_return, false) = true rows through the one shared fragment orderOutboundShipmentMatchSql.",
+      "prepship": "shipment-aggregate.ts activeOutboundShipmentPredicate says the same (voided = false AND is_return = false), but routes/orders.ts (list query, ~1485-1516) picks the display `ship` row WITHOUT an is_return clause.",
+      "portal": "Follows the named aggregate owner. An order whose only non-voided row is a return label reads 'Voided' here and 'Shipped' in PrepShip's list — rare; PrepShip follow-up filed.",
+      "surfaces": "all order-grain subqueries + both outbound list surfaces"
+    },
+    {
+      "id": "D2-replacement-rows-list-only",
+      "what": "coalesce(source, '') <> 'replacement' is applied on customer LIST surfaces only (listPortalShipments list + count, GET /orders/:id/shipments) via outboundShipmentPredicate().",
+      "prepship": "No such arm in activeOutboundShipmentPredicate.",
+      "portal": "Replacement vessels are orderless ('<n>-REPLACE', order_id NULL, source='replacement') and belong to the Replace surface (CP-061); they must never render as an 'Unavailable' outbound parcel. NOT in the order-grain match (documented no-op: such rows never match an order).",
+      "surfaces": "customer list surfaces only"
+    },
+    {
+      "id": "D3-tenant-scoped-order-number-fallback",
+      "what": "For shipments.order_id IS NULL rows the order_number fallback is scoped to the same client_id and prefers an effective-shipped order before newest id.",
+      "prepship": "The orphan linker (order-sync.ts ~330-360) is unscoped and prefers a shipped order.",
+      "portal": "Multi-tenant: two clients can share an order number, so cross-client rows resolve to 'unavailable' rather than another tenant's order. Walmart-direct duplicates within one client keep PrepShip's shipped-first preference. Consequence: PrepShip-unattributed labels (shipment-sync PS-467 rows with order_id NULL AND client_id NULL) never match — they read 'unavailable' for a global scope, are invisible to client scopes, and never promote an order or lend it a tracking number, whereas PrepShip's operator list attaches them by order_number alone. Attribution is PrepShip's to fix (stamp client_id / relink), not a portal inference.",
+      "surfaces": "orderOutboundShipmentMatchSql + shipment-status.ts fallback"
+    },
+    {
+      "id": "D4-hasExternalShipment-omitted",
+      "what": "resolveShippedLabelDisplayState is called without hasExternalShipment (undefined).",
+      "prepship": "PS-489 feeds hasExternalShipment so an active external-fulfillment RECORD reads 'external_label' instead of 'active_label'.",
+      "portal": "Output-irrelevant: external_label and active_label both project to the customer word 'shipped'. The precedence itself is ported verbatim, including that arm.",
+      "surfaces": "resolver"
+    },
+    {
+      "id": "D5-complement-pending-bucket",
+      "what": "The customer bucket 'pending' is the COMPLEMENT of the terminal two: awaiting_shipment, on_hold, awaiting_payment, pending_fulfillment and anything else PrepShip has not shipped or cancelled.",
+      "prepship": "Files on_hold / awaiting_payment / pending_fulfillment under their own operator lifecycle statuses (projection table above maps them to pending).",
+      "portal": "Awaiting + Shipped + Cancelled = All; a row can never sit in a tab that contradicts its badge. If DJ wants PrepShip's operator buckets, add 'on_hold' to the DTO enum.",
+      "surfaces": "Orders badge, tabs, awaiting count, Analysis is_awaiting_order"
+    },
+    {
+      "id": "D6-ebay-awaiting-rule-not-ported",
+      "what": "The Awaiting tab additionally applies the portal's own visibleAwaitingOrdersPredicate (SEAuto / empty-placeholder suppression).",
+      "prepship": "PrepShip's same-named predicate is `not (external_order_id ilike 'ebay-%')` (routes/orders.ts ~518-523).",
+      "portal": "PrepShip's eBay rule is NOT ported; the portal rule is stated as its own, not claimed as parity.",
+      "surfaces": "Orders awaiting tab + count"
+    },
+    {
+      "id": "D7-canceled-refunded-dropped",
+      "what": "The resolver has NO 'canceled' / 'refunded' arms.",
+      "prepship": "The lifecycle CASE has no such arms; Walmart 'canceled' is normalised to 'cancelled' before write; no writer of 'refunded' exists.",
+      "portal": "Such spellings bucket as pending exactly as PrepShip does (0 rows in prod). buildCostSummary's refund money label in dto.ts is presentation, not a status owner.",
+      "surfaces": "resolver + SQL"
+    },
+    {
+      "id": "D8-depends-on-void-lifecycle-reopen",
+      "what": "'voided' is rendered only when the effective status is 'shipped' AND the display state is voided_label. An awaiting order with voided-only rows renders 'pending'.",
+      "prepship": "decideShipmentVoidLifecycle (shipment-aggregate.ts ~128-133) reopens an order to awaiting_shipment when its last active outbound label is voided; the PS-486 terminal-preserved population stays shipped.",
+      "portal": "Correct only because PrepShip reopens: the portal depends on that write and never re-derives it. Today's ungated hasVoided && !hasActive -> voided mislabelled reopened orders.",
+      "surfaces": "resolver"
+    }
+  ]
+}

@@ -1,28 +1,18 @@
-import { sql } from 'drizzle-orm';
-import { orders } from '../../db/schema/orders';
+import { hasActiveOutboundShipmentSql, hasVoidedOutboundShipmentSql } from './order-lifecycle';
 
-// Per user override unlock shipped data on 2026-09-05: PS-486 shares this
-// read-only projection for order fulfillment and return eligibility.
-// An inbound return label cannot establish that the original order shipped.
-// Orphan shipment matching preserves the existing same-client boundary.
+// PS-486 shares ONE read-only projection of the order's shipment facts between the Orders
+// list, the order detail, and the transactional return-request recheck, so no consumer can
+// classify an order from different evidence than another.
+//
+// CP-069: the facts are PrepShip's aggregate rule — the order's OUTBOUND rows only
+// (`voided`, `is_return = false`), matched by order_id or the client-scoped order_number
+// fallback (order-lifecycle.ts). Carrier tracking status is deliberately NOT a signal: the
+// customer fulfillment display and the return-request policy read PrepShip's fulfillment
+// truth, never carrier progress. An inbound return label cannot establish that the original
+// order shipped.
 export function orderFulfillmentSignalSelects() {
-  const outboundMatch = sql`(
-    s.order_id = ${orders.id}
-    or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId})
-  ) and coalesce(s.is_return, false) = false`;
   return {
-    activeTrackingStatus: sql<string | null>`(
-      select s.tracking_status from shipments s
-      where ${outboundMatch} and coalesce(s.voided, false) = false
-      order by s.id desc limit 1
-    )`,
-    hasActiveShipment: sql<boolean>`exists (
-      select 1 from shipments s
-      where ${outboundMatch} and coalesce(s.voided, false) = false
-    )`,
-    hasVoidedShipment: sql<boolean>`exists (
-      select 1 from shipments s
-      where ${outboundMatch} and coalesce(s.voided, false) = true
-    )`,
+    hasActiveOutboundShipment: hasActiveOutboundShipmentSql(),
+    hasVoidedOutboundShipment: hasVoidedOutboundShipmentSql(),
   };
 }

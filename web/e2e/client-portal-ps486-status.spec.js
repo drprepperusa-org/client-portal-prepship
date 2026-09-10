@@ -9,16 +9,18 @@ const user = { id:'ps486-browser', email:'ps486@example.test', aud:'authenticate
 const session = {access_token:[encode({alg:'HS256',typ:'JWT'}),encode({sub:user.id,email:user.email,exp:4102444800,aud:'authenticated',role:'authenticated',app_metadata:user.app_metadata}),'fixture'].join('.'),
   refresh_token:'fixture',expires_in:2147483647,expires_at:4102444800,token_type:'bearer',user};
 
+// CP-069: the customer vocabulary is PrepShip's fulfillment truth — Awaiting shipment / Shipped /
+// Cancelled / Voided. Carrier telemetry is not a signal any more, so a delivered parcel reads Shipped.
 for (const scenario of [
-  {name:'voided-only #1298', signals:{orderStatus:'shipped',hasVoidedShipment:true,hasActiveShipment:false},label:'Voided',allowed:false},
-  {name:'active replacement', signals:{orderStatus:'shipped',hasVoidedShipment:true,hasActiveShipment:true},label:'In Transit',allowed:true},
-  {name:'cancelled', signals:{orderStatus:'cancelled',hasVoidedShipment:true,hasActiveShipment:false},label:'Cancelled',allowed:false},
-  {name:'delivered', signals:{orderStatus:'shipped',hasVoidedShipment:false,hasActiveShipment:true,activeTrackingStatus:'delivered'},label:'Delivered',allowed:true},
+  {name:'voided-only #1298', signals:{orderStatus:'shipped',hasVoidedOutboundShipment:true,hasActiveOutboundShipment:false},label:'Voided',allowed:false},
+  {name:'active replacement', signals:{orderStatus:'shipped',hasVoidedOutboundShipment:true,hasActiveOutboundShipment:true},label:'Shipped',allowed:true},
+  {name:'cancelled', signals:{orderStatus:'cancelled',hasVoidedOutboundShipment:true,hasActiveOutboundShipment:false},label:'Cancelled',allowed:false},
+  {name:'shipped with delivered telemetry', signals:{orderStatus:'shipped',hasVoidedOutboundShipment:false,hasActiveOutboundShipment:true},label:'Shipped',allowed:true},
 ]) {
   test(scenario.name+' has identical table/drawer status and backend return eligibility',async({page},testInfo)=>{
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.setViewportSize({width:1440,height:900});
-    const signals={activeTrackingStatus:null,...scenario.signals};
+    const signals={canonicalStatus:null,externallyShipped:false,externallyFulfilled:null,...scenario.signals};
     const order={id:1298,clientId:4,clientName:'HUGRAB fixture',storeId:378060,orderNumber:'1298',orderDate:'2026-06-05T17:33:25Z',
       orderStatus:signals.orderStatus,fulfillmentStatus:resolveOrderFulfillmentStatus(signals),returnEligibility:resolveReturnEligibility(signals),
       orderedUnits:3,items:[],orderTotal:133.83,customerShippingRate:null,chargeSummary:[],hasActiveReplacement:false};

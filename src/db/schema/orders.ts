@@ -27,6 +27,17 @@ export const orders = pgTable(
     clientId: integer().references(() => clients.id),
     orderNumber: text().notNull(),
     orderStatus: text().notNull().default('awaiting_shipment'),
+    // CP-069 — read-only mirror of PrepShip's orders.canonical_status (PS-128/129 fulfillment
+    // outbox vocabulary: shipped_pending_confirmation | shipped | confirmation_failed | cancelled,
+    // or a COALESCE-copied raw order_status). PrepShip owns the column and every writer; this
+    // repo never writes it. It is mapped so the effective-lifecycle CASE ported in
+    // lib/client-portal/order-lifecycle.ts can reference it, and so the integration harness
+    // (drizzle-kit push from this schema) builds a database that has it. Production already
+    // has it: PrepShip migration 0020 added it, PS 0057 builds an expression index over it, and
+    // PrepShip's own Orders list reads it unconditionally. The portal's
+    // drizzle/0020_fulfillment_outbox.sql carries the same ADD COLUMN IF NOT EXISTS as an
+    // unjournaled record only (drizzle/meta/_journal.json stops at 0022).
+    canonicalStatus: text(),
     orderDate: timestamp({ withTimezone: true }),
     storeId: integer(),
     customerEmail: text(),
@@ -68,6 +79,7 @@ export const orders = pgTable(
   },
   (t) => [
     index('orders_status_idx').on(t.orderStatus),
+    index('orders_canonical_status_idx').on(t.canonicalStatus),
     index('orders_client_idx').on(t.clientId),
     index('orders_store_idx').on(t.storeId),
     index('orders_date_idx').on(t.orderDate),

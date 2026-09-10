@@ -84,3 +84,7 @@ jobs:
 
       - name: PS-486 order status and return eligibility browser proof
         run: npm run test:ps486-status:browser
+      # CP-069: outbound Orders / Shipments / Billing drill-in badges read Shipped from PrepShip's
+      # fulfillment truth — never In Transit / Delivered; the status filter carries the new contract.
+      - name: CP-069 Shipped display browser proof
+        run: npm run test:cp-069:browser

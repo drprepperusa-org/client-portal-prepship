@@ -156,8 +156,13 @@ const orderRow = {
   externalOrderId: 'E2E-ORDER-101',
   sourceProvider: 'walmart',
   sourceStoreId: 'e2e-store',
-  orderStatus: 'shipped',
-  fulfillmentStatus: 'in_transit',
+  // CP-069: the badge is the backend-owned fulfillmentStatus (PrepShip's vocabulary), never the
+  // raw marketplace order_status and never carrier progress. The fixture deliberately keeps the
+  // two DIFFERENT (an externally-shipped order: locally awaiting, effectively shipped) so a surface
+  // that rendered orderStatus would show 'Awaiting Shipment' and fail the CP-069 assertions.
+  orderStatus: 'awaiting_shipment',
+  fulfillmentStatus: 'shipped',
+  // PS-486: backend return-request policy, rendered verbatim by StartReturnButton.
   returnEligibility: { allowed: true, reason: null },
   // CP-061: backend-derived badge fields — the UI renders these verbatim.
   hasActiveReplacement: true,
@@ -187,6 +192,96 @@ const orderRow = {
   customerShippingRatePending: false,
 };
 
+// CP-069 fixtures: the OUTBOUND shipment DTO (PortalShipment). shipmentStatus is PrepShip's
+// fulfillment vocabulary (shipped | label_created | cancelled | voided | unavailable) and the
+// contract carries NO deliveredAt / shipmentStatusDetail — the portal has nothing to re-infer
+// carrier progress from. One row per status; the voided row is hidden unless filtered for.
+const shipmentRowOf = (id, shipmentStatus, trackingSuffix, order = orderRow) => ({
+  id,
+  orderId: order ? order.id : null,
+  orderNumber: order ? order.orderNumber : null,
+  clientId: 1,
+  clientName: 'Walmart - DJC',
+  storeId: 1,
+  storeName: 'Walmart',
+  displayTrackingNumber: `1ZE2E${trackingSuffix}`,
+  shipmentStatus,
+  trackingUrl: null,
+  shipDate: '2026-07-16T15:30:00.000Z',
+  items: [{ sku: 'SOON VEGGIE 4P', name: 'Nongshim Soon Veggie Soup', quantity: 1, imageUrl: null }],
+  customerShippingRate: '5.00',
+  customerShippingRatePending: false,
+});
+const shippedShipment = shipmentRowOf(1, 'shipped', 'SHIPPED0001');
+const labelOnlyShipment = shipmentRowOf(2, 'label_created', 'LABELONLY02', {
+  ...orderRow, id: 102, orderNumber: '200014902407644',
+});
+const cancelledShipment = shipmentRowOf(3, 'cancelled', 'CANCELLED03', {
+  ...orderRow, id: 103, orderNumber: '200014902407645',
+});
+const voidedShipment = shipmentRowOf(4, 'voided', 'VOIDED00004', {
+  ...orderRow, id: 104, orderNumber: '200014902407646',
+});
+const unavailableShipment = shipmentRowOf(5, 'unavailable', 'ORPHAN00005', null);
+const shipmentRows = [shippedShipment, labelOnlyShipment, cancelledShipment, voidedShipment, unavailableShipment];
+// The backend's legacy filter aliases (CP-069, one release): carrier words map onto 'shipped'.
+const LEGACY_SHIPMENT_STATUS_ALIASES = { delivered: 'shipped', in_transit: 'shipped', exception: 'shipped', attempted: 'shipped' };
+function shipmentsFor(searchParams) {
+  const raw = searchParams?.get('status') ?? '';
+  const status = LEGACY_SHIPMENT_STATUS_ALIASES[raw] ?? raw;
+  if (status) return shipmentRows.filter((row) => row.shipmentStatus === status);
+  return shipmentRows.filter((row) => row.shipmentStatus !== 'voided');
+}
+
+// CP-069 billing fixtures: one billing period for the fixture client and one OUTBOUND
+// invoice line for order 101 — invoiceColumns makes the Reference clickable only when
+// rowType is not 'Return' and orderId is present.
+const invoicePeriodRow = {
+  clientId: 1,
+  clientName: 'Walmart - DJC',
+  periodStart: '2026-07-01',
+  periodEnd: '2026-07-15',
+  orders: 1,
+  pickpackTotal: '1.50',
+  additionalTotal: '0.00',
+  packageTotal: '0.50',
+  shippingTotal: '5.00',
+  storageTotal: '0.00',
+  returnPostageTotal: '0.00',
+  returnProcessingTotal: '0.00',
+  rowTotal: '7.00',
+};
+const { clientId: _periodClientId, clientName: _periodClientName, periodStart: _periodStart, periodEnd: _periodEnd, ...invoicePeriodTotals } = invoicePeriodRow;
+const invoiceDetailRow = {
+  canonicalEventId: 'e2e-outbound-101',
+  clientId: 1,
+  clientName: 'Walmart - DJC',
+  orderId: 101,
+  orderNumber: '200014902407643',
+  displayReference: '200014902407643',
+  rowType: 'Outbound',
+  returnId: null,
+  recipientName: 'E2E Customer',
+  itemNames: 'Nongshim Soon Veggie Soup',
+  items: [{ sku: 'SOON VEGGIE 4P', name: 'Nongshim Soon Veggie Soup', quantity: 1, imageUrl: null }],
+  skus: 'SOON VEGGIE 4P',
+  boxSize: null,
+  shipDate: '2026-07-16',
+  actualActivityDate: '2026-07-16',
+  billingEffectiveDate: '2026-07-16',
+  billingPolicyVersion: null,
+  rolledFromWeekend: false,
+  qty: 1,
+  pickpackTotal: '1.50',
+  additionalTotal: '0.00',
+  packageTotal: '0.50',
+  shippingTotal: '5.00',
+  storageTotal: '0.00',
+  returnPostageTotal: '0.00',
+  returnProcessingTotal: '0.00',
+  rowTotal: '7.00',
+};
+
 const emptyPagination = { page: 1, pageSize: 50, total: 0, totalPages: 1 };
 const invoiceTotals = {
   orders: 0,
@@ -200,7 +295,8 @@ const invoiceTotals = {
   rowTotal: 0,
 };
 
-function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, integrationRows = [], accessRows = []) {
+function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, integrationRows = [], accessRows = [], request = {}) {
+  const { method = 'GET', searchParams = new URLSearchParams() } = request;
   if (pathname === '/api/client-portal/me') {
     return {
       id: admin ? 'e2e-admin' : 'e2e-client',
@@ -361,11 +457,19 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
       pagination: { ...emptyPagination, total: 1 },
     };
   }
+  // CP-069: the returns-scoped tracking refresh (POST {returnIds}) answers counts only; the
+  // page re-reads its own list when something changed.
+  if (pathname === '/api/client-portal/returns/refresh-tracking' && method === 'POST') {
+    return { checked: 1, failed: 0, updated: 0 };
+  }
   if (pathname === '/api/client-portal/invoice-summary') {
+    if (searchParams.get('groupBy') === 'period') {
+      return { data: [invoicePeriodRow], totals: invoicePeriodTotals, billingVisible: true };
+    }
     return { data: [], totals: invoiceTotals, billingVisible: true };
   }
   if (pathname === '/api/client-portal/invoice-details') {
-    return { data: [], pagination: emptyPagination, billingVisible: true };
+    return { data: [invoiceDetailRow], pagination: { ...emptyPagination, total: 1 }, billingVisible: true };
   }
   if (pathname === '/api/client-portal/billing/status') return { lastGenerated: null };
   if (pathname === '/api/client-portal/inbound/receipts') {
@@ -440,13 +544,21 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   if (pathname === '/api/client-portal/orders/101') {
     return { data: { ...orderRow, items: [], chargeSummary: [] } };
   }
+  // CP-069: the order drill-in (Billing drawer) lists that order's outbound rows.
+  if (pathname === '/api/client-portal/orders/101/shipments') {
+    return { data: [shippedShipment] };
+  }
   if (pathname === '/api/client-portal/orders') {
     return { data: [orderRow], pagination: { ...emptyPagination, total: 1 } };
   }
-  if (
-    pathname === '/api/client-portal/shipments'
-    || pathname === '/api/client-portal/inventory'
-  ) {
+  if (pathname === '/api/client-portal/shipments') {
+    // CP-069: the mock honours ?status= the way the backend does — the contract values
+    // filter, the legacy carrier aliases resolve to 'shipped', and voided rows are hidden
+    // unless asked for.
+    const data = shipmentsFor(searchParams);
+    return { data, pagination: { ...emptyPagination, total: data.length } };
+  }
+  if (pathname === '/api/client-portal/inventory') {
     return { data: [], pagination: emptyPagination };
   }
   return { data: [], pagination: emptyPagination };
@@ -475,7 +587,10 @@ async function setupPortal(page, {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides, integrationRows, accessRows)),
+        body: JSON.stringify(responseFor(url.pathname, admin, capabilities, returnOverrides, integrationRows, accessRows, {
+          method: route.request().method(),
+          searchParams: url.searchParams,
+        })),
       });
       return;
     }
@@ -1126,5 +1241,176 @@ test('CP-058 AC-6: a client user cannot see the billing-date surface at all', as
   await page.goto(`${baseUrl}/returns`);
   await page.getByRole('button', { name: 'View return E2E-RET-1' }).click();
   await expect(page.getByRole('dialog').getByText('Correct billing date')).toHaveCount(0);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+// ── CP-069 — the outbound display contract is PrepShip's fulfillment truth ──────────
+//
+// Every outbound surface renders the backend-owned status verbatim: an order is Awaiting
+// shipment / Shipped / Cancelled / Voided and a shipment row is Shipped / Label Created /
+// Cancelled / Voided / Unavailable. Carrier progress ("In Transit", "Delivered") is not a
+// customer-visible claim anywhere on the outbound surfaces, and the browser never drives a
+// carrier refresh for them. Return labels, whose CP-062 arrival signal DOES depend on
+// telemetry, keep a returns-scoped refresh.
+
+const portalPath = (request) => new URL(request.url()).pathname;
+const isOrdersList = (request) => portalPath(request) === '/api/client-portal/orders' && request.method() === 'GET';
+const isShipmentsList = (request) => portalPath(request) === '/api/client-portal/shipments' && request.method() === 'GET';
+const statusParamOf = (request) => new URL(request.url()).searchParams.get('status');
+
+test('CP-069 AC-1: the Orders badge and the order drawer chip read "Shipped" — never carrier progress', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/orders?tab=shipped`);
+
+  // Scoped to the ROW: the "Shipped" tab button would satisfy a page-wide match.
+  const row = page.getByRole('row').filter({ hasText: '200014902407643' });
+  await expect(row.getByText('Shipped', { exact: true })).toBeVisible();
+  const pageText = await page.getByRole('main').innerText();
+  expect(pageText.includes('In Transit'), 'the Orders page must not render "In Transit"').toBe(false);
+  expect(pageText.includes('Delivered'), 'the Orders page must not render "Delivered"').toBe(false);
+
+  // The drawer re-reads GET /orders/:id and renders the SAME shared presentation map.
+  await page.getByRole('button', { name: 'View order 200014902407643' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Order 200014902407643' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('Ship to')).toBeVisible();
+  await expect(drawer.getByText('Shipped', { exact: true })).toBeVisible();
+  const drawerText = await drawer.innerText();
+  expect(drawerText.includes('In Transit')).toBe(false);
+  expect(drawerText.includes('Delivered')).toBe(false);
+  // The fixture's raw order_status is awaiting_shipment: neither the row nor the drawer may
+  // render it as the status (that would be a second vocabulary for the same order).
+  expect(pageText.includes('Awaiting Shipment'), 'the Orders row must not render the raw order_status').toBe(false);
+  expect(drawerText.includes('Awaiting Shipment'), 'the order drawer must not render the raw order_status').toBe(false);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-069 AC-2: the Orders tabs send the backend status filters — awaiting_shipment, shipped, none for All', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+
+  // The default tab is Awaiting shipment, so the first list request carries that filter.
+  const awaitingRequest = page.waitForRequest((request) => isOrdersList(request) && statusParamOf(request) === 'awaiting_shipment');
+  await page.goto(`${baseUrl}/orders`);
+  await awaitingRequest;
+
+  const shippedRequest = page.waitForRequest((request) => isOrdersList(request) && statusParamOf(request) === 'shipped');
+  await page.getByRole('button', { name: 'Shipped', exact: true }).click();
+  await shippedRequest;
+
+  // 'all' is a client-side tab only: the list request has NO status param.
+  const allRequest = page.waitForRequest((request) => isOrdersList(request) && statusParamOf(request) === null);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await allRequest;
+
+  await page.getByRole('button', { name: 'Awaiting shipment', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'View order 200014902407643' })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-069 AC-3: the Shipments list renders the five-value contract and filters server-side', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  const listRequests = [];
+  page.on('request', (request) => { if (isShipmentsList(request)) listRequests.push(request); });
+  await page.goto(`${baseUrl}/shipments`);
+
+  const table = page.getByRole('table');
+  for (const label of ['Shipped', 'Label Created', 'Cancelled', 'Unavailable']) {
+    await expect(table.getByText(label, { exact: true }), `${label} chip`).toBeVisible();
+  }
+  // Voided rows are hidden unless filtered for; carrier words never appear.
+  await expect(table.getByText('Voided', { exact: true })).toHaveCount(0);
+  const tableText = await table.innerText();
+  expect(tableText.includes('In Transit')).toBe(false);
+  expect(tableText.includes('Delivered')).toBe(false);
+
+  const statusFilter = page.getByLabel('Filter by status');
+  await expect(statusFilter.locator('option')).toHaveText([
+    'All statuses', 'Shipped', 'Label Created', 'Cancelled', 'Voided', 'Unavailable',
+  ]);
+
+  const shippedRequest = page.waitForRequest((request) => isShipmentsList(request) && statusParamOf(request) === 'shipped');
+  await statusFilter.selectOption('shipped');
+  await shippedRequest;
+  await expect(table.getByText('1ZE2ESHIPPED0001')).toBeVisible();
+  await expect(table.getByText('Label Created', { exact: true })).toHaveCount(0);
+  await expect(table.getByText('Cancelled', { exact: true })).toHaveCount(0);
+  await expect(table.getByText('Unavailable', { exact: true })).toHaveCount(0);
+  await expect(table.getByRole('button', { name: /^View shipment / })).toHaveCount(1);
+  // The initial load asked for no status, and nothing sent a legacy carrier alias.
+  expect(listRequests.map(statusParamOf)).toEqual([null, 'shipped']);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-069 AC-3: the Shipments drawer shows the ship date and no delivered / tracking-status fields', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/shipments`);
+  await page.getByRole('button', { name: 'View shipment 1ZE2ESHIPPED0001' }).click();
+
+  const drawer = page.getByRole('dialog', { name: 'Shipment #1' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('Shipped', { exact: true }).first()).toBeVisible();
+  await expect(drawer.getByText('Ship date', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('Customer Shipping Rate', { exact: true }).first()).toBeVisible();
+  // Wait for the embedded order detail (GET /orders/:id) so the whole drawer is inspected.
+  await expect(drawer.getByText('Ship to')).toBeVisible();
+  const drawerText = await drawer.innerText();
+  for (const forbidden of ['Delivered', 'Tracking status', 'In Transit']) {
+    expect(drawerText.includes(forbidden), `${forbidden} must not be a drawer field`).toBe(false);
+  }
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-069 AC-4: loading /shipments never posts a carrier-tracking refresh', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  const refreshRequests = [];
+  page.on('request', (request) => {
+    if (portalPath(request) === '/api/client-portal/shipments/refresh-tracking') refreshRequests.push(request.method());
+  });
+  await page.goto(`${baseUrl}/shipments`);
+  await expect(page.getByRole('button', { name: 'View shipment 1ZE2ESHIPPED0001' })).toBeVisible();
+  // The old page-load effect fired right after the list resolved; give it every chance.
+  await page.waitForTimeout(750);
+  expect(refreshRequests).toEqual([]);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-069 AC-3: the Billing drill-in drawer shows the fulfillment chip and no Delivered field', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  await page.goto(`${baseUrl}/billing`);
+
+  await page.getByRole('button', { name: /^View billing details for Walmart - DJC/ }).click();
+  await page.getByRole('button', { name: 'View shipment information for order 200014902407643' }).click();
+
+  const drawer = page.getByRole('dialog', { name: 'Shipments — Order 200014902407643' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('Shipped', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('1ZE2ESHIPPED0001')).toBeVisible();
+  await expect(drawer.getByText('Ship date', { exact: true })).toBeVisible();
+  const drawerText = await drawer.innerText();
+  for (const forbidden of ['Delivered', 'Tracking status', 'In Transit']) {
+    expect(drawerText.includes(forbidden), `${forbidden} must not be a drawer field`).toBe(false);
+  }
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('CP-069 AC-4: the Returns page drives the returns-scoped tracking refresh with returnIds', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await setupPortal(page);
+  const refreshRequest = page.waitForRequest((request) =>
+    portalPath(request) === '/api/client-portal/returns/refresh-tracking' && request.method() === 'POST');
+  await page.goto(`${baseUrl}/returns`);
+
+  const request = await refreshRequest;
+  // The fixture return is label_created with a tracking number — exactly the rows whose
+  // CP-033 / CP-062 display depends on carrier telemetry. The client names RETURNS, never
+  // shipment ids, so scope stays server-side.
+  expect(request.postDataJSON()).toEqual({ returnIds: [1] });
+  await expect(page.getByRole('button', { name: 'View return E2E-RET-1' })).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });

@@ -1,0 +1,60 @@
+# CP-069 — order-lifecycle display cross-repo parity lane.
+#
+# Proves the REAL PrepShip owners (prepship-v4 src/services/order-lifecycle-status.ts,
+# shipping-workflow/shipped-label-display-state.ts, shipment-aggregate.ts) and the Client
+# Portal's pinned port (src/lib/client-portal/order-lifecycle.ts) agree: identical rendered SQL
+# for the effective-status CASE (plain and aliased forms) and identical classification of the
+# full input matrix. The CP-only guard suite cannot run this (it needs the prepship-v4
+# checkout), so it lives in its own lane and is excluded from run-guards.mjs. Both repos are laid
+# out as siblings so the parity script can import ../../../prepship-v4.
+name: CP-069 order-lifecycle parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      prepship_ref:
+        description: prepship-v4 git ref (branch, tag, or SHA) to prove parity against
+        required: true
+        default: prepshipv4-stable
+  pull_request:
+    branches: [main]
+
+# The provider head this consumer was proven against: the exact PrepShip commit the CP-069 card
+# names as "PS stable". Deliberately an exact SHA — parity must prove this consumer against one
+# immutable provider head. Bump it (and re-pin contracts/prepship-order-lifecycle-display.json)
+# when a later provider change alters any of the three owner files.
+env:
+  PREPSHIP_ORDER_LIFECYCLE_REF: dfc6809e456826599a28e8b530e3673911d4d3e9
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Client Portal (consumer)
+        uses: actions/checkout@v4
+        with:
+          path: client-portal-prepship
+
+      - name: Check out PrepShip (provider) as a sibling
+        uses: actions/checkout@v4
+        with:
+          repository: drprepperusa-org/prepship-v4
+          ref: ${{ inputs.prepship_ref || env.PREPSHIP_ORDER_LIFECYCLE_REF }}
+          path: prepship-v4
+          token: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+          # The token is only needed to clone; do not leave it in the provider checkout's git
+          # config for the `npm ci` that runs there next.
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install focused dependencies
+        run: |
+          npm ci --prefix client-portal-prepship
+          npm ci --prefix prepship-v4
+
+      - name: Order-lifecycle display parity (binds both SHAs)
+        working-directory: client-portal-prepship
+        run: npm run test:client-portal-order-lifecycle-parity

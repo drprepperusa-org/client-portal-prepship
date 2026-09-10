@@ -45,19 +45,31 @@ assert(
     predicatesFlat.includes('from order_items visible_item'),
   'alias-safe predicate preserves the Orders hidden SEAuto/no-item placeholder suppression',
 );
+// CP-069: the Orders awaiting SOT is orderStatusFilterPredicate('awaiting_shipment') — PrepShip's
+// effective-lifecycle pending bucket + the portal's visibleAwaitingOrdersPredicate.
 assert(
-  ordersReadModel.includes('eq(orders.orderStatus, \'awaiting_shipment\')') &&
-    ordersReadModel.includes('visibleAwaitingOrdersPredicate()'),
-  'Orders awaiting read-model remains the canonical SOT for awaiting counts',
+  ordersReadModel.includes('export function orderStatusFilterPredicate(') &&
+    ordersReadModel.includes('portalOrderFulfillmentBucketPredicateSql(ORDER_FILTER_BUCKET[status])') &&
+    ordersReadModel.includes("status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined") &&
+    ordersReadModel.includes("orderStatusFilterPredicate('awaiting_shipment')") &&
+    !/eq\(orders\.orderStatus,/.test(ordersReadModel),
+  'Orders awaiting read-model remains the canonical SOT for awaiting counts (bucket predicate + visibility, no raw equality)',
 );
 assert(
   analysis.includes('rawVisibleAwaitingOrdersPredicateForAlias'),
   'Analysis imports/reuses the alias-safe Orders awaiting visibility predicate',
 );
+// CP-069: Analysis is_awaiting_order is the SAME pending bucket as the Orders tab, on the raw `o`
+// alias (portalOrderFulfillmentBucketAliasPredicateSql('o', 'pending')), narrowed by the alias-safe
+// visibility predicate — never a raw o.order_status = 'awaiting_shipment' equality.
 assert(
-  /coalesce\(o\.order_status,\s*''\)\s*=\s*'awaiting_shipment'/.test(analysis) ||
-    /o\.order_status\s*=\s*'awaiting_shipment'/.test(analysis),
-  'Analysis pending checks orders.order_status = awaiting_shipment',
+  analysis.includes("import { portalOrderFulfillmentBucketAliasPredicateSql } from '../lib/client-portal/order-lifecycle'") &&
+    /when \$\{portalOrderFulfillmentBucketAliasPredicateSql\('o', 'pending'\)\} and \$\{rawVisibleAwaitingOrdersPredicateForAlias\(\)\} then true else false end as is_awaiting_order/.test(analysisFlat),
+  "Analysis is_awaiting_order = portalOrderFulfillmentBucketAliasPredicateSql('o', 'pending') AND rawVisibleAwaitingOrdersPredicateForAlias()",
+);
+assert(
+  !/o\.order_status,?\s*''\)\s*=\s*'awaiting_shipment'/.test(analysis) && !/o\.order_status\s*=\s*'awaiting_shipment'/.test(analysis),
+  'Analysis pending no longer checks a raw o.order_status = awaiting_shipment equality',
 );
 assert(
   /as is_awaiting_order/.test(analysis),

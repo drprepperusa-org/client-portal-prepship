@@ -93,7 +93,9 @@ const shipmentRow: any = {
   labelShipDate: null,
   createDate: null,
   trackingStatus: 'delivered',
-  shipmentStatus: 'delivered',
+  // CP-069: the projected customer status is PrepShip's fulfillment truth ('shipped'), never the
+  // carrier telemetry on the same row (trackingStatus / deliveredAt above stay on the raw row).
+  shipmentStatus: 'shipped',
   trackingStatusDetail: null,
   deliveredAt: new Date('2026-07-02T00:00:00Z'),
   voided: false,
@@ -106,8 +108,12 @@ check(
   'client shipment DTO exposes no carrier/service',
 );
 check(
-  clientShipment.displayTrackingNumber === '9434' && clientShipment.shipmentStatus === 'delivered',
+  clientShipment.displayTrackingNumber === '9434' && clientShipment.shipmentStatus === 'shipped',
   'client shipment DTO keeps backend-selected display tracking + lifecycle status',
+);
+check(
+  !('deliveredAt' in clientShipment) && !('shipmentStatusDetail' in clientShipment) && !('trackingStatusDetail' in clientShipment),
+  'CP-069: client shipment DTO carries no deliveredAt / shipmentStatusDetail (carrier telemetry stays on the row)',
 );
 check(
   !('trackingNumber' in clientShipment) && !('labelTracking' in clientShipment) && !('trackingStatus' in clientShipment),

@@ -73,6 +73,15 @@ export const returnsApi = {
       `/api/client-portal/returns/${id}/billing-date`,
       body,
     ),
+  // CP-069: refresh carrier tracking for the return labels on screen (scope-checked server-side;
+  // the client names returns, never shipments). Counts only come back — the list re-reads its
+  // own CP-062 contract (trackingStatus / deliveredAt / arrivedReadyToReceive) after a change.
+  refreshReturnTracking: (token: RequestAuth, returnIds: number[]) =>
+    apiPost<{ checked: number; failed: number; updated: number }>(
+      token,
+      '/api/client-portal/returns/refresh-tracking',
+      { returnIds },
+    ),
   returnsReceiving: (token: RequestAuth, search?: string) =>
     apiGet<{ data: PortalReturnReceivingRow[] }>(token, '/api/client-portal/returns/receiving', {
       search,

@@ -8,6 +8,7 @@ const pagination = read('portal-client/src/components/ui/Pagination.tsx');
 const orders = read('portal-client/src/pages/Orders.tsx');
 const shipments = read('portal-client/src/pages/Shipments.tsx');
 const returns = read('portal-client/src/pages/Returns.tsx');
+const returnsRefresh = read('portal-client/src/lib/useReturnTrackingRefresh.ts');
 const inbound = read('portal-client/src/pages/Inbound.tsx');
 const inventory = read('portal-client/src/pages/Inventory.tsx');
 const invoices = read('portal-client/src/pages/Invoices.tsx');
@@ -66,9 +67,15 @@ for (const key of ["['shipments'", "['inventory'", "['inventory-history'", "['re
 check(/portalReadKeys\.inventory\(merged\.clientId, merged\.search, merged\.page, merged\.pageSize, merged\.lowStock(?:,|\))/.test(hooks),
   'Inventory reads use the shared key with page size and filters');
 check(inventoryApi.includes('pageSize: opts.pageSize ?? 50'), 'Inventory history API forwards page size');
+// CP-069: the page-load tracking refresh moved from the outbound Shipments page (whose status is
+// PrepShip fulfillment truth, not telemetry) to the Returns page, whose CP-062 arrival signal is.
 check(
-  shipments.includes('ids.slice(index, index + 100)'),
-  '500-row shipment pages retain live tracking refresh through safe 100-row batches',
+  returns.includes('useReturnTrackingRefresh(rows') && returnsRefresh.includes('ids.slice(index, index + 100)'),
+  '500-row return pages retain live tracking refresh through safe 100-row batches',
+);
+check(
+  !shipments.includes('ids.slice(index, index + 100)') && !/refresh-tracking|refreshShipmentTracking|refreshReturnTracking/.test(shipments),
+  'the outbound Shipments page issues no tracking refresh (CP-069)',
 );
 
 const failures = checks.filter((item) => !item.ok);

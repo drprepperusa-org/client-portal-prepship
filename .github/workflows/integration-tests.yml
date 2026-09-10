@@ -102,6 +102,15 @@ jobs:
       # row is PrepShip's 19-column header.
       - name: Run CP-068 invoice-export pass-through integration suite
         run: npm run test:client-portal-invoice-export-cp068:integration
+      # CP-069. The customer outbound status is PrepShip's fulfillment truth, never carrier
+      # progress. The static guard pins the resolver and the source; this proves against a real
+      # database that the read-models, the shipments/order-shipments routes and the filters all
+      # classify the acceptance matrix identically (shipped with missing/stale tracking, carrier
+      # in_transit/delivered, label-only, cancelled, voided/replacement, external, orphan,
+      # multi-shipment, return labels), and that the Orders tabs and the awaiting badge count
+      # share one bucket expression.
+      - name: Run CP-069 orders/shipments fulfillment display integration suite
+        run: npm run test:client-portal-orders-fulfillment-cp069:integration
       # Cross-repo classification ownership. Runs the local half always; the
       # upstream half only when PREPSHIP_CONTRACT_TOKEN is configured (prepship-v4
       # is private, so the default GITHUB_TOKEN cannot read it). Without the
@@ -120,6 +129,14 @@ jobs:
         env:
           PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
         run: node scripts/prepship-return-vocabulary-parity.mjs
+      # CP-069. The order-lifecycle CASE, the shipped-label display precedence and the
+      # active-outbound rule are PrepShip's; the portal carries a pinned port. The local half
+      # (always) proves the port renders the pinned SQL; the remote half (token) proves the pinned
+      # upstream blobs have not moved. Same fail-closed arming rule as the vocabulary gate.
+      - name: Check PrepShip order-lifecycle display parity
+        env:
+          PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}
+        run: node scripts/prepship-order-lifecycle-parity.mjs
       - name: Check PrepShip expedited-service classification parity
         env:
           PREPSHIP_CONTRACT_TOKEN: ${{ secrets.PREPSHIP_CONTRACT_TOKEN }}

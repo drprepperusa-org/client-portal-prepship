@@ -21,8 +21,9 @@ function check(condition: boolean, message: string) {
 }
 
 function read(rel: string) {
-  return fs.readFileSync(path.join(root, rel), 'utf8');
+  return fs.readFileSync(path.join(root, rel), 'utf8').replace(/\r\n/g, '\n');
 }
+const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1');
 
 // 1) Focused scoped endpoint reusing the canonical shipment DTO shaping.
 const route = read('src/routes/client-portal/orders.ts');
@@ -85,9 +86,21 @@ check(
 );
 check(
   invoicesPage.includes('shipmentStatusMeta(shipment.shipmentStatus)') &&
-    invoicesPage.includes('shipment.displayTrackingNumber') &&
-    invoicesPage.includes('shipment.deliveredAt'),
-  'modal renders backend shipment status, display tracking, and delivered date',
+    invoicesPage.includes('shipment.displayTrackingNumber'),
+  'modal renders backend shipment status and display tracking',
+);
+// CP-069: the outbound shipment contract carries no carrier telemetry. deliveredAt and
+// shipmentStatusDetail were REMOVED (not nulled) from the DTO, and the drawer no longer renders
+// a Delivered field — absence is asserted on both sides so neither can quietly return.
+const dtoBlockCode = stripComments(dtoBlock);
+const invoicesCode = stripComments(invoicesPage);
+check(
+  !dtoBlockCode.includes('deliveredAt') && !dtoBlockCode.includes('shipmentStatusDetail'),
+  'CP-069: toPortalShipmentDto projects no deliveredAt / shipmentStatusDetail (absence)',
+);
+check(
+  !invoicesCode.includes('deliveredAt') && !invoicesCode.includes('shipmentStatusDetail') && !/['"`]Delivered['"`]/.test(invoicesCode),
+  'CP-069: the Billing shipment drawer renders no Delivered date / tracking detail (absence)',
 );
 // The billing modal shows the BILLED shipping (from the billing row, matching
 // the table) — never the shipment record's internal label cost, which would

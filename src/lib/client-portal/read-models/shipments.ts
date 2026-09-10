@@ -7,6 +7,7 @@ import { orders } from '../../../db/schema/orders';
 import { shipments } from '../../../db/schema/shipments';
 import { shipmentCustomerShippingRateSql } from '../customer-shipping-rate';
 import { toPortalShipmentDto } from '../dto';
+import { outboundShipmentPredicate } from '../order-lifecycle';
 import {
   PORTAL_SHIPMENT_STATUSES,
   portalShipmentStatusSql,
@@ -42,6 +43,10 @@ export async function listPortalShipments(
   const where = and(
     // Voided shipments are hidden unless explicitly filtered for.
     status === 'voided' ? eq(shipments.voided, true) : eq(shipments.voided, false),
+    // CP-069: this is the OUTBOUND list. Return labels (is_return) belong to the Returns
+    // surface and replacement labels (source = 'replacement') to the Replace surface —
+    // PrepShip's aggregate never treats a return as outbound evidence.
+    outboundShipmentPredicate(),
     visibleClientPortalShipmentsPredicate(),
     shipmentStatusFilterPredicate(status),
     shipmentScopePredicate(scope, { clientId, storeId }),
@@ -53,6 +58,8 @@ export async function listPortalShipments(
       clientName: clients.name,
       storeId: orders.storeId,
       orderItems: orders.items,
+      // CP-069: the customer fulfillment display — reads the left-joined orders row
+      // (PrepShip effective lifecycle) for the linked order; never carrier telemetry.
       shipmentStatus: portalShipmentStatusSql(),
       // Customer Shipping Rate: frozen billing line first, then PrepShip's
       // policy-versioned shipment snapshot. No local pricing/config joins.

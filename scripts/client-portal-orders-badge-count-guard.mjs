@@ -35,22 +35,39 @@ const countBlock = sliceFunction(readModel, 'awaitingActiveOrderCount');
 assert(listBlock.length > 0, 'listPortalOrders exists');
 assert(countBlock.length > 0, 'awaitingActiveOrderCount exists');
 
-assert(
-  listBlock.includes("status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined"),
-  'Orders Awaiting tab applies visibleAwaitingOrdersPredicate',
+// CP-069: ONE exported predicate (orderStatusFilterPredicate) decides the Awaiting tab AND the
+// badge — PrepShip's effective-lifecycle pending bucket (portalOrderFulfillmentBucketPredicateSql,
+// rendered on the inner effective CASE) narrowed by the portal's visibleAwaitingOrdersPredicate.
+// A raw order_status equality is no longer allowed to decide either.
+const filterFn = readModel.slice(
+  readModel.indexOf('export function orderStatusFilterPredicate('),
+  readModel.indexOf('export async function listPortalOrders('),
 );
+assert(filterFn.length > 0, 'orderStatusFilterPredicate exists in the Orders read-model');
+assert(
+  filterFn.includes('portalOrderFulfillmentBucketPredicateSql(ORDER_FILTER_BUCKET[status])') &&
+    filterFn.includes("status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined"),
+  'orderStatusFilterPredicate = PrepShip bucket predicate + visibleAwaitingOrdersPredicate for the Awaiting tab',
+);
+assert(
+  /awaiting_shipment:\s*'pending'/.test(readModel) && /shipped:\s*'shipped'/.test(readModel) && /cancelled:\s*'cancelled'/.test(readModel),
+  "the tab ids map onto the pending / shipped / cancelled buckets ('awaiting_shipment' = pending)",
+);
+assert(listBlock.includes('orderStatusFilterPredicate(status)'), 'Orders tabs filter through orderStatusFilterPredicate');
 assert(
   countBlock.includes('orderScopePredicate(scope, filters)') &&
     countBlock.includes('activeClientPredicate()') &&
-    countBlock.includes("eq(orders.orderStatus, 'awaiting_shipment')") &&
-    countBlock.includes('visibleAwaitingOrdersPredicate()'),
-  'sidebar badge count uses the same base awaiting predicates as the Orders tab',
+    countBlock.includes("orderStatusFilterPredicate('awaiting_shipment')"),
+  'sidebar badge count uses the SAME shared awaiting predicate as the Orders tab',
+);
+assert(
+  !/eq\(orders\.orderStatus,/.test(readModel),
+  'no raw orders.order_status equality decides a tab or the badge (PrepShip effective lifecycle owns it)',
 );
 
 for (const forbidden of [
   'liveAwaitingSince',
   'gte(orders.orderDate',
-  'orders.externallyShipped',
   'externallyFulfilled',
   'jsonb_array_length',
   'active_shipment',

@@ -54,9 +54,12 @@ const BASE = {
   clientName: 'HUGRAB',
   storeName: 'HUGRAB',
   override: null,
-  activeTrackingStatus: null,
-  hasActiveShipment: false,
-  hasVoidedShipment: false,
+  // CP-069: fulfillment signals are PrepShip's lifecycle columns + OUTBOUND row existence (edited
+  // by hand — top-level scripts/ sit outside tsconfig, so typecheck cannot find this fixture).
+  canonicalStatus: null,
+  externallyShipped: false,
+  hasActiveOutboundShipment: false,
+  hasVoidedOutboundShipment: false,
 };
 const dtoOf = (o: Record<string, unknown>) =>
   toPortalOrderDto({ ...BASE, ...o } as unknown as Row, { includeFinancials: true }) as Record<string, unknown>;
@@ -71,6 +74,8 @@ check(
   rate({ orderStatus: 'shipped', shippingAmount: '12.90', shippingCharged: null }) == null,
   'SHIPPED order with buyer-paid shippingAmount>0 but no resolved rate -> null (CP-040: no buyer-paid fallback)',
 );
+// 'delivered' is a raw-status fixture only (not in PrepShip's order_status vocabulary): the rate
+// rule must ignore whatever order_status says, so the value stays deliberately foreign.
 check(
   rate({ orderStatus: 'delivered', shippingAmount: '9.99', shippingCharged: null }) == null,
   'delivered order with buyer-paid shippingAmount>0 -> null',
@@ -98,8 +103,8 @@ check(
 
 // ── Pending vs "-": a shipped order with a shipment but no resolved rate is Pending ──
 check(
-  dtoOf({ orderStatus: 'shipped', shippingCharged: null, hasActiveShipment: true }).customerShippingRatePending === true,
-  'shipped order with an active shipment but no resolved rate -> Pending',
+  dtoOf({ orderStatus: 'shipped', shippingCharged: null, hasActiveOutboundShipment: true }).customerShippingRatePending === true,
+  'shipped order with an active OUTBOUND shipment but no resolved rate -> Pending',
 );
 check(
   dtoOf({ orderStatus: 'awaiting_shipment', shippingAmount: '12.90' }).customerShippingRatePending === false,

@@ -6,6 +6,7 @@ import type { InboundShipment, InboundItem } from '../../db/schema/inbound';
 import { isDiscountLine } from './dashboard-aggregate';
 import { trackingUrlForCarrier } from '../tracking-url';
 import { maskAccountIdentifier } from '../credential-accounts';
+import { rawExternallyFulfilled } from './order-lifecycle';
 import { resolveOrderFulfillmentStatus } from './order-status';
 import { resolveReturnEligibility } from '../../services/return-eligibility';
 import { normalizePortalShipmentStatus } from './shipment-status';
@@ -202,11 +203,11 @@ export function toPortalOrderDto(
     /** Billed shipping for this order (Σ billing_line_items line_type='shipping')
      *  — the customer-facing shipping charge, supplied by the route layer. */
     shippingCharged?: number | string | null;
-    /** Canonical signals for the backend-owned fulfillment-status resolver
-     *  (order-status.ts), supplied by the read-model from the shipments table. */
-    activeTrackingStatus?: string | null;
-    hasActiveShipment?: boolean;
-    hasVoidedShipment?: boolean;
+    /** CP-069: canonical OUTBOUND-shipment signals for the backend-owned fulfillment-status
+     *  resolver (order-status.ts), supplied by the read-model (PrepShip aggregate rule:
+     *  voided / is_return). Carrier tracking status is deliberately not an input. */
+    hasActiveOutboundShipment?: boolean;
+    hasVoidedOutboundShipment?: boolean;
     /** Complete normalized item rows from order_items. orders.items remains
      *  compatibility input for legacy discount/address metadata only. */
     canonicalItems: Array<
@@ -272,21 +273,27 @@ export function toPortalOrderDto(
     sourceProvider: row.sourceProvider,
     sourceStoreId: row.sourceAccountId,
     orderStatus: row.orderStatus,
-    // Backend-owned order fulfillment status (Pending / In Transit / Delivered /
-    // Cancelled / Voided). Resolved by resolveOrderFulfillmentStatus from the
-    // order status + the order's shipment voided/tracking truth — the frontend
-    // renders this enum, it never re-derives the status. See order-status.ts.
+    // CP-069: backend-owned order fulfillment status (Awaiting shipment / Shipped /
+    // Cancelled / Voided). Resolved by resolveOrderFulfillmentStatus from PrepShip's effective
+    // lifecycle (order_status, canonical_status, externally_shipped, raw externallyFulfilled)
+    // + the order's OUTBOUND shipment voided truth — the frontend renders this enum, it never
+    // re-derives the status. Carrier telemetry is not an input. See order-status.ts.
     fulfillmentStatus: resolveOrderFulfillmentStatus({
       orderStatus: row.orderStatus,
-      activeTrackingStatus: row.activeTrackingStatus ?? null,
-      hasActiveShipment: row.hasActiveShipment ?? false,
-      hasVoidedShipment: row.hasVoidedShipment ?? false,
+      canonicalStatus: row.canonicalStatus ?? null,
+      externallyShipped: row.externallyShipped === true,
+      externallyFulfilled: rawExternallyFulfilled(row.raw),
+      hasActiveOutboundShipment: row.hasActiveOutboundShipment ?? false,
+      hasVoidedOutboundShipment: row.hasVoidedOutboundShipment ?? false,
     }),
+    // PS-486: return-request policy delegates to the SAME resolver over the SAME signals.
     returnEligibility: resolveReturnEligibility({
       orderStatus: row.orderStatus,
-      activeTrackingStatus: row.activeTrackingStatus ?? null,
-      hasActiveShipment: row.hasActiveShipment ?? false,
-      hasVoidedShipment: row.hasVoidedShipment ?? false,
+      canonicalStatus: row.canonicalStatus ?? null,
+      externallyShipped: row.externallyShipped === true,
+      externallyFulfilled: rawExternallyFulfilled(row.raw),
+      hasActiveOutboundShipment: row.hasActiveOutboundShipment ?? false,
+      hasVoidedOutboundShipment: row.hasVoidedOutboundShipment ?? false,
     }),
     // CP-061: backend-derived REPLACE badge — rendered verbatim by the client,
     // never re-derived from replacement rows in React.
@@ -356,7 +363,9 @@ export function toPortalOrderDto(
             // so a not-yet-invoiced charge doesn't read as "no shipping". Backend-
             // owned: the frontend renders this flag, it never decides WHEN it is
             // pending. A genuinely-null rate with no shipment stays "—".
-            customerShippingRatePending: customerShippingRate == null && Boolean(row.hasActiveShipment),
+            // CP-069: "Pending" only while a live OUTBOUND label exists (a return label never
+            // makes an unbilled shipping charge read Pending).
+            customerShippingRatePending: customerShippingRate == null && Boolean(row.hasActiveOutboundShipment),
             // CP-014: backend-owned product subtotal (Σ line totals).
             productSubtotal,
             // CP-017/CP-038: backend-owned, always-reconciling charge summary (client-
@@ -416,9 +425,10 @@ export function toPortalShipmentDto(
         row.labelCarrier ?? row.carrierCode,
         displayTrackingNumber,
       ) || null,
+    // ship_date (label ship date), else label_ship_date, else create_date (label creation).
     shipDate: iso(row.shipDate ?? row.labelShipDate ?? row.createDate),
-    shipmentStatusDetail: row.trackingStatusDetail ?? null,
-    deliveredAt: iso(row.deliveredAt),
+    // CP-069: no deliveredAt / tracking-status detail on the customer outbound contract —
+    // the portal does not promise carrier progress. Raw tracking stays on the shipments row.
     items: safeItems(row.orderItems, options.includeFinancials),
     customerShippingRate: options.includeFinancials ? row.shippingCost ?? null : null,
     // A live (non-voided) shipment with no billed shipping line yet is awaiting

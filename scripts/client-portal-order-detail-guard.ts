@@ -191,6 +191,12 @@ check(/o\.chargeSummary[\s\S]*\.map\(/.test(panel), 'CP-017: panel iterates char
 check(!panel.includes('label="Product subtotal"'), 'CP-017: panel no longer hard-codes the Product subtotal row from a separate DTO field');
 check(!/o\.chargeSummary[\s\S]*\.reduce\(/.test(panel), 'CP-017: panel does no receipt math on chargeSummary (no .reduce) — the backend owns the total');
 
+// ── CP-069: the detail chip is the SAME backend fulfillment status as the Orders badge ──
+check(
+  panel.includes('<OrderStatusBadge status={o.fulfillmentStatus} />') && !panel.includes('orderStatusMeta(') && !/o\.orderStatus\b/.test(panel),
+  'CP-069 / PS-486: panel renders the shared OrderStatusBadge from o.fulfillmentStatus — never orderStatusMeta / raw o.orderStatus',
+);
+
 // ── CP-009: the customer-facing order detail never shows carrier or service ──
 check(!panel.includes('CarrierBadge') && !panel.includes('o.carrierCode'), 'CP-009: panel does not render the carrier');
 check(!panel.includes('o.shippingService') && !panel.includes('o.serviceCode') && !panel.includes('label="Service"'), 'CP-009: panel does not render the shipping service');

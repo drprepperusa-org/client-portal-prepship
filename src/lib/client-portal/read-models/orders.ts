@@ -10,6 +10,11 @@ import { shipments } from '../../../db/schema/shipments';
 import { toPortalOrderDto } from '../dto';
 import { orderCustomerShippingRateSql } from '../customer-shipping-rate';
 import {
+  orderOutboundShipmentMatchSql,
+  portalOrderFulfillmentBucketPredicateSql,
+  type PortalOrderFulfillmentBucket,
+} from '../order-lifecycle';
+import {
   activeClientPredicate,
   orderScopePredicate,
   orderSearchPredicate,
@@ -61,10 +66,14 @@ async function loadCanonicalOrderItems(orderIds: number[]): Promise<Map<number, 
   return byOrder;
 }
 
+// CP-069: the order's display tracking identity comes from its latest ACTIVE OUTBOUND shipment
+// (the shared PrepShip aggregate row set: matched by order_id or client-scoped order_number,
+// voided = false, is_return = false). A return label's tracking number can never become the
+// order's tracking number.
 const activeShipmentTrackingNumberSql = () => sql<string | null>`(
   select coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), ''))
   from shipments s
-  where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+  where ${orderOutboundShipmentMatchSql('s')}
     and coalesce(s.voided, false) = false
     and coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), '')) is not null
   order by s.id desc
@@ -74,16 +83,47 @@ const activeShipmentTrackingNumberSql = () => sql<string | null>`(
 const activeShipmentCarrierCodeSql = () => sql<string | null>`(
   select coalesce(nullif(trim(s.label_carrier), ''), nullif(trim(s.carrier_code), ''))
   from shipments s
-  where (s.order_id = ${orders.id} or (s.order_id is null and s.order_number = ${orders.orderNumber} and s.client_id = ${orders.clientId}))
+  where ${orderOutboundShipmentMatchSql('s')}
     and coalesce(s.voided, false) = false
     and coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), '')) is not null
   order by s.id desc
   limit 1
 )`;
 
+/**
+ * CP-069 — the Orders tabs and the awaiting badge filter on PrepShip's effective lifecycle
+ * (cancelled | shipped | pending buckets over orderLifecycleEffectiveStatusSql), the SAME
+ * expression the DTO badge resolver mirrors in TypeScript, so a row can never sit in a tab
+ * that contradicts its badge. Predicates render on the inner effective CASE so PrepShip 0057's
+ * expression index on the shared database stays eligible. The tab ids are the API's historical
+ * values: 'awaiting_shipment' is the pending bucket (awaiting, on hold, awaiting payment,
+ * pending fulfillment) narrowed by the portal's own placeholder suppression
+ * (visibleAwaitingOrdersPredicate — a portal rule; PrepShip's same-named eBay rule is not ported).
+ */
+export const PORTAL_ORDER_STATUS_FILTERS = ['awaiting_shipment', 'shipped', 'cancelled'] as const;
+export type PortalOrderStatusFilter = (typeof PORTAL_ORDER_STATUS_FILTERS)[number];
+
+export function isPortalOrderStatusFilter(value: unknown): value is PortalOrderStatusFilter {
+  return typeof value === 'string' && (PORTAL_ORDER_STATUS_FILTERS as readonly string[]).includes(value);
+}
+
+const ORDER_FILTER_BUCKET: Record<PortalOrderStatusFilter, PortalOrderFulfillmentBucket> = {
+  awaiting_shipment: 'pending',
+  shipped: 'shipped',
+  cancelled: 'cancelled',
+};
+
+export function orderStatusFilterPredicate(status: PortalOrderStatusFilter | null | undefined) {
+  if (!status) return undefined;
+  return and(
+    portalOrderFulfillmentBucketPredicateSql(ORDER_FILTER_BUCKET[status]),
+    status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined,
+  );
+}
+
 export async function listPortalOrders(
   scope: ClientPortalScope,
-  opts: SortInput & { page: number; pageSize: number; status?: string | null; clientId?: number | null; storeId?: number | null; search: string },
+  opts: SortInput & { page: number; pageSize: number; status?: PortalOrderStatusFilter | null; clientId?: number | null; storeId?: number | null; search: string },
 ) {
   const { page, pageSize, status, clientId, storeId, search } = opts;
   // CP-061: badge selects must be constants while the shared prod DB lacks the
@@ -92,8 +132,7 @@ export async function listPortalOrders(
   const where = and(
     orderScopePredicate(scope, { clientId, storeId }),
     activeClientPredicate(),
-    status ? eq(orders.orderStatus, status) : undefined,
-    status === 'awaiting_shipment' ? visibleAwaitingOrdersPredicate() : undefined,
+    orderStatusFilterPredicate(status),
     orderSearchPredicate(search),
   );
   const rows = await db
@@ -110,15 +149,12 @@ export async function listPortalOrders(
       resolvedShippingRate: orderCustomerShippingRateSql(),
       activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
       activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
-      // Canonical signals for the backend-owned order fulfillment status
-      // (see lib/client-portal/order-status.ts): the latest ACTIVE (non-voided)
-      // shipment's tracking status, plus whether the order has any active / any
-      // voided shipment. Matched by the exact order_id, or — for shipments
-      // synced without a linked order_id — by order_number scoped to the SAME
-      // client (s.client_id = orders.client_id). The client scope on the
-      // order_number fallback is required for tenant isolation: two clients can
-      // share an order number, so an unscoped order_number match could surface a
-      // different client's shipment status.
+      // CP-069: canonical signals for the backend-owned order fulfillment status
+      // (lib/client-portal/order-status.ts) — whether the order has an active / a voided
+      // OUTBOUND shipment (PrepShip's aggregate rule: voided, is_return), from the ONE
+      // projection PS-486 shares with the return-request recheck. Matched by the exact
+      // order_id, or — for shipments synced without a linked order_id — by order_number
+      // scoped to the SAME client (tenant isolation). Carrier tracking status is NOT read.
       ...orderFulfillmentSignalSelects(),
       // CP-061: backend-derived REPLACE badge — the frontend renders these
       // fields verbatim and never re-derives them from replacement rows.
@@ -159,9 +195,8 @@ export async function listPortalOrders(
           override: row.override,
           // CP-040: list provides the resolved customer shipping rate.
           shippingCharged: row.resolvedShippingRate,
-          activeTrackingStatus: row.activeTrackingStatus,
-          hasActiveShipment: row.hasActiveShipment,
-          hasVoidedShipment: row.hasVoidedShipment,
+          hasActiveOutboundShipment: row.hasActiveOutboundShipment,
+          hasVoidedOutboundShipment: row.hasVoidedOutboundShipment,
           canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
           activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
           activeShipmentCarrierCode: row.activeShipmentCarrierCode,
@@ -216,9 +251,8 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       storeName: row.clientName,
       override: row.override,
       shippingCharged: row.resolvedShippingRate,
-      activeTrackingStatus: row.activeTrackingStatus,
-      hasActiveShipment: row.hasActiveShipment,
-      hasVoidedShipment: row.hasVoidedShipment,
+      hasActiveOutboundShipment: row.hasActiveOutboundShipment,
+      hasVoidedOutboundShipment: row.hasVoidedOutboundShipment,
       canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
       activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
       activeShipmentCarrierCode: row.activeShipmentCarrierCode,
@@ -236,14 +270,13 @@ export async function awaitingActiveOrderCount(
   filters: { clientId?: number | null; storeId?: number | null },
 ) {
   // The sidebar/mobile Orders badge mirrors the Orders page's Awaiting shipment
-  // tab count. Keep this predicate aligned with listPortalOrders(status:
-  // 'awaiting_shipment') so users do not see rows in the table with a blank
-  // badge in the nav.
+  // tab count. CP-069: both use the ONE bucket predicate (PrepShip effective
+  // lifecycle = pending + the portal's placeholder suppression) so users never see
+  // rows in the table with a blank badge in the nav, or the reverse.
   const where = and(
     orderScopePredicate(scope, filters),
     activeClientPredicate(),
-    eq(orders.orderStatus, 'awaiting_shipment'),
-    visibleAwaitingOrdersPredicate(),
+    orderStatusFilterPredicate('awaiting_shipment'),
   );
   const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
   return Number(row?.count ?? 0);

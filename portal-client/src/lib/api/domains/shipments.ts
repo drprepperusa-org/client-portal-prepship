@@ -2,7 +2,7 @@ import type { RequestAuth } from '../transport';
 import type { ListOpts } from '@client-portal-contracts/common';
 import type { PortalShipment } from '@client-portal-contracts/shipments';
 import { scopedList } from '../scope';
-import { apiGet, apiPost } from '../transport';
+import { apiGet } from '../transport';
 
 export const shipmentsApi = {
   shipments: (token: RequestAuth, opts: ListOpts = {}) =>
@@ -19,10 +19,6 @@ export const shipmentsApi = {
       token,
       `/api/client-portal/orders/${orderId}/shipments`,
     ),
-  refreshShipmentTracking: (token: RequestAuth, shipmentIds: number[]) =>
-    apiPost<{
-      checked: number;
-      failed: number;
-      updated: Array<{ id: number; trackingStatus: string; deliveredAt: string | null }>;
-    }>(token, '/api/client-portal/shipments/refresh-tracking', { shipmentIds }),
+  // CP-069: no carrier-tracking refresh from the outbound surface — the outbound status is
+  // PrepShip's fulfillment truth. Return labels refresh through returnsApi.refreshReturnTracking.
 };

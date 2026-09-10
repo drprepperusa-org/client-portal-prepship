@@ -59,13 +59,11 @@ export function InvoiceShipmentDrawer({
                         {shipment.displayTrackingNumber ?? '—'}
                       </p>
                     </div>
-                    {/* CP-009: no Carrier / Service — customer-facing shipment info only. */}
+                    {/* CP-009: no Carrier / Service — customer-facing shipment info only.
+                        CP-069: no Delivered date — the drawer shows PrepShip's fulfillment
+                        status and the ship date, never carrier progress. */}
                     <div className="grid grid-cols-2 gap-3">
                       <ShipmentField label="Ship date" value={shortDate(shipment.shipDate)} />
-                      <ShipmentField
-                        label="Delivered"
-                        value={shipment.deliveredAt ? shortDate(shipment.deliveredAt) : '—'}
-                      />
                     </div>
                     {(shipment.items?.length ?? 0) > 0 && (
                       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(120px,0.5fr)]">

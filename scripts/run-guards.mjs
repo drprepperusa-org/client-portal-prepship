@@ -41,6 +41,8 @@ const DENY_PATTERNS = [
   'shipstation-awaiting-parity',
   'client-portal-replacement-reason-parity', // CP-061 parity needs the prepship-v4 checkout
   'prepship-return-vocabulary-parity',       // CP-059 parity needs a prepship-v4 read (token-gated)
+  'prepship-order-lifecycle-parity',         // CP-069 parity: remote half needs a prepship-v4 read (token-gated)
+  'client-portal-order-lifecycle-parity',    // CP-069 sibling-checkout parity needs the prepship-v4 checkout
 ];
 const DENY = new RegExp(`(${DENY_PATTERNS.join('|')})`);
 

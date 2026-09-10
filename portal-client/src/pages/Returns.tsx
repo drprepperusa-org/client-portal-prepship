@@ -25,6 +25,7 @@ import {
   useReturns,
 } from '@/lib/hooks';
 import type { PortalReturnRow } from '@/lib/api';
+import { useReturnTrackingRefresh } from '@/lib/useReturnTrackingRefresh';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate } from '@/lib/status';
 import { useDebounced } from '@/lib/useDebounced';
@@ -73,6 +74,10 @@ export default function Returns() {
   const returnsFetchFailed = query.failureCount > 0;
   const rows = query.data?.data ?? [];
   const pagination = query.data?.pagination;
+
+  // CP-069: the page-load carrier refresh for the return labels on screen (the only surface
+  // whose display depends on telemetry — CP-033 advance, CP-062 arrival). See the hook.
+  useReturnTrackingRefresh(rows, () => query.refetch());
 
   const columns: Column<PortalReturnRow>[] = useMemo(
     () => [

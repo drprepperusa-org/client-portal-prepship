@@ -32,8 +32,8 @@ const pkg = JSON.parse(read('package.json'));
 
 // 1. Backend owns the pending flag for BOTH the order + shipment DTO.
 assert(
-  /customerShippingRatePending:\s*customerShippingRate == null && Boolean\(row\.hasActiveShipment\)/.test(dto),
-  'order DTO derives customerShippingRatePending from a null rate + an active shipment',
+  /customerShippingRatePending:\s*customerShippingRate == null && Boolean\(row\.hasActiveOutboundShipment\)/.test(dto),
+  'order DTO derives customerShippingRatePending from a null rate + an active OUTBOUND shipment (CP-069: never a return label)',
 );
 assert(
   /customerShippingRatePending:\s*Boolean\([\s\S]*?options\.includeFinancials[\s\S]*?row\.shippingCost == null[\s\S]*?!row\.voided/.test(dto),
