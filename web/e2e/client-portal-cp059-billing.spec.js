@@ -223,6 +223,68 @@ async function openDetailRows(page) {
   }
 }
 
+test('billing sorting keeps existing rows and count visible until the server responds', async ({ page }) => {
+  const rows = [canonical({ displayReference: 'SORT-A' }), canonical({ displayReference: 'SORT-B' })];
+  await setupBilling(page, rows);
+  await openDetailRows(page);
+  const pending = [];
+  await page.route('**/api/client-portal/invoice-details?**', route => { pending.push(route); });
+  const firstRow = page.getByRole('row').filter({ has: page.getByText('SORT-A', { exact: true }) });
+  await firstRow.evaluate(node => { node.dataset.sortRetentionProbe = 'same-node'; });
+  await page.getByRole('columnheader', { name: 'Reference' }).click();
+  await expect.poll(() => pending.length).toBe(1);
+  expect(new URL(pending[0].request().url()).searchParams.get('sortBy')).toBe('order');
+  await expect(page.getByRole('status')).toHaveText('Updating…');
+  await expect(firstRow).toBeVisible();
+  await expect(firstRow).toHaveAttribute('data-sort-retention-probe', 'same-node');
+  await expect(page.getByText('2 lines', { exact: true })).toBeVisible();
+  await expect(page.getByText('0 lines', { exact: true })).toHaveCount(0);
+  await pending[0].fulfill({ json: { data: [...rows].reverse(), billingVisible: true } });
+  await expect(page.getByRole('status')).toHaveCount(0);
+  const references = page.getByRole('cell').filter({ hasText: /^SORT-[AB]$/ });
+  await expect(references).toHaveText(['SORT-B', 'SORT-A']);
+  await expect(firstRow).toContainText('$8.60');
+});
+
+test('rapid billing sorts ignore an older response', async ({ page }) => {
+  const rows = [canonical({ displayReference: 'RAPID-A' }), canonical({ displayReference: 'RAPID-B' })];
+  await setupBilling(page, rows);
+  await openDetailRows(page);
+  const pending = [];
+  await page.route('**/api/client-portal/invoice-details?**', route => { pending.push(route); });
+  const header = page.getByRole('columnheader', { name: 'Reference' });
+  await header.click();
+  await expect.poll(() => pending.length).toBe(1);
+  await header.click();
+  await expect.poll(() => pending.length).toBe(2);
+  await expect(page.getByRole('table').getByText('RAPID-A', { exact: true })).toBeVisible();
+  await pending[1].fulfill({ json: { data: [...rows].reverse(), billingVisible: true } });
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await pending[0].fulfill({ json: { data: [canonical({ displayReference: 'OBSOLETE' })], billingVisible: true } }).catch(() => {});
+  await expect(page.getByRole('cell').filter({ hasText: /^RAPID-[AB]$/ })).toHaveText(['RAPID-B', 'RAPID-A']);
+  await expect(page.getByText('OBSOLETE', { exact: true })).toHaveCount(0);
+});
+
+test('billing rows are not retained when switching to another client period', async ({ page }) => {
+  await setupBilling(page, [canonical({ displayReference: 'PRIVATE-ACME' })]);
+  await page.route('**/api/client-portal/invoice-summary?**', route => route.fulfill({ json: {
+    data: [1, 2].map(clientId => ({ clientId, clientName: clientId === 1 ? 'Acme' : 'Beta',
+      periodStart: '2026-08-01', periodEnd: '2026-08-31', orders: 1, rowTotal: 8.6 })),
+    billingVisible: true,
+  } }));
+  await openDetailRows(page);
+  await expect(page.getByRole('table').getByText('PRIVATE-ACME', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'All periods' }).click();
+  let pending;
+  await page.route('**/api/client-portal/invoice-details?**', route => { pending = route; });
+  await page.getByRole('row').filter({ hasText: 'Beta' }).click();
+  await expect.poll(() => Boolean(pending)).toBe(true);
+  await expect(page.getByText('PRIVATE-ACME', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await pending.fulfill({ json: { data: [canonical({ clientId: 2, clientName: 'Beta', displayReference: 'BETA-ONLY' })], billingVisible: true } });
+  await expect(page.getByRole('table').getByText('BETA-ONLY', { exact: true })).toBeVisible();
+});
+
 test('PS-522: canonical non-shipping N/A renders while unknown outbound remains Needs Review', async ({ page }) => {
   const errors = await setupBilling(page, [
     ...EVENT_ROWS,
