@@ -194,9 +194,10 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
   const hasRowAction = props.onRowClick != null;
   return (
     <div className="hidden min-w-0 max-w-full md:block">
-      {props.customizable
-        ? <DataTableColumnControls layout={props.layout} byKey={props.byKey} isUpdating={props.isUpdating} />
-        : <TableUpdateStatus updating={props.isUpdating} />}
+      {props.customizable && (
+        <DataTableColumnControls layout={props.layout} byKey={props.byKey} isUpdating={props.isUpdating} />
+      )}
+      {!props.customizable && <TableUpdateStatus updating={props.isUpdating} />}
       <div
         className={cn(
           'max-w-full rounded-glass',
