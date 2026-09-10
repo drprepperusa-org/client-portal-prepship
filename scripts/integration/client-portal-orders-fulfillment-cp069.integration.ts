@@ -13,6 +13,11 @@ import { Hono } from 'hono';
 import { setupTestEnv } from './guard';
 
 setupTestEnv();
+// A dummy ShipStation credential, exactly like the CP-043/057/058 suites: with NO key the
+// refresh service records a failed lookup before ever reaching the network, so the
+// "harness blocked the carrier lookup" proof below would be vacuous in CI (no .env there).
+// The key is never sent anywhere — every fetch is blocked and counted.
+process.env.SHIPSTATION_API_KEY_V2 = 'cp069-test-key';
 
 const originalFetch = globalThis.fetch;
 let networkCalls = 0;

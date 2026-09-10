@@ -58,7 +58,7 @@ export function registerReturnTrackingRefreshRoute(app: Hono): void {
       checked: result.checked,
       failed: result.failed,
       updated: result.updated.length,
-      forceRefresh: true,
+      forceRefresh: false,
     });
     return c.json({ checked: result.checked, failed: result.failed, updated: result.updated.length });
   });
