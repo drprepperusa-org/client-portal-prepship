@@ -28,7 +28,7 @@ import { validatedReturnCustomerShippingRateSql } from '../../../lib/client-port
 import { resolveClientSafeReturnPdfUrl } from '../../../lib/client-portal/return-label-pdf';
 import { getReturnMediaSignedUrl } from '../../../lib/supabase';
 import { listOriginalOrderActivity, listReturnActivity } from '../../../services/return-activity';
-import { resolveReturnReference } from '../../../services/return-reference';
+import { resolveReturnReference, returnReferenceSql } from '../../../services/return-reference';
 import { toClientSafeReturnRow } from './dto';
 import {
   iso,
@@ -92,7 +92,7 @@ function registerReturnListRoute(app: Hono): void {
       .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
       .where(where)
       .orderBy(...tableOrderBy({ sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') }, {
-        returnReference: referenceOrder(sql`coalesce(nullif(trim(${returns.returnReference}), ''), regexp_replace(coalesce(nullif(trim(${orders.orderNumber}), ''), ${returns.orderId}::text), '\\s+', '-', 'g') || '-RETURN')`),
+        returnReference: referenceOrder(returnReferenceSql(returns.returnReference, orders.orderNumber, returns.orderId)),
         order: referenceOrder(orders.orderNumber), client: sql`lower(${clients.name})`,
         recipientName: sql`coalesce(nullif(btrim(${orders.raw}->'shipTo'->>'name'), ''), nullif(btrim(${orders.shipToName}), ''))`,
         returnedSkus: sql`(select string_agg(ri.sku, ', ' order by ri.id) from return_items ri where ri.return_id = ${returns.id})`,

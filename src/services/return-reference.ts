@@ -1,3 +1,5 @@
+import { sql, type SQLWrapper } from 'drizzle-orm';
+
 /**
  * Stable customer-facing reference for a return workflow.
  *
@@ -16,4 +18,10 @@ export function resolveReturnReference(
   orderId: number,
 ): string {
   return persistedReference?.trim() || baseReturnReference(orderNumber, orderId);
+}
+
+/** SQL form of this owner's legacy-reference rule, for ordering before pagination. */
+export function returnReferenceSql(persisted: SQLWrapper, orderNumber: SQLWrapper, orderId: SQLWrapper) {
+  return sql`coalesce(nullif(trim(${persisted}), ''),
+    regexp_replace(coalesce(nullif(trim(${orderNumber}), ''), ${orderId}::text), '\\s+', '-', 'g') || '-RETURN')`;
 }

@@ -12,6 +12,7 @@ import { INVOICE_SORT_FIELDS } from '../src/lib/client-portal/contracts/sorting'
 import { CANONICAL_SORTABLE_KEYS, orderCanonicalEvents } from '../src/lib/client-portal/read-models/canonical-invoice-events';
 import { portalReadKeys } from '../portal-client/src/lib/query-keys';
 import { loadFixtureModule } from './lib/load-fixture-module';
+import { returnReferenceSql, resolveReturnReference } from '../src/services/return-reference';
 
 const db = new PGlite();
 const dialect = new PgDialect({ casing: 'snake_case' });
@@ -20,6 +21,10 @@ async function run(query: SQL) {
   return (await db.query(built.sql, built.params)).rows as Record<string, any>[];
 }
 try {
+  for (const [persisted, number, id] of [['EXISTING-2', '10', 1], [null, ' Order 10 ', 2], ['', null, 3]] as const) {
+    const [actual] = await run(sql`select ${returnReferenceSql(sql`${persisted}::text`, sql`${number}::text`, sql`${id}::int`)} as reference`);
+    assert.equal(actual.reference, resolveReturnReference(persisted, number, id));
+  }
   // Empty schema keeps this offline while PostgreSQL checks every real column/type/subquery.
   for (const table of Object.values(schema)) {
     if (!(table instanceof PgTable)) continue;

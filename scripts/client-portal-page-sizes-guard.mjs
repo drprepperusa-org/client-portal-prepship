@@ -55,7 +55,7 @@ for (const [name, source] of [
 }
 
 check(
-  inboundReceipts.includes("effectiveClientId ?? 'scope', page, pageSize") && inboundReceipts.includes('{ clientId: effectiveClientId, page, pageSize }'),
+  inboundReceipts.includes("effectiveClientId ?? 'scope', page, pageSize") && /\{ clientId: effectiveClientId, page, pageSize(?:,| \})/.test(inboundReceipts),
   'Inbound receipt cache key and request include page size',
 );
 for (const key of ["['shipments'", "['inventory'", "['inventory-history'", "['returns'"]) {
@@ -63,7 +63,8 @@ for (const key of ["['shipments'", "['inventory'", "['inventory-history'", "['re
   const line = source.split('\n').find((value) => value.includes(key)) ?? '';
   check(line.includes('pageSize'), `${key.slice(2, -1)} cache key includes page size`);
 }
-check(hooks.includes('portalReadKeys.inventory(merged.clientId, merged.search, merged.page, merged.pageSize, merged.lowStock)'), 'Inventory reads use the shared key with page size and filters');
+check(/portalReadKeys\.inventory\(merged\.clientId, merged\.search, merged\.page, merged\.pageSize, merged\.lowStock(?:,|\))/.test(hooks),
+  'Inventory reads use the shared key with page size and filters');
 check(inventoryApi.includes('pageSize: opts.pageSize ?? 50'), 'Inventory history API forwards page size');
 check(
   shipments.includes('ids.slice(index, index + 100)'),

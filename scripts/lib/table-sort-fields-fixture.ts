@@ -20,7 +20,7 @@ export function loadTableSortFields(path: string, scope: { isGlobal: boolean; ca
   visit(tree);
   if (!fields) throw new Error(`Missing tableOrderBy in ${path}`);
   const imports = tree.statements.filter(ts.isImportDeclaration).filter(node =>
-    /drizzle-orm|db\/schema|customer-shipping-rate|order-status|shipment-status|shipment-item-sort|table-sort|inventory-stock-math/.test(node.moduleSpecifier.getText(tree)),
+    /drizzle-orm|db\/schema|customer-shipping-rate|order-status|shipment-status|shipment-item-sort|table-sort|inventory-stock-math|return-reference/.test(node.moduleSpecifier.getText(tree)),
   ).map(node => node.getText(tree)).join('\n');
   // Use the real inventory quantity owner with its I/O boundary removed.
   const math = loadFixtureModule('src/services/inventory-stock-math.ts', { '../db/client': { db: {} } });

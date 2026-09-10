@@ -93,7 +93,7 @@ function fixtureResponse(payload: { data?: unknown[]; totals?: unknown }, input:
     const av = key ? a[key] : null, bv = key ? b[key] : null;
     const compared = av == null ? (bv == null ? 0 : 1) : bv == null ? -1
       : direction * (typeof av === 'number' && typeof bv === 'number'
-        ? av - bv : String(av).localeCompare(String(bv)));
+        ? av - bv : String(av).localeCompare(String(bv), 'en', { numeric: true, sensitivity: 'base' }));
     return compared || String(a.canonicalEventId).localeCompare(String(b.canonicalEventId));
   });
   return {
@@ -141,21 +141,29 @@ async function main(): Promise<void> {
 
   // --- 1. grain survives the read model, and enrichment attaches by orderId ----------------
   stub([
-    canonical({ rowType: 'Outbound', returnId: null, displayReference: '9001' }),
+    canonical({ rowType: 'Outbound', returnId: null, displayReference: '9001', itemSkus: 'PRODUCER-Z' }),
     canonical({ rowType: 'Return', returnId: 501, displayReference: '9001-RETURN',
       hasReturnPostageLine: true, returnPostageTotal: 7.73,
       hasReturnProcessingLine: true, returnProcessingTotal: 3.0,
-      returnTotal: 10.73, grandTotal: 10.73 }),
-    canonical({ rowType: 'Return', returnId: 502, displayReference: '9001-RETURN-2' }),
+      returnTotal: 10.73, grandTotal: 10.73, itemSkus: 'PRODUCER-A' }),
+    canonical({ rowType: 'Return', returnId: 502, displayReference: '9001-RETURN-2', itemSkus: 'PRODUCER-B' }),
   ]);
   const first = await portalCanonicalInvoiceEvents(scope, 'Bearer t', range);
   if (!first.ok) throw new Error(`expected ok, got ${first.code}`);
   if (first.rows.length !== 3) throw new Error(`expected 3 event rows, got ${first.rows.length}`);
   if (first.total !== 3) throw new Error(`total must count EVENT rows, got ${first.total}`);
   for (const row of first.rows) {
-    if (row.skus !== 'SKU-A, SKU-B') throw new Error(`enrichment must attach by orderId, got ${row.skus}`);
+    assert.equal(row.itemNames, 'Widget A, Widget B', 'item-name enrichment attaches by orderId');
+    const expected = { '9001': 'PRODUCER-Z', '9001-RETURN': 'PRODUCER-A', '9001-RETURN-2': 'PRODUCER-B' };
+    assert.equal(row.skus, expected[row.displayReference as keyof typeof expected], 'SKU text comes from its canonical event');
   }
-  ok('outbound + RETURN + RETURN-2 stay three rows; total counts events; enrichment joins by orderId');
+  ok('three event rows preserve canonical SKU text while item-name enrichment joins by orderId');
+  const skuPages = await Promise.all([1, 2].map(page => portalCanonicalInvoiceEvents(scope, 'Bearer t', {
+    ...range, page, pageSize: 2, sortBy: 'itemSkus', sortDir: 'asc',
+  })));
+  assert.deepEqual(skuPages.flatMap(page => page.ok ? page.rows.map(row => row.skus) : []),
+    ['PRODUCER-A', 'PRODUCER-B', 'PRODUCER-Z'], 'SKU sorting and display share the producer value across pages');
+  ok('producer SKU ordering survives real enrichment and pagination unchanged');
 
   // --- 2. the 10.73 return, carried not computed -------------------------------------------
   const returnRow = first.rows.find((r) => r.displayReference === '9001-RETURN')!;
