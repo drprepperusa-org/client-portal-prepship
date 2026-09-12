@@ -4,6 +4,11 @@ type CorsOptions = {
   maxAge?: string;
 };
 
+// Browsers cache a successful CORS preflight for this long (Chromium caps it at 7200 s).
+// Without it they re-send OPTIONS before most authenticated requests: about a quarter of
+// browser API traffic in a sampled PrepShip production minute (2026-09-08) was preflights.
+export const CORS_PREFLIGHT_MAX_AGE_SECONDS = 600;
+
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://prepship.vercel.app',
   'https://prepship-eta.vercel.app',

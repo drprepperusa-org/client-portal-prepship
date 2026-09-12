@@ -5,7 +5,7 @@ import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { env } from './lib/env';
 import { ensureAnalyticsSchemaCapability, AnalyticsSchemaUnavailable } from './services/analytics-schema-capability';
-import { isAllowedCorsOrigin } from './lib/http/cors';
+import { CORS_PREFLIGHT_MAX_AGE_SECONDS, isAllowedCorsOrigin } from './lib/http/cors';
 import { observeApiTiming } from './lib/http/api-metrics';
 import { appendServerTiming, elapsedMs, nowMs } from './lib/http/timing';
 import { requireAdmin, requireAuth } from './middleware/auth';
@@ -116,6 +116,7 @@ app.use(
     allowHeaders: ['Authorization', 'Content-Type', 'X-Request-Id', 'X-Correlation-Id'],
     // CP-068: the invoice export's filename is PrepShip's, read from Content-Disposition.
     exposeHeaders: ['X-Request-Id', 'Server-Timing', 'Content-Disposition'],
+    maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS,
   })
 );
 

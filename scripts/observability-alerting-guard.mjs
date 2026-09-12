@@ -92,3 +92,12 @@ assert(ordersRoute.includes("'[orders:list] failed'"), 'orders list has structur
 assert(ordersRoute.includes('requestId: requestId'), 'orders list logs include request ID');
 assert(corsHelper.includes('X-Request-Id'), 'shared CORS helper allows request ID header');
 assert(corsHelper.includes('Access-Control-Expose-Headers'), 'shared CORS helper exposes response request ID header');
+const preflightMaxAge = corsHelper.match(/export const CORS_PREFLIGHT_MAX_AGE_SECONDS = (\d+);/);
+assert(
+  preflightMaxAge !== null && Number(preflightMaxAge[1]) >= 300 && Number(preflightMaxAge[1]) <= 7200,
+  'shared CORS helper caches preflights for 5 minutes to 2 hours'
+);
+assert(
+  main.includes('maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS'),
+  'API CORS middleware sends the shared preflight max-age'
+);
