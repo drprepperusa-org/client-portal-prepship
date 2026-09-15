@@ -3,7 +3,7 @@
   "framework": "vite",
   "buildCommand": "npm run build:web",
   "outputDirectory": "portal-client/dist",
-  "installCommand": "npm install && npm --prefix portal-client install",
+  "installCommand": "npm ci && npm --prefix portal-client ci",
   "rewrites": [
     {
       "source": "/api/client-portal/:path*",
