@@ -39,8 +39,28 @@ No new tables, migrations, provider actions or production data edits are require
 
 Prepared locally in the isolated portal-audit-details worktree from df7eeaa.
 The original portal checkout's unrelated shipment edits were left untouched.
-This portal change has not been pushed or deployed. It needs portal production
-release authorization; earlier PrepShip v4 deployment approval is not carried
-across repositories. Deploy the compatible backend and frontend together; the
+The initial details change was released as 9543f85 with portal production
+authorization. Deploy the compatible backend and frontend together; the
 optional activity DTO permits older API responses during rollout. Existing audit
 rows remain intact on rollback.
+
+## All-user history correction
+
+A read-only production check confirmed that client activity was persisted under
+the clients' own identities. The page only exposed the newest 100 events, with no
+actor picker or older-page navigation. The backend now exposes distinct recorded
+actor emails across history, an exact actorEmail filter and page/hasMore metadata.
+All users remains the default. Store and text filters combine with the user filter;
+the existing global-admin capability check protects both actor discovery and rows.
+No historical activity, identity, role or unrecorded action is fabricated.
+
+The UI passes filter/page intent and renders the backend response. Its cache key
+includes user, store, search and page; a filter change returns to page one. The
+page-one list refreshes periodically; older pages can be refreshed manually.
+
+Verification: the audit runtime now uses actual in-memory PostgreSQL queries,
+including 101 admin events followed by older client records, separate client
+recording, exact actor selection, combined search and non-overlapping pages.
+Typecheck, build, architecture, shadow-renderer, contract-drift, access security,
+redaction and auth-coverage checks passed. Four desktop/mobile browser flows
+passed; the user-picker and pagination screenshots were inspected.

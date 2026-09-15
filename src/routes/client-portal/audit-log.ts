@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, desc, ilike, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
@@ -128,9 +128,12 @@ app.get('/audit-log', async (c) => {
   const search = requestedSearch(c);
   const limit = Math.min(parsePositiveInt(c.req.query('limit')) ?? 100, 250);
   const storeId = parsePositiveInt(c.req.query('storeId'));
+  const actorEmail = c.req.query('actorEmail')?.trim();
+  const page = Math.min(parsePositiveInt(c.req.query('page')) ?? 1, 1_000_000);
   const where = and(
     ...[
       ne(clientPortalAuditLogs.event, 'portal.audit_log.view'),
+      actorEmail ? eq(clientPortalAuditLogs.actorEmail, actorEmail) : undefined,
       search
         ? or(
             ilike(clientPortalAuditLogs.event, `%${search}%`),
@@ -144,7 +147,7 @@ app.get('/audit-log', async (c) => {
     ].filter(<T>(value: T | undefined): value is T => value !== undefined),
   );
 
-  const [rows, storeFilters] = await Promise.all([
+  const [pageRows, storeFilters, userFilters] = await Promise.all([
     db
       .select({
         id: clientPortalAuditLogs.id,
@@ -159,9 +162,16 @@ app.get('/audit-log', async (c) => {
       .from(clientPortalAuditLogs)
       .where(where)
       .orderBy(desc(clientPortalAuditLogs.createdAt), desc(clientPortalAuditLogs.id))
-      .limit(limit),
+      .limit(limit + 1)
+      .offset((page - 1) * limit),
     loadAuditStoreFilters(),
+    // Discover actors across saved history, not just the current 100-row page.
+    db.selectDistinct({ email: clientPortalAuditLogs.actorEmail })
+      .from(clientPortalAuditLogs)
+      .where(and(isNotNull(clientPortalAuditLogs.actorEmail), ne(clientPortalAuditLogs.event, 'portal.audit_log.view')))
+      .orderBy(asc(clientPortalAuditLogs.actorEmail)),
   ]);
+  const rows = pageRows.slice(0, limit);
   const scopeNames = await loadAuditScopeNames(rows);
 
   return c.json({
@@ -179,7 +189,9 @@ app.get('/audit-log', async (c) => {
     }),
     filters: {
       stores: storeFilters,
+      users: userFilters.flatMap((user) => user.email ? [user.email] : []),
     },
+    pagination: { page, pageSize: limit, hasMore: pageRows.length > limit },
   });
 });
 

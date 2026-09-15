@@ -209,14 +209,16 @@ export default function AuditLog() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [storeFilter, setStoreFilter] = useState<number | null>(null);
+  const [userFilter, setUserFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<PortalAuditLogRow | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    const timer = window.setTimeout(() => { setDebouncedSearch(search.trim()); setPage(1); }, 250);
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const audit = useAuditLog(debouncedSearch, 100, storeFilter);
+  const audit = useAuditLog(debouncedSearch, 100, storeFilter, userFilter, page);
   const canCustomizeTables = useCanCustomizeTables();
   const rows = audit.data?.data ?? [];
   const storeFilters = audit.data?.filters.stores ?? [];
@@ -289,7 +291,7 @@ export default function AuditLog() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionTitle
             title="Audit log"
-            subtitle="User actions, data requests and background checks. Open an event for its recorded details."
+            subtitle="Recorded activity from all portal users. Select a user to view their history, or browse older events."
             right={
               <Button
                 variant="secondary"
@@ -302,7 +304,7 @@ export default function AuditLog() {
             }
           />
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <label className="relative block w-full max-w-xl">
             <span className="sr-only">Search event or user</span>
             <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
@@ -318,7 +320,7 @@ export default function AuditLog() {
             <Store size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-ink-3" />
             <select
               value={storeFilter ?? ''}
-              onChange={(event) => setStoreFilter(event.target.value ? Number(event.target.value) : null)}
+              onChange={(event) => { setStoreFilter(event.target.value ? Number(event.target.value) : null); setPage(1); }}
               aria-label="Filter audit log by store"
               className="focus-ring h-11 w-full cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/70 pl-10 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
             >
@@ -329,11 +331,20 @@ export default function AuditLog() {
             </select>
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-3">▾</span>
           </label>
+          <label className="block w-full lg:w-72 lg:shrink-0">
+            <span className="sr-only">Filter audit log by user</span>
+            <select aria-label="Filter audit log by user" value={userFilter}
+              onChange={(event) => { setUserFilter(event.target.value); setPage(1); }}
+              className="focus-ring h-11 w-full min-w-0 rounded-glass-sm border border-slate-200/80 bg-white/75 px-3 text-sm text-ink">
+              <option value="">All users</option>
+              {(audit.data?.filters.users ?? []).map((email) => <option key={email} value={email}>{email}</option>)}
+            </select>
+          </label>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
           <ClipboardList size={14} />
           <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>
-          <span>recent events</span>
+          <span>events on page {page} · {userFilter || 'All users'}</span>
         </div>
       </GlassPanel>
 
@@ -371,12 +382,17 @@ export default function AuditLog() {
             icon={<Inbox size={24} />}
             title="No audit events"
             message={
-              debouncedSearch || storeFilter
+              debouncedSearch || storeFilter || userFilter
                 ? 'No events match the selected filters.'
                 : 'Portal audit events will appear here as users sign in and navigate.'
             }
           />
         )}
+        {audit.data?.pagination ? <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-3">
+          <Button size="sm" variant="secondary" disabled={page === 1 || audit.isFetching} onClick={() => setPage(value => value - 1)}>Previous</Button>
+          <span className="text-xs text-ink-3">Page {audit.data.pagination.page}</span>
+          <Button size="sm" variant="secondary" disabled={!audit.data.pagination.hasMore || audit.isFetching} onClick={() => setPage(value => value + 1)}>Older events</Button>
+        </div> : null}
       </GlassPanel>
       <Modal open={selected !== null} onClose={() => setSelected(null)} title="Audit event details" maxWidth={760}>
         {selected ? <div className="space-y-5">

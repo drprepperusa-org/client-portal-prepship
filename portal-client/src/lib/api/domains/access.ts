@@ -13,11 +13,13 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '../transport';
 
 export const accessApi = {
   me: (token: RequestAuth) => apiGet<PortalMe>(token, '/api/client-portal/me'),
-  auditLog: (token: RequestAuth, opts: { search?: string; limit?: number; storeId?: number | null } = {}) =>
+  auditLog: (token: RequestAuth, opts: { search?: string; limit?: number; storeId?: number | null; actorEmail?: string; page?: number } = {}) =>
     apiGet<PortalAuditLogResponse>(token, '/api/client-portal/audit-log', {
       search: opts.search,
       limit: opts.limit ?? 100,
       storeId: opts.storeId,
+      actorEmail: opts.actorEmail,
+      page: opts.page,
     }),
   auditClick: (token: RequestAuth, body: PortalAuditClickInput) =>
     apiPost<{ ok: true }>(token, '/api/client-portal/audit-log/click', body),

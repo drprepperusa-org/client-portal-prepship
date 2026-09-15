@@ -52,11 +52,11 @@ export function useCanCustomizeTables(): boolean {
   const me = useMe().data;
   return Boolean(me?.isAdmin || me?.isGlobal);
 }
-export function useAuditLog(search = '', limit = 100, storeId?: number | null) {
-  return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores'], (t) => portalApi.auditLog(t, { search, limit, storeId }), true, {
-    refetchInterval: 30_000,
+export function useAuditLog(search = '', limit = 100, storeId?: number | null, actorEmail = '', page = 1) {
+  return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores', actorEmail, page], (t) => portalApi.auditLog(t, { search, limit, storeId, actorEmail, page }), true, {
+    refetchInterval: page === 1 ? 30_000 : undefined,
     refetchOnWindowFocus: true,
-    retainDataScope: ['audit-log', storeId ?? 'all-stores'],
+    retainDataScope: ['audit-log', storeId ?? 'all-stores', actorEmail, search, page],
   });
 }
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);

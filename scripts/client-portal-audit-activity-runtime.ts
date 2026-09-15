@@ -34,7 +34,7 @@ assert.ok(historical.details.some(field => field.label === 'Assigned client IDs'
 assert.doesNotMatch(JSON.stringify(historical), /secret|private|customerAddress/);
 assert.match(buildPortalAuditActivity('portal.unrecognized.event', {}).summary, /not recorded/);
 
-// Exercise the actual HTTP selector/DTO with an isolated in-memory query seam.
+// Exercise the actual HTTP selector/DTO against an isolated in-memory PostgreSQL database.
 // No database connection, credentials, provider calls or live audit inserts.
 process.env.DATABASE_URL = 'postgres://test:test@127.0.0.1:1/audit_fixture';
 process.env.SUPABASE_URL = 'https://example.supabase.co';
@@ -42,6 +42,8 @@ process.env.SUPABASE_ANON_KEY = 'test';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test';
 process.env.SUPABASE_JWT_SECRET = 'test';
 const { Hono } = await import('hono');
+const { PGlite } = await import('@electric-sql/pglite');
+const { drizzle } = await import('drizzle-orm/pglite');
 const { db } = await import('../src/db/client');
 const { clientPortalAuditLogs } = await import('../src/db/schema/client-portal-audit-logs');
 const { default: auditRoute } = await import('../src/routes/client-portal/audit-log');
@@ -49,16 +51,21 @@ const fixture = { id: 7, event: 'portal.orders.detail.view', actorUserId: 'user-
   clientIds: [], storeIds: [], metadata: { orderId: 22, orderNumber: '4002', apiToken: 'secret-value' }, createdAt: new Date('2026-09-15T03:00:00Z') };
 let selects = 0;
 const select = db.select;
+const selectDistinct = db.selectDistinct;
 const insert = db.insert;
+const pg = new PGlite();
+await pg.exec(`create table client_portal_audit_logs (
+  id serial primary key, event text not null, actor_user_id text, actor_email text,
+  client_ids int[] not null default '{}', store_ids int[] not null default '{}',
+  metadata jsonb not null default '{}', created_at timestamptz not null default now());
+  create table clients (id int primary key, name text, store_ids int[]);`);
+const memory = drizzle(pg, { casing: 'snake_case' });
 try {
-  db.select = (() => ({ from: (table: unknown) => {
-    selects++;
-    const result = table === clientPortalAuditLogs ? [fixture] : [];
-    const query = { where: () => query, orderBy: () => query, limit: () => query,
-      then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve) };
-    return query;
-  } })) as typeof db.select;
-  db.insert = (() => ({ values: async () => undefined })) as unknown as typeof db.insert;
+  db.select = ((...args: Parameters<typeof memory.select>) => { selects++; return memory.select(...args); }) as unknown as typeof db.select;
+  db.selectDistinct = memory.selectDistinct.bind(memory) as unknown as typeof db.selectDistinct;
+  db.insert = memory.insert.bind(memory) as unknown as typeof db.insert;
+  await memory.insert(clientPortalAuditLogs).values(fixture);
+  await pg.exec("select setval('client_portal_audit_logs_id_seq', 7)");
   const app = new Hono();
   app.use('*', async (c, next) => {
     c.set('userId', 'fixture-user'); c.set('role', c.req.header('x-fixture-admin') === 'yes' ? 'admin' : 'client_user');
@@ -69,6 +76,8 @@ try {
   const denied = await app.request('/audit-log');
   assert.equal(denied.status, 403);
   assert.equal(selects, 0, 'non-admin cannot read audit rows');
+  // The denied request is recorded but is not needed for this projection fixture.
+  await pg.exec("delete from client_portal_audit_logs where event = 'portal.audit_log.denied'");
   const response = await app.request('/audit-log', { headers: { 'x-fixture-admin': 'yes' } });
   assert.equal(response.status, 200);
   const body = await response.json();
@@ -77,5 +86,28 @@ try {
   assert.ok(body.data[0].activity.details.some((field: { value: string }) => field.value === '4002'));
   assert.equal(body.data[0].metadata.apiToken, '[redacted]');
   assert.doesNotMatch(JSON.stringify(body), /secret-value/);
-} finally { db.select = select; db.insert = insert; }
-console.log('PASS detailed audit activity: recorded facts, redaction, outcomes and admin-only HTTP DTO');
+  await memory.insert(clientPortalAuditLogs).values([
+    ...Array.from({ length: 101 }, (_, index) => ({ event: 'portal.orders.list', actorEmail: 'admin@example.test', actorUserId: 'admin', createdAt: new Date(2026, 8, 16, 0, 0, index) })),
+    { event: 'portal.inventory.list', actorEmail: 'client-a@example.test', actorUserId: 'client-a', createdAt: new Date('2026-09-14T00:00:00Z') },
+  ]);
+  const { recordPortalAudit } = await import('../src/lib/client-portal/audit');
+  await recordPortalAudit('portal.ui.click', { userId: 'client-b', email: 'client-b@example.test', clientIds: [2], storeIds: [22] }, { target: 'Inventory' });
+  const read = async (query = '') => (await (await app.request(`/audit-log${query}`, { headers: { 'x-fixture-admin': 'yes' } })).json());
+  const all = await read();
+  assert.equal(all.data.length, 100);
+  assert.equal(all.pagination.hasMore, true);
+  assert.ok(all.filters.users.includes('client-a@example.test'), 'user picker includes actors outside latest 100');
+  const client = await read('?actorEmail=client-a%40example.test');
+  assert.deepEqual(client.data.map((row: { actorEmail: string }) => row.actorEmail), ['client-a@example.test']);
+  assert.equal(client.pagination.hasMore, false);
+  const otherClient = await read('?actorEmail=client-b%40example.test');
+  assert.equal(otherClient.data[0].actorUserId, 'client-b', 'client activity is stored under its own identity');
+  const older = await read('?page=2');
+  assert.equal(older.pagination.page, 2);
+  assert.equal(older.pagination.hasMore, false);
+  assert.ok(older.data.some((row: { actorEmail: string }) => row.actorEmail === 'client-a@example.test'));
+  assert.ok(!older.data.some((row: { id: number }) => all.data.some((first: { id: number }) => first.id === row.id)), 'pages do not overlap');
+  const combined = await read('?actorEmail=client-a%40example.test&search=orders');
+  assert.equal(combined.data.length, 0, 'user and search filters both apply');
+} finally { db.select = select; db.selectDistinct = selectDistinct; db.insert = insert; await pg.close(); }
+console.log('PASS audit: recorded facts, redaction, admin-only access, all-user discovery, client identity and paginated history');

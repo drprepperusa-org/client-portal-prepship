@@ -51,7 +51,9 @@ export interface PortalAuditLogResponse {
   data: PortalAuditLogRow[];
   filters: {
     stores: PortalAuditLogStoreFilter[];
+    users?: string[];
   };
+  pagination?: { page: number; pageSize: number; hasMore: boolean };
 }
 
 export interface PortalAuditClickInput {

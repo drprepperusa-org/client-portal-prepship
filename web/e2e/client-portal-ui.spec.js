@@ -1421,6 +1421,35 @@ test('CP-069 AC-4: the Returns page drives the returns-scoped tracking refresh w
   expect(errors, errors.join('\n')).toEqual([]);
 });
 for (const width of [1440, 390]) {
+  test(`audit log finds clients beyond the latest page at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 950 });
+    await setupPortal(page);
+    const requests = [];
+    await page.route('**/api/client-portal/audit-log?*', route => {
+      const query = new URL(route.request().url()).searchParams;
+      requests.push(query);
+      const currentPage = Number(query.get('page') || 1);
+      const email = query.get('actorEmail') || (currentPage === 1 ? 'admin@example.test' : 'client@example.test');
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        data: [{ id: currentPage, event: 'portal.orders.list', actorEmail: email, actorUserId: email, clientIds: [], storeIds: [], metadata: {}, scopeLabel: 'Global', createdAt: '2026-09-15T03:00:00Z' }],
+        filters: { stores: [], users: ['admin@example.test', 'client@example.test'] },
+        pagination: { page: currentPage, pageSize: 100, hasMore: currentPage === 1 && !query.get('actorEmail') },
+      }) });
+    });
+    await page.goto(`${baseUrl}/audit-log`);
+    const filter = page.getByRole('combobox', { name: 'Filter audit log by user' });
+    await expect(filter).toHaveValue('');
+    await page.getByRole('button', { name: 'Older events', exact: true }).click();
+    await expect(page.getByText('Page 2', { exact: true })).toBeVisible();
+    await expect(page.locator('p:visible').filter({ hasText: /^client@example.test$/ })).toBeVisible();
+    await filter.selectOption('client@example.test');
+    await expect(page.getByText('Page 1', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Older events', exact: true })).toBeDisabled();
+    await expect(page.locator('p:visible').filter({ hasText: /^admin@example.test$/ })).toHaveCount(0);
+    expect(requests.at(-1).get('actorEmail')).toBe('client@example.test');
+    expect(requests.at(-1).get('page')).toBe('1');
+    await page.screenshot({ path: `test-results/audit-client-filter-${width}.png` });
+  });
   test(`detailed audit events show recorded context without claiming background clicks at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 950 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
