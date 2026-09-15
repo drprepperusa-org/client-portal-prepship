@@ -109,5 +109,62 @@ try {
   assert.ok(!older.data.some((row: { id: number }) => all.data.some((first: { id: number }) => first.id === row.id)), 'pages do not overlap');
   const combined = await read('?actorEmail=client-a%40example.test&search=orders');
   assert.equal(combined.data.length, 0, 'user and search filters both apply');
+
+  await pg.exec('delete from client_portal_audit_logs');
+  const events = ['portal.me.view', 'portal.orders.awaiting_active_count', 'portal.orders.list',
+    'portal.inventory.history', 'portal.orders.detail', 'portal.ui.click', 'portal.access_list.update',
+    'portal.inventory.receive.requested', 'portal.inventory.receive.completed', 'portal.inventory.receive.failed',
+    'portal.access_list.denied', 'portal.future.unknown'];
+  await memory.insert(clientPortalAuditLogs).values(events.map(event => ({ event, actorEmail: 'types@example.test',
+    createdAt: new Date('2026-09-16T01:00:00Z') })));
+  const allTypes = await read('?actorEmail=types%40example.test');
+  for (const activity of ['views', 'actions', 'navigation', 'failed', 'denied']) {
+    const filtered = await read(`?actorEmail=types%40example.test&activity=${activity}`);
+    const expected = events.filter(event => {
+      const info = buildPortalAuditActivity(event, {});
+      if (activity === 'views') return info.category === 'Data request';
+      if (activity === 'navigation') return info.category === 'Navigation';
+      if (activity === 'actions') return info.category === 'Action' && !['Failed', 'Denied'].includes(info.outcome);
+      return info.outcome.toLowerCase() === activity;
+    });
+    assert.deepEqual(filtered.data.map((row: { event: string }) => row.event).sort(), expected.sort(), 'SQL agrees with historical DTO classification');
+  }
+  const noBackground = await read('?actorEmail=types%40example.test&hideBackground=true');
+  assert.equal(noBackground.data.length, events.length - 2);
+  assert.ok(noBackground.data.every((row: { activity: { category: string } }) => row.activity.category !== 'Background check'));
+  assert.equal((await read('?actorEmail=types%40example.test')).data.length, allTypes.data.length, 'hiding does not remove saved events');
+  const from = '2026-09-15T16:00:00.000Z', to = '2026-09-16T16:00:00.000Z';
+  const times = ['2026-09-15T15:59:59.999Z', from, '2026-09-16T15:59:59.999Z', to];
+  await memory.insert(clientPortalAuditLogs).values(times.map(time => ({ event: 'portal.ui.click',
+    actorEmail: 'bounds@example.test', createdAt: new Date(time) })));
+  const range = `dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}`;
+  const bounded = await read(`?actorEmail=bounds%40example.test&${range}`);
+  assert.deepEqual(bounded.data.map((row: { createdAt: string }) => row.createdAt).sort(), times.slice(1, 3));
+  assert.equal((await read(`?actorEmail=bounds%40example.test&dateFrom=${from}`)).data.length, 3);
+  assert.equal((await read(`?actorEmail=bounds%40example.test&dateTo=${to}`)).data.length, 3);
+  for (const invalid of ['activity=not-real', 'hideBackground=maybe', 'dateFrom=2026-02-30', `dateFrom=${to}&dateTo=${from}`]) {
+    assert.equal((await app.request('/audit-log?' + invalid, { headers: { 'x-fixture-admin': 'yes' } })).status, 400);
+  }
+  await memory.insert(clientPortalAuditLogs).values([
+    ...Array.from({ length: 120 }, () => ({ event: 'portal.me.view', actorEmail: 'paging@example.test', createdAt: new Date('2026-09-16T02:00:00Z') })),
+    ...Array.from({ length: 5 }, () => ({ event: 'portal.labels.failed', actorEmail: 'paging@example.test', createdAt: new Date('2026-09-16T01:00:00Z') })),
+  ]);
+  const filteredQuery = `?actorEmail=paging%40example.test&${range}&activity=failed&hideBackground=true&limit=2`;
+  const seen = new Set<number>();
+  for (let page = 1; page <= 3; page++) {
+    const result = await read(`${filteredQuery}&page=${page}`);
+    assert.equal(result.pagination.hasMore, page < 3);
+    for (const row of result.data) { assert.ok(!seen.has(row.id)); seen.add(row.id); }
+  }
+  assert.equal(seen.size, 5, 'filters run before pagination, beyond 120 background rows');
+  await pg.exec(`create table orders (id int, store_id int, client_id int);
+    create table returns (id int, order_id int, client_id int);
+    create table shipments (id int, order_id int, client_id int);
+    create table inventory (id int, client_id int);`);
+  await memory.insert(clientPortalAuditLogs).values([77, 88].map(storeId => ({ event: 'portal.access_list.denied',
+    actorEmail: 'scoped@example.test', storeIds: [77, 88], metadata: { storeId }, createdAt: new Date('2026-09-16T01:00:00Z') })));
+  const storeCombined = await read(`?actorEmail=scoped%40example.test&storeId=77&search=access&activity=denied&hideBackground=true&${range}`);
+  assert.equal(storeCombined.data.length, 1, 'date, actor, activity, search and store attribution intersect');
+  assert.equal(storeCombined.data[0].metadata.storeId, 77);
 } finally { db.select = select; db.selectDistinct = selectDistinct; db.insert = insert; await pg.close(); }
 console.log('PASS audit: recorded facts, redaction, admin-only access, all-user discovery, client identity and paginated history');

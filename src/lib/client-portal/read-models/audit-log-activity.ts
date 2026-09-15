@@ -1,4 +1,5 @@
 import type { PortalAuditActivity } from '../contracts/access';
+import { classifyPortalAuditEvent } from './audit-log-classification';
 
 // Audit facts come from the persisted event and its metadata at created_at.
 // Do not join today's mutable records to invent historical values or outcomes.
@@ -71,24 +72,20 @@ export function buildPortalAuditActivity(event: string, metadata: Record<string,
   const action = parts.pop() ?? '';
   const name = parts.join('.');
   const subject = SUBJECTS[name] ?? words(name || event);
-  let category: PortalAuditActivity['category'] = 'Action';
-  let outcome: PortalAuditActivity['outcome'] = 'Recorded';
+  const { category, outcome } = classifyPortalAuditEvent(event);
   let label = ACTIONS[action] ? `${ACTIONS[action]} ${subject}` : `Recorded ${words(action)}: ${subject}`;
   let note = 'Only recorded fields are shown. Before/after values and unrecorded clicks cannot be reconstructed.';
 
-  if (['denied', 'failed', 'requested', 'completed'].includes(action)) {
-    outcome = ({ denied: 'Denied', failed: 'Failed', requested: 'Requested', completed: 'Completed' } as const)[action as 'denied' | 'failed' | 'requested' | 'completed'];
+  if (['Denied', 'Failed', 'Requested', 'Completed'].includes(outcome)) {
     label = `${subject}: ${outcome.toLowerCase()}`;
     if (action === 'requested') note = 'This records a request, not proof that the action completed. Look for its completion event.';
-  } else if (event === 'portal.ui.click') {
-    category = 'Navigation'; outcome = 'Reported'; label = 'Navigation click';
+  } else if (category === 'Navigation') {
+    label = 'Navigation click';
     note = 'Navigation reported by the browser. It does not establish that a subsequent operation succeeded.';
-  } else if (event === 'portal.orders.awaiting_active_count' || event === 'portal.me.view') {
-    category = 'Background check';
+  } else if (category === 'Background check') {
     label = event === 'portal.me.view' ? 'Portal session checked' : 'Awaiting shipment count checked';
     note = 'The portal can request this automatically. This is not evidence of a deliberate click or a new sign-in.';
-  } else if (['view', 'list', 'detail', 'history', 'daily_counts', 'sku_orders', 'daily_shipments', 'reason_contract'].includes(action)) {
-    category = 'Data request';
+  } else if (category === 'Data request') {
     label = `Loaded ${SUBJECTS[`${name}.${action}`] ?? subject}`;
     note = 'A server data request was recorded. Opening a page, preloading or refreshing it can cause this event.';
   }

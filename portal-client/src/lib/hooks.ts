@@ -52,11 +52,13 @@ export function useCanCustomizeTables(): boolean {
   const me = useMe().data;
   return Boolean(me?.isAdmin || me?.isGlobal);
 }
-export function useAuditLog(search = '', limit = 100, storeId?: number | null, actorEmail = '', page = 1) {
-  return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores', actorEmail, page], (t) => portalApi.auditLog(t, { search, limit, storeId, actorEmail, page }), true, {
+export function useAuditLog(search = '', limit = 100, storeId?: number | null, actorEmail = '', page = 1,
+  filters: import('@client-portal-contracts/access').PortalAuditInvestigationFilters = {}) {
+  return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores', actorEmail, page, filters],
+    (t) => portalApi.auditLog(t, { search, limit, storeId, actorEmail, page, ...filters }), true, {
     refetchInterval: page === 1 ? 30_000 : undefined,
     refetchOnWindowFocus: true,
-    retainDataScope: ['audit-log', storeId ?? 'all-stores', actorEmail, search, page],
+    retainDataScope: ['audit-log', storeId ?? 'all-stores', actorEmail, search, page, filters],
   });
 }
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);

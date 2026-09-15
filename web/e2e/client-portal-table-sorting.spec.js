@@ -228,6 +228,84 @@ for (const filter of ['search', 'status', 'client', 'topbar client']) {
   });
 }
 
+for (const scenario of [
+  { width: 390, timezone: 'Asia/Manila', day: '2026-09-16', from: '2026-09-15T16:00:00.000Z', to: '2026-09-16T16:00:00.000Z' },
+  { width: 1440, timezone: 'Asia/Manila', day: '2026-09-16', from: '2026-09-15T16:00:00.000Z', to: '2026-09-16T16:00:00.000Z' },
+  { width: 1440, timezone: 'America/Los_Angeles', day: '2026-03-08', from: '2026-03-08T08:00:00.000Z', to: '2026-03-09T07:00:00.000Z' },
+]) test.describe(`Audit investigation ${scenario.width}px ${scenario.timezone}`, () => {
+  test.use({ viewport: { width: scenario.width, height: 900 }, timezoneId: scenario.timezone });
+  test('dates, activity and background filters reset history and preserve user/store intent', async ({ page }) => {
+    const requests = [];
+    await setup(page, url => {
+      if (url.pathname !== '/api/client-portal/audit-log') return;
+      const params = Object.fromEntries(url.searchParams);
+      requests.push(params);
+      return { data: params.search === 'EMPTY' ? [] : [{ id: Number(params.page || 1), event: 'portal.orders.list',
+        actorUserId: 'fixture', actorEmail: 'client@example.test', clientIds: [], storeIds: [77], clientNames: [], storeNames: ['Store'],
+        scopeLabel: 'Store', metadata: { orderId: 123 }, createdAt: '2026-09-16T01:00:00Z' }],
+        filters: { stores: [{ id: 77, name: 'Store' }], users: ['client@example.test'] },
+        pagination: { page: Number(params.page || 1), pageSize: 100, hasMore: params.search !== 'EMPTY' } };
+    });
+    await page.goto(base + '/audit-log');
+    await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+    await page.getByRole('button', { name: 'Older events' }).click();
+    await expect(page.getByRole('button', { name: 'View details for event 2' })).toBeVisible();
+    const beforeDates = requests.length;
+    await page.getByLabel('Audit start date', { exact: true }).fill(scenario.day);
+    await page.getByLabel('Audit end date', { exact: true }).fill(scenario.day);
+    expect(requests.length).toBe(beforeDates);
+    await page.getByRole('button', { name: 'Apply dates' }).click();
+    await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+    expect(requests.slice(beforeDates)).toHaveLength(1);
+    expect(requests.at(-1)).toMatchObject({ page: '1', dateFrom: scenario.from, dateTo: scenario.to });
+    await page.getByRole('combobox', { name: 'Filter audit log by user' }).selectOption('client@example.test');
+    await expect.poll(() => requests.at(-1).actorEmail).toBe('client@example.test');
+    await page.getByRole('combobox', { name: 'Filter audit log by store' }).selectOption('77');
+    await expect.poll(() => requests.at(-1).storeId).toBe('77');
+    await page.getByRole('combobox', { name: 'Filter audit log by activity' }).selectOption('failed');
+    await expect.poll(() => requests.at(-1).activity).toBe('failed');
+    await page.getByRole('checkbox', { name: 'Hide background checks' }).check();
+    await expect.poll(() => requests.at(-1).hideBackground).toBe('true');
+    expect(requests.at(-1)).toMatchObject({ actorEmail: 'client@example.test', storeId: '77', activity: 'failed',
+      hideBackground: 'true', dateFrom: scenario.from, dateTo: scenario.to });
+    await page.getByRole('button', { name: 'Older events' }).click();
+    await expect.poll(() => requests.at(-1).page).toBe('2');
+    await page.getByRole('button', { name: 'Clear dates' }).click();
+    await expect.poll(() => requests.at(-1).page).toBe('1');
+    expect(requests.at(-1).dateFrom).toBeUndefined();
+    expect(requests.at(-1).dateTo).toBeUndefined();
+    expect(requests.at(-1)).toMatchObject({ activity: 'failed', hideBackground: 'true', actorEmail: 'client@example.test', storeId: '77' });
+    await page.getByRole('checkbox', { name: 'Hide background checks' }).uncheck();
+    await expect.poll(() => requests.at(-1).hideBackground).toBe('false');
+    await page.getByRole('textbox', { name: 'Search event or user' }).fill('EMPTY');
+    await expect(page.getByRole('heading', { name: 'No audit events' })).toBeVisible();
+    await expect(page.getByText('No events match the selected filters.')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+});
+
+test('Audit investigation retry preserves selected filters', async ({ page }) => {
+  await setup(page);
+  let fail = false;
+  const requests = [];
+  await page.route('**/api/client-portal/audit-log?**', async route => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    requests.push(params);
+    if (fail) { await route.fulfill({ status: 503, json: { error: 'private database diagnostic' } }); return; }
+    await route.fulfill({ json: { data: [], filters: { stores: [], users: [] }, pagination: { page: 1, pageSize: 100, hasMore: false } } });
+  });
+  await page.goto(base + '/audit-log');
+  await expect(page.getByRole('heading', { name: 'No audit events' })).toBeVisible();
+  fail = true;
+  await page.getByRole('combobox', { name: 'Filter audit log by activity' }).selectOption('denied');
+  await expect(page.getByRole('heading', { name: 'Audit log unavailable' })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('private database diagnostic')).toHaveCount(0);
+  fail = false;
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No audit events' })).toBeVisible();
+  expect(requests.at(-1).activity).toBe('denied');
+});
+
 const replacementFixture = n => ({ id: n, reference: `RP-${String(n).padStart(4, '0')}`, orderId: n,
   orderNumber: `ORDER-${n}`, clientId: 1, clientName: 'Alpha', status: n % 2 ? 'requested' : 'shipped',
   reasonCode: null, itemCount: 2, requestedAt: '2026-09-01' });

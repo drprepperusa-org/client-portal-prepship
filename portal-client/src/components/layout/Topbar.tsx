@@ -84,7 +84,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         )}
 
         {/* Date range */}
-        {pathname !== '/inbound' && <DateRangeFilter />}
+        {pathname !== '/inbound' && pathname !== '/audit-log' && <DateRangeFilter />}
 
         {/* Notifications */}
         <div className="relative">

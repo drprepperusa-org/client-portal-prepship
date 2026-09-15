@@ -1,18 +1,26 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt, ilike, inArray, isNotNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
 import { recordPortalAudit, sanitizePortalAuditMetadata } from '../../lib/client-portal/audit';
 import { buildPortalAuditActivity } from '../../lib/client-portal/read-models/audit-log-activity';
+import { auditInvestigationPredicates } from '../../lib/client-portal/read-models/audit-log-classification';
 import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { auditActivityStorePredicate } from '../../lib/client-portal/read-models/audit-log-store-attribution';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { parsePositiveInt, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
+
+const investigationQuery = z.object({
+  dateFrom: z.string().datetime({ offset: true }).optional(),
+  dateTo: z.string().datetime({ offset: true }).optional(),
+  activity: z.enum(['all', 'views', 'actions', 'navigation', 'failed', 'denied']).default('all'),
+  hideBackground: z.enum(['true', 'false']).default('false'),
+}).refine(value => !value.dateFrom || !value.dateTo || Date.parse(value.dateFrom) < Date.parse(value.dateTo));
 
 const clickBody = z.object({
   target: z.string().trim().min(1).max(100),
@@ -126,6 +134,9 @@ app.get('/audit-log', async (c) => {
   }
 
   const search = requestedSearch(c);
+  const parsed = investigationQuery.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: 'Invalid audit filters or date range' }, 400);
+  const investigation = parsed.data;
   const limit = Math.min(parsePositiveInt(c.req.query('limit')) ?? 100, 250);
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const actorEmail = c.req.query('actorEmail')?.trim();
@@ -133,6 +144,11 @@ app.get('/audit-log', async (c) => {
   const where = and(
     ...[
       ne(clientPortalAuditLogs.event, 'portal.audit_log.view'),
+      investigation.dateFrom ? gte(clientPortalAuditLogs.createdAt, new Date(investigation.dateFrom)) : undefined,
+      investigation.dateTo ? lt(clientPortalAuditLogs.createdAt, new Date(investigation.dateTo)) : undefined,
+      ...auditInvestigationPredicates(sql`${clientPortalAuditLogs.event}`, {
+        ...investigation, hideBackground: investigation.hideBackground === 'true',
+      }),
       actorEmail ? eq(clientPortalAuditLogs.actorEmail, actorEmail) : undefined,
       search
         ? or(

@@ -27,6 +27,14 @@ export interface PortalAuditActivity {
   details: Array<{ label: string; value: string }>;
 }
 
+export interface PortalAuditInvestigationFilters {
+  /** ISO instants: inclusive start, exclusive end, over recorded created_at. */
+  dateFrom?: string;
+  dateTo?: string;
+  activity?: 'all' | 'views' | 'actions' | 'navigation' | 'failed' | 'denied';
+  hideBackground?: boolean;
+}
+
 export interface PortalAuditLogRow {
   id: number;
   event: string;
