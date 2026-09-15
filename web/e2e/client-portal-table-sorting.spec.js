@@ -228,6 +228,51 @@ for (const filter of ['search', 'status', 'client', 'topbar client']) {
   });
 }
 
+for (const width of [390, 1440]) for (const filter of (width === 390 ? ['client'] : ['client', 'topbar client'])) {
+  test(`Inbound requests only page 1 after ${filter} changes from page 2 at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => {
+      window.receiptReads = [];
+      const original = window.fetch;
+      window.fetch = (...args) => {
+        const url = new URL(String(args[0]), window.location.origin);
+        if (url.pathname === '/api/client-portal/inbound/receipts') window.receiptReads.push(url.href);
+        return original(...args);
+      };
+    });
+    const body = (p, client = 'Alpha') => ({ data: [{ id: p, inventoryId: p, sku: `${client}-RECEIPT-${p}`,
+      name: 'Recorded product', clientName: client, receivedUnits: 37, receivedAt: '2026-09-01' }],
+      pagination: { page: p, pageSize: 50, total: 100, totalPages: 2 } });
+    await setup(page, url => {
+      if (url.pathname === '/api/client-portal/inbound/receipts') return body(Number(url.searchParams.get('page') || 1));
+      if (url.pathname.endsWith('/clients')) return { data: [{ id: 1, name: 'Alpha' }, { id: 2, name: 'Beta' }] };
+    });
+    await page.goto(base + '/inbound');
+    await expect(page.getByText('Alpha-RECEIPT-1', { exact: true }).filter({ visible: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    const oldCell = page.getByText('Alpha-RECEIPT-2', { exact: true });
+    await expect(oldCell.filter({ visible: true })).toBeVisible();
+    await page.evaluate(() => { window.receiptReads = []; });
+    const pending = [];
+    await page.route('**/api/client-portal/inbound/receipts?**', route => { pending.push(route); });
+    if (filter === 'client') await page.getByRole('combobox', { name: 'Filter by client' }).selectOption('2');
+    else {
+      await page.getByRole('button', { name: 'All clients', exact: true }).click();
+      await page.getByRole('button', { name: 'Beta', exact: true }).click();
+    }
+    await expect.poll(() => pending.length).toBeGreaterThan(0);
+    const reads = await page.evaluate(() => window.receiptReads);
+    expect(reads.map(raw => new URL(raw).searchParams.get('page'))).toEqual(['1']);
+    expect(new URL(reads[0]).searchParams.get('clientId')).toBe('2');
+    await expect(oldCell).toHaveCount(0);
+    await pending[0].fulfill({ json: body(1, 'Beta') });
+    await expect(page.getByText('Beta-RECEIPT-1', { exact: true }).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText('37', { exact: true }).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText(/Alpha-RECEIPT/)).toHaveCount(0);
+    expect(await page.evaluate(() => window.receiptReads.length)).toBe(1);
+  });
+}
+
 for (const filter of ['search', 'status', 'client', 'topbar client', 'order link']) {
   test(`Returns requests only page 1 after ${filter} changes from page 2`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });

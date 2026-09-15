@@ -1,4 +1,5 @@
 import { useTableSort } from '@/lib/useTableSort';
+import { useFilteredPage } from '@/lib/useFilteredPage';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PackageCheck, PackageOpen, Plus, Building2, Upload } from 'lucide-react';
@@ -27,8 +28,6 @@ export default function Inbound() {
 
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<PortalInbound | null>(null);
-  const [receiptPage, setReceiptPage] = useState(1);
-  const receiptSort = useTableSort(setReceiptPage);
   const [receiptPageSize, setReceiptPageSize] = useState(50);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -48,14 +47,14 @@ export default function Inbound() {
   }, [searchParams, isAdmin, setSearchParams]);
 
   const effectiveClientId = clientFilter ?? globalClientId;
+  const [receiptPage, setReceiptPage] = useFilteredPage(JSON.stringify(effectiveClientId ?? null));
+  const receiptSort = useTableSort(setReceiptPage);
   const query = useInbound(effectiveClientId);
   const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize, receiptSort.sortBy, receiptSort.sortDir);
   const rows = query.data?.data ?? [];
   const receiptRows = receiptQuery.data?.data ?? [];
   const receiptPagination = receiptQuery.data?.pagination;
   const showClientFilter = clients.length > 1;
-
-  useEffect(() => setReceiptPage(1), [effectiveClientId]);
 
   return (
     <div className="space-y-4">
