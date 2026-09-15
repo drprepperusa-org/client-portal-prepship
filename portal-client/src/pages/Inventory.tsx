@@ -12,6 +12,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useCanCustomizeTables, useInventory, useInventoryHistory } from '@/lib/hooks';
 import { inventoryStockStatusMeta } from '@/lib/inventory-status';
 import { useDebounced } from '@/lib/useDebounced';
+import { useFilteredPage } from '@/lib/useFilteredPage';
+import { usePortalFilters } from '@/lib/portalContext';
 import type { PortalInventory, InventoryMovement } from '@/lib/api';
 import type { Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
@@ -88,12 +90,12 @@ export default function Inventory() {
 function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void }) {
   const [q, setQ] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
-  const [page, setPage] = useState(1);
-  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(100);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
-  useEffect(() => setPage(1), [debouncedQ, lowOnly]);
+  const { clientId } = usePortalFilters();
+  const [page, setPage] = useFilteredPage(JSON.stringify([clientId, debouncedQ, lowOnly]));
+  const tableSort = useTableSort(setPage);
 
   // Low/Out-only is filtered SERVER-side so it spans every page (not just the
   // current one) and the pager totals stay accurate.
@@ -220,12 +222,12 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
 function InventoryHistory({ initialSku }: { initialSku: string }) {
   const [q, setQ] = useState(initialSku);
   const [type, setType] = useState<string | string[]>('all');
-  const [page, setPage] = useState(1);
-  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);
-  useEffect(() => setPage(1), [debouncedQ, type]);
+  const { clientId, dateRange } = usePortalFilters();
+  const [page, setPage] = useFilteredPage(JSON.stringify([clientId, debouncedQ, type, dateRange.dateFrom, dateRange.dateTo]));
+  const tableSort = useTableSort(setPage);
   // Sync when an Actions→History click changes the requested SKU.
   useEffect(() => setQ(initialSku), [initialSku]);
 

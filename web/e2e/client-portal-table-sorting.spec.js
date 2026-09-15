@@ -104,6 +104,75 @@ for (const t of tables) test(`${t.api}: pending sort retains rows and shows Upda
   await expect(page.getByRole('status')).toHaveCount(0);
 });
 
+for (const scenario of ['stock search', 'low stock', 'stock client', 'history search', 'history type', 'history client', 'history dates']) {
+  test(`Inventory requests only page 1 after ${scenario} changes from page 2`, async ({ page }) => {
+    const history = scenario.startsWith('history');
+    const endpoint = `/api/client-portal/${history ? 'inventory-history' : 'inventory'}`;
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      window.inventoryReads = [];
+      const original = window.fetch;
+      window.fetch = (...args) => {
+        const url = new URL(String(args[0]), window.location.origin);
+        if (url.pathname.startsWith('/api/client-portal/inventory')) window.inventoryReads.push(url.href);
+        return original(...args);
+      };
+    });
+    const row = (p) => history
+      ? { id: p, sku: `PAGE-${p}`, type: 'receive', qty: 7, createdAt: '2026-09-01' }
+      : { id: p, sku: `PAGE-${p}`, name: 'Fixture', inventoryQuantity: 7, stockStatus: 'in', warehouseShipped30d: 3 };
+    const body = (p) => ({ data: [row(p)], pagination: { page: p, pageSize: 100, total: 200, totalPages: 2 } });
+    await setup(page, url => {
+      if (url.pathname === endpoint) return body(Number(url.searchParams.get('page') || 1));
+      if (url.pathname.endsWith('/clients')) return { data: [{ id: 1, name: 'Alpha' }, { id: 2, name: 'Beta' }] };
+    });
+    await page.goto(base + '/inventory');
+    if (history) await page.getByRole('button', { name: 'History', exact: true }).click();
+    await expect(page.getByRole('table').getByText('PAGE-1', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    const oldCell = page.getByRole('table').getByText('PAGE-2', { exact: true });
+    await expect(oldCell).toBeVisible();
+    await page.evaluate(() => { window.inventoryReads = []; });
+    const pending = [];
+    await page.route(`**${endpoint}?**`, route => { pending.push(route); });
+    if (scenario.endsWith('search')) {
+      await page.getByRole('textbox', { name: history ? 'Search history' : 'Search inventory' }).fill('NEW-SKU');
+    } else if (scenario === 'low stock') {
+      await page.getByText('Low/Out only', { exact: true }).click();
+    } else if (scenario.endsWith('client')) {
+      await page.getByRole('button', { name: 'All clients', exact: true }).click();
+      await page.getByRole('button', { name: 'Beta', exact: true }).click();
+    } else if (scenario === 'history type') {
+      await page.getByRole('button', { name: 'All types', exact: true }).click();
+      await page.getByRole('option', { name: 'Receive', exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: 'Date range filter', exact: true }).click();
+      await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
+      await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    }
+    await expect.poll(() => pending.length).toBeGreaterThan(0);
+    const reads = await page.evaluate(path => window.inventoryReads.filter(raw => new URL(raw).pathname === path), endpoint);
+    expect(reads.map(raw => new URL(raw).searchParams.get('page'))).toEqual(['1']);
+    const params = new URL(reads[0]).searchParams;
+    if (scenario.endsWith('client')) {
+      expect(params.get('clientId')).toBe('2');
+      await expect(oldCell).toHaveCount(0);
+    } else {
+      await expect(oldCell).toBeVisible();
+      await expect(page.getByRole('status')).toHaveText('Updating…');
+    }
+    if (scenario.endsWith('search')) expect(params.get(history ? 'sku' : 'search')).toBe('NEW-SKU');
+    if (scenario === 'low stock') expect(params.get('lowStock')).toBe('1');
+    if (scenario === 'history type') expect(params.get('type')).toBe('Receive');
+    if (scenario === 'history dates') expect(Date.parse(params.get('to')) - Date.parse(params.get('from'))).toBe(7 * 86400000 - 1);
+    await pending[0].fulfill({ json: body(1) });
+    await expect(page.getByRole('table').getByText('PAGE-1', { exact: true })).toBeVisible();
+    await expect(page.getByRole('status')).toHaveCount(0);
+    // The settled request stays singular; no effect schedules a second page read.
+    expect(await page.evaluate(path => window.inventoryReads.filter(raw => new URL(raw).pathname === path).length, endpoint)).toBe(1);
+  });
+}
+
 test('Inventory filter retains rows, an empty response clears them, and client changes hide old rows', async ({ page }) => {
   const errors = [];
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });

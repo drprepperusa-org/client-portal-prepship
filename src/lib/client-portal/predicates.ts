@@ -334,7 +334,18 @@ export function inventoryScopePredicate(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null } = {}
 ): SQL | undefined {
-  if (!scope.isRestricted) return undefined;
+  // The switcher narrows global admins too; explicit filters never grant access.
+  const explicit = and(
+    filters.clientId ? eq(inventory.clientId, filters.clientId) : undefined,
+    filters.storeId
+      ? sql`exists (
+          select 1 from ${clients} filtered_client
+          where filtered_client.id = ${inventory.clientId}
+            and filtered_client.store_ids && ${intArrayLiteral([filters.storeId])}
+        )`
+      : undefined,
+  );
+  if (!scope.isRestricted) return explicit;
   const predicates: SQL[] = [];
   if (scope.clientIds.length) predicates.push(inArray(inventory.clientId, scope.clientIds));
   if (scope.storeIds.length) {
@@ -346,17 +357,7 @@ export function inventoryScopePredicate(
   }
   if (!predicates.length) return sql`false`;
   const scopePredicate = predicates.length === 1 ? predicates[0] : (or(...predicates) ?? sql`false`);
-  return and(
-    scopePredicate,
-    filters.clientId ? eq(inventory.clientId, filters.clientId) : undefined,
-    filters.storeId
-      ? sql`exists (
-          select 1 from ${clients} filtered_client
-          where filtered_client.id = ${inventory.clientId}
-            and filtered_client.store_ids && ${intArrayLiteral([filters.storeId])}
-        )`
-      : undefined,
-  );
+  return and(scopePredicate, explicit);
 }
 
 /** Scope immutable movement history by its frozen owner, with a legacy-null fallback only. */

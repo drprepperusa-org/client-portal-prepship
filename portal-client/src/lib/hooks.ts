@@ -253,7 +253,7 @@ export function useInventoryHistory(opts: { sortBy?: string; sortDir?: 'asc' | '
   const { dateRange, clientId } = usePortalFilters();
   return useTokenQuery(
     ['inventory-history', opts.sku ?? '', opts.type ?? '', opts.page ?? 1, opts.pageSize ?? 50, dateRange.dateFrom, dateRange.dateTo, opts.sortBy, opts.sortDir, clientId ?? 'scope'],
-    (t) => portalApi.inventoryHistory(t, { ...opts, dateRange }),
+    (t) => portalApi.inventoryHistory(t, { ...opts, dateRange, clientId }),
     true, { retainDataScope: ['inventory-history', clientId ?? 'scope'] },
   );
 }

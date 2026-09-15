@@ -24,6 +24,7 @@ export const inventoryApi = {
       sortBy?: string; sortDir?: 'asc' | 'desc';
       page?: number;
       pageSize?: number;
+      clientId?: number;
       sku?: string;
       type?: string;
       days?: number;
@@ -39,6 +40,7 @@ export const inventoryApi = {
       {
         page: opts.page ?? 1,
         pageSize: opts.pageSize ?? 50,
+        clientId: opts.clientId,
         sortBy: opts.sortBy, sortDir: opts.sortDir,
         sku: opts.sku,
         type: opts.type,
