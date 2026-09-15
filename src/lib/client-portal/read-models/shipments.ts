@@ -52,7 +52,7 @@ export async function listPortalShipments(
     shipmentScopePredicate(scope, { clientId, storeId }),
     shipmentSearchPredicate(search),
   );
-  const rows = await db
+  const pageRead = db
     .select({
       shipment: shipments,
       clientName: clients.name,
@@ -79,12 +79,14 @@ export async function listPortalShipments(
     }, [desc(shipments.shipDate), desc(shipments.id)], shipments.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRows = await db
+  const countRead = db
     .select({ count: sql<number>`count(*)::int` })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
     .leftJoin(orders, eq(orders.id, shipments.orderId))
     .where(where);
+  // Independent reads; neither needs to wait for the other's database round trip.
+  const [rows, countRows] = await Promise.all([pageRead, countRead]);
   const count = countRows[0]?.count ?? rows.length;
   return {
     data: rows.map((row) =>

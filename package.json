@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-shipments-loading:integration": "tsx scripts/integration/client-portal-shipments-loading.integration.ts",
     "test:client-portal-inventory-filter:integration": "tsx scripts/integration/client-portal-inventory-filter.integration.ts",
     "test:client-portal-orders-performance:integration": "tsx scripts/integration/client-portal-orders-performance.integration.ts",
     "test:client-portal-billing-summary-performance": "tsx scripts/client-portal-billing-summary-performance-test.ts",

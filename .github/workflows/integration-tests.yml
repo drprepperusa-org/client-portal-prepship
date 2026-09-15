@@ -79,6 +79,8 @@ jobs:
         run: npm run test:client-portal-orders-performance:integration
       - name: Verify Inventory filters and ledger quantity truth
         run: npm run test:client-portal-inventory-filter:integration
+      - name: Verify Shipments loading, search and scope
+        run: npm run test:client-portal-shipments-loading:integration
       - name: Run CP-043 returns recovery integration suite
         run: npm run test:client-portal-returns-cp043:integration
       - name: Run CP-045 return-inspection authority integration suite

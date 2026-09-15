@@ -251,6 +251,7 @@ export function shipmentSearchPredicate(search: string): SQL | undefined {
   return or(
     ilike(shipments.trackingNumber, pattern),
     ilike(shipments.labelTracking, pattern),
+    ilike(shipments.orderNumber, pattern),
     ilike(shipments.carrierCode, pattern),
     ilike(shipments.serviceCode, pattern),
     ilike(clients.name, pattern),

@@ -18,6 +18,7 @@ import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useDebounced } from '@/lib/useDebounced';
+import { useFilteredPage } from '@/lib/useFilteredPage';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
 import type { PortalShipment } from '@/lib/api';
@@ -48,8 +49,6 @@ export default function Shipments() {
   const { clientId: globalClientId } = usePortalFilters();
   const clients = useClients().data?.data ?? [];
   const [q, setQ] = useState('');
-  const [page, setPage] = useState(1);
-  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   // Per-page client filter (like Orders' client switcher) for fast scoping.
   // undefined = follow the global "All clients" topbar filter.
@@ -61,7 +60,8 @@ export default function Shipments() {
   const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
 
-  useEffect(() => setPage(1), [debouncedQ, effectiveClientId, statusFilter]);
+  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedQ, effectiveClientId, statusFilter]));
+  const tableSort = useTableSort(setPage);
 
   const query = useShipments({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, search: debouncedQ, page, pageSize, clientId: effectiveClientId, status: statusFilter || undefined });
   const canCustomizeTables = useCanCustomizeTables();

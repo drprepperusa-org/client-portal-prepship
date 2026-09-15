@@ -173,6 +173,61 @@ for (const scenario of ['stock search', 'low stock', 'stock client', 'history se
   });
 }
 
+for (const filter of ['search', 'status', 'client', 'topbar client']) {
+  test(`Shipments requests only page 1 after ${filter} changes from page 2`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      window.shipmentReads = [];
+      const original = window.fetch;
+      window.fetch = (...args) => {
+        const url = new URL(String(args[0]), window.location.origin);
+        if (url.pathname === '/api/client-portal/shipments') window.shipmentReads.push(url.href);
+        return original(...args);
+      };
+    });
+    const body = p => ({ data: [{ id: p, orderNumber: `SHIP-PAGE-${p}`, items: [], shipmentStatus: 'shipped',
+      displayTrackingNumber: `TRACK-${p}`, customerShippingRate: 8.75 }],
+      pagination: { page: p, pageSize: 50, total: 100, totalPages: 2 } });
+    await setup(page, url => {
+      if (url.pathname.endsWith('/shipments')) return body(Number(url.searchParams.get('page') || 1));
+      if (url.pathname.endsWith('/clients')) return { data: [{ id: 1, name: 'Alpha' }, { id: 2, name: 'Beta' }] };
+    });
+    await page.goto(base + '/shipments');
+    await expect(page.getByRole('table').getByText('SHIP-PAGE-1', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    const oldCell = page.getByRole('table').getByText('SHIP-PAGE-2', { exact: true });
+    await expect(oldCell).toBeVisible();
+    await page.evaluate(() => { window.shipmentReads = []; });
+    const pending = [];
+    await page.route('**/api/client-portal/shipments?**', route => { pending.push(route); });
+    if (filter === 'search') await page.getByRole('textbox', { name: 'Search shipments' }).fill('TRACK-NEW');
+    if (filter === 'status') await page.getByRole('combobox', { name: 'Filter by status' }).selectOption('shipped');
+    if (filter === 'client') await page.getByRole('combobox', { name: 'Filter by client' }).selectOption('2');
+    if (filter === 'topbar client') {
+      await page.getByRole('button', { name: 'All clients', exact: true }).click();
+      await page.getByRole('button', { name: 'Beta', exact: true }).click();
+    }
+    await expect.poll(() => pending.length).toBeGreaterThan(0);
+    const reads = await page.evaluate(() => window.shipmentReads);
+    expect(reads.map(raw => new URL(raw).searchParams.get('page'))).toEqual(['1']);
+    const params = new URL(reads[0]).searchParams;
+    if (filter.includes('client')) {
+      expect(params.get('clientId')).toBe('2');
+      await expect(oldCell).toHaveCount(0);
+    } else {
+      await expect(oldCell).toBeVisible();
+      await expect(page.getByRole('status')).toHaveText('Updating…');
+    }
+    if (filter === 'search') expect(params.get('search')).toBe('TRACK-NEW');
+    if (filter === 'status') expect(params.get('status')).toBe('shipped');
+    await pending[0].fulfill({ json: body(1) });
+    await expect(page.getByRole('table').getByText('SHIP-PAGE-1', { exact: true })).toBeVisible();
+    await expect(page.getByRole('table').getByText('$8.75', { exact: true })).toBeVisible();
+    await expect(page.getByRole('status')).toHaveCount(0);
+    expect(await page.evaluate(() => window.shipmentReads.length)).toBe(1);
+  });
+}
+
 test('Inventory filter retains rows, an empty response clears them, and client changes hide old rows', async ({ page }) => {
   const errors = [];
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
