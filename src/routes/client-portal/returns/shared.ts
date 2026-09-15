@@ -7,7 +7,7 @@ import { shipments } from '../../../db/schema/shipments';
 import { clientPortalCapabilities } from '../../../lib/client-portal/capabilities';
 import { intArrayLiteral } from '../../../lib/client-portal/predicates';
 import type { ClientPortalScope } from '../../../lib/client-portal/scope';
-import { baseReturnReference } from '../../../services/return-reference';
+import { baseReturnReference, returnReferenceSql } from '../../../services/return-reference';
 
 export const RETURN_STATUS_FILTERS = new Set([
   'requested',
@@ -83,7 +83,7 @@ export function returnSearchPredicate(search: string): SQL | undefined {
   if (!search) return undefined;
   const pattern = `%${search}%`;
   return or(
-    ilike(returns.returnReference, pattern),
+    ilike(returnReferenceSql(returns.returnReference, orders.orderNumber, returns.orderId), pattern),
     ilike(orders.orderNumber, pattern),
     ilike(orders.externalOrderId, pattern),
     ilike(returns.reason, pattern),

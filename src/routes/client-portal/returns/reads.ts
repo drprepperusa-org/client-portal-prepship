@@ -58,7 +58,7 @@ function registerReturnListRoute(app: Hono): void {
       returnSearchPredicate(search),
     );
 
-    const rows = await db
+    const pageRead = db
       .select({
         ret: returns,
         orderNumber: orders.orderNumber,
@@ -105,12 +105,14 @@ function registerReturnListRoute(app: Hono): void {
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    const countRows = await db
+    const countRead = db
       .select({ count: sql<number>`count(*)::int` })
       .from(returns)
       .leftJoin(orders, eq(orders.id, returns.orderId))
       .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
       .where(where);
+    // Independent scoped list reads; keep audit and DTO work after both complete.
+    const [rows, countRows] = await Promise.all([pageRead, countRead]);
     const count = countRows[0]?.count ?? rows.length;
 
     await recordPortalAudit('portal.returns.list', scope, {

@@ -29,6 +29,7 @@ import { useReturnTrackingRefresh } from '@/lib/useReturnTrackingRefresh';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate } from '@/lib/status';
 import { useDebounced } from '@/lib/useDebounced';
+import { useFilteredPage } from '@/lib/useFilteredPage';
 
 // CP-034: return tracking URLs are backend-built carrier links. The portal
 // renders copyable text when the carrier is unknown and never exposes identity.
@@ -41,8 +42,6 @@ export default function Returns() {
   const canInspectReturns = me?.canInspectReturns ?? false;
   const [params] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState('');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
@@ -59,9 +58,8 @@ export default function Returns() {
     if (newParam) setCreateOrderId(Number(newParam));
   }, [newParam]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, effectiveClientId, statusFilter, orderFilter]);
+  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, effectiveClientId, statusFilter, orderFilter]));
+  const tableSort = useTableSort(setPage);
 
   const query = useReturns({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
     search: debouncedSearch,
