@@ -15,6 +15,11 @@ import type { Accent } from '@/lib/accents';
 import { useAuth } from '@/auth';
 import { useMe, useReplacement, useReplacements, useReplacementReasonContract } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
+import { usePortalFilters } from '@/lib/portalContext';
+import { useDebounced } from '@/lib/useDebounced';
+import { useFilteredPage } from '@/lib/useFilteredPage';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { Pagination } from '@/components/ui/Pagination';
 
 /**
  * Replace (CP-061).
@@ -59,7 +64,13 @@ function reasonLabelFrom(reasonCode: string | null, labels: Map<string, string>)
 }
 
 export default function Replace() {
-  const q = useReplacements();
+  const { clientId } = usePortalFilters();
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [pageSize, setPageSize] = useState(50);
+  const debouncedSearch = useDebounced(search, 300);
+  const [page, setPage] = useFilteredPage(JSON.stringify([clientId, debouncedSearch, status]));
+  const q = useReplacements({ search: debouncedSearch, status, page, pageSize });
   const me = useMe();
   const [openId, setOpenId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -80,16 +91,24 @@ export default function Replace() {
         </div>
       </GlassPanel>
 
-      <QueryState isLoading={q.isLoading} isError={q.isError} onRetry={() => q.refetch()}>
+      <GlassPanel className="flex flex-wrap gap-3 p-4">
+        <SearchInput value={search} onChange={setSearch} placeholder="Order number or replacement reference" ariaLabel="Search replacements" />
+        <select aria-label="Filter by status" value={status} onChange={(event) => setStatus(event.target.value)}
+          className="focus-ring h-11 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink ring-1 ring-slate-200/70">
+          <option value="">All statuses</option>
+          {Object.entries(STATUS_META).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+        </select>
+      </GlassPanel>
+
+      <QueryState isLoading={q.isLoading} isUpdating={q.isFetching && !q.isLoading} isError={q.isError} onRetry={() => q.refetch()}>
         {rows.length === 0 ? (
           <GlassPanel className="p-6 sm:p-8">
             <div className="mx-auto flex max-w-md flex-col items-center text-center">
               <AnimatedIcon icon={Repeat} accent="emerald" tile />
-              <h3 className="mt-4 font-display text-lg font-semibold text-ink">No replacements yet</h3>
+              <h3 className="mt-4 font-display text-lg font-semibold text-ink">{debouncedSearch || status ? 'No matching replacements' : 'No replacements yet'}</h3>
               <p className="mt-2 text-sm text-ink-3">
-                When a replacement is arranged for one of your orders it will appear here with
-                its status and items. If a customer received a damaged or incorrect item, you can
-                also log it as a return.
+                {debouncedSearch || status ? 'Try a different order number, reference, or status.' :
+                  'When a replacement is arranged for one of your orders it will appear here with its status and items. If a customer received a damaged or incorrect item, you can also log it as a return.'}
               </p>
               <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                 <Link to="/returns"><Button variant="secondary" leadingIcon={<Undo2 size={16} />}>Open Returns</Button></Link>
@@ -110,7 +129,7 @@ export default function Replace() {
                   <button
                     key={row.id}
                     onClick={() => setOpenId(row.id)}
-                    className="focus-ring flex w-full items-center gap-3 rounded-glass-sm px-2 py-2 text-left transition-colors hover:bg-brand-50"
+                    className="focus-ring flex w-full flex-wrap items-center gap-3 rounded-glass-sm px-2 py-2 text-left transition-colors hover:bg-brand-50"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-brand-700">{row.reference}</p>
@@ -129,6 +148,9 @@ export default function Replace() {
             </div>
           </GlassPanel>
         )}
+        {q.data?.pagination && <Pagination page={q.data.pagination.page} totalPages={q.data.pagination.totalPages}
+          total={q.data.pagination.total} pageSize={q.data.pagination.pageSize} onPage={setPage}
+          onPageSize={(size) => { setPageSize(size); setPage(1); }} />}
       </QueryState>
 
       <ReplacementDrawer id={openId} onClose={() => setOpenId(null)} labels={labels} />

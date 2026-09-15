@@ -143,6 +143,7 @@
     "test:client-portal-replacement-reason-parity": "tsx scripts/integration/client-portal-replacement-reason-parity.ts",
     "test:client-portal-replacements-cp061": "node scripts/client-portal-replacements-cp061-guard.mjs",
     "test:client-portal-replacements-cp061:integration": "tsx scripts/integration/client-portal-replacements-cp061.integration.ts",
+    "test:client-portal-replacements-list:integration": "tsx scripts/integration/client-portal-replacements-list.integration.ts",
     "test:client-portal-return-rate-snapshot": "node scripts/client-portal-return-rate-snapshot-guard.mjs",
     "test:client-portal-returns-canonical-fields": "node scripts/client-portal-returns-canonical-fields-guard.mjs",
     "test:client-portal-returns-cp043": "node scripts/client-portal-returns-cp043-guard.mjs",

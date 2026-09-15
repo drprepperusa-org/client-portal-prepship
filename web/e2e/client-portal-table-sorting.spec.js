@@ -228,6 +228,93 @@ for (const filter of ['search', 'status', 'client', 'topbar client']) {
   });
 }
 
+const replacementFixture = n => ({ id: n, reference: `RP-${String(n).padStart(4, '0')}`, orderId: n,
+  orderNumber: `ORDER-${n}`, clientId: 1, clientName: 'Alpha', status: n % 2 ? 'requested' : 'shipped',
+  reasonCode: null, itemCount: 2, requestedAt: '2026-09-01' });
+for (const width of [390, 1440]) test(`Replace searches, filters and reaches older pages at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const requests = [];
+  await setup(page, url => {
+    if (url.pathname === '/api/client-portal/replacements') {
+      const p = Number(url.searchParams.get('page') || 1), size = Number(url.searchParams.get('pageSize') || 50);
+      const search = url.searchParams.get('search') || '', status = url.searchParams.get('status') || '';
+      requests.push({ p, size, search, status });
+      const rows = Array.from({ length: 210 }, (_, i) => replacementFixture(210 - i)).filter(row =>
+        (!search || row.reference.includes(search) || row.orderNumber === search) && (!status || row.status === status));
+      return { data: rows.slice((p - 1) * size, p * size),
+        pagination: { page: p, pageSize: size, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / size)) } };
+    }
+    if (url.pathname === '/api/client-portal/replacements/1') return { data: { ...replacementFixture(1),
+      items: [{ id: 1, sku: 'REPLACE-SKU', quantity: 7 }] } };
+  });
+  await page.goto(base + '/replace');
+  await expect(page.getByText('RP-0210', { exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Rows per page' }).selectOption('200');
+  await expect.poll(() => requests.at(-1).size).toBe(200);
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expect(page.getByText('RP-0001', { exact: true })).toBeVisible();
+  expect(requests.at(-1)).toMatchObject({ p: 2, size: 200 });
+  await page.getByRole('combobox', { name: 'Filter by status' }).selectOption('requested');
+  await expect(page.getByText('RP-0209', { exact: true })).toBeVisible();
+  expect(requests.at(-1)).toMatchObject({ p: 1, status: 'requested' });
+  await page.getByRole('textbox', { name: 'Search replacements' }).fill('ORDER-1');
+  await expect(page.getByText('RP-0209', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('RP-0001', { exact: true })).toBeVisible();
+  expect(requests.at(-1)).toMatchObject({ p: 1, search: 'ORDER-1', status: 'requested' });
+  await page.getByRole('button', { name: /RP-0001/ }).click();
+  await expect(page.getByRole('dialog').getByText('REPLACE-SKU')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('textbox', { name: 'Search replacements' }).fill('NO-MATCH');
+  await expect(page.getByRole('heading', { name: 'No matching replacements' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+for (const filter of ['search', 'status', 'client']) test(`Replace ${filter} resets page once and respects loading scope`, async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    window.replacementReads = [];
+    const original = window.fetch;
+    window.fetch = (...args) => {
+      const url = new URL(String(args[0]), window.location.origin);
+      if (url.pathname === '/api/client-portal/replacements') window.replacementReads.push(url.href);
+      return original(...args);
+    };
+  });
+  const body = (p, id) => ({ data: [replacementFixture(id)], pagination: { page: p, pageSize: 50, total: 100, totalPages: 2 } });
+  await setup(page, url => {
+    if (url.pathname === '/api/client-portal/replacements') { const p = Number(url.searchParams.get('page') || 1); return body(p, p); }
+    if (url.pathname.endsWith('/clients')) return { data: [{ id: 1, name: 'Alpha' }, { id: 2, name: 'Beta' }] };
+  });
+  await page.goto(base + '/replace');
+  await expect(page.getByText('RP-0001', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  const old = page.getByText('RP-0002', { exact: true });
+  await expect(old).toBeVisible();
+  await page.evaluate(() => { window.replacementReads = []; });
+  const pending = [];
+  await page.route('**/api/client-portal/replacements?**', route => { pending.push(route); });
+  if (filter === 'search') await page.getByRole('textbox', { name: 'Search replacements' }).fill('RP-0003');
+  if (filter === 'status') await page.getByRole('combobox', { name: 'Filter by status' }).selectOption('requested');
+  if (filter === 'client') {
+    await page.getByRole('button', { name: 'All clients', exact: true }).click();
+    await page.getByRole('button', { name: 'Beta', exact: true }).click();
+  }
+  await expect.poll(() => pending.length).toBe(1);
+  const reads = await page.evaluate(() => window.replacementReads);
+  expect(reads.map(raw => new URL(raw).searchParams.get('page'))).toEqual(['1']);
+  if (filter === 'client') {
+    expect(new URL(reads[0]).searchParams.get('clientId')).toBe('2');
+    await expect(old).toHaveCount(0);
+  } else {
+    await expect(old).toBeVisible();
+    await expect(page.getByRole('status')).toHaveText('Updating…');
+  }
+  await pending[0].fulfill({ json: body(1, 3) });
+  await expect(page.getByText('RP-0003', { exact: true })).toBeVisible();
+  await expect(old).toHaveCount(0);
+  expect(await page.evaluate(() => window.replacementReads.length)).toBe(1);
+});
+
 for (const width of [390, 1440]) for (const filter of (width === 390 ? ['client'] : ['client', 'topbar client'])) {
   test(`Inbound requests only page 1 after ${filter} changes from page 2 at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

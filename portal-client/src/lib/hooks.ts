@@ -261,10 +261,11 @@ export const useIntegrations = () => useTokenQuery(['integrations'], portalApi.i
 
 // CP-061 — Replace list + detail. Reads are scoped server-side; the list honors
 // the top-bar client switcher. All replacement truth is backend-derived.
-export function useReplacements() {
+export function useReplacements(options: { search?: string; status?: string; page?: number; pageSize?: number } = {}) {
   const { clientId } = usePortalFilters();
-  return useTokenQuery(['replacements', clientId ?? 'scope'], (t) =>
-    portalApi.replacements(t, clientId ?? undefined),
+  return useTokenQuery(['replacements', clientId ?? 'scope', options.search ?? '', options.status ?? '', options.page ?? 1, options.pageSize ?? 50], (t) =>
+    portalApi.replacements(t, { ...options, clientId: clientId ?? undefined }),
+    true, { retainDataScope: ['replacements', clientId ?? 'scope'] },
   );
 }
 export const useReplacement = (id: number | null) =>

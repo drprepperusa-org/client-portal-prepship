@@ -7,7 +7,7 @@ import { env } from '../../lib/env';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
-import { scopeOrResponse, requestedClientId, requestedStoreId } from '../../lib/client-portal/query-params';
+import { scopeOrResponse, requestedClientId, requestedStoreId, parsePage, parsePageSize } from '../../lib/client-portal/query-params';
 import {
   getPortalReplacement,
   listPortalReplacements,
@@ -21,9 +21,13 @@ app.get('/replacements', async (c) => {
   if (!isClientPortalScope(scope)) return scope;
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
-  const data = await listPortalReplacements(scope, { clientId, storeId });
-  await recordPortalAudit('portal.replacements.list', scope, { clientId, storeId, rows: data.length });
-  return c.json({ data });
+  const page = parsePage(c.req.query('page'));
+  const pageSize = parsePageSize(c.req.query('pageSize'), 50);
+  const search = (c.req.query('search') ?? '').trim().slice(0, 200);
+  const status = (c.req.query('status') ?? '').trim().slice(0, 50);
+  const result = await listPortalReplacements(scope, { clientId, storeId, page, pageSize, search, status });
+  await recordPortalAudit('portal.replacements.list', scope, { clientId, storeId, page, pageSize, search, status, rows: result.data.length });
+  return c.json(result);
 });
 
 // CP-061 — the customer-safe reason contract, proxied from PS-502. The frontend renders these

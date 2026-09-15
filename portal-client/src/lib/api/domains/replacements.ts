@@ -2,15 +2,17 @@ import type { RequestAuth } from '../transport';
 import type {
   PortalReplacementDetail,
   PortalReplacementRow,
+  PortalReplacementListOptions,
   ReplacementReasonContract,
 } from '@client-portal-contracts/replacements';
 import { apiGet, apiPost } from '../transport';
+import type { Paginated } from '@client-portal-contracts/common';
 
 // CP-061 — Replace surface. Reads are scoped server-side; create FORWARDS to
 // the canonical PrepShip command (the portal owns no replacement decisions).
 export const replacementsApi = {
-  replacements: (token: RequestAuth, clientId?: number) =>
-    apiGet<{ data: PortalReplacementRow[] }>(token, '/api/client-portal/replacements', { clientId }),
+  replacements: (token: RequestAuth, options: PortalReplacementListOptions = {}) =>
+    apiGet<Paginated<PortalReplacementRow>>(token, '/api/client-portal/replacements', { ...options }),
   replacement: (token: RequestAuth, id: number) =>
     apiGet<{ data: PortalReplacementDetail }>(token, `/api/client-portal/replacements/${id}`),
   // The customer-safe reason contract (codes + labels), validated by the CP proxy. The UI renders

@@ -9,10 +9,12 @@ import type { ClientPortalScope } from '../scope';
 import { rawOrderScopeForAlias } from '../predicates';
 import { replacementsSchemaReady } from '../replacements-schema-readiness';
 import { toReasonCode } from '../replacement-reason';
+import type { Paginated } from '../contracts/common';
 import type {
   PortalReplacementDetail,
   PortalReplacementItem,
   PortalReplacementRow,
+  PortalReplacementListOptions,
 } from '../contracts/replacements';
 
 type ScopeFilters = { clientId?: number | null; storeId?: number | null };
@@ -48,16 +50,26 @@ function toRow(row: RawRow): PortalReplacementRow {
 }
 
 function scopePredicate(scope: ClientPortalScope, filters: ScopeFilters) {
-  const predicate = rawOrderScopeForAlias(scope, filters);
-  return predicate ? sql`and ${predicate}` : sql``;
+  const predicate = rawOrderScopeForAlias(scope);
+  // Explicit filters narrow global operators as well as restricted client users.
+  return sql`${predicate ? sql`and ${predicate}` : sql``}
+    ${filters.clientId ? sql`and o.client_id = ${filters.clientId}` : sql``}
+    ${filters.storeId ? sql`and o.store_id = ${filters.storeId}` : sql``}`;
 }
 
 export async function listPortalReplacements(
   scope: ClientPortalScope,
-  filters: ScopeFilters = {},
-): Promise<PortalReplacementRow[]> {
-  if (!(await replacementsSchemaReady())) return [];
-  const rows = await db.execute<RawRow>(sql`
+  filters: ScopeFilters & Omit<PortalReplacementListOptions, 'clientId'> = {},
+): Promise<Paginated<PortalReplacementRow>> {
+  const page = filters.page ?? 1, pageSize = filters.pageSize ?? 50;
+  const empty = { data: [], pagination: { page, pageSize, total: 0, totalPages: 1 } };
+  if (!(await replacementsSchemaReady())) return empty;
+  const pattern = `%${(filters.search ?? '').trim()}%`;
+  // Reuse exactly the same order scope and filters for rows and count.
+  const where = sql`where true ${scopePredicate(scope, filters)}
+    ${filters.search?.trim() ? sql`and (r.reference ilike ${pattern} or o.order_number ilike ${pattern})` : sql``}
+    ${filters.status ? sql`and r.status = ${filters.status}` : sql``}`;
+  const pageRead = db.execute<RawRow>(sql`
     select
       r.id,
       r.reference,
@@ -72,12 +84,18 @@ export async function listPortalReplacements(
     from replacements r
     join orders o on o.id = r.order_id
     left join clients c on c.id = o.client_id
-    where true
-      ${scopePredicate(scope, filters)}
+    ${where}
     order by r.requested_at desc, r.id desc
-    limit 200
+    limit ${pageSize} offset ${(page - 1) * pageSize}
   `);
-  return rows.map(toRow);
+  const countRead = db.execute<{ total: number }>(sql`
+    select count(*)::int as total from replacements r
+    join orders o on o.id = r.order_id
+    ${where}
+  `);
+  const [rows, counts] = await Promise.all([pageRead, countRead]);
+  const total = Number(counts[0]?.total ?? 0);
+  return { data: rows.map(toRow), pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
 }
 
 export async function getPortalReplacement(

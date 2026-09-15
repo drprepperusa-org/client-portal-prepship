@@ -26,7 +26,7 @@ const receipts = loadFixtureModule('portal-client/src/components/inbound/useInbo
 });
 const surfaces = [
   () => hooks.useOrders(), () => hooks.useShipments(), () => hooks.useInventory(),
-  () => hooks.useInventoryHistory(), () => hooks.useReturns(),
+  () => hooks.useInventoryHistory(), () => hooks.useReturns(), () => hooks.useReplacements(),
   () => hooks.useDashboard(), () => hooks.useAnalysis(),
   () => hooks.useInvoicePeriodSummaryRange('2026-09-01', '2026-09-15'),
   () => receipts.useInboundReceipts(),
@@ -53,4 +53,4 @@ assert.equal(countWrites, 0, 'retained rows must not populate the authoritative 
 placeholder = false;
 hooks.useOrders({ status: 'awaiting_shipment' });
 assert.equal(countWrites, 1, 'fresh count still reaches the sidebar');
-console.log('PASS table retention: nine surfaces, client/account/logout fences, cancellation, and placeholder count isolation');
+console.log('PASS table retention: ten surfaces, client/account/logout fences, cancellation, and placeholder count isolation');

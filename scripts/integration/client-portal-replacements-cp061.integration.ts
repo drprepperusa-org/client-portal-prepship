@@ -131,11 +131,11 @@ await reset();
   await seedReplacement(orderA, clientA, { reference: 'CP061-1-REPLACE', items: [{ sku: 'A1', quantity: 2 }] });
   await seedReplacement(orderB, clientB, { reference: 'CP061-2-REPLACE' });
   const listA = await listPortalReplacements(scopeFor([clientA]));
-  equal(listA.length, 1, 'client A sees exactly one replacement');
-  equal(listA[0]?.reference, 'CP061-1-REPLACE', 'and it is their own');
-  equal(listA[0]?.itemCount, 1, 'item count aggregates');
+  equal(listA.data.length, 1, 'client A sees exactly one replacement');
+  equal(listA.data[0]?.reference, 'CP061-1-REPLACE', 'and it is their own');
+  equal(listA.data[0]?.itemCount, 1, 'item count aggregates');
   const listAll = await listPortalReplacements(scopeFor([]));
-  equal(listAll.length, 2, 'global scope sees both');
+  equal(listAll.data.length, 2, 'global scope sees both');
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +294,8 @@ await reset();
   await db.execute(rawSql`drop table replacements`);
   resetReplacementsSchemaReadinessCache();
   const list = await listPortalReplacements(scopeFor([clientA]));
-  equal(list.length, 0, 'list empty without tables');
+  equal(list.data.length, 0, 'list empty without tables');
+  equal(list.pagination.total, 0, 'missing schema has zero list count');
   const detail = await getPortalReplacement(scopeFor([clientA]), 1);
   equal(detail, null, 'detail null without tables');
   const badge = await orderBadge(orderA, scopeFor([clientA]));
