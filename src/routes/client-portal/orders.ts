@@ -44,7 +44,11 @@ app.get('/orders', async (c) => {
   const search = requestedSearch(c);
   const result = await listPortalOrders(scope, {
     sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'), page, pageSize, status, clientId, storeId, search });
-  await recordPortalAudit('portal.orders.list', scope, { status: status ?? 'all', page, pageSize, clientId, storeId, search });
+  await recordPortalAudit('portal.orders.list', scope, {
+    status: status ?? 'all', page, pageSize, clientId, storeId, search,
+    rows: result.data.length, total: result.pagination.total,
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
+  });
   return c.json(result);
 });
 
@@ -66,6 +70,7 @@ app.get('/orders/:id{[0-9]+}', async (c) => {
   if (!data) return c.json({ error: 'Order not found' }, 404);
   await recordPortalAudit('portal.orders.detail.view', scope, {
     orderId: id,
+    orderNumber: data.orderNumber,
     clientId: data.clientId,
     storeId: data.storeId,
   });

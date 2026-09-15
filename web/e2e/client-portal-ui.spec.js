@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { buildPortalAuditActivity } from '../../src/lib/client-portal/read-models/audit-log-activity';
 
 const baseUrl = 'http://127.0.0.1:5177';
 const storageKey = 'sb-portal-e2e-auth-token';
@@ -1419,3 +1420,46 @@ test('CP-069 AC-4: the Returns page drives the returns-scoped tracking refresh w
   await expect(page.getByRole('button', { name: 'View return E2E-RET-1' })).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });
+for (const width of [1440, 390]) {
+  test(`detailed audit events show recorded context without claiming background clicks at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 950 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await setupPortal(page);
+    const events = [
+      ['portal.orders.awaiting_active_count', { count: 16 }],
+      ['portal.ui.click', { target: 'Audit log', from: '/billing', to: '/audit-log' }],
+      ['portal.inventory.receive.requested', { inventoryIds: [41, 42], totalUnits: 7, reference: 'Delivery 4002' }],
+      ['portal.access_list.update', { role: 'client_user', active: false, clientIds: [17, 18] }],
+    ].map(([event, metadata], index) => ({
+      id: index + 1, event, metadata, actorEmail: 'operator@example.test', actorUserId: 'actor-1',
+      clientIds: [17, 18], storeIds: [101, 102], clientNames: ['Alpha', 'Beta'], storeNames: [],
+      scopeLabel: 'Alpha / Beta', createdAt: '2026-09-15T03:00:05Z', activity: buildPortalAuditActivity(event, metadata),
+    }));
+    await page.route('**/api/client-portal/audit-log?*', route => route.fulfill({
+      contentType: 'application/json', body: JSON.stringify({ data: events, filters: { stores: [] } }),
+    }));
+    await page.goto(`${baseUrl}/audit-log`);
+    await expect(page.locator('p:visible').filter({ hasText: /^Background check · Recorded$/ })).toBeVisible();
+    await expect(page.locator('p:visible').filter({ hasText: /^Navigation · Reported$/ })).toBeVisible();
+    await page.getByRole('button', { name: 'View details for event 3', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: 'Audit event details' });
+    await expect(modal).toContainText('41, 42');
+    await expect(modal).toContainText('Delivery 4002');
+    await expect(modal).toContainText('Requested');
+    await expect(modal).toContainText('not proof that the action completed');
+    await expect(modal).toContainText('not necessarily the records affected');
+    const bounds = await modal.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: `test-results/audit-event-details-${width}.png` });
+    await modal.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'View details for event 4', exact: true }).click();
+    await expect(modal).toContainText('Submitted role');
+    await expect(modal).toContainText('client user');
+    await expect(modal).toContainText('17, 18');
+    await expect(modal).toContainText('cannot be reconstructed');
+    await modal.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'View details for event 1', exact: true }).click();
+    await expect(modal).toContainText('not evidence of a deliberate click');
+  });
+}

@@ -18,6 +18,15 @@ export interface PortalMe {
   canRequestReplacements: boolean;
 }
 
+export interface PortalAuditActivity {
+  category: 'Navigation' | 'Data request' | 'Background check' | 'Action';
+  outcome: 'Recorded' | 'Reported' | 'Requested' | 'Completed' | 'Failed' | 'Denied';
+  label: string;
+  summary: string;
+  note: string;
+  details: Array<{ label: string; value: string }>;
+}
+
 export interface PortalAuditLogRow {
   id: number;
   event: string;
@@ -29,6 +38,7 @@ export interface PortalAuditLogRow {
   storeNames: string[];
   scopeLabel: string;
   metadata: Record<string, unknown>;
+  activity?: PortalAuditActivity;
   createdAt: string;
 }
 

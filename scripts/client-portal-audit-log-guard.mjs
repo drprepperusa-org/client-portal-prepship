@@ -228,7 +228,7 @@ assert(
 );
 assert(
   pkg.scripts?.['test:client-portal-audit-log'] ===
-    'node scripts/client-portal-audit-log-guard.mjs && tsx scripts/client-portal-audit-metadata-runtime.ts && tsx scripts/client-portal-audit-store-filter-runtime.ts',
+    'node scripts/client-portal-audit-log-guard.mjs && tsx scripts/client-portal-audit-metadata-runtime.ts && tsx scripts/client-portal-audit-store-filter-runtime.ts && tsx scripts/client-portal-audit-activity-runtime.ts',
   'package exposes static and runtime audit-log guards',
 );
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Chip, EmptyState, Skeleton } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { TableUpdateStatus } from '@/components/ui/TableUpdateStatus';
+import { Modal } from '@/components/ui/Modal';
 import { useAuditLog, useCanCustomizeTables } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import type { PortalAuditLogRow } from '@/lib/api';
@@ -18,6 +19,8 @@ function formatDate(value: string): string {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
   });
 }
 
@@ -206,6 +209,7 @@ export default function AuditLog() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [storeFilter, setStoreFilter] = useState<number | null>(null);
+  const [selected, setSelected] = useState<PortalAuditLogRow | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -226,14 +230,15 @@ export default function AuditLog() {
         render: (row) => <span className="text-xs font-medium text-ink-3">{formatDate(row.createdAt)}</span>,
       },
       {
-        key: 'event', sortAccessor: (row) => eventLabel(row.event),
+        key: 'event', sortAccessor: (row) => row.activity?.label ?? eventLabel(row.event),
         header: 'Activity',
         defaultWidth: 280,
         render: (row) => (
           <div className="min-w-0 space-y-1" title={row.event}>
             <Chip accent={eventTone(row.event)} dot={false} className="max-w-full">
-              <span className="truncate">{eventLabel(row.event)}</span>
+              <span className="truncate">{row.activity?.label ?? eventLabel(row.event)}</span>
             </Chip>
+            {row.activity ? <p className="text-xs text-ink-3">{row.activity.category} · {row.activity.outcome}</p> : null}
             <p className="truncate font-mono text-[10px] text-ink-3">{row.event}</p>
           </div>
         ),
@@ -263,13 +268,14 @@ export default function AuditLog() {
         ),
       },
       {
-        key: 'details', sortAccessor: (row) => detailPlain(row.metadata),
+        key: 'details', sortAccessor: (row) => row.activity?.summary ?? detailPlain(row.metadata),
         header: 'Details',
         defaultWidth: 360,
         minWidth: 240,
         render: (row) => (
-          <div className="max-w-xl" title={detailPlain(row.metadata)}>
-            <DetailPills metadata={row.metadata} />
+          <div className="max-w-xl space-y-2">
+            {row.activity ? <p className="line-clamp-3 break-words text-sm text-ink-2">{row.activity.summary}</p> : <DetailPills metadata={row.metadata} />}
+            <Button size="sm" variant="secondary" onClick={() => setSelected(row)} aria-label={`View details for event ${row.id}`}>View details</Button>
           </div>
         ),
       },
@@ -283,7 +289,7 @@ export default function AuditLog() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionTitle
             title="Audit log"
-            subtitle="Portal entries, page views, actions, and sidebar clicks"
+            subtitle="User actions, data requests and background checks. Open an event for its recorded details."
             right={
               <Button
                 variant="secondary"
@@ -372,6 +378,40 @@ export default function AuditLog() {
           />
         )}
       </GlassPanel>
+      <Modal open={selected !== null} onClose={() => setSelected(null)} title="Audit event details" maxWidth={760}>
+        {selected ? <div className="space-y-5">
+          <div>
+            <h3 className="font-semibold text-ink">{selected.activity?.label ?? eventLabel(selected.event)}</h3>
+            <p className="mt-1 break-words text-sm text-ink-2">{selected.activity?.summary ?? detailPlain(selected.metadata)}</p>
+          </div>
+          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+            {[
+              ['When', formatDate(selected.createdAt)],
+              ['User', selected.actorEmail ?? selected.actorUserId ?? 'Not recorded'],
+              ['Activity type', selected.activity?.category ?? 'Not recorded'],
+              ['Outcome', selected.activity?.outcome ?? 'Not recorded'],
+              ['Session scope', scopeLabel(selected)],
+              ['Event ID', String(selected.id)],
+            ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-xs text-ink-3">{label}</dt><dd className="mt-1 break-words font-medium text-ink">{value}</dd></div>)}
+          </dl>
+          <div className="rounded-lg bg-slate-50 p-3 text-sm text-ink-2">
+            {selected.activity?.note ?? 'Only recorded details are available for this event.'}
+            <p className="mt-1">Session scope lists the user’s available clients and stores, not necessarily the records affected by this event.</p>
+          </div>
+          <div>
+            <h4 className="mb-2 text-sm font-semibold">Recorded details</h4>
+            <dl className="divide-y divide-slate-200">
+              {(selected.activity?.details ?? detailEntries(selected.metadata)).map((detail, index) => (
+                <div key={`${detail.label}-${index}`} className="grid grid-cols-1 gap-1 py-2 text-sm sm:grid-cols-[180px_minmax(0,1fr)]">
+                  <dt className="text-ink-3">{detail.label}</dt><dd className="whitespace-pre-wrap break-words text-ink">{detail.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {(selected.activity?.details ?? detailEntries(selected.metadata)).length === 0 ? <p className="text-sm text-ink-3">Additional details: Not recorded</p> : null}
+          </div>
+          <p className="break-all font-mono text-xs text-ink-3">{selected.event}</p>
+        </div> : null}
+      </Modal>
     </div>
   );
 }

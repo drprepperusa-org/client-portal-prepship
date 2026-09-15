@@ -34,7 +34,11 @@ app.get('/inventory', async (c) => {
     search,
     lowStock,
   });
-  await recordPortalAudit('portal.inventory.list', scope, { page, pageSize, clientId, storeId, search, lowStock });
+  await recordPortalAudit('portal.inventory.list', scope, {
+    page, pageSize, clientId, storeId, search, lowStock,
+    rows: result.data.length, total: result.pagination.total,
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
+  });
   return c.json(result);
 });
 

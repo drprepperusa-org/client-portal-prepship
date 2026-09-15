@@ -41,6 +41,27 @@ Status key:
 
 ## Domain Matrix
 
+### Portal audit activity detail
+
+`client_portal_audit_logs.event`, `metadata`, actor and `created_at` are the historical
+source. `src/lib/client-portal/read-models/audit-log-activity.ts` projects the
+backend-owned `PortalAuditActivity` DTO: category, outcome, label, summary, note and
+allowlisted recorded detail fields. There is no join to today's mutable records,
+no invented before/after values, and no inference that a read request proves a
+deliberate user click. Requested/completed/failed/denied outcomes come from explicit
+event stages; browser navigation is reported intent. Session scope is explicitly
+separate from metadata identifying the affected record. Audit access remains global
+admin-only through `canViewAudit`; store attribution retains its existing backend
+selector. Metadata is sanitized again on read, including historical rows.
+
+Orders/inventory list writers record result counts and requested sorting from
+their canonical response/request. Order detail writers include the returned order
+number. Billing reads record their already-normalized day range. Existing audit
+rows are not rewritten; absent facts remain unrecorded. The frontend arranges this
+DTO and opens a detail dialog, without deriving outcomes or requesting raw provider
+payloads. Checks: `test:client-portal-audit-log`, contract/architecture/shadow-renderer
+and access-security guards, plus desktop/mobile detailed-audit browser proofs.
+
 ### Orders
 
 Status: `[MIXED]`

@@ -5,7 +5,8 @@ import { and, desc, ilike, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { clientPortalAuditLogs } from '../../db/schema/client-portal-audit-logs';
-import { recordPortalAudit } from '../../lib/client-portal/audit';
+import { recordPortalAudit, sanitizePortalAuditMetadata } from '../../lib/client-portal/audit';
+import { buildPortalAuditActivity } from '../../lib/client-portal/read-models/audit-log-activity';
 import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { auditActivityStorePredicate } from '../../lib/client-portal/read-models/audit-log-store-attribution';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
@@ -164,13 +165,18 @@ app.get('/audit-log', async (c) => {
   const scopeNames = await loadAuditScopeNames(rows);
 
   return c.json({
-    data: rows.map((row) => ({
-      ...row,
-      clientNames: row.clientIds.map((id) => scopeNames.clientNames.get(id) ?? `Client #${id}`),
-      storeNames: groupedStoreLabels(row.storeIds, scopeNames.storeNames),
-      scopeLabel: buildScopeLabel(row, scopeNames),
-      createdAt: row.createdAt.toISOString(),
-    })),
+    data: rows.map((row) => {
+      const metadata = sanitizePortalAuditMetadata(row.metadata) as Record<string, unknown>;
+      return {
+        ...row,
+        metadata,
+        activity: buildPortalAuditActivity(row.event, metadata),
+        clientNames: row.clientIds.map((id) => scopeNames.clientNames.get(id) ?? `Client #${id}`),
+        storeNames: groupedStoreLabels(row.storeIds, scopeNames.storeNames),
+        scopeLabel: buildScopeLabel(row, scopeNames),
+        createdAt: row.createdAt.toISOString(),
+      };
+    }),
     filters: {
       stores: storeFilters,
     },

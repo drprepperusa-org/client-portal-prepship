@@ -72,7 +72,7 @@ app.get('/invoice-details', async (c) => {
       await recordPortalAudit('portal.invoice_details.failed', scope, { clientId, reason: result.code });
       return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
     }
-    await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: result.rows.length, page });
+    await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: result.rows.length, page, pageSize, dateFrom: range.fromDay, dateTo: range.toDay, sortBy, sortDir });
     return c.json({
       data: result.rows,
       billingVisible: true,
@@ -93,7 +93,7 @@ app.get('/invoice-details', async (c) => {
     await recordPortalAudit('portal.invoice_details.failed', scope, { clientId, reason: result.code });
     return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
   }
-  await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: result.rows.length });
+  await recordPortalAudit('portal.invoice_details.view', scope, { clientId, rows: result.rows.length, dateFrom: range.fromDay, dateTo: range.toDay });
   return c.json({ data: result.rows, billingVisible: true });
 });
 
@@ -208,7 +208,7 @@ app.get('/invoice-summary', async (c) => {
     }),
     { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, returnPostageTotal: 0, returnProcessingTotal: 0, rowTotal: 0 },
   );
-  await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length });
+  await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length, dateFrom: range.fromDay, dateTo: range.toDay });
   return c.json({ data: canonicalRows, totals, billingVisible: true });
 });
 
