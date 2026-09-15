@@ -75,6 +75,8 @@ jobs:
         run: npm run test:client-portal-integration:setup
       - name: Run client-portal integration suite
         run: npm run test:client-portal-integration
+      - name: Verify Orders count sharing and fresh scoped reads
+        run: npm run test:client-portal-orders-performance:integration
       - name: Run CP-043 returns recovery integration suite
         run: npm run test:client-portal-returns-cp043:integration
       - name: Run CP-045 return-inspection authority integration suite

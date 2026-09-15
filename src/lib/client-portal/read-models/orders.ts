@@ -1,7 +1,7 @@
 import { orderFulfillmentStatusSql } from '../order-status';
 import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
 import { orderFulfillmentSignalSelects } from '../order-fulfillment-signals';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderItems } from '../../../db/schema/order-items';
@@ -121,70 +121,87 @@ export function orderStatusFilterPredicate(status: PortalOrderStatusFilter | nul
   );
 }
 
+// Only unfinished reads are shared. SQL + bindings encode every backend scope/filter;
+// userId additionally prevents sharing between different signed-in users. Never log this key.
+const pendingOrderCounts = new Map<string, Promise<number>>();
+
+function countPortalOrders(scope: ClientPortalScope, where: SQL | undefined): Promise<number> {
+  const query = db.select({ count: sql<number>`count(*)::int` })
+    .from(orders).leftJoin(clients, eq(clients.id, orders.clientId)).where(where);
+  const compiled = query.toSQL();
+  const key = JSON.stringify([scope.userId, compiled.sql, compiled.params]);
+  const pending = pendingOrderCounts.get(key);
+  if (pending) return pending;
+  const result = query.then(rows => Number(rows[0]?.count ?? 0))
+    .finally(() => { pendingOrderCounts.delete(key); });
+  pendingOrderCounts.set(key, result);
+  return result;
+}
+
 export async function listPortalOrders(
   scope: ClientPortalScope,
   opts: SortInput & { page: number; pageSize: number; status?: PortalOrderStatusFilter | null; clientId?: number | null; storeId?: number | null; search: string },
 ) {
   const { page, pageSize, status, clientId, storeId, search } = opts;
-  // CP-061: badge selects must be constants while the shared prod DB lacks the
-  // replacement tables — a live subquery there would 500 the whole list.
-  const replacementsReady = await replacementsSchemaReady();
   const where = and(
     orderScopePredicate(scope, { clientId, storeId }),
     activeClientPredicate(),
     orderStatusFilterPredicate(status),
     orderSearchPredicate(search),
   );
-  const rows = await db
-    .select({
-      order: orders,
-      override: orderOverrides,
-      clientName: clients.name,
-      storeIds: clients.storeIds,
-      // CP-040: the ONE customer shipping value the Orders list needs — the backend
-      // resolver's C. Shipping Rate (frozen billing_line_items shipping line per
-      // shipment → live billing-config projection), summed over the order's
-      // shipments. Never orders.shipping_amount (buyer-paid store shipping); never
-      // the internal carrier / service / selected-rate.
-      resolvedShippingRate: orderCustomerShippingRateSql(),
-      activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
-      activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
-      // CP-069: canonical signals for the backend-owned order fulfillment status
-      // (lib/client-portal/order-status.ts) — whether the order has an active / a voided
-      // OUTBOUND shipment (PrepShip's aggregate rule: voided, is_return), from the ONE
-      // projection PS-486 shares with the return-request recheck. Matched by the exact
-      // order_id, or — for shipments synced without a linked order_id — by order_number
-      // scoped to the SAME client (tenant isolation). Carrier tracking status is NOT read.
-      ...orderFulfillmentSignalSelects(),
-      // CP-061: backend-derived REPLACE badge — the frontend renders these
-      // fields verbatim and never re-derives them from replacement rows.
-      ...orderReplacementBadgeSelects(replacementsReady, sql`${orders.id}`),
-    })
-    .from(orders)
-    .leftJoin(clients, eq(clients.id, orders.clientId))
-    .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
-    .where(where)
-    .orderBy(...tableOrderBy(opts, {
-      date: orders.orderDate, client: sql`lower(${clients.name})`,
-      status: orderFulfillmentStatusSql(), order: referenceOrder(orders.orderNumber),
-      items: sql`(select lower(oi.name) from order_items oi where oi.order_id = ${orders.id} order by oi.line_index limit 1)`,
-      sku: sql`(select lower(oi.sku) from order_items oi where oi.order_id = ${orders.id} order by oi.line_index limit 1)`,
-      qty: sql`coalesce((select sum(oi.quantity) from order_items oi where oi.order_id = ${orders.id}), 0)`,
-      weight: scope.isGlobal ? orders.weightOz : undefined,
-      total: scope.canViewFinancials ? orders.orderTotal : undefined,
-      customerShipping: scope.canViewFinancials ? sql`(${orderCustomerShippingRateSql()})::numeric` : undefined,
-    }, [desc(orders.orderDate), desc(orders.id)], orders.id))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
-  const [countRows, canonicalItemsByOrder] = await Promise.all([
-    db
-      .select({ count: sql<number>`count(*)::int` })
+  const pageRead = (async () => {
+    // CP-061: badge selects must be constants while the shared prod DB lacks the
+    // replacement tables — a live subquery there would 500 the whole list.
+    const replacementsReady = await replacementsSchemaReady();
+    const rows = await db
+      .select({
+        order: orders,
+        override: orderOverrides,
+        clientName: clients.name,
+        storeIds: clients.storeIds,
+        // CP-040: the ONE customer shipping value the Orders list needs — the backend
+        // resolver's C. Shipping Rate (frozen billing_line_items shipping line per
+        // shipment → live billing-config projection), summed over the order's
+        // shipments. Never orders.shipping_amount (buyer-paid store shipping); never
+        // the internal carrier / service / selected-rate.
+        resolvedShippingRate: orderCustomerShippingRateSql(),
+        activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
+        activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
+        // CP-069: canonical signals for the backend-owned order fulfillment status
+        // (lib/client-portal/order-status.ts) — whether the order has an active / a voided
+        // OUTBOUND shipment (PrepShip's aggregate rule: voided, is_return), from the ONE
+        // projection PS-486 shares with the return-request recheck. Matched by the exact
+        // order_id, or — for shipments synced without a linked order_id — by order_number
+        // scoped to the SAME client (tenant isolation). Carrier tracking status is NOT read.
+        ...orderFulfillmentSignalSelects(),
+        // CP-061: backend-derived REPLACE badge — the frontend renders these
+        // fields verbatim and never re-derives them from replacement rows.
+        ...orderReplacementBadgeSelects(replacementsReady, sql`${orders.id}`),
+      })
       .from(orders)
       .leftJoin(clients, eq(clients.id, orders.clientId))
-      .where(where),
-    loadCanonicalOrderItems(rows.map((row) => row.order.id)),
+      .leftJoin(orderOverrides, eq(orderOverrides.orderId, orders.id))
+      .where(where)
+      .orderBy(...tableOrderBy(opts, {
+        date: orders.orderDate, client: sql`lower(${clients.name})`,
+        status: orderFulfillmentStatusSql(), order: referenceOrder(orders.orderNumber),
+        items: sql`(select lower(oi.name) from order_items oi where oi.order_id = ${orders.id} order by oi.line_index limit 1)`,
+        sku: sql`(select lower(oi.sku) from order_items oi where oi.order_id = ${orders.id} order by oi.line_index limit 1)`,
+        qty: sql`coalesce((select sum(oi.quantity) from order_items oi where oi.order_id = ${orders.id}), 0)`,
+        weight: scope.isGlobal ? orders.weightOz : undefined,
+        total: scope.canViewFinancials ? orders.orderTotal : undefined,
+        customerShipping: scope.canViewFinancials ? sql`(${orderCustomerShippingRateSql()})::numeric` : undefined,
+      }, [desc(orders.orderDate), desc(orders.id)], orders.id))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+    const canonicalItemsByOrder = await loadCanonicalOrderItems(rows.map((row) => row.order.id));
+    return { rows, canonicalItemsByOrder };
+  })();
+  // Count and page are independent. Start the count now so the badge/dashboard can
+  // reuse the same pending read; item enrichment remains dependent on the page's IDs.
+  const [{ rows, canonicalItemsByOrder }, count] = await Promise.all([
+    pageRead, countPortalOrders(scope, where),
   ]);
-  const count = countRows[0]?.count ?? rows.length;
   return {
     data: rows.map((row) =>
       toPortalOrderDto(
@@ -278,6 +295,5 @@ export async function awaitingActiveOrderCount(
     activeClientPredicate(),
     orderStatusFilterPredicate('awaiting_shipment'),
   );
-  const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(orders).where(where);
-  return Number(row?.count ?? 0);
+  return countPortalOrders(scope, where);
 }
