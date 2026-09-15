@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-billing-summary-performance": "tsx scripts/client-portal-billing-summary-performance-test.ts",
     "test:client-portal-table-sorting": "tsx scripts/client-portal-table-sort-guard.ts",
     "test:portal-table-retention": "tsx scripts/portal-table-retention-test.ts",
     "test:client-portal-table-sorting:browser": "playwright test web/e2e/client-portal-table-sorting.spec.js --workers=1 --reporter=line",

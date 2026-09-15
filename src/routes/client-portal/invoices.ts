@@ -131,7 +131,7 @@ app.get('/invoice-summary', async (c) => {
   //
   // So the identity stays and every money field is REPLACED by the canonical answer for that
   // (client, period). Periods are grouped first, so this costs one upstream call per distinct
-  // period on the page — typically one, at most two for half-month granularity — not one per row.
+  // period on the page, not one per row. A rolling 90-day view can span seven half-months.
   const listAuthorization = c.req.header('authorization');
   if (!listAuthorization) return c.json({ error: 'Missing bearer token' }, 401);
   const listRequestId = c.req.header('x-request-id') ?? undefined;
@@ -156,20 +156,23 @@ app.get('/invoice-summary', async (c) => {
   if (!keyedResult.ok) return contractBreach(keyedResult.reason);
 
   const canonicalByPeriod = new Map<string, Map<number, CanonicalBillingTotals>>();
-  for (const [key, { dateFrom, dateTo, clientIds }] of keyedResult.periods) {
-    const result = await fetchCanonicalInvoiceTotals(
-      listAuthorization,
-      { clientIds, dateFrom, dateTo },
-      listRequestId,
-    );
-    // Fail closed. Silently falling back to this repo's aggregation would restore the exact
-    // divergence this replaces, and it would be invisible — the numbers would simply be the
-    // old, wrong ones with nothing to indicate it.
-    if (!result.ok) {
-      await recordPortalAudit('portal.invoice_summary.failed', scope, { clientId, reason: result.code });
-      return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
+  const periods = [...keyedResult.periods];
+  // Independent period reads overlap in pairs. Bound upstream pressure for long ranges,
+  // preserve period order, and finish the current pair before returning any error.
+  // No cross-request cache: every summary still reads the caller's current canonical totals.
+  for (let offset = 0; offset < periods.length; offset += 2) {
+    const batch = periods.slice(offset, offset + 2);
+    const results = await Promise.all(batch.map(async ([key, { dateFrom, dateTo, clientIds }]) =>
+      [key, await fetchCanonicalInvoiceTotals(listAuthorization, { clientIds, dateFrom, dateTo }, listRequestId)] as const,
+    ));
+    for (const [key, result] of results) {
+      // Fail closed without returning partial money or launching later periods.
+      if (!result.ok) {
+        await recordPortalAudit('portal.invoice_summary.failed', scope, { clientId, reason: result.code });
+        return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
+      }
+      canonicalByPeriod.set(key, result.byClient);
     }
-    canonicalByPeriod.set(key, result.byClient);
   }
 
   // Absence is a breach, never $0.00 — the module refuses to assign a row it cannot find.
