@@ -52,8 +52,10 @@ assert(
   'auth provider tracks Supabase auth state changes',
 );
 assert(
-  appSource.includes('<Navigate to="/login" replace state={{ from: location.pathname }} />'),
-  'auth wall routes signed-out visitors to /login (sign-out lands on login structurally)',
+  appSource.includes('<Navigate to="/login" replace state={{ from: location.pathname + location.search }} />') &&
+    appSource.includes('<Navigate to={signedInTarget} replace />') &&
+    appSource.includes("requested.startsWith('/') && !requested.startsWith('//')"),
+  'auth wall routes signed-out visitors to /login and preserves local filtered links after sign-in',
 );
 assert(
   packageJson.scripts?.['test:auth-logout'] === 'node scripts/auth-logout-guard.mjs',

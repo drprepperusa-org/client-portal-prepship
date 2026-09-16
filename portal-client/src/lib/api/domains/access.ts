@@ -6,23 +6,27 @@ import type {
   PortalAccessUser,
   PortalAuditClickInput,
   PortalAuditLogResponse,
-  PortalAuditInvestigationFilters,
+  PortalAuditLogFilters,
   PortalClientRow,
   PortalMe,
 } from '@client-portal-contracts/access';
-import { apiDelete, apiGet, apiPatch, apiPost } from '../transport';
+import { apiBlob, apiDelete, apiGet, apiPatch, apiPost } from '../transport';
+
+const auditFilters = (opts: PortalAuditLogFilters) => ({
+  search: opts.search, storeId: opts.storeId, actorEmail: opts.actorEmail,
+  dateFrom: opts.dateFrom, dateTo: opts.dateTo, activity: opts.activity, hideBackground: opts.hideBackground,
+});
 
 export const accessApi = {
   me: (token: RequestAuth) => apiGet<PortalMe>(token, '/api/client-portal/me'),
-  auditLog: (token: RequestAuth, opts: PortalAuditInvestigationFilters & { search?: string; limit?: number; storeId?: number | null; actorEmail?: string; page?: number } = {}) =>
+  auditLog: (token: RequestAuth, opts: PortalAuditLogFilters & { limit?: number; page?: number } = {}) =>
     apiGet<PortalAuditLogResponse>(token, '/api/client-portal/audit-log', {
-      search: opts.search,
+      ...auditFilters(opts),
       limit: opts.limit ?? 100,
-      storeId: opts.storeId,
-      actorEmail: opts.actorEmail,
       page: opts.page,
-      dateFrom: opts.dateFrom, dateTo: opts.dateTo, activity: opts.activity, hideBackground: opts.hideBackground,
     }),
+  auditCsv: (token: RequestAuth, opts: PortalAuditLogFilters = {}) =>
+    apiBlob(token, '/api/client-portal/audit-log', { ...auditFilters(opts), format: 'csv' }, 'text/csv'),
   auditClick: (token: RequestAuth, body: PortalAuditClickInput) =>
     apiPost<{ ok: true }>(token, '/api/client-portal/audit-log/click', body),
   clients: (token: RequestAuth) =>

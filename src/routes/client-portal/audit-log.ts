@@ -12,10 +12,12 @@ import { clientPortalCapabilities } from '../../lib/client-portal/capabilities';
 import { auditActivityStorePredicate } from '../../lib/client-portal/read-models/audit-log-store-attribution';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { parsePositiveInt, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
+import { auditCsv, AUDIT_EXPORT_MAX_ROWS } from '../../lib/client-portal/audit-csv';
 
 const app = new Hono();
 
 const investigationQuery = z.object({
+  format: z.enum(['csv']).optional(),
   dateFrom: z.string().datetime({ offset: true }).optional(),
   dateTo: z.string().datetime({ offset: true }).optional(),
   activity: z.enum(['all', 'views', 'actions', 'navigation', 'failed', 'denied']).default('all'),
@@ -137,10 +139,11 @@ app.get('/audit-log', async (c) => {
   const parsed = investigationQuery.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: 'Invalid audit filters or date range' }, 400);
   const investigation = parsed.data;
-  const limit = Math.min(parsePositiveInt(c.req.query('limit')) ?? 100, 250);
+  const exporting = investigation.format === 'csv';
+  const limit = exporting ? AUDIT_EXPORT_MAX_ROWS : Math.min(parsePositiveInt(c.req.query('limit')) ?? 100, 250);
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const actorEmail = c.req.query('actorEmail')?.trim();
-  const page = Math.min(parsePositiveInt(c.req.query('page')) ?? 1, 1_000_000);
+  const page = exporting ? 1 : Math.min(parsePositiveInt(c.req.query('page')) ?? 1, 1_000_000);
   const where = and(
     ...[
       ne(clientPortalAuditLogs.event, 'portal.audit_log.view'),
@@ -180,29 +183,42 @@ app.get('/audit-log', async (c) => {
       .orderBy(desc(clientPortalAuditLogs.createdAt), desc(clientPortalAuditLogs.id))
       .limit(limit + 1)
       .offset((page - 1) * limit),
-    loadAuditStoreFilters(),
+    exporting ? [] : loadAuditStoreFilters(),
     // Discover actors across saved history, not just the current 100-row page.
-    db.selectDistinct({ email: clientPortalAuditLogs.actorEmail })
+    exporting ? [] : db.selectDistinct({ email: clientPortalAuditLogs.actorEmail })
       .from(clientPortalAuditLogs)
       .where(and(isNotNull(clientPortalAuditLogs.actorEmail), ne(clientPortalAuditLogs.event, 'portal.audit_log.view')))
       .orderBy(asc(clientPortalAuditLogs.actorEmail)),
   ]);
+  if (exporting && pageRows.length > AUDIT_EXPORT_MAX_ROWS) {
+    return c.json({ error: 'Too many events to export. Narrow the date range or filters and try again.' }, 413);
+  }
   const rows = pageRows.slice(0, limit);
   const scopeNames = await loadAuditScopeNames(rows);
-
+  const data = rows.map((row) => {
+    const metadata = sanitizePortalAuditMetadata(row.metadata) as Record<string, unknown>;
+    return {
+      ...row,
+      metadata,
+      activity: buildPortalAuditActivity(row.event, metadata),
+      clientNames: row.clientIds.map((id) => scopeNames.clientNames.get(id) ?? `Client #${id}`),
+      storeNames: groupedStoreLabels(row.storeIds, scopeNames.storeNames),
+      scopeLabel: buildScopeLabel(row, scopeNames),
+      createdAt: row.createdAt.toISOString(),
+    };
+  });
+  if (exporting) {
+    const csv = auditCsv(data);
+    if (csv === null) return c.json({ error: 'Export is too large. Narrow the date range or filters and try again.' }, 413);
+    return c.body(csv, 200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+  }
   return c.json({
-    data: rows.map((row) => {
-      const metadata = sanitizePortalAuditMetadata(row.metadata) as Record<string, unknown>;
-      return {
-        ...row,
-        metadata,
-        activity: buildPortalAuditActivity(row.event, metadata),
-        clientNames: row.clientIds.map((id) => scopeNames.clientNames.get(id) ?? `Client #${id}`),
-        storeNames: groupedStoreLabels(row.storeIds, scopeNames.storeNames),
-        scopeLabel: buildScopeLabel(row, scopeNames),
-        createdAt: row.createdAt.toISOString(),
-      };
-    }),
+    data,
     filters: {
       stores: storeFilters,
       users: userFilters.flatMap((user) => user.email ? [user.email] : []),

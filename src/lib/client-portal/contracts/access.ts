@@ -35,6 +35,12 @@ export interface PortalAuditInvestigationFilters {
   hideBackground?: boolean;
 }
 
+export interface PortalAuditLogFilters extends PortalAuditInvestigationFilters {
+  search?: string;
+  storeId?: number | null;
+  actorEmail?: string;
+}
+
 export interface PortalAuditLogRow {
   id: number;
   event: string;

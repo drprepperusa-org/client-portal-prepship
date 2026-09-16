@@ -54,6 +54,13 @@ separate from metadata identifying the affected record. Audit access remains glo
 admin-only through `canViewAudit`; store attribution retains its existing backend
 selector. Metadata is sanitized again on read, including historical rows.
 
+Audit CSV is serialized server-side by `src/lib/client-portal/audit-csv.ts` from
+that same sanitized DTO and selector. It exports all selected records across UI
+pages (up to 50,000 records / 16 MiB, otherwise an explicit error), UTC `created_at`,
+activity/outcome and allowlisted details. It never dumps raw metadata. The browser
+only supplies filters and downloads the returned bytes. Export access remains
+`canViewAudit`; a saved view or CSV request grants no additional authority.
+
 Orders/inventory list writers record result counts and requested sorting from
 their canonical response/request. Order detail writers include the returned order
 number. Billing reads record their already-normalized day range. Existing audit

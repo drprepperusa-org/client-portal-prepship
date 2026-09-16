@@ -1,5 +1,21 @@
 import assert from 'node:assert/strict';
 import { buildPortalAuditActivity } from '../src/lib/client-portal/read-models/audit-log-activity';
+import { auditCsv, AUDIT_EXPORT_MAX_ROWS } from '../src/lib/client-portal/audit-csv';
+
+function csvRecords(text: string): string[][] {
+  const records: string[][] = []; let record: string[] = [], cell = '', quoted = false;
+  const input = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '"') {
+      if (quoted && input[i + 1] === '"') { cell += '"'; i++; } else quoted = !quoted;
+    } else if (ch === ',' && !quoted) { record.push(cell); cell = ''; }
+    else if (ch === '\r' && input[i + 1] === '\n' && !quoted) {
+      record.push(cell); records.push(record); record = []; cell = ''; i++;
+    } else cell += ch;
+  }
+  return records;
+}
 
 const orders = buildPortalAuditActivity('portal.orders.list', {
   status: 'awaiting_shipment', page: 2, pageSize: 50, search: '4002', rows: 8, total: 58,
@@ -166,5 +182,50 @@ try {
   const storeCombined = await read(`?actorEmail=scoped%40example.test&storeId=77&search=access&activity=denied&hideBackground=true&${range}`);
   assert.equal(storeCombined.data.length, 1, 'date, actor, activity, search and store attribution intersect');
   assert.equal(storeCombined.data[0].metadata.storeId, 77);
+  const exportRead = (query = '') => app.request(`/audit-log?format=csv${query}`, { headers: { 'x-fixture-admin': 'yes' } });
+  const beforeDeniedExport = selects;
+  assert.equal((await app.request('/audit-log?format=csv')).status, 403);
+  assert.equal(selects, beforeDeniedExport, 'CSV cannot bypass admin access');
+  assert.equal((await exportRead('&dateFrom=invalid')).status, 400);
+  assert.equal((await app.request('/audit-log?format=pdf', { headers: { 'x-fixture-admin': 'yes' } })).status, 400);
+  const scopedCsv = await exportRead(`&actorEmail=scoped%40example.test&storeId=77&search=access&activity=denied&hideBackground=true&${range}`);
+  const scopedRecords = csvRecords(await scopedCsv.text());
+  assert.deepEqual(scopedRecords.slice(1).map(row => Number(row[0])), storeCombined.data.map((row: { id: number }) => row.id));
+  assert.equal(scopedRecords[1][6], 'Denied');
+  assert.match(scopedRecords[1][9], /Activity store ID: 77/);
+
+  await memory.insert(clientPortalAuditLogs).values(Array.from({ length: 320 }, (_, i) => ({
+    event: 'portal.ui.click', actorEmail: 'csv@example.test', actorUserId: 'csv-user',
+    createdAt: new Date('2026-09-16T01:00:00Z'),
+    metadata: { target: `Item ${i}, "quoted"\n中文`, from: '/orders?token=hidden-secret', apiToken: 'private-secret', rawPayload: 'private-payload' },
+  })));
+  const firstCsvPage = await read('?actorEmail=csv%40example.test&limit=250');
+  const lastCsvPage = await read('?actorEmail=csv%40example.test&limit=250&page=2');
+  const exported = await exportRead('&actorEmail=csv%40example.test&page=999&limit=1');
+  assert.equal(exported.status, 200);
+  assert.match(exported.headers.get('content-type')!, /^text\/csv/);
+  assert.match(exported.headers.get('content-disposition')!, /attachment; filename="audit-log-.*\.csv"/);
+  assert.equal(exported.headers.get('cache-control'), 'private, no-store');
+  const exportText = await exported.text();
+  assert.doesNotMatch(exportText, /hidden-secret|private-secret|private-payload|apiToken|rawPayload/);
+  const exportedRows = csvRecords(exportText);
+  assert.equal(exportedRows.length, 321, 'all matches across pages, independent of page/limit');
+  assert.deepEqual(exportedRows.slice(1).map(row => Number(row[0])),
+    [...firstCsvPage.data, ...lastCsvPage.data].map((row: { id: number }) => row.id));
+  assert.ok(exportedRows.slice(1).every(row => row.length === exportedRows[0].length), 'commas, quotes and newlines preserve columns');
+  assert.match(exportedRows[1][9], /Item 319, "quoted"\n中文/);
+  assert.equal(exportedRows[1][1], '2026-09-16T01:00:00.000Z');
+  assert.equal(csvRecords(await (await exportRead('&search=does-not-exist')).text()).length, 1, 'empty results export a header');
+  for (const user of ['=1+1', '+SUM(1)', '-2+3', '@SUM(1)', '\t=1+1', '  =1+1']) {
+    const dto = { ...firstCsvPage.data[0], actorEmail: user };
+    assert.equal(csvRecords(auditCsv([dto])!)[1][2], `'${user}`, 'spreadsheet formula escaped');
+  }
+  assert.equal(auditCsv([{ ...firstCsvPage.data[0], scopeLabel: 'x'.repeat(16 * 1024 * 1024) }]), null, 'oversized files fail without partial CSV');
+  await pg.exec(`insert into client_portal_audit_logs (event, actor_email)
+    select 'portal.ui.click', 'oversize@example.test' from generate_series(1, ${AUDIT_EXPORT_MAX_ROWS + 1})`);
+  const tooLarge = await exportRead('&actorEmail=oversize%40example.test');
+  assert.equal(tooLarge.status, 413);
+  assert.equal(tooLarge.headers.get('content-disposition'), null, 'row overflow never sends a partial attachment');
+  assert.match((await tooLarge.json()).error, /Narrow/);
 } finally { db.select = select; db.selectDistinct = selectDistinct; db.insert = insert; await pg.close(); }
 console.log('PASS audit: recorded facts, redaction, admin-only access, all-user discovery, client identity and paginated history');

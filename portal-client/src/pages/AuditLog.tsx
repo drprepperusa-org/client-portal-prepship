@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn';
 import type { PortalAuditLogRow } from '@/lib/api';
 import { AuditInvestigationFilters } from '@/components/audit/AuditInvestigationFilters';
 import { CopyAuditView } from '@/components/audit/CopyAuditView';
+import { ExportAuditCsv } from '@/components/audit/ExportAuditCsv';
 import { useAuditView } from '@/lib/useAuditView';
 
 function formatDate(value: string): string {
@@ -341,6 +342,8 @@ export default function AuditLog() {
         {invalid && <p role="alert" className="text-sm text-ink-2">Some link filters were invalid and were reset. Check the selected filters below.</p>}
         <AuditInvestigationFilters key={`${dateDraftKey}/${filters.dateFrom ?? ''}/${filters.dateTo ?? ''}`} value={filters} onChange={setFilters} />
         <CopyAuditView key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters, page])} getUrl={copyUrl} disabled={searchPending} />
+        <ExportAuditCsv key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters])}
+          filters={{ ...filters, search: debouncedSearch, storeId: storeFilter, actorEmail: userFilter }} disabled={searchPending || invalid} />
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
           <ClipboardList size={14} />
           <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>

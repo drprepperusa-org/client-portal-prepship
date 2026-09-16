@@ -761,3 +761,82 @@ test('Audit shared links do not grant audit capability', async ({ page }) => {
   expect(requests).toHaveLength(0);
   await expect(page.getByRole('button', { name: 'Copy view link' })).toHaveCount(0);
 });
+
+const auditCsvFixture = '\uFEFF"Event ID","When (UTC)","User","Recorded details"\r\n"777","2026-09-16T01:00:00.000Z","client@example.test","Order: 4002, quoted ""box""\n中文"\r\n';
+for (const width of [390, 1440]) test(`Audit CSV downloads backend bytes with all filters and no current-page restriction at ${width}px`, async ({ page }) => {
+  const requests = [];
+  await page.setViewportSize({ width, height: 900 });
+  await setup(page, url => url.pathname === '/api/client-portal/audit-log' ? auditViewFixture(url) : undefined);
+  await page.route('**/api/client-portal/audit-log?**', async route => {
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    if (params.format !== 'csv') { await route.fallback(); return; }
+    requests.push(params);
+    await route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8',
+      headers: { 'Content-Disposition': 'attachment; filename="audit-recorded-events.csv"' }, body: auditCsvFixture });
+  });
+  await page.goto(base + '/audit-log?' + new URLSearchParams(savedAuditParams));
+  await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('audit-recorded-events.csv');
+  const { readFile } = await import('node:fs/promises');
+  expect(await readFile(await download.path(), 'utf8')).toBe(auditCsvFixture);
+  const { page: _page, ...filters } = savedAuditParams;
+  expect(requests).toEqual([{ ...filters, format: 'csv' }]);
+  await expect(page.getByRole('status')).toContainText('CSV downloaded with all matching events');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('Audit CSV failure and oversized range show safe feedback and allow retry', async ({ page }) => {
+  await setup(page, url => url.pathname === '/api/client-portal/audit-log' ? auditViewFixture(url) : undefined);
+  let status = 503; const downloads = [];
+  page.on('download', download => downloads.push(download));
+  await page.route('**/api/client-portal/audit-log?**', async route => {
+    if (new URL(route.request().url()).searchParams.get('format') !== 'csv') { await route.fallback(); return; }
+    if (status !== 200) { await route.fulfill({ status, json: { error: 'private database diagnostic' } }); return; }
+    await route.fulfill({ contentType: 'text/csv', body: auditCsvFixture });
+  });
+  await page.goto(base + '/audit-log');
+  await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect(page.getByRole('status')).toHaveText('Could not export the audit log. Please try again.');
+  await expect(page.getByText('private database diagnostic')).toHaveCount(0);
+  status = 413;
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect(page.getByRole('status')).toContainText('Narrow the date range or filters');
+  expect(downloads).toHaveLength(0);
+  status = 200;
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect(page.getByRole('status')).toContainText('CSV downloaded');
+  await expect.poll(() => downloads.length).toBe(1);
+});
+
+test('Audit CSV pending exports block duplicate clicks and cancel on filter change', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.exportAborts = 0;
+    const original = window.fetch;
+    window.fetch = (...args) => {
+      if (String(args[0]).includes('format=csv')) args[1]?.signal?.addEventListener('abort', () => window.exportAborts++);
+      return original(...args);
+    };
+  });
+  await setup(page, url => url.pathname === '/api/client-portal/audit-log' ? auditViewFixture(url) : undefined);
+  const pending = [], downloads = [];
+  page.on('download', download => downloads.push(download));
+  await page.route('**/api/client-portal/audit-log?**', async route => {
+    if (new URL(route.request().url()).searchParams.get('format') !== 'csv') { await route.fallback(); return; }
+    pending.push(route);
+  });
+  await page.goto(base + '/audit-log');
+  await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect.poll(() => pending.length).toBe(1);
+  await expect(page.getByRole('button', { name: 'Exporting…' })).toBeDisabled();
+  await page.getByLabel('Filter audit log by activity').selectOption('failed');
+  await expect.poll(() => page.evaluate(() => window.exportAborts)).toBe(1);
+  await pending[0].fulfill({ contentType: 'text/csv', body: auditCsvFixture });
+  expect(downloads).toHaveLength(0);
+  await expect(page.getByRole('button', { name: 'Export CSV' })).toBeEnabled();
+  expect(pending).toHaveLength(1);
+});
