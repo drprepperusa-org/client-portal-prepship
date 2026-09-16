@@ -80,6 +80,7 @@ export function toClientAnalysisSkuOrdersDto(result: ClientAnalysisSkuOrdersSour
     averageUnitsPerDay: result.dailySales.length > 0 ? result.totalUnits / result.dailySales.length : 0,
     dailySales: result.dailySales.map((point) => ({ day: point.day, units: point.units })),
     orders: result.orders.map(toClientAnalysisSkuOrderDto),
+    pagination: result.pagination ? { page: result.pagination.page, pageSize: result.pagination.pageSize, total: result.pagination.total, totalPages: result.pagination.totalPages } : undefined,
   };
 }
 
@@ -95,6 +96,14 @@ app.get('/analysis', async (c) => {
     dateFrom: asTimestamp(from),
     dateTo: asTimestamp(to),
     limit,
+    skuPage: {
+      page: parsePositiveInt(c.req.query('page')) ?? 1,
+      pageSize: parsePageSize(c.req.query('pageSize') ?? c.req.query('limit'), 50, 500),
+      search: c.req.query('search'),
+      sortKey: scope.canViewFinancials ? c.req.query('sortKey')
+        : ['revenue', 'avgPrice'].includes(c.req.query('sortKey') ?? '') ? 'totalQty' : c.req.query('sortKey'),
+      sortDir: c.req.query('sortDir'),
+    },
     clientId: clientId ?? undefined,
     storeId: storeId ?? undefined,
     clientIds: scope.clientIds,
@@ -114,6 +123,8 @@ app.get('/analysis', async (c) => {
   const rows = result.rows.map((row) => toClientAnalysisRow(row, scope.canViewFinancials));
   return c.json({
     data: rows,
+    topSkus: result.topRows.map((row) => toClientAnalysisRow(row, scope.canViewFinancials)),
+    pagination: result.pagination,
     dateBuckets: result.dateBuckets,
     totalSkus: result.totalSkus,
     totalOrders: result.totalOrders,
@@ -169,6 +180,8 @@ app.get('/analysis/sku-orders', async (c) => {
   if (!item) return c.json({ error: 'Inventory item not found' }, 404);
 
   const result = await getSkuOrdersForSku({
+    pagination: { page: parsePositiveInt(c.req.query('page')) ?? 1,
+      pageSize: parsePageSize(c.req.query('pageSize'), 50, 500) },
     sku: item.sku,
     name: item.name,
     clientId: item.clientId,

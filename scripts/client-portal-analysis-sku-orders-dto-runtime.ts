@@ -58,6 +58,7 @@ const expectedTopLevel = [
   'averageUnitsPerDay',
   'dailySales',
   'orders',
+  'pagination',
 ];
 const expectedOrder = [
   'order_id',
@@ -122,4 +123,9 @@ assert(dto.orders[0]?.shippingMoneyState === 'attributed', 'shippingMoneyState m
 const emittedKeys = collectKeys(dto);
 assert(forbidden.every((field) => !emittedKeys.has(field)), 'forbidden or future shared field crossed DTO boundary');
 
+const paged = toClientAnalysisSkuOrdersDto({ ...source, pagination: {
+  page: 2, pageSize: 50, total: 211, totalPages: 5, internalNote: 'blocked',
+} } as SkuOrdersResult);
+assert(JSON.stringify(paged.pagination) === JSON.stringify({page:2,pageSize:50,total:211,totalPages:5}),
+  'pagination must whitelist metadata rather than spread future internal fields');
 console.log('PASS CP-050/CP-060 Analysis SKU-orders DTO runtime whitelist');

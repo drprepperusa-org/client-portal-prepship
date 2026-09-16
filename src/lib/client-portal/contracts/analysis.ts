@@ -30,6 +30,9 @@ export interface AnalysisOrderCombination {
 
 export interface AnalysisBreakdown {
   data: AnalysisSkuRow[];
+  /** Top five for the full scoped date window, independent of table search/page. */
+  topSkus?: AnalysisSkuRow[];
+  pagination?: AnalysisPagination;
   dateBuckets?: string[];
   totalSkus?: number;
   totalOrders?: number;
@@ -117,4 +120,20 @@ export interface SkuOrdersResult {
   averageUnitsPerDay: number;
   dailySales: Array<{ day: string; units: number }>;
   orders: SkuOrderRow[];
+  pagination?: AnalysisPagination;
+}
+/** Backend-scoped counts before LIMIT; never inferred from the visible page. */
+export interface AnalysisPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AnalysisListOptions {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortKey?: string;
+  sortDir?: 'asc' | 'desc';
 }

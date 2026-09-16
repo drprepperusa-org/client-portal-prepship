@@ -128,12 +128,12 @@ assert(
 
 // ── 7. Selected client/store carried in BOTH query keys + requests ──
 assert(
-  hooks.includes("['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope']") &&
-    hooks.includes('portalApi.analysis(t, dateRange, clientId)'),
+  hooks.includes("['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope', options]") &&
+    hooks.includes('portalApi.analysis(t, dateRange, clientId, options)'),
   'useAnalysis includes clientId in its query key + request (parity with useDashboard)',
 );
 assert(
-  /analysis: \(token: RequestAuth, range: PortalDateRange, clientId\?: number\)/.test(api),
+  /analysis: \(token: RequestAuth, range: PortalDateRange, clientId\?: number, options: AnalysisListOptions = \{\}\)/.test(api),
   'api.analysis accepts and forwards clientId',
 );
 assert(

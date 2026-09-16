@@ -1,3 +1,8 @@
+import { SearchInput } from '@/components/ui/SearchInput';
+import { Pagination } from '@/components/ui/Pagination';
+import { useDebounced } from '@/lib/useDebounced';
+import { useFilteredPage } from '@/lib/useFilteredPage';
+import type { SortState } from '@/components/ui/data-table/types';
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -26,8 +31,18 @@ const num = (v: unknown) => Number(v ?? 0) || 0;
 const TOP_N = 5;
 
 export default function Analysis() {
+  const { dateRange, clientId } = usePortalFilters();
+  return <AnalysisView key={JSON.stringify([clientId, dateRange])} />;
+}
+
+function AnalysisView() {
   const { days } = usePortalFilters();
-  const analysis = useAnalysis();
+  const [search, setSearch] = useState('');
+  const [pageSize, setPageSize] = useState(50);
+  const [sort, setSort] = useState<SortState>({ key: 'totalQty', dir: 'desc' });
+  const debouncedSearch = useDebounced(search, 300);
+  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, pageSize, sort]));
+  const analysis = useAnalysis({ search: debouncedSearch, page, pageSize, sortKey: sort?.key, sortDir: sort?.dir });
   const canCustomizeTables = useCanCustomizeTables();
   const loading = analysis.isLoading;
   // SKU drill-down panel + nested order-detail drill-down.
@@ -48,7 +63,7 @@ export default function Analysis() {
 
   // Build the "Daily Units Sold — Top SKUs" multi-line series from the top SKUs.
   const { trendData, topSkus } = useMemo(() => {
-    const top = [...rows].sort((a, b) => num(b.total_qty) - num(a.total_qty)).slice(0, TOP_N);
+    const top = analysis.data?.topSkus ?? [];
     const skus = top.map((r) => r.sku);
     const data = buckets.map((day, i) => {
       const point: Record<string, number | string> = { day: day.slice(5) };
@@ -56,7 +71,7 @@ export default function Analysis() {
       return point;
     });
     return { trendData: data, topSkus: skus };
-  }, [rows, buckets]);
+  }, [analysis.data?.topSkus, buckets]);
 
   const columns: Column<AnalysisSkuRow>[] = [
     {
@@ -151,7 +166,7 @@ export default function Analysis() {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-glass" />)
         ) : (
           <>
-            <StatCard label="Active SKUs" value={Number(analysis.data?.totalSkus ?? rows.length).toLocaleString()} icon={Boxes} accent="teal" />
+            <StatCard label="Active SKUs" value={Number(analysis.data?.totalSkus ?? 0).toLocaleString()} icon={Boxes} accent="teal" />
             <StatCard label={`Orders (${days}d)`} value={Number(analysis.data?.totalOrders ?? 0).toLocaleString()} icon={TrendingUp} accent="indigo" />
             <StatCard label={`Units sold (${days}d)`} value={totalUnits.toLocaleString()} icon={Package} accent="amber" />
             <StatCard label={`Revenue (${days}d)`} value={money(totalRevenue)} icon={DollarSign} accent="emerald" hint="Visible if permitted" />
@@ -179,21 +194,31 @@ export default function Analysis() {
 
       {/* SKU breakdown table */}
       <GlassPanel className="p-2 sm:p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+          <SearchInput value={search} onChange={setSearch} placeholder="SKU or item name" ariaLabel="Search Analysis SKUs" />
+          <p className="text-xs text-ink-3">Search filters the table. Totals and charts cover the full selected period.</p>
+        </div>
         {loading ? (
           <div className="p-4"><Skeleton className="h-64" /></div>
         ) : (
-          <DataTable
-            tableId="analysis"
-            isUpdating={analysis.isFetching && !loading}
-            columns={columns}
-            rows={rows}
-            rowKey={(r) => `${r.sku}-${r.client_id ?? ''}`}
-            onRowClick={(r) => r.inv_sku_id != null && setSelectedSku(r)}
-            rowActionLabel={(r) => `View SKU details for ${r.sku}`}
-            allowColumnCustomization={canCustomizeTables}
-            empty={<EmptyState icon={<Inbox size={24} />} title="No analytics yet" message="SKU analytics will appear here once orders are synced." />}
-            stickyHeader
-          />
+          <fieldset disabled={analysis.isFetching} className="min-w-0">
+            <DataTable
+              sort={sort} onSortChange={setSort}
+              tableId="analysis"
+              isUpdating={analysis.isFetching && !loading}
+              columns={columns}
+              rows={rows}
+              rowKey={(r) => `${r.sku}-${r.client_id ?? ''}`}
+              onRowClick={(r) => !analysis.isFetching && r.inv_sku_id != null && setSelectedSku(r)}
+              rowActionLabel={(r) => `View SKU details for ${r.sku}`}
+              allowColumnCustomization={canCustomizeTables}
+              empty={<EmptyState icon={<Inbox size={24} />}
+                title={debouncedSearch ? 'No matching SKUs' : 'No analytics yet'}
+                message={debouncedSearch ? 'Try a different SKU or item name.' : 'SKU analytics will appear here once orders are synced.'} />}
+              stickyHeader
+            />
+            {analysis.data?.pagination && <Pagination {...analysis.data.pagination} onPage={setPage} onPageSize={setPageSize} />}
+          </fieldset>
         )}
       </GlassPanel>
 
@@ -214,7 +239,7 @@ export default function Analysis() {
 
       {/* SKU drill-down panel */}
       <Drawer open={!!selectedSku} onClose={() => setSelectedSku(null)} title={selectedSku?.name ?? selectedSku?.sku ?? 'SKU detail'} width={560}>
-        {selectedSku && <SkuPanel row={selectedSku} onOpenOrder={setDetailOrderId} />}
+        {selectedSku && <SkuPanel key={selectedSku.inv_sku_id} row={selectedSku} onOpenOrder={setDetailOrderId} />}
       </Drawer>
 
       {/* Order detail — centered modal (opened from a SKU's recent orders) */}
@@ -303,7 +328,10 @@ function SkuStat({ label, value }: { label: string; value: string }) {
 }
 
 function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id: number) => void }) {
-  const q = useSkuOrders(row.inv_sku_id ?? null);
+  const { dateRange, days } = usePortalFilters();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const q = useSkuOrders(row.inv_sku_id ?? null, dateRange.dateFrom, dateRange.dateTo, page, pageSize);
   const data = q.data as SkuOrdersResult | undefined;
   const chart = useMemo(() => (data?.dailySales ?? []).map((d) => ({ day: d.day.slice(5), units: d.units })), [data]);
 
@@ -326,7 +354,7 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SkuStat label="30-day units" value={String(data?.totalUnits ?? 0)} />
+        <SkuStat label={`${days}-day units`} value={String(data?.totalUnits ?? 0)} />
         <SkuStat label="Avg std shipping" value={money(Number(data?.avgShippingStandard ?? 0))} />
         <SkuStat label="Avg expedited" value={money(Number(data?.avgShippingExpedited ?? 0))} />
         <SkuStat label="Avg / day" value={(data?.averageUnitsPerDay ?? 0).toFixed(1)} />
@@ -334,7 +362,7 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
 
       {/* Units-sold bar chart */}
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Units sold — last 30 days</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Units sold — selected {days} days</p>
         {chart.length ? (
           <figure aria-label="Units sold for selected SKU">
             <ResponsiveContainer width="100%" height={160}>
@@ -378,18 +406,18 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
 
       {/* Recent orders */}
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Recent orders ({data?.orders.length ?? 0})</p>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-3">Orders in selected period ({data?.pagination?.total ?? 0})</p>
         <p className="mb-3 text-[11px] text-ink-3">
           Shipping shown is this SKU&rsquo;s allocated share of the order&rsquo;s outbound shipping,
           split across the order&rsquo;s units. Return postage is not included.
         </p>
         <div className="space-y-1.5">
           {(data?.orders ?? []).length === 0 && <p className="text-sm text-ink-3">No orders.</p>}
-          {(data?.orders ?? []).slice(0, 40).map((o) => {
+          {(data?.orders ?? []).map((o) => {
             const meta = orderStatusMeta(o.order_status);
             return (
               <button
-                key={`${o.order_id}-${o.order_number}`}
+                key={`${o.order_id}-${o.order_number}-${o.item_name}`}
                 onClick={() => onOpenOrder(o.order_id)}
                 className="focus-ring flex w-full items-center gap-3 rounded-glass-sm px-2 py-2 text-left transition-colors hover:bg-brand-50"
               >
@@ -432,6 +460,9 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
             );
           })}
         </div>
+        {data?.pagination && <fieldset disabled={q.isFetching}>
+          <Pagination {...data.pagination} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />
+        </fieldset>}
       </div>
     </div>
   );

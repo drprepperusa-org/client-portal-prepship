@@ -75,6 +75,8 @@ jobs:
         run: npm run test:client-portal-integration:setup
       - name: Run client-portal integration suite
         run: npm run test:client-portal-integration
+      - name: Verify Analysis pagination and full-period truth
+        run: npm run test:client-portal-analysis-pagination:integration
       - name: Verify Orders count sharing and fresh scoped reads
         run: npm run test:client-portal-orders-performance:integration
       - name: Verify Inventory filters and ledger quantity truth

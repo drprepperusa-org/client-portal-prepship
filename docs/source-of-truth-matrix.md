@@ -1135,6 +1135,17 @@ ships not order units), `client-portal-inventory-status-guard.ts` (CP-013).
 
 ### Analysis
 
+The paginated portal table and `topSkus` chart projection share
+`getSkuBreakdownFromOrderItems`. `analysisPageSql` applies literal SKU/name search
+and stable sorting to the grouped, scoped rows; `pagination.total` counts matches
+before LIMIT, and `totalSkus` counts the complete date/client/store window. The
+top five, total units/revenue, and combinations are independent of table search
+and pagination. Both page and chart rows use the same customer-safe whitelist.
+The SKU drawer uses `getSkuOrdersForSku` with the selected inclusive UTC days and
+client filter. Its page metadata covers all matching orders while daily sales and
+shipping averages remain full-window values. React only renders these DTOs.
+
+
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
 | Ordered units | `totalUnits` | `totalUnits` | `getClientPortalSalesMetrics` — Σ `order_items.quantity` (set-based) | order date | backend-owned-truth (CP-010/049) |
@@ -1392,7 +1403,7 @@ The companion PrepShip whitelist expansion is implemented on
 Both repositories' sorting changes must be released together for all Billing
 columns. Reference already exists in the previous producer whitelist.
 
-Unpaged period, Analysis, dashboard, and audit tables sort the returned visible
+Unpaged period, dashboard, and audit tables sort the returned visible
 dataset only; their existing endpoint limits and ranked subsets remain in effect.
 
 Regression checks: test:client-portal-table-sorting runs actual SQL in disposable

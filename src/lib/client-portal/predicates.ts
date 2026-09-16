@@ -315,7 +315,11 @@ export function rawOrderScopeForAlias(
   scope: ClientPortalScope,
   filters: { clientId?: number | null; storeId?: number | null } = {}
 ): SQL | undefined {
-  if (!scope.isRestricted) return undefined;
+  // Global visibility does not discard an explicit client/store selection.
+  if (!scope.isRestricted) return and(
+    filters.clientId ? sql`o.client_id = ${filters.clientId}` : undefined,
+    filters.storeId ? sql`o.store_id = ${filters.storeId}` : undefined,
+  );
   const predicates: SQL[] = [];
   if (scope.clientIds.length) {
     predicates.push(sql`o.client_id = any(${intArrayLiteral(scope.clientIds)})`);

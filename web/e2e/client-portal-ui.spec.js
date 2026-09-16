@@ -391,6 +391,7 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   }
   if (pathname === '/api/client-portal/analysis/sku-orders') {
     return {
+      pagination: {page:1,pageSize:50,total:1,totalPages:1},
       sku: 'E2E-SKU',
       name: 'E2E product',
       totalUnits: 3,
@@ -820,7 +821,7 @@ test('Analysis SKU drawer renders the customer-safe DTO', async ({ page }) => {
   const drawer = page.getByRole('dialog', { name: 'E2E product' });
   await expect(drawer).toBeVisible();
   await expect(drawer.getByText('E2E-SKU', { exact: true })).toBeVisible();
-  await expect(drawer.getByText('Recent orders (1)')).toBeVisible();
+  await expect(drawer.getByText('Orders in selected period (1)')).toBeVisible();
   await expect(drawer.getByRole('button', { name: /E2E-501/ })).toBeVisible();
   await expect(drawer.getByText('1.5', { exact: true })).toBeVisible();
   // CP-060: total renders, and the mixed-class order shows its std/exp split.

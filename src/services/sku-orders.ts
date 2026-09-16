@@ -45,6 +45,7 @@
 // The query is parametrized by `orderScopeSql`: a raw predicate against the
 // orders table aliased as `o`. Callers pass their own tenant scope (operator
 // vs. client-portal) so visibility rules stay owned by the route, not here.
+import { analysisPageSql, type AnalysisPageEnvelope, type AnalysisPageInput, type AnalysisPagination } from './analysis-pagination';
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
@@ -123,9 +124,11 @@ export type SkuOrdersResult = {
   avgShippingExpedited: string;
   dailySales: Array<{ day: string; units: number }>;
   orders: SkuOrderRow[];
+  pagination?: AnalysisPagination;
 };
 
 export type SkuOrdersInput = {
+  pagination?: AnalysisPageInput;
   sku: string;
   name?: string | null;
   clientId?: number | null;
@@ -176,7 +179,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
   const dailyRows = since || until
     ? await db.execute<{ day: string; units: number }>(sql`
         select
-          to_char(date_trunc('day', o.order_date), 'YYYY-MM-DD') as day,
+          to_char(date_trunc('day', o.order_date at time zone 'UTC'), 'YYYY-MM-DD') as day,
           sum(oi.quantity)::int                                  as units
         from order_items oi
         join orders o on o.id = oi.order_id
@@ -186,8 +189,8 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
           and oi.quantity > 0
           ${activeClientOrderFilter}
           and ${walmartCanonicalOrderFilter}
-        group by date_trunc('day', o.order_date)
-        order by date_trunc('day', o.order_date) asc
+        group by date_trunc('day', o.order_date at time zone 'UTC')
+        order by date_trunc('day', o.order_date at time zone 'UTC') asc
       `)
     : [];
   const salesMap = new Map(dailyRows.map((r) => [r.day, Number(r.units ?? 0)]));
@@ -314,7 +317,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     from classed
   `);
 
-  const rows = await db.execute<SkuOrderRow>(sql`
+  const rowsSql = sql`
     with matching_order_ids as (
       select distinct o.id
       from order_items oi
@@ -383,6 +386,7 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       from order_sku_rows r
     )
     select
+      sku_key,
       order_id,
       order_number,
       order_date,
@@ -431,9 +435,14 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
       (money_state = 'external_label' or externally_shipped_flag)          as is_external_shipped
     from allocated
     where lower(sku) = lower(${sku})
-    order by order_date desc nulls last
-    limit 200
-  `);
+  `;
+  const pageResult = input.pagination
+    ? (await db.execute<AnalysisPageEnvelope<SkuOrderRow>>(analysisPageSql(rowsSql, input.pagination, 'orders')))[0]
+    : undefined;
+  if (input.pagination && !pageResult) throw new Error('SKU orders page metadata unavailable');
+  const rows = pageResult?.rows ?? await db.execute<SkuOrderRow>(
+    sql`${rowsSql} order by order_date desc nulls last, order_id desc, sku_key asc limit 200`,
+  );
 
   const visibleShippingSummary = canViewFinancials ? shippingSummary : null;
   const visibleRows = canViewFinancials
@@ -460,5 +469,6 @@ export async function getSkuOrdersForSku(input: SkuOrdersInput): Promise<SkuOrde
     avgShippingExpedited: visibleShippingSummary?.avg_exp_shipping ?? '0',
     dailySales,
     orders: visibleRows,
+    pagination: pageResult?.pagination,
   };
 }

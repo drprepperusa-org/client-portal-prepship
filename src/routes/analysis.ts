@@ -1,3 +1,4 @@
+import { analysisPageSql, type AnalysisPageEnvelope, type AnalysisPageInput } from '../services/analysis-pagination';
 import { createReadBudget } from '../lib/read-budget';
 import { ensureAnalyticsSchemaCapability } from '../services/analytics-schema-capability';
 import { Hono, type Context } from 'hono';
@@ -456,6 +457,7 @@ const skuBreakdownQuery = rangeQuery.extend({
 export type SkuBreakdownQuery = z.infer<typeof skuBreakdownQuery> &
   ClientStoreScopeQuery & {
     includeOrderCombinations?: boolean;
+    skuPage?: AnalysisPageInput;
     // CP-038: shipping amount basis. Default 'house_markup' = the legacy inline
     // base_cost*(1+markup) re-derivation (operator/legacy). 'customer_billed' sums the
     // canonical billing_line_items shipping line — used by the client portal.
@@ -887,7 +889,7 @@ export async function getSkuBreakdownFromOrderItems(
     q.shippingBasis === 'customer_billed' ? 'customer_billed' : 'house_markup'
   );
 
-  const rowsPending = read(() => db.execute<SkuBreakdownRow>(sql`
+  const rowsSql = sql`
     with item_rows as (
       select
         o.id                                                                as order_id,
@@ -1026,9 +1028,18 @@ export async function getSkuBreakdownFromOrderItems(
     left join sku_inventory inv on inv.sku_lc = lower(a.sku)
     left join sku_daily_json sdj on sdj.sku_key = a.sku_key
     group by a.sku_key
-    order by total_qty desc
-    limit ${q.limit}
-  `));
+  `;
+  const rowsPending = read(async () => {
+    if (q.skuPage) {
+      const [result] = await db.execute<AnalysisPageEnvelope<SkuBreakdownRow>>(
+        analysisPageSql(rowsSql, q.skuPage, 'skus'),
+      );
+      if (!result) throw new Error('Analysis page metadata unavailable');
+      return result;
+    }
+    const rows = await db.execute<SkuBreakdownRow>(sql`${rowsSql} order by total_qty desc, sku asc limit ${q.limit}`);
+    return { rows, top_rows: rows.slice(0, 5), total_skus: rows.length, pagination: undefined };
+  });
 
   // Dashboard consumes daily sales and units, not this separate order count.
   const totalOrdersPending = options.includeOrderCount === false ? Promise.resolve([]) : read(() => db.execute<{ count: number }>(sql`
@@ -1050,7 +1061,7 @@ export async function getSkuBreakdownFromOrderItems(
   // CP-010: canonical KPI totals from the single sales-metrics owner. These are
   // set-based (no LIMIT), so the Revenue/Units KPI never truncates and always
   // equals the roll-up of the per-SKU rows above (same filter set).
-  const [rows, totalOrders, salesMetrics, orderCombinations] = await Promise.all([
+  const [pageResult, totalOrders, salesMetrics, orderCombinations] = await Promise.all([
     rowsPending, totalOrdersPending,
     getClientPortalSalesMetrics(q, read),
     q.includeOrderCombinations === true
@@ -1060,7 +1071,7 @@ export async function getSkuBreakdownFromOrderItems(
 
   const dateBuckets = buildDateBuckets(fromIso, toIso);
   const canViewFinancials = q.canViewFinancials !== false;
-  const enrichedRows = rows.map((r) => {
+  const enrichRow = (r: SkuBreakdownRow) => {
     const map = (r.daily_qty_map ?? {}) as Record<string, number>;
     const dailyQty = dateBuckets.map((day) => {
       const value = map[day];
@@ -1077,12 +1088,15 @@ export async function getSkuBreakdownFromOrderItems(
       total_selling_fee: canViewFinancials ? rest.total_selling_fee : '0',
       daily_qty: dailyQty,
     };
-  });
+  };
+  const enrichedRows = pageResult.rows.map(enrichRow);
 
   return {
     rows: enrichedRows,
     dateBuckets,
-    totalSkus: enrichedRows.length,
+    totalSkus: pageResult.total_skus,
+    topRows: pageResult.top_rows.map(enrichRow),
+    pagination: pageResult.pagination,
     totalOrders: options.includeOrderCount === false ? undefined : totalOrders[0]?.count ?? 0,
     // CP-010: backend-owned canonical KPI totals (already financially redacted).
     totalRevenue: salesMetrics.revenue,

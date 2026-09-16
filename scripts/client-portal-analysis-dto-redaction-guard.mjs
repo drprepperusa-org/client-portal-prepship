@@ -61,6 +61,7 @@ const skuOrdersTopLevelFields = [
   'averageUnitsPerDay',
   'dailySales',
   'orders',
+  'pagination',
 ];
 const skuOrderFields = [
   'order_id',

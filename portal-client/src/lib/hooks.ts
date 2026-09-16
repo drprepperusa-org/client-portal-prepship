@@ -86,12 +86,14 @@ export function useDailyShipments() {
   const { dateRange, clientId } = usePortalFilters();
   return useTokenQuery(['daily-shipments', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.dailyShipments(t, dateRange, clientId));
 }
-export function useAnalysis() {
+export function useAnalysis(options: import('@client-portal-contracts/analysis').AnalysisListOptions = {}) {
   // CP-010: include the top-bar clientId in the key + request (like useDashboard)
   // so Analysis re-fetches when the client switcher changes and stays in
   // lock-step with the Dashboard's scope.
   const { dateRange, clientId } = usePortalFilters();
-  return useTokenQuery(['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'], (t) => portalApi.analysis(t, dateRange, clientId), true, { retainDataScope: ['analysis', clientId ?? 'scope'] });
+  return useTokenQuery(['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope', options],
+    (t) => portalApi.analysis(t, dateRange, clientId, options), true,
+    { retainDataScope: ['analysis', dateRange.dateFrom, dateRange.dateTo, clientId ?? 'scope'] });
 }
 export function useReports() {
   const { dateRange } = usePortalFilters();
@@ -312,10 +314,11 @@ export function useInbound(clientId?: number) {
 }
 
 /** Orders for a single SKU (Analysis drill-down panel). */
-export function useSkuOrders(inventoryId: number | null, dateFrom?: string, dateTo?: string) {
+export function useSkuOrders(inventoryId: number | null, dateFrom?: string, dateTo?: string, page = 1, pageSize = 50) {
+  const { clientId } = usePortalFilters();
   return useTokenQuery(
-    ['sku-orders', inventoryId ?? 0, dateFrom ?? '', dateTo ?? ''],
-    (t) => portalApi.skuOrders(t, inventoryId as number, dateFrom, dateTo),
+    ['sku-orders', inventoryId ?? 0, dateFrom ?? '', dateTo ?? '', clientId ?? 'scope', page, pageSize],
+    (t) => portalApi.skuOrders(t, inventoryId as number, dateFrom, dateTo, clientId, page, pageSize),
     inventoryId != null,
   );
 }
