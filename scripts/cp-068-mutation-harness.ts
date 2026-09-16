@@ -46,6 +46,18 @@ const WIRED_CALL = `      const file = await downloadInvoiceWorkbook(
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    label: 'Orders download rebuilds the backend Blob',
+    file: 'portal-client/src/components/orders/ExportOrdersCsv.tsx', guard: BUILDER,
+    from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'orders.csv' });",
+    to: "downloadFile({ bytes: new Blob([file.bytes]), filename: file.filename ?? 'orders.csv' });",
+  },
+  {
+    label: 'Orders API replaces the backend file bytes',
+    file: 'portal-client/src/lib/api/domains/orders.ts', guard: BUILDER,
+    from: "  }, 'text/csv'),",
+    to: "  }, 'text/csv').then(file => ({ ...file, bytes: new Blob(['replacement']) })),",
+  },
+  {
     label: 'audit download rebuilds the backend Blob without a media type',
     file: AUDIT_DOWNLOAD, guard: BUILDER,
     from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'audit-log.csv' });",
