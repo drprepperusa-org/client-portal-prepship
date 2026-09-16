@@ -264,7 +264,8 @@ for (const scenario of [
     await expect.poll(() => requests.at(-1).storeId).toBe('77');
     await page.getByRole('combobox', { name: 'Filter audit log by activity' }).selectOption('failed');
     await expect.poll(() => requests.at(-1).activity).toBe('failed');
-    await page.getByRole('checkbox', { name: 'Hide background checks' }).check();
+    await page.getByRole('checkbox', { name: 'Hide background checks' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Hide background checks' })).toBeChecked();
     await expect.poll(() => requests.at(-1).hideBackground).toBe('true');
     expect(requests.at(-1)).toMatchObject({ actorEmail: 'client@example.test', storeId: '77', activity: 'failed',
       hideBackground: 'true', dateFrom: scenario.from, dateTo: scenario.to });
@@ -275,7 +276,8 @@ for (const scenario of [
     expect(requests.at(-1).dateFrom).toBeUndefined();
     expect(requests.at(-1).dateTo).toBeUndefined();
     expect(requests.at(-1)).toMatchObject({ activity: 'failed', hideBackground: 'true', actorEmail: 'client@example.test', storeId: '77' });
-    await page.getByRole('checkbox', { name: 'Hide background checks' }).uncheck();
+    await page.getByRole('checkbox', { name: 'Hide background checks' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Hide background checks' })).not.toBeChecked();
     await expect.poll(() => requests.at(-1).hideBackground).toBe('false');
     await page.getByRole('textbox', { name: 'Search event or user' }).fill('EMPTY');
     await expect(page.getByRole('heading', { name: 'No audit events' })).toBeVisible();
@@ -612,4 +614,150 @@ test('mobile sort uses the same full-result request',async({page})=>{
   await expect.poll(()=>requests.at(-1)).toBe('asc');
   await page.getByRole('button',{name:'Ascending',exact:true}).click();
   await expect.poll(()=>requests.at(-1)).toBe('desc');
+});
+
+function auditViewFixture(url) {
+  const p = Number(url.searchParams.get('page') || 1);
+  return { data: [{ id: p, event: 'portal.orders.list', actorUserId: 'fixture', actorEmail: 'client@example.test',
+    clientIds: [], storeIds: [77], clientNames: [], storeNames: ['Store'], scopeLabel: 'Store', metadata: {}, createdAt: '2026-09-16T01:00:00Z' }],
+    filters: { stores: [{ id: 77, name: 'Store' }], users: ['client@example.test'] },
+    pagination: { page: p, pageSize: 100, hasMore: true } };
+}
+const savedAuditParams = { search: 'portal.orders', storeId: '77', actorEmail: 'client@example.test', page: '3',
+  dateFrom: '2026-03-08T08:00:00.000Z', dateTo: '2026-03-09T07:00:00.000Z', activity: 'views', hideBackground: 'true' };
+
+for (const scenario of [{ width: 390, timezone: 'Asia/Manila', end: '2026-03-09' },
+  { width: 1440, timezone: 'America/Los_Angeles', end: '2026-03-08' }]) {
+  test.describe(`Audit view links ${scenario.width}px ${scenario.timezone}`, () => {
+    test.use({ viewport: { width: scenario.width, height: 900 }, timezoneId: scenario.timezone });
+    test('restore exact filters and page on refresh and copy a reopenable link', async ({ page, context }) => {
+      const requests = [];
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await setup(page, url => {
+        if (url.pathname !== '/api/client-portal/audit-log') return;
+        requests.push(Object.fromEntries(url.searchParams));
+        return auditViewFixture(url);
+      });
+      await page.goto(base + '/audit-log?' + new URLSearchParams(savedAuditParams));
+      await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+      expect(new Set(requests.map(request => JSON.stringify(request))).size).toBe(1);
+      expect(requests[0]).toMatchObject(savedAuditParams);
+      await expect(page.getByLabel('Search event or user')).toHaveValue('portal.orders');
+      await expect(page.getByLabel('Filter audit log by user')).toHaveValue('client@example.test');
+      await expect(page.getByLabel('Filter audit log by store')).toHaveValue('77');
+      await expect(page.getByLabel('Filter audit log by activity')).toHaveValue('views');
+      await expect(page.getByLabel('Hide background checks')).toBeChecked();
+      await expect(page.getByLabel('Audit start date', { exact: true })).toHaveValue('2026-03-08');
+      await expect(page.getByLabel('Audit end date', { exact: true })).toHaveValue(scenario.end);
+      requests.length = 0;
+      await page.reload();
+      await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+      expect(new Set(requests.map(request => JSON.stringify(request))).size).toBe(1);
+      expect(requests[0]).toMatchObject(savedAuditParams);
+      await page.getByRole('button', { name: 'Copy view link' }).click();
+      await expect(page.getByRole('status')).toContainText('View link copied');
+      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      expect(Object.fromEntries(new URL(copied).searchParams)).toEqual(savedAuditParams);
+      await page.goto(copied);
+      await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+      expect(requests.at(-1)).toMatchObject(savedAuditParams);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
+  });
+}
+
+test('Audit history restores prior filters and pages and cancels uncommitted search', async ({ page }) => {
+  const requests = [];
+  await setup(page, url => {
+    if (url.pathname !== '/api/client-portal/audit-log') return;
+    requests.push(Object.fromEntries(url.searchParams));
+    return auditViewFixture(url);
+  });
+  await page.goto(base + '/audit-log?' + new URLSearchParams(savedAuditParams));
+  await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+  const initial = page.url();
+  await page.getByLabel('Filter audit log by activity').selectOption('failed');
+  await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+  expect(requests.at(-1)).toMatchObject({ ...savedAuditParams, activity: 'failed', page: '1' });
+  const failed = page.url();
+  await page.getByRole('button', { name: 'Older events' }).click();
+  await expect(page.getByRole('button', { name: 'View details for event 2' })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(failed);
+  await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(initial);
+  await expect(page.getByLabel('Filter audit log by activity')).toHaveValue('views');
+  await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(failed);
+  await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+  await page.getByLabel('Search event or user').fill('discard-pending');
+  await page.goBack();
+  await expect(page.getByLabel('Search event or user')).toHaveValue('portal.orders');
+  await page.waitForTimeout(350);
+  await expect(page).toHaveURL(initial);
+  expect(requests.some(r => r.search === 'discard-pending')).toBe(false);
+  await page.goForward();
+  await expect(page.getByLabel('Search event or user')).toHaveValue('portal.orders');
+  await page.waitForTimeout(350);
+  await expect(page).toHaveURL(failed);
+  // A settled search creates one navigable entry, with page reset in the same request.
+  await page.getByLabel('Search event or user').fill('new-search');
+  await expect.poll(() => requests.at(-1).search).toBe('new-search');
+  expect(requests.at(-1).page).toBe('1');
+  await page.goBack();
+  await expect(page).toHaveURL(failed);
+  await expect(page.getByLabel('Search event or user')).toHaveValue('portal.orders');
+  await page.getByRole('button', { name: 'Clear dates' }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.has('dateFrom')).toBe(false);
+  await expect(page.getByLabel('Audit start date', { exact: true })).toHaveValue('');
+  await page.goBack();
+  await expect(page.getByLabel('Audit start date', { exact: true })).not.toHaveValue('');
+  await page.goForward();
+  await expect(page.getByLabel('Audit start date', { exact: true })).toHaveValue('');
+});
+
+test('Audit copy fallback uses only view filters and preserves unknown selected facets', async ({ page }) => {
+  await setup(page, url => url.pathname === '/api/client-portal/audit-log' ?
+    { ...auditViewFixture(url), filters: { stores: [], users: [] } } : undefined);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) } });
+  });
+  await page.goto(base + '/audit-log?' + new URLSearchParams({ ...savedAuditParams, token: 'never-copy-this' }) + '#private-fragment');
+  await expect(page.getByRole('button', { name: 'View details for event 3' })).toBeVisible();
+  await expect(page.getByLabel('Filter audit log by store')).toHaveValue('77');
+  await expect(page.getByLabel('Filter audit log by user')).toHaveValue('client@example.test');
+  await page.getByRole('button', { name: 'Copy view link' }).click();
+  await expect(page.getByRole('status')).toContainText('Could not copy automatically');
+  const link = new URL(await page.getByLabel('Audit view link').inputValue());
+  expect(Object.fromEntries(link.searchParams)).toEqual(savedAuditParams);
+  expect(link.hash).toBe('');
+});
+
+test('Audit malformed view parameters recover visibly without sending invalid filters', async ({ page }) => {
+  const requests = [];
+  await setup(page, url => {
+    if (url.pathname !== '/api/client-portal/audit-log') return;
+    requests.push(Object.fromEntries(url.searchParams));
+    return auditViewFixture(url);
+  });
+  await page.goto(base + '/audit-log?dateFrom=bad&dateTo=2026-02-30T00%3A00%3A00.000Z&activity=bad&hideBackground=maybe&storeId=-1&page=Infinity');
+  await expect(page.getByRole('alert')).toContainText('Some link filters were invalid');
+  await expect(page.getByRole('button', { name: 'View details for event 1' })).toBeVisible();
+  expect(new Set(requests.map(request => JSON.stringify(request))).size).toBe(1);
+  expect(requests[0]).toMatchObject({ page: '1', activity: 'all', hideBackground: 'false' });
+  for (const key of ['storeId', 'dateFrom', 'dateTo']) expect(requests[0][key]).toBeUndefined();
+});
+
+test('Audit shared links do not grant audit capability', async ({ page }) => {
+  const requests = [];
+  await setup(page, url => {
+    if (url.pathname.endsWith('/me')) return { isAdmin: false, isGlobal: false, canViewAudit: false, clientIds: [1], storeIds: [77] };
+    if (url.pathname === '/api/client-portal/audit-log') { requests.push(url.href); return auditViewFixture(url); }
+  });
+  await page.goto(base + '/audit-log?' + new URLSearchParams(savedAuditParams));
+  await expect(page).toHaveURL(base + '/');
+  expect(requests).toHaveLength(0);
+  await expect(page.getByRole('button', { name: 'Copy view link' })).toHaveCount(0);
 });

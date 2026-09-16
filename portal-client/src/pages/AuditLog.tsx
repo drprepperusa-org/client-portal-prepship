@@ -9,10 +9,9 @@ import { Modal } from '@/components/ui/Modal';
 import { useAuditLog, useCanCustomizeTables } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import type { PortalAuditLogRow } from '@/lib/api';
-import type { PortalAuditInvestigationFilters } from '@client-portal-contracts/access';
 import { AuditInvestigationFilters } from '@/components/audit/AuditInvestigationFilters';
-import { useDebounced } from '@/lib/useDebounced';
-import { useFilteredPage } from '@/lib/useFilteredPage';
+import { CopyAuditView } from '@/components/audit/CopyAuditView';
+import { useAuditView } from '@/lib/useAuditView';
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -210,12 +209,8 @@ function scopeLabel(row: PortalAuditLogRow): string {
 }
 
 export default function AuditLog() {
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounced(search.trim(), 250);
-  const [storeFilter, setStoreFilter] = useState<number | null>(null);
-  const [userFilter, setUserFilter] = useState('');
-  const [filters, setFilters] = useState<PortalAuditInvestigationFilters>({});
-  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, storeFilter, userFilter, filters]));
+  const { search, setSearch, debouncedSearch, storeFilter, setStoreFilter, userFilter, setUserFilter,
+    filters, setFilters, page, setPage, invalid, copyUrl, searchPending, dateDraftKey } = useAuditView();
   const [selected, setSelected] = useState<PortalAuditLogRow | null>(null);
 
   const audit = useAuditLog(debouncedSearch, 100, storeFilter, userFilter, page, filters);
@@ -325,6 +320,7 @@ export default function AuditLog() {
               className="focus-ring h-11 w-full cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/70 pl-10 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
             >
               <option value="">All stores</option>
+              {storeFilter && !storeFilters.some(store => store.id === storeFilter) && <option value={storeFilter}>Store #{storeFilter}</option>}
               {storeFilters.map((store) => (
                 <option key={store.id} value={store.id}>{store.name}</option>
               ))}
@@ -337,11 +333,14 @@ export default function AuditLog() {
               onChange={(event) => setUserFilter(event.target.value)}
               className="focus-ring h-11 w-full min-w-0 rounded-glass-sm border border-slate-200/80 bg-white/75 px-3 text-sm text-ink">
               <option value="">All users</option>
+              {userFilter && !audit.data?.filters.users?.includes(userFilter) && <option value={userFilter}>{userFilter}</option>}
               {(audit.data?.filters.users ?? []).map((email) => <option key={email} value={email}>{email}</option>)}
             </select>
           </label>
         </div>
-        <AuditInvestigationFilters value={filters} onChange={setFilters} />
+        {invalid && <p role="alert" className="text-sm text-ink-2">Some link filters were invalid and were reset. Check the selected filters below.</p>}
+        <AuditInvestigationFilters key={`${dateDraftKey}/${filters.dateFrom ?? ''}/${filters.dateTo ?? ''}`} value={filters} onChange={setFilters} />
+        <CopyAuditView key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters, page])} getUrl={copyUrl} disabled={searchPending} />
         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
           <ClipboardList size={14} />
           <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>

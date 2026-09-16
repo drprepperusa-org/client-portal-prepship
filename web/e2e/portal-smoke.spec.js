@@ -155,3 +155,27 @@ test('Supabase recovery session updates the password and returns to sign in', as
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByText('Sign in with your new password.')).toBeVisible();
 });
+
+test('Audit shared link keeps filters through the sign-in redirect', async ({ page }) => {
+  const target = '/audit-log?actorEmail=client%40example.test&activity=failed&page=2';
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/auth/v1/token') { await route.fulfill({ json: recoverySession() }); return; }
+    if (url.pathname.startsWith('/api/client-portal/')) {
+      const body = url.pathname.endsWith('/me') ? { isAdmin: true, isGlobal: true, canViewAudit: true, clientIds: [], storeIds: [] } :
+        url.pathname.endsWith('/audit-log') ? { data: [], filters: { stores: [], users: [] }, pagination: { page: 2, pageSize: 100, hasMore: false } } :
+        { data: [] };
+      await route.fulfill({ json: body }); return;
+    }
+    if (url.origin === baseUrl) { await route.continue(); return; }
+    await route.abort();
+  });
+  await page.goto(baseUrl + target);
+  await expect(page).toHaveURL(baseUrl + '/login');
+  await page.getByPlaceholder('you@company.com').fill('client@example.com');
+  await page.getByPlaceholder('••••••••').fill('fixture-password');
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await expect(page).toHaveURL(baseUrl + target);
+  await expect(page.getByLabel('Filter audit log by user')).toHaveValue('client@example.test');
+  await expect(page.getByLabel('Filter audit log by activity')).toHaveValue('failed');
+});

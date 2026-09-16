@@ -4,12 +4,18 @@ import { Button } from '@/components/ui/Button';
 
 const inputClass = 'focus-ring h-11 w-full rounded-glass-sm border border-slate-200/80 bg-white/75 px-3 text-sm text-ink';
 
+function localDay(instant?: string, exclusiveEnd = false) {
+  if (!instant) return '';
+  const date = new Date(Date.parse(instant) - (exclusiveEnd ? 1 : 0));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export function AuditInvestigationFilters({ value, onChange }: {
   value: PortalAuditInvestigationFilters;
   onChange: (value: PortalAuditInvestigationFilters) => void;
 }) {
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
+  const [start, setStart] = useState(() => localDay(value.dateFrom));
+  const [end, setEnd] = useState(() => localDay(value.dateTo, true));
   const invalid = Boolean(start && end && start > end);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   function applyDates() {
@@ -31,7 +37,10 @@ export function AuditInvestigationFilters({ value, onChange }: {
       </label>
       <Button type="submit" variant="secondary" disabled={invalid}>Apply dates</Button>
       {(start || end || value.dateFrom || value.dateTo) && <Button type="button" variant="ghost" onClick={() => {
-        setStart(''); setEnd(''); onChange({ ...value, dateFrom: undefined, dateTo: undefined });
+        // Applied dates clear when navigation commits; an interrupted navigation
+        // must not erase inputs belonging to the prior history entry.
+        if (!value.dateFrom && !value.dateTo) { setStart(''); setEnd(''); }
+        onChange({ ...value, dateFrom: undefined, dateTo: undefined });
       }}>Clear dates</Button>}
     </form>
     <p className="text-xs text-ink-3">Dates use {timezone}. {invalid ? 'End date must be on or after start date.' :

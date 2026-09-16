@@ -47,7 +47,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   const location = useLocation();
   if (loading) return <AuthSplash />;
   if (!isAuthed) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
   if (activationPending && location.pathname !== '/activate') {
     return <Navigate to="/activate" replace />;
@@ -81,9 +81,12 @@ function RequireCapability({
 
 export default function App() {
   const { isAuthed, loading } = useAuth();
+  const location = useLocation();
+  const requested = (location.state as { from?: string } | null)?.from;
+  const signedInTarget = typeof requested === 'string' && requested.startsWith('/') && !requested.startsWith('//') ? requested : '/';
   return (
     <Routes>
-      <Route path="/login" element={loading ? <AuthSplash /> : isAuthed ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/login" element={loading ? <AuthSplash /> : isAuthed ? <Navigate to={signedInTarget} replace /> : <Login />} />
       <Route path="/activate" element={<ActivateAccount />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
