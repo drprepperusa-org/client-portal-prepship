@@ -9,6 +9,35 @@ import { toPortalInventoryDto } from '../dto';
 import { inventoryScopePredicate, inventorySearchPredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
 
+type InventoryFilter = { clientId?: number | null; storeId?: number | null; search: string; lowStock: boolean };
+
+function portalInventoryWhere(scope: ClientPortalScope, { clientId, storeId, search, lowStock }: InventoryFilter) {
+  const onHand = inventoryQuantitySql(inventory.id);
+  return and(
+    eq(inventory.active, true),
+    // An inventory row with no client cannot be attributed to anyone: blank
+    // Client, zero stock, no image. 571 of these exist and 317 shadow a real SKU
+    // that has all three, so the portal list showed the empty duplicates while
+    // the genuine rows sat behind them.
+    //
+    // Display filter only — nothing is deleted and the rows stay queryable
+    // elsewhere. The orphans are a separate data-integrity problem: something
+    // writes inventory without a client_id, and that source still needs fixing.
+    sql`${inventory.clientId} is not null`,
+    inventoryScopePredicate(scope, { clientId, storeId }),
+    inventorySearchPredicate(search),
+    lowStock ? sql`${onHand} <= ${inventory.reorderLevel}` : undefined,
+  );
+}
+
+/** Same selector as the paginated list; no item DTOs or shipment-history query needed. */
+export async function countPortalInventoryAttention(scope: ClientPortalScope, clientId?: number) {
+  const rows = await db.select({ count: sql<number>`count(*)::int` })
+    .from(inventory).leftJoin(clients, eq(clients.id, inventory.clientId))
+    .where(portalInventoryWhere(scope, { clientId, search: '', lowStock: true }));
+  return Number(rows[0]?.count ?? 0);
+}
+
 /** Client Portal inventory read model over the shared ledger quantity authority. */
 export async function listPortalInventory(
   scope: ClientPortalScope,
@@ -23,21 +52,7 @@ export async function listPortalInventory(
 ) {
   const { page, pageSize, clientId, storeId, search, lowStock } = opts;
   const quantity = inventoryQuantitySql(inventory.id);
-  const where = and(
-    eq(inventory.active, true),
-    // An inventory row with no client cannot be attributed to anyone: blank
-    // Client, zero stock, no image. 571 of these exist and 317 shadow a real SKU
-    // that has all three, so the portal list showed the empty duplicates while
-    // the genuine rows sat behind them.
-    //
-    // Display filter only — nothing is deleted and the rows stay queryable
-    // elsewhere. The orphans are a separate data-integrity problem: something
-    // writes inventory without a client_id, and that source still needs fixing.
-    sql`${inventory.clientId} is not null`,
-    inventoryScopePredicate(scope, { clientId, storeId }),
-    inventorySearchPredicate(search),
-    lowStock ? sql`${quantity} <= ${inventory.reorderLevel}` : undefined,
-  );
+  const where = portalInventoryWhere(scope, { clientId, storeId, search, lowStock });
   const offset = (page - 1) * pageSize;
 
   const [rows, countRows] = await Promise.all([

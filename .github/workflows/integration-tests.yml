@@ -77,6 +77,8 @@ jobs:
         run: npm run test:client-portal-integration
       - name: Verify Connections filters, complete listing and client isolation
         run: npm run test:client-portal-connection-filters:integration
+      - name: Verify attention counts and scope against canonical owners
+        run: npm run test:client-portal-attention:integration
       - name: Verify Rate Sheet saved pricing, permissions and client isolation
         run: npm run test:client-portal-rate-sheet:integration
       - name: Verify Analysis pagination and full-period truth

@@ -1,3 +1,4 @@
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
 import { History, Boxes } from 'lucide-react';
@@ -55,6 +56,12 @@ const TYPE_OPTS = [
 ];
 
 export default function Inventory() {
+  const location = useLocation();
+  // A bell link starts a fresh filtered view even when Inventory is already open.
+  return <InventoryView key={location.state?.attention ? location.key : 'inventory'} />;
+}
+
+function InventoryView() {
   const [tab, setTab] = useState<'stock' | 'history'>('stock');
   const [historySku, setHistorySku] = useState('');
 
@@ -89,7 +96,13 @@ export default function Inventory() {
 /* ============================= Stock Levels ============================= */
 function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void }) {
   const [q, setQ] = useState('');
-  const [lowOnly, setLowOnly] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const lowOnly = params.get('lowStock') === '1';
+  const setLowOnly = (enabled: boolean) => setParams((previous) => {
+    const next = new URLSearchParams(previous);
+    if (enabled) next.set('lowStock', '1'); else next.delete('lowStock');
+    return next;
+  });
   const [pageSize, setPageSize] = useState(100);
   const canCustomizeTables = useCanCustomizeTables();
   const debouncedQ = useDebounced(q, 350);

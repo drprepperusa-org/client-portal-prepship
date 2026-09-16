@@ -10,6 +10,7 @@ import { returnsApi } from './domains/returns';
 import { replacementsApi } from './domains/replacements';
 import { shipmentsApi } from './domains/shipments';
 import { rateSheetApi } from './domains/rate-sheet';
+import { attentionApi } from './domains/attention';
 
 export const portalApi = {
   ...accessApi,
@@ -24,4 +25,5 @@ export const portalApi = {
   ...analysisApi,
   ...billingApi,
   ...rateSheetApi,
+  ...attentionApi,
 };

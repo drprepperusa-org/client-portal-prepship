@@ -1,3 +1,4 @@
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,11 +28,14 @@ const isPending = (row: PortalIntegration) => row.connectionStatus === 'pending'
 
 export default function Connections() {
   const { clientId } = usePortalFilters();
-  return <ConnectionsView key={clientId ?? 'scope'} />;
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const attention = params.get('status') === 'attention';
+  return <ConnectionsView key={`${clientId ?? 'scope'}:${location.key}`} attention={attention} />;
 }
 
-function ConnectionsView() {
-  const [filters, setFilters] = useState<ConnectionFilterValues>({});
+function ConnectionsView({ attention }: { attention: boolean }) {
+  const [filters, setFilters] = useState<ConnectionFilterValues>(attention ? { status: 'attention' } : {});
   const search = useDebounced(filters.search ?? '', 300);
   const query = useIntegrations({ ...filters, search });
   const filtered = Boolean(filters.search || filters.provider || filters.status);

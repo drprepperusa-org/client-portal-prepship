@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Bell, Menu, ChevronDown, Check, AlertTriangle } from 'lucide-react';
+import { Search, Menu, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortalFilters } from '@/lib/portalContext';
 import { useClients, useSyncStatus } from '@/lib/hooks';
@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import { connectionFreshnessMeta } from '@/lib/connection-status';
 import { DateRangeFilter } from './DateRangeFilter';
 import { AccountMenu } from './AccountMenu';
+import { AttentionBell } from './AttentionBell';
 
 export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
   const nav = useNavigate();
@@ -16,7 +17,6 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
   const { clientId, setClientId } = usePortalFilters();
   const clientsQuery = useClients();
   const sync = useSyncStatus();
-  const [bellOpen, setBellOpen] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
   const [q, setQ] = useState('');
 
@@ -86,40 +86,20 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         {/* Date range */}
         {pathname !== '/inbound' && pathname !== '/audit-log' && <DateRangeFilter />}
 
-        {/* Notifications */}
-        <div className="relative">
-          <button onClick={() => setBellOpen((o) => !o)} aria-label="Notifications" className="focus-ring relative grid h-10 w-10 cursor-pointer place-items-center rounded-glass-sm text-ink-2 transition-colors hover:bg-slate-100">
-            <Bell size={19} />
-            <span className={cn('absolute right-2.5 top-2.5 h-2 w-2 rounded-full ring-2 ring-white', syncMeta.dotClassName)} />
-          </button>
-          <AnimatePresence>
-            {bellOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setBellOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                  transition={{ duration: 0.16 }}
-                  className="glass-strong absolute right-0 z-20 mt-2 w-[min(90vw,320px)] rounded-glass p-3 shadow-glass-lg"
-                >
-                  <p className="text-sm font-semibold text-ink">Sync status</p>
-                  <p className="mt-1 text-[13px] text-ink-3">{syncTimeCopy}</p>
-                  <p className="mt-2 text-[13px] text-ink-3">{syncMeta.label}</p>
-                  {sync.isError && (
-                    <button
-                      type="button"
-                      onClick={() => sync.refetch()}
-                      className="focus-ring mt-3 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-slate-200"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
+        <AttentionBell>
+          <p className="text-sm font-semibold text-ink">Sync status · all assigned stores</p>
+          <p className="mt-1 text-[13px] text-ink-3">{syncTimeCopy}</p>
+          <p className="mt-2 text-[13px] text-ink-3">{syncMeta.label}</p>
+          {sync.isError && (
+            <button
+              type="button"
+              onClick={() => sync.refetch()}
+              className="focus-ring mt-3 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-slate-200"
+            >
+              Retry
+            </button>
+          )}
+        </AttentionBell>
 
         {/* Account */}
         <AccountMenu />

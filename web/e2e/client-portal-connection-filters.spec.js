@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+// Continuous card float is decorative; use the supported accessibility setting for stable clicks.
+test.use({ reducedMotion: 'reduce' });
 const base = 'http://127.0.0.1:5177';
 async function setup(page, custom) {
   const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');

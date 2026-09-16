@@ -1355,6 +1355,20 @@ scoped store set. The page keys requests by user, client and filters, and closes
 store editors when the selected client changes. Date filters do not apply to
 current connection state.
 
+### Notification bell — Needs attention
+
+`GET /attention` composes current canonical read owners. `inventoryCount` uses
+the exact active/scoped/ledger/reorder selector from `listPortalInventory` over
+the complete selection. `connectionCount` counts scoped store DTOs selected by
+the existing `filterPortalIntegrations(status=attention)` policy (pending,
+reconnect, degraded). `totalCount` is their backend-owned sum; `checkedAt` is
+response completion time, not a source sync timestamp. Selected client narrows
+authenticated scope; no historical date filter applies. Store-only access follows
+each source's existing policy. The response contains only counts and the clock;
+failed reads return unavailable, never zero. UI renders counts and links to
+`/inventory?lowStock=1` and `/connections?status=attention` and keys reads by user
+and client. No local stock/health policy, financial data or provider diagnostics.
+
 ### Rate Sheet
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
