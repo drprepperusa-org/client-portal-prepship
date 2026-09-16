@@ -78,7 +78,7 @@ test('Attention handles errors, fresh zero counts and retry without exposing ser
   await expect(page.getByLabel('108 items need attention')).toHaveCount(0);
   fail=false;empty=true;await panel(page).getByRole('button',{name:'Retry notifications'}).click();
   await expect(panel(page).getByText('No items need attention.')).toBeVisible();
-  await expect(panel(page).getByRole('link')).toHaveCount(0);
+  await expect(panel(page).getByRole('link',{name:/View details/})).toHaveCount(0);
 });
 
 test('Attention isolates client changes and ignores a late previous-client response',async({page})=>{

@@ -54,7 +54,12 @@ function ScopedAttentionBell({ children }: { children: ReactNode }) {
           <div className="my-3 space-y-3" aria-live="polite">
             {query.isPending && <p className="text-sm text-ink-3">Checking for issues…</p>}
             {query.isError && <p className="text-sm text-ink-2">Attention items are unavailable. Please retry.</p>}
-            {data && data.totalCount === 0 && <p className="text-sm text-ink-2">No items need attention.</p>}
+            {data && data.totalCount === 0 && <p className="text-sm text-ink-2">
+              {data.preferences?.connectionIssues === false && data.preferences.lowStock === false
+                ? 'All notification categories are turned off.'
+                : data.preferences?.connectionIssues === false || data.preferences?.lowStock === false
+                  ? 'No items need attention in your enabled categories.' : 'No items need attention.'}
+            </p>}
             {data && data.connectionCount > 0 && <AttentionItem count={data.connectionCount} title="Connections need attention"
               description="Pending approval, reconnect needed, or sync delayed." to="/connections?status=attention" />}
             {data && data.inventoryCount > 0 && <AttentionItem count={data.inventoryCount} title="Low or out of stock"
@@ -65,6 +70,9 @@ function ScopedAttentionBell({ children }: { children: ReactNode }) {
             {query.isFetching ? 'Checking…' : query.isError ? 'Retry notifications' : 'Refresh notifications'}
           </button>
           {data && <p className="mt-1 text-xs text-ink-3">Checked {new Date(data.checkedAt).toLocaleTimeString()}</p>}
+          <Link to="/settings/notifications" className="focus-ring mt-3 inline-block rounded text-sm font-semibold text-brand-700">
+            Notification settings
+          </Link>
           <div className="mt-3 border-t border-slate-200 pt-3">{children}</div>
         </section>
       )}

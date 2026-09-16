@@ -1,75 +1,76 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Bell, Truck, AlertTriangle, ReceiptText, BarChart3, Check } from 'lucide-react';
-import { SectionTitle, Divider } from '@/components/ui/Glass';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/auth';
+import { SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
+import { QueryState } from '@/components/ui/QueryState';
 import { useToast } from '@/components/ui/Toast';
+import { useNotificationPreferences } from '@/lib/hooks';
+import { portalApi } from '@/lib/api';
+import { portalQueryKey } from '@/lib/query-keys';
 import { cn } from '@/lib/cn';
-import { LS_NOTIF, loadJSON } from './storage';
+import type { PortalNotificationPreferences } from '@client-portal-contracts/notification-preferences';
 
-type NotifPrefs = { ship: boolean; lowStock: boolean; invoice: boolean; weekly: boolean };
-const NOTIF_DEFAULTS: NotifPrefs = { ship: true, lowStock: true, invoice: true, weekly: false };
-const NOTIF_OPTS: { key: keyof NotifPrefs; icon: typeof Bell; title: string; desc: string }[] = [
-  { key: 'ship', icon: Truck, title: 'Shipment status updates', desc: 'When a shipment is created, picked up, in transit, or delivered.' },
-  { key: 'lowStock', icon: AlertTriangle, title: 'Low-stock alerts', desc: 'When an SKU drops below its reorder threshold.' },
-  { key: 'invoice', icon: ReceiptText, title: 'New invoice issued', desc: 'When a new invoice or statement becomes available.' },
-  { key: 'weekly', icon: BarChart3, title: 'Weekly performance digest', desc: 'A summary of orders, spend, and trends every Monday.' },
+const options: { key: keyof PortalNotificationPreferences; title: string; description: string }[] = [
+  { key: 'connectionIssues', title: 'Connection issues', description: 'Pending approval, reconnect needed, and sync delays.' },
+  { key: 'lowStock', title: 'Low-stock alerts', description: 'Products at or below their reorder level, including out-of-stock products.' },
 ];
 
 export function NotificationsTab() {
-  const toast = useToast();
-  const [notif, setNotif] = useState<NotifPrefs>(() => loadJSON(LS_NOTIF, NOTIF_DEFAULTS));
+  const { userId } = useAuth();
+  return <PreferencesForm key={userId ?? 'signed-out'} />;
+}
 
-  function saveNotif() {
+function PreferencesForm() {
+  const query = useNotificationPreferences();
+  const { userId, accessToken } = useAuth();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [draft, setDraft] = useState<PortalNotificationPreferences | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const values = draft ?? query.data;
+  const changed = values && query.data
+    && (values.connectionIssues !== query.data.connectionIssues || values.lowStock !== query.data.lowStock);
+
+  async function save() {
+    if (!values || !accessToken || !userId || saving) return;
+    setSaving(true); setSaveError(false);
     try {
-      localStorage.setItem(LS_NOTIF, JSON.stringify(notif));
-      toast.success('Preferences updated', 'Your notification choices are saved.');
-    } catch {
-      toast.error("Couldn't save", 'Local storage is unavailable in this browser.');
-    }
+      const saved = await portalApi.saveNotificationPreferences(accessToken, values);
+      if (!mounted.current) return;
+      await qc.cancelQueries({ queryKey: portalQueryKey(userId, ['notification-preferences']) });
+      await qc.cancelQueries({ queryKey: ['attention'] });
+      qc.setQueryData(portalQueryKey(userId, ['notification-preferences']), saved);
+      setDraft(null);
+      await qc.resetQueries({ queryKey: ['attention'] });
+      if (mounted.current) toast.success('Preferences saved', 'Your notification choices are saved to your account.');
+    } catch { if (mounted.current) setSaveError(true); }
+    finally { if (mounted.current) setSaving(false); }
   }
 
-  return (
-    <div className="space-y-5">
-      <SectionTitle title="Notifications" subtitle="Choose what you want to hear about" />
-      <div className="space-y-2.5">
-        {NOTIF_OPTS.map((o) => {
-          const on = notif[o.key];
-          return (
-            <button
-              key={o.key}
-              type="button"
-              role="switch"
-              aria-checked={on}
-              onClick={() => setNotif((n) => ({ ...n, [o.key]: !n[o.key] }))}
-              className={cn(
-                'focus-ring flex w-full items-center gap-3.5 rounded-glass-sm border p-3.5 text-left transition-colors',
-                on ? 'border-brand-200 bg-brand-50/50' : 'border-slate-200/70 bg-white/60 hover:bg-white',
-              )}
-            >
-              <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors', on ? 'bg-brand-100 text-brand-600' : 'bg-slate-100 text-ink-3')}>
-                <o.icon size={18} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink">{o.title}</p>
-                <p className="text-xs text-ink-3">{o.desc}</p>
-              </div>
-              <span className={cn('relative h-6 w-11 shrink-0 rounded-full transition-colors', on ? 'bg-brand-500' : 'bg-slate-300')}>
-                <motion.span
-                  initial={false}
-                  animate={{ left: on ? 22 : 2 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                  className="absolute top-0.5 grid h-5 w-5 place-items-center rounded-full bg-white shadow"
-                >
-                  {on && <Check size={12} strokeWidth={3.5} className="text-brand-500" />}
-                </motion.span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <Divider />
-      <div className="flex justify-end"><Button onClick={saveNotif}>Save preferences</Button></div>
-    </div>
-  );
+  return <div className="space-y-5">
+    <SectionTitle title="Notification settings" subtitle="Choose which alerts appear in your notification bell." />
+    <p className="text-sm text-ink-3">Saved to your account across devices. These choices apply to all clients you can access.</p>
+    <QueryState isLoading={query.isPending} isError={query.isError} onRetry={() => void query.refetch()} skeletonRows={2}>
+      {values && <div className="space-y-4">
+        {options.map(({ key, title, description }) => <button key={key} type="button" role="switch"
+          aria-label={title} aria-checked={values[key]} disabled={saving}
+          onClick={() => { setDraft({ ...values, [key]: !values[key] }); setSaveError(false); }}
+          className={cn('focus-ring flex w-full items-center justify-between gap-4 rounded-glass-sm border p-4 text-left disabled:opacity-60',
+            values[key] ? 'border-brand-200 bg-brand-50/50' : 'border-slate-200 bg-white/60')}>
+          <span><span className="block text-sm font-semibold text-ink">{title}</span>
+            <span className="block text-xs text-ink-3">{description}</span></span>
+          <span className={cn('shrink-0 rounded-full px-3 py-1 text-xs font-semibold',
+            values[key] ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-ink-3')}>{values[key] ? 'On' : 'Off'}</span>
+        </button>)}
+        {saveError && <p role="alert" className="text-sm text-rose-700">Could not save your preferences. Your changes are still here; please retry.</p>}
+        <div className="flex justify-end"><Button onClick={() => void save()} disabled={!changed || saving}>
+          {saving ? 'Saving…' : 'Save preferences'}
+        </Button></div>
+      </div>}
+    </QueryState>
+  </div>;
 }

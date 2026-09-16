@@ -65,6 +65,9 @@ export function useAuditLog(search = '', limit = 100, storeId?: number | null, a
 export const useClients = () => useTokenQuery(['clients'], portalApi.clients);
 export const useAccessList = () => useTokenQuery(['access-list'], portalApi.accessList);
 export const useSyncStatus = () => useTokenQuery(['sync-status'], portalApi.syncStatus);
+export const useNotificationPreferences = () => useTokenQuery(
+  ['notification-preferences'], portalApi.notificationPreferences, true, { alwaysRefetch: true, refetchOnWindowFocus: true },
+);
 export function useAttention() {
   const { clientId } = usePortalFilters();
   return useTokenQuery(['attention', clientId ?? 'scope'], (t) => portalApi.attention(t, clientId), true, {

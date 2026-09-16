@@ -26,6 +26,7 @@ import syncRoute from './client-portal/sync';
 import auditLogRoute from './client-portal/audit-log';
 import rateSheetRoute from './client-portal/rate-sheet';
 import attentionRoute from './client-portal/attention';
+import notificationPreferencesRoute from './client-portal/notification-preferences';
 
 const app = new Hono();
 
@@ -46,5 +47,6 @@ app.route('/', syncRoute);
 app.route('/', auditLogRoute);
 app.route('/', rateSheetRoute);
 app.route('/', attentionRoute);
+app.route('/', notificationPreferencesRoute);
 
 export default app;

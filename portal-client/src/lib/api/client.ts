@@ -11,6 +11,7 @@ import { replacementsApi } from './domains/replacements';
 import { shipmentsApi } from './domains/shipments';
 import { rateSheetApi } from './domains/rate-sheet';
 import { attentionApi } from './domains/attention';
+import { notificationPreferencesApi } from './domains/notification-preferences';
 
 export const portalApi = {
   ...accessApi,
@@ -26,4 +27,5 @@ export const portalApi = {
   ...billingApi,
   ...rateSheetApi,
   ...attentionApi,
+  ...notificationPreferencesApi,
 };

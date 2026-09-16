@@ -1357,17 +1357,28 @@ current connection state.
 
 ### Notification bell — Needs attention
 
-`GET /attention` composes current canonical read owners. `inventoryCount` uses
+`GET /attention` composes current canonical read owners for enabled categories. `inventoryCount` uses
 the exact active/scoped/ledger/reorder selector from `listPortalInventory` over
 the complete selection. `connectionCount` counts scoped store DTOs selected by
 the existing `filterPortalIntegrations(status=attention)` policy (pending,
 reconnect, degraded). `totalCount` is their backend-owned sum; `checkedAt` is
 response completion time, not a source sync timestamp. Selected client narrows
 authenticated scope; no historical date filter applies. Store-only access follows
-each source's existing policy. The response contains only counts and the clock;
+each source's existing policy. The response contains counts, personal category choices and the clock;
 failed reads return unavailable, never zero. UI renders counts and links to
 `/inventory?lowStock=1` and `/connections?status=attention` and keys reads by user
 and client. No local stock/health policy, financial data or provider diagnostics.
+
+Notification preferences: backend owner `notification-preferences.ts` reads and
+writes only the authenticated user's `user_metadata.portal_notification_preferences`
+via Supabase Auth. `connectionIssues` and `lowStock` are personal display choices,
+never authorization. Missing values default to both enabled; invalid stored values
+or failed reads return unavailable. Attention counts include enabled categories
+only, with muted source reads skipped and explicit both-off presentation. The
+client never recomputes a total or persists preferences in browser storage.
+`/settings/notifications` is a personal authenticated page; existing user-management
+capability gates remain unchanged. Save confirms the returned account state and
+refreshes the bell. Existing stock/status/scope owners and clocks are unchanged.
 
 ### Rate Sheet
 

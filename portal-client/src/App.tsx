@@ -25,6 +25,7 @@ const Rates = lazy(() => import('./pages/Rates'));
 const Connections = lazy(() => import('./pages/Connections'));
 const AuditLog = lazy(() => import('./pages/AuditLog'));
 const Settings = lazy(() => import('./pages/Settings'));
+const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
 const Components = lazy(() => import('./pages/Components'));
 
 function Spinner({ label }: { label: string }) {
@@ -118,6 +119,7 @@ export default function App() {
         <Route path="/invoices" element={<Navigate to="/billing" replace />} />
         <Route path="/rates" element={<Lazy el={<Rates />} />} />
         <Route path="/connections" element={<Lazy el={<Connections />} />} />
+        <Route path="/settings/notifications" element={<Lazy el={<NotificationSettings />} />} />
         <Route
           path="/audit-log"
           element={<RequireCapability capability="canViewAudit"><Lazy el={<AuditLog />} /></RequireCapability>}

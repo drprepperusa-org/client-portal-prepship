@@ -1,4 +1,6 @@
-/** Current scoped conditions, not historical notifications or unread messages. */
+import type { PortalNotificationPreferences } from './notification-preferences';
+
+/** Current scoped conditions for enabled categories; muted counts are zero. */
 export interface PortalAttention {
   /** Complete count from the Inventory low/out filter, never the visible page size. */
   inventoryCount: number;
@@ -6,4 +8,5 @@ export interface PortalAttention {
   connectionCount: number;
   totalCount: number;
   checkedAt: string;
+  preferences: PortalNotificationPreferences;
 }

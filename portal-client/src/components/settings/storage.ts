@@ -1,7 +1,6 @@
-// Settings are user preferences with no operator-side endpoint, so we persist
-// them to localStorage (per-browser, survives reloads).
+// Profile presentation fields are stored on this device. Notification choices
+// use the account-backed notification-preferences API instead.
 export const LS_PROFILE = 'prepship.settings.profile';
-export const LS_NOTIF = 'prepship.settings.notifications';
 
 export function loadJSON<T extends object>(key: string, fallback: T): T {
   try {

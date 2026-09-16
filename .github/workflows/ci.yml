@@ -59,7 +59,7 @@ jobs:
       - name: Connections client, search, platform and attention filters browser proof
         run: npx playwright test web/e2e/client-portal-connection-filters.spec.js --workers=1
       - name: Attention counts, scope, links and failure states browser proof
-        run: npx playwright test web/e2e/client-portal-attention.spec.js --workers=1
+        run: npx playwright test web/e2e/client-portal-attention.spec.js web/e2e/client-portal-notification-preferences.spec.js --workers=1
       - name: Rate Sheet configured pricing, permissions and client filtering browser proof
         run: npx playwright test web/e2e/client-portal-rate-sheet.spec.js --workers=1
       - name: Analysis search, full-period summary and SKU-order paging browser proof
