@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-rate-sheet:integration": "tsx scripts/integration/client-portal-rate-sheet.integration.ts",
     "test:client-portal-connection-filters:integration": "tsx scripts/integration/client-portal-connection-filters.integration.ts",
     "test:client-portal-analysis-pagination:integration": "tsx scripts/integration/client-portal-analysis-pagination.integration.ts",
     "test:client-portal-returns-loading:integration": "tsx scripts/integration/client-portal-returns-loading.integration.ts",

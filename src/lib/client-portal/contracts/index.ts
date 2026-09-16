@@ -8,5 +8,6 @@ export * from './connections';
 export * from './dashboard';
 export * from './access';
 export * from './billing';
+export * from './rate-sheet';
 export * from './analysis';
 export * from './inbound';

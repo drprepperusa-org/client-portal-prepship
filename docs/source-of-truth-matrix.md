@@ -1359,15 +1359,25 @@ current connection state.
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
-| Contracted rates | (honest empty state) | — (no endpoint yet) | operator-managed rate sheet — **not yet a portal endpoint** | n/a | backend-owned-truth (absent) |
+| Pick & pack / included units | `services.pickPackFee` / `includedUnits` | same | `billing_config.pick_pack_fee` / `pick_pack_max_units` | config `updated_at` | canonical configuration |
+| Additional units | `services.additionalUnitFee` | same | `billing_config.additional_unit_fee` | config `updated_at` | canonical configuration |
+| Monthly storage per cubic foot | `services.storageFeePerCuFt` | same | `billing_config.storage_fee_per_cu_ft` (four decimals) | config `updated_at` | canonical configuration |
+| Configured box price before adjustments | `packages.configuredPrice` | same | `client_package_prices.price`; custom package names/dimensions from `packages` | client price `updated_at` | canonical configuration |
+| Configuration state | `configurationStatus` | same | configuration row presence and `active` flag | current configuration | derived-from-canonical (backend-owned) |
 
-`portal-client/src/pages/Rates.tsx` is an **honest placeholder**: storage /
-pick-pack / zone pricing is a contracted, operator-managed rate sheet with no
-live `/api/client-portal/rate-sheet` endpoint yet. Rather than fabricate
-numbers, the page shows an empty state and points to real billed charges in
-Invoices — an exemplary application of the shadow-renderer law (it refuses to
-invent source data). When the endpoint exists, it must be the canonical owner
-and this row becomes a real mapping.
+`GET /api/client-portal/rate-sheet` delegates to `listPortalRateSheets` over the
+same saved configuration used by PrepShip Billing. Financial permission and
+client scope are enforced before reading rates; selected client only narrows
+access. Store-only scope without assigned clients remains fail closed. Missing
+service configuration is null, never a default zero; configured zero and inactive
+settings have distinct display states. Raw internal costs, markups, provider
+packages, shipping/rate identities and credentials are never selected into the DTO.
+
+These are **current saved settings**, not historical or final invoice prices.
+Box prices are labeled before billing adjustments; the portal does not duplicate
+PrepShip's package markup/override formula. No shipping quotes are synthesized.
+Date filters do not apply; update clocks belong to each configuration row. Only
+saved custom-package prices are listed, with explicit copy for unpublished boxes.
 
 ### DJ-approved exceptions
 

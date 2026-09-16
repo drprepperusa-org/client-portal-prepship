@@ -270,6 +270,12 @@ export function useIntegrations(options: Omit<PortalIntegrationListOptions, 'cli
   );
 }
 
+export function useRateSheet(enabled: boolean) {
+  const { clientId } = usePortalFilters();
+  return useTokenQuery(['rate-sheet', clientId ?? 'scope'], (token) => portalApi.rateSheet(token, clientId), enabled,
+    { alwaysRefetch: true });
+}
+
 // CP-061 — Replace list + detail. Reads are scoped server-side; the list honors
 // the top-bar client switcher. All replacement truth is backend-derived.
 export function useReplacements(options: { search?: string; status?: string; page?: number; pageSize?: number } = {}) {

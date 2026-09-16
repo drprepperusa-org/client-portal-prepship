@@ -24,6 +24,7 @@ import returnsRoute from './client-portal/returns';
 import replacementsRoute from './client-portal/replacements';
 import syncRoute from './client-portal/sync';
 import auditLogRoute from './client-portal/audit-log';
+import rateSheetRoute from './client-portal/rate-sheet';
 
 const app = new Hono();
 
@@ -42,5 +43,6 @@ app.route('/', returnsRoute);
 app.route('/', replacementsRoute);
 app.route('/', syncRoute);
 app.route('/', auditLogRoute);
+app.route('/', rateSheetRoute);
 
 export default app;

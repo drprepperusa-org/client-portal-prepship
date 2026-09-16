@@ -235,10 +235,10 @@ assert(
 );
 const rates = read('portal-client/src/pages/Rates.tsx');
 assert(
-  rates.includes('does not (yet) expose as a live endpoint') &&
-    rates.includes('aren’t published to the') &&
-    !rates.includes('useQuery'),
-  'Rate Sheet labels its intentional non-live state instead of fabricating backend truth',
+  rates.includes('useRateSheet(canView)') && rates.includes('<QueryState') &&
+    rates.includes('query.isError') && rates.includes('query.refetch()') &&
+    rates.includes('A missing rate does not mean the service is free.'),
+  'Live Rate Sheet uses scoped backend data with explicit failure, retry and missing-rate states',
 );
 
 const runtimeFixture = read('scripts/client-portal-failure-states-runtime.ts');
