@@ -8,6 +8,13 @@ export const PORTAL_CONNECTION_STATUSES = [
 
 export type PortalConnectionStatus = (typeof PORTAL_CONNECTION_STATUSES)[number];
 
+export interface PortalIntegrationListOptions {
+  clientId?: number;
+  search?: string;
+  provider?: string;
+  status?: PortalConnectionStatus | 'attention';
+}
+
 export const PORTAL_RECONNECT_REASON_CODES = [
   'authentication_required',
   'permissions_required',

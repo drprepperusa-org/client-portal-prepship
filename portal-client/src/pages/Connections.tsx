@@ -18,12 +18,23 @@ import { STORE_PLATFORMS } from '@/data/storePlatforms';
 import { staggerContainer, staggerItem } from '@/lib/motion';
 import { cn } from '@/lib/cn';
 import { connectionStatusMeta, reconnectReasonCopy } from '@/lib/connection-status';
+import { usePortalFilters } from '@/lib/portalContext';
+import { useDebounced } from '@/lib/useDebounced';
+import { ConnectionFilters, type ConnectionFilterValues } from '@/components/store/ConnectionFilters';
 
 /** Backend owns pending/active/reconnect/degraded/inactive policy. */
 const isPending = (row: PortalIntegration) => row.connectionStatus === 'pending';
 
 export default function Connections() {
-  const query = useIntegrations();
+  const { clientId } = usePortalFilters();
+  return <ConnectionsView key={clientId ?? 'scope'} />;
+}
+
+function ConnectionsView() {
+  const [filters, setFilters] = useState<ConnectionFilterValues>({});
+  const search = useDebounced(filters.search ?? '', 300);
+  const query = useIntegrations({ ...filters, search });
+  const filtered = Boolean(filters.search || filters.provider || filters.status);
   const toast = useToast();
   const qc = useQueryClient();
   const { accessToken } = useAuth();
@@ -37,9 +48,6 @@ export default function Connections() {
   const [renameValue, setRenameValue] = useState('');
   const [renamingId, setRenamingId] = useState<number | null>(null);
 
-  // Server-persisted pending connections: POST /integrations stores the request
-  // (source='portal', inactive — no sync path uses it) and it stays visible
-  // across reloads until an operator activates or removes it.
   const pending = rows.filter(isPending);
   const live = rows.filter((r) => !isPending(r) && r.type !== 'carrier');
   const visibleRows = [...pending, ...live];
@@ -131,14 +139,16 @@ export default function Connections() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
+        <ConnectionFilters values={filters} onChange={setFilters}
+          count={query.isError ? undefined : visibleRows.length} busy={query.isFetching} />
         <QueryState
           isLoading={query.isLoading}
           isError={query.isError}
           error={query.error}
           isEmpty={visibleRows.length === 0}
           onRetry={() => query.refetch()}
-          emptyTitle="No connections yet"
-          emptyMessage={isAdmin ? 'Click “Add store” to connect a sales channel or marketplace.' : 'Your operator manages sales channel connections.'}
+          emptyTitle={filtered ? 'No matching connections' : 'No connections for this client selection'}
+          emptyMessage={filtered ? 'Try another store name, platform, or status, or clear the filters.' : 'Choose another client or add a store connection.'}
         >
           <motion.div variants={staggerContainer} initial="initial" animate="enter" className="grid grid-cols-1 gap-4 p-2 sm:grid-cols-2 xl:grid-cols-3">
             {/* Pending (operator-gated) connections — floating, no flip. */}
@@ -187,11 +197,6 @@ export default function Connections() {
               );
             })}
 
-            {/* Live connections — floating + click-to-flip detail. The status
-                badge + reconnect form render alongside ConnectionCard, not
-                inside it: the card is a self-contained absolute-positioned
-                flip tile with no content slot to extend without editing that
-                component (out of this task's file scope). */}
             {live.map((c, i) => {
               const badge = connectionStatusMeta(c.connectionStatus);
               const reconnectCopy = reconnectReasonCopy(c.reconnectReasonCode);

@@ -56,6 +56,8 @@ jobs:
       - name: Static guard suite
         run: npm run test:guards
 
+      - name: Connections client, search, platform and attention filters browser proof
+        run: npx playwright test web/e2e/client-portal-connection-filters.spec.js --workers=1
       - name: Analysis search, full-period summary and SKU-order paging browser proof
         run: npx playwright test web/e2e/client-portal-analysis-pagination.spec.js --workers=1
       - name: Portal list loading, search and pagination browser proof

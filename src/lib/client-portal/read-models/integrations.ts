@@ -3,6 +3,8 @@ import { db } from '../../../db/client';
 import { carrierAccountClients, carrierAccounts } from '../../../db/schema/carrier-accounts';
 import { toPortalIntegrationDto } from '../dto';
 import type { ClientPortalScope } from '../scope';
+import type { PortalIntegrationListOptions } from '../contracts/connections';
+import { filterPortalIntegrations } from '../integration-filters';
 
 /**
  * Integrations read-model: the merged carrier-account + store-account listing.
@@ -80,7 +82,6 @@ export async function listPortalStoreIntegrations(
       where (coalesce(active, true) = true or source = 'portal')
         ${scopeFilter}
       order by created_at desc
-      limit 200
     `);
   } catch (error) {
     if (!isMissingConnectionFreshnessColumnError(error)) throw error;
@@ -100,14 +101,13 @@ export async function listPortalStoreIntegrations(
       where (coalesce(active, true) = true or source = 'portal')
         ${scopeFilter}
       order by created_at desc
-      limit 200
     `);
   }
 
   return rows.map((row) => toPortalIntegrationDto({ ...row, type: 'store' }));
 }
 
-export async function listPortalIntegrations(scope: ClientPortalScope) {
+export async function listPortalIntegrations(scope: ClientPortalScope, filters: PortalIntegrationListOptions = {}) {
   const carrierRows = await db
     .select({
       id: carrierAccounts.id,
@@ -136,9 +136,10 @@ export async function listPortalIntegrations(scope: ClientPortalScope) {
   }
 
   const storeRows = await listPortalStoreIntegrations(scope);
+  const data = filterPortalIntegrations([...storeRows, ...byId.values()], filters);
   return {
-    data: [...storeRows, ...byId.values()],
-    carrierCount: byId.size,
-    storeCount: storeRows.length,
+    data,
+    carrierCount: data.filter((row) => row.type === 'carrier').length,
+    storeCount: data.filter((row) => row.type === 'store').length,
   };
 }

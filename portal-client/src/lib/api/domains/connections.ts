@@ -3,6 +3,7 @@ import type {
   IntegrationValidationResult,
   NewIntegrationInput,
   PortalIntegration,
+  PortalIntegrationListOptions,
   SyncStatus,
 } from '@client-portal-contracts/connections';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../transport';
@@ -10,8 +11,8 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '../transport';
 export const connectionsApi = {
   syncStatus: (token: RequestAuth) =>
     apiGet<SyncStatus>(token, '/api/client-portal/sync-status'),
-  integrations: (token: RequestAuth) =>
-    apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations'),
+  integrations: (token: RequestAuth, options: PortalIntegrationListOptions = {}) =>
+    apiGet<{ data: PortalIntegration[] }>(token, '/api/client-portal/integrations', { ...options }),
   createIntegration: (token: RequestAuth, body: NewIntegrationInput) =>
     apiPost<{ data: PortalIntegration }>(token, '/api/client-portal/integrations', body),
   validateIntegration: (

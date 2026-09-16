@@ -6,6 +6,7 @@ import { useAuth } from '@/auth';
 import { portalApi, type ListOpts } from './api';
 // ListOpts is re-used by useReturns below (returns filter shape mirrors it).
 import { usePortalFilters } from './portalContext';
+import type { PortalIntegrationListOptions } from '@client-portal-contracts/connections';
 
 type TokenQueryOpts = {
   /** Background poll interval (ms). Mirrors v4's live auto-sync. */
@@ -261,7 +262,13 @@ export function useInventoryHistory(opts: { sortBy?: string; sortDir?: 'asc' | '
     true, { retainDataScope: ['inventory-history', clientId ?? 'scope'] },
   );
 }
-export const useIntegrations = () => useTokenQuery(['integrations'], portalApi.integrations);
+export function useIntegrations(options: Omit<PortalIntegrationListOptions, 'clientId'> = {}) {
+  const { clientId } = usePortalFilters();
+  return useTokenQuery(
+    ['integrations', clientId ?? 'scope', options.search ?? '', options.provider ?? '', options.status ?? ''],
+    (token) => portalApi.integrations(token, { ...options, clientId }),
+  );
+}
 
 // CP-061 — Replace list + detail. Reads are scoped server-side; the list honors
 // the top-bar client switcher. All replacement truth is backend-derived.

@@ -1344,6 +1344,17 @@ worker/order/shipment diagnostics are backend-only. Customer JSON receives only
 the masked display identifier, exhaustive status/safe reason enums, and
 tenant-scoped freshness.
 
+Connections filters (September 2026): `GET /integrations` accepts `clientId`,
+literal case-insensitive store-name `search`, `provider`, and `status`.
+`integration-filters.ts` filters scoped, redacted DTOs from the existing owner;
+the selected client only narrows authenticated scope. `status=attention` selects
+the backend statuses pending, reconnect and degraded. No browser health policy
+or timestamp threshold is introduced. The arbitrary 200-store truncation is
+removed so older connections remain searchable and freshness uses the complete
+scoped store set. The page keys requests by user, client and filters, and closes
+store editors when the selected client changes. Date filters do not apply to
+current connection state.
+
 ### Rate Sheet
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |

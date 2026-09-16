@@ -4,6 +4,7 @@ import { recordPortalAudit } from '../../../lib/client-portal/audit';
 import { checkValidationRateLimit } from '../../../lib/client-portal/integration-submission';
 import { scopeOrResponse } from '../../../lib/client-portal/query-params';
 import { listPortalIntegrations } from '../../../lib/client-portal/read-models/integrations';
+import { parseIntegrationFilters } from '../../../lib/client-portal/integration-filters';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { maskAccountIdentifier } from '../../../lib/credential-accounts';
 import {
@@ -16,9 +17,11 @@ export function registerIntegrationReadRoutes(app: Hono): void {
   app.get('/integrations', async (c) => {
     const scope = scopeOrResponse(c);
     if (!isClientPortalScope(scope)) return scope;
+    const filters = parseIntegrationFilters(c.req.query());
+    if (!filters) return c.json({ error: 'invalid_connection_filters' }, 400);
     try {
-      const { data, carrierCount, storeCount } = await listPortalIntegrations(scope);
-      await recordPortalAudit('portal.integrations.list', scope, { carriers: carrierCount, stores: storeCount });
+      const { data, carrierCount, storeCount } = await listPortalIntegrations(scope, filters);
+      await recordPortalAudit('portal.integrations.list', scope, { carriers: carrierCount, stores: storeCount, ...filters });
       return c.json({ data });
     } catch (error) {
       console.error('[client-portal] connections list unavailable:', error);
