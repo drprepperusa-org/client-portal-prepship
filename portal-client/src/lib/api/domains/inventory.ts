@@ -2,7 +2,7 @@ import type { RequestAuth } from '../transport';
 import type { ListOpts, Paginated, PortalDateRange } from '@client-portal-contracts/common';
 import type { InventoryMovement, PortalInventory } from '@client-portal-contracts/inventory';
 import { defaultRange, scopedList } from '../scope';
-import { apiGet } from '../transport';
+import { apiGet, apiBlob } from '../transport';
 
 function inventory(token: RequestAuth, opts: ListOpts = {}) {
   return scopedList<PortalInventory>(token, '/api/client-portal/inventory', {
@@ -16,6 +16,10 @@ function inventory(token: RequestAuth, opts: ListOpts = {}) {
 }
 
 export const inventoryApi = {
+  inventoryCsv: (token: RequestAuth, opts: ListOpts) => apiBlob(token, '/api/client-portal/inventory', {
+    format: 'csv', search: opts.search, clientId: opts.clientId, lowStock: opts.lowStock ? 1 : undefined,
+    sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'text/csv'),
   inventory,
   backgroundInventory: inventory,
   inventoryHistory: (

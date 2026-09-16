@@ -3,6 +3,8 @@ import { tableOrderBy, referenceOrder } from '../../lib/client-portal/read-model
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
+import { z } from 'zod';
+import { exportPortalInventory, InventoryExportTooLarge } from '../../lib/client-portal/read-models/inventory-export';
 import { and, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
@@ -15,16 +17,40 @@ import { applyMovements } from '../../services/inventory';
 import { asTimestamp, parsePage, parsePageSize, parseDate, requestedClientId, requestedStoreId, requestedSearch, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
+const inventoryQuery = z.object({
+  format: z.literal('csv').optional(),
+  clientId: z.coerce.number().int().positive().optional(),
+  storeId: z.coerce.number().int().positive().optional(),
+  lowStock: z.enum(['1', '0', 'true', 'false', 'yes', 'no']).optional(),
+});
 
 app.get('/inventory', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
+  c.header('Cache-Control', 'private, no-store');
+  const query = inventoryQuery.safeParse(c.req.query());
+  if (!query.success) return c.json({ error: 'Invalid inventory filters or export format.' }, 400);
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
   const lowStock = ['1', 'true', 'yes'].includes((c.req.query('lowStock') ?? '').toLowerCase());
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
+  if (query.data.format === 'csv') {
+    try {
+      const result = await exportPortalInventory(scope, {
+        clientId, storeId, search, lowStock, sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
+      });
+      await recordPortalAudit('portal.inventory.export', scope, { clientId, storeId, search, lowStock,
+        rows: result.rows, sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') });
+      c.header('Content-Type', 'text/csv; charset=utf-8');
+      c.header('Content-Disposition', 'attachment; filename="inventory.csv"');
+      return c.body(result.csv);
+    } catch (error) {
+      if (error instanceof InventoryExportTooLarge) return c.json({ error: 'Export is too large. Narrow your filters and try again.' }, 413);
+      return c.json({ error: 'Could not export inventory. Please try again.' }, 503);
+    }
+  }
   const result = await listPortalInventory(scope, {
     sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
     page,

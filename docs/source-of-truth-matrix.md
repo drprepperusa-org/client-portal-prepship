@@ -1144,6 +1144,16 @@ CP-010/CP-060 owner needs DJ's nod), not a silent fallback.
 | Reorder level | `reorderLevel` | `reorderLevel` | `inventory.reorderLevel` | now | presentation-only |
 | Cubic feet / dims | `cuFt`, `length/width/height` | same | `inventory` dims, override else L×W×H/1728 | now | derived-from-canonical (backend-owned) |
 
+Inventory CSV (`GET /inventory?format=csv`) calls the same `listPortalInventory`
+owner with the same client/store, search, low-stock and sort filters in one read-only
+repeatable-read snapshot. `inventory-csv.ts` projects an explicit DTO allowlist;
+`inventory-export.ts` owns bounded all-page collection. Current quantity is signed
+ledger SUM, stock status is the existing DTO enum, reorder level is the catalog
+value, and warehouse-shipped 30 days uses movement effective/created time. No
+header date range applies to current stock. The browser downloads backend bytes
+unchanged; it never constructs a CSV or recalculates stock/status. Limit failures
+return an error rather than a partial report.
+
 Owner: `toPortalInventoryDto` + read-model `listPortalInventory`
 (`inventory` catalog + immutable `inventory_ledger`). Route:
 `src/routes/client-portal/inventory.ts`. The `warehouseShipped30d` name is

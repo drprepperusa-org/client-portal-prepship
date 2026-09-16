@@ -38,17 +38,13 @@ export async function countPortalInventoryAttention(scope: ClientPortalScope, cl
   return Number(rows[0]?.count ?? 0);
 }
 
+export type PortalInventoryListOptions = SortInput & InventoryFilter & { page: number; pageSize: number };
+
 /** Client Portal inventory read model over the shared ledger quantity authority. */
 export async function listPortalInventory(
   scope: ClientPortalScope,
-  opts: SortInput & {
-    page: number;
-    pageSize: number;
-    clientId?: number | null;
-    storeId?: number | null;
-    search: string;
-    lowStock: boolean;
-  },
+  opts: PortalInventoryListOptions,
+  reader: Pick<typeof db, 'select' | 'execute'> = db,
 ) {
   const { page, pageSize, clientId, storeId, search, lowStock } = opts;
   const quantity = inventoryQuantitySql(inventory.id);
@@ -56,7 +52,7 @@ export async function listPortalInventory(
   const offset = (page - 1) * pageSize;
 
   const [rows, countRows] = await Promise.all([
-    db
+    reader
       .select({
         item: inventory,
         inventoryQuantity: quantity,
@@ -85,7 +81,7 @@ export async function listPortalInventory(
       }, [desc(inventory.updatedAt), desc(inventory.id)], inventory.id))
       .limit(pageSize)
       .offset(offset),
-    db
+    reader
       .select({ count: sql<number>`count(*)::int` })
       .from(inventory)
       .leftJoin(clients, eq(clients.id, inventory.clientId))
@@ -95,7 +91,7 @@ export async function listPortalInventory(
   const pageIds = rows.map((row) => row.item.id);
   const soldById = new Map<number, number>();
   if (pageIds.length) {
-    const soldRows = await db.execute<{ inventory_id: number; sold: number }>(sql`
+    const soldRows = await reader.execute<{ inventory_id: number; sold: number }>(sql`
       select inventory_id, abs(coalesce(sum(qty), 0))::int as sold
       from inventory_ledger
       where inventory_id in (${sql.join(pageIds.map((id) => sql`${id}`), sql`, `)})

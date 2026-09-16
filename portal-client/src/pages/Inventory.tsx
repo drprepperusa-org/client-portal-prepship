@@ -1,3 +1,5 @@
+import { ExportInventoryCsv } from '@/components/inventory/ExportInventoryCsv';
+import { useAuth } from '@/auth';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
@@ -96,6 +98,7 @@ function InventoryView() {
 /* ============================= Stock Levels ============================= */
 function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void }) {
   const [q, setQ] = useState('');
+  const { userId } = useAuth();
   const [params, setParams] = useSearchParams();
   const lowOnly = params.get('lowStock') === '1';
   const setLowOnly = (enabled: boolean) => setParams((previous) => {
@@ -113,6 +116,8 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
   // Low/Out-only is filtered SERVER-side so it spans every page (not just the
   // current one) and the pager totals stay accurate.
   const query = useInventory({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, search: debouncedQ, page, pageSize, lowStock: lowOnly });
+  const exportFilters = { clientId, search: debouncedQ, lowStock: lowOnly,
+    sortBy: tableSort.sortBy, sortDir: tableSort.sortDir };
   const pg = query.data?.pagination;
   const rows = query.data?.data ?? [];
 
@@ -198,6 +203,8 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
             ariaLabel="Search inventory"
           />
           <Checkbox label="Low/Out only" checked={lowOnly} onChange={setLowOnly} />
+          <ExportInventoryCsv key={JSON.stringify([userId, exportFilters, q])} filters={exportFilters}
+            disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
         </div>
       </GlassPanel>
 

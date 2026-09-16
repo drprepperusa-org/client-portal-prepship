@@ -58,6 +58,18 @@ export const MUTATIONS: readonly Mutation[] = [
     to: "  }, 'text/csv').then(file => ({ ...file, bytes: new Blob(['replacement']) })),",
   },
   {
+    label: 'Inventory download rebuilds the backend Blob',
+    file: 'portal-client/src/components/inventory/ExportInventoryCsv.tsx', guard: BUILDER,
+    from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'inventory.csv' });",
+    to: "downloadFile({ bytes: new Blob([file.bytes]), filename: file.filename ?? 'inventory.csv' });",
+  },
+  {
+    label: 'Inventory API replaces the backend file bytes',
+    file: 'portal-client/src/lib/api/domains/inventory.ts', guard: BUILDER,
+    from: "  }, 'text/csv'),",
+    to: "  }, 'text/csv').then(file => ({ ...file, bytes: new Blob(['replacement']) })),",
+  },
+  {
     label: 'audit download rebuilds the backend Blob without a media type',
     file: AUDIT_DOWNLOAD, guard: BUILDER,
     from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'audit-log.csv' });",

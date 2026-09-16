@@ -14,6 +14,7 @@
     "test:client-portal-analysis-pagination:integration": "tsx scripts/integration/client-portal-analysis-pagination.integration.ts",
     "test:client-portal-returns-loading:integration": "tsx scripts/integration/client-portal-returns-loading.integration.ts",
     "test:client-portal-shipments-loading:integration": "tsx scripts/integration/client-portal-shipments-loading.integration.ts",
+    "test:client-portal-inventory-export:integration": "tsx scripts/integration/client-portal-inventory-export.integration.ts",
     "test:client-portal-inventory-filter:integration": "tsx scripts/integration/client-portal-inventory-filter.integration.ts",
     "test:client-portal-orders-performance:integration": "tsx scripts/integration/client-portal-orders-performance.integration.ts",
     "test:client-portal-billing-summary-performance": "tsx scripts/client-portal-billing-summary-performance-test.ts",
