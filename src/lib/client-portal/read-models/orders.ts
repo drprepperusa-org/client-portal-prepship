@@ -1,7 +1,7 @@
 import { orderFulfillmentStatusSql } from '../order-status';
 import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
 import { orderFulfillmentSignalSelects } from '../order-fulfillment-signals';
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderItems } from '../../../db/schema/order-items';
@@ -40,11 +40,13 @@ type CanonicalOrderItemRow = {
   imageUrl: string | null;
 };
 
-async function loadCanonicalOrderItems(orderIds: number[]): Promise<Map<number, CanonicalOrderItemRow[]>> {
+type OrderReader = Pick<typeof db, 'select'>;
+
+async function loadCanonicalOrderItems(orderIds: number[], reader: OrderReader = db): Promise<Map<number, CanonicalOrderItemRow[]>> {
   const byOrder = new Map<number, CanonicalOrderItemRow[]>();
   if (orderIds.length === 0) return byOrder;
 
-  const rows = await db
+  const rows = await reader
     .select({
       orderId: orderItems.orderId,
       sku: orderItems.sku,
@@ -125,9 +127,11 @@ export function orderStatusFilterPredicate(status: PortalOrderStatusFilter | nul
 // userId additionally prevents sharing between different signed-in users. Never log this key.
 const pendingOrderCounts = new Map<string, Promise<number>>();
 
-function countPortalOrders(scope: ClientPortalScope, where: SQL | undefined): Promise<number> {
-  const query = db.select({ count: sql<number>`count(*)::int` })
+function countPortalOrders(scope: ClientPortalScope, where: SQL | undefined, reader: OrderReader = db): Promise<number> {
+  const query = reader.select({ count: sql<number>`count(*)::int` })
     .from(orders).leftJoin(clients, eq(clients.id, orders.clientId)).where(where);
+  // Snapshot exports must never reuse a count from an unrelated transaction.
+  if (reader !== db) return query.then(rows => Number(rows[0]?.count ?? 0));
   const compiled = query.toSQL();
   const key = JSON.stringify([scope.userId, compiled.sql, compiled.params]);
   const pending = pendingOrderCounts.get(key);
@@ -138,9 +142,17 @@ function countPortalOrders(scope: ClientPortalScope, where: SQL | undefined): Pr
   return result;
 }
 
+export type PortalOrderListOptions = SortInput & {
+  page: number; pageSize: number; status?: PortalOrderStatusFilter | null;
+  clientId?: number | null; storeId?: number | null; search: string;
+  dateFrom?: string; dateTo?: string;
+};
+
 export async function listPortalOrders(
   scope: ClientPortalScope,
-  opts: SortInput & { page: number; pageSize: number; status?: PortalOrderStatusFilter | null; clientId?: number | null; storeId?: number | null; search: string },
+  opts: PortalOrderListOptions,
+  reader: OrderReader = db,
+  schemaReady?: boolean,
 ) {
   const { page, pageSize, status, clientId, storeId, search } = opts;
   const where = and(
@@ -148,12 +160,14 @@ export async function listPortalOrders(
     activeClientPredicate(),
     orderStatusFilterPredicate(status),
     orderSearchPredicate(search),
+    opts.dateFrom ? gte(orders.orderDate, new Date(opts.dateFrom)) : undefined,
+    opts.dateTo ? lte(orders.orderDate, new Date(opts.dateTo)) : undefined,
   );
   const pageRead = (async () => {
     // CP-061: badge selects must be constants while the shared prod DB lacks the
     // replacement tables — a live subquery there would 500 the whole list.
-    const replacementsReady = await replacementsSchemaReady();
-    const rows = await db
+    const replacementsReady = schemaReady ?? await replacementsSchemaReady();
+    const rows = await reader
       .select({
         order: orders,
         override: orderOverrides,
@@ -194,13 +208,13 @@ export async function listPortalOrders(
       }, [desc(orders.orderDate), desc(orders.id)], orders.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
-    const canonicalItemsByOrder = await loadCanonicalOrderItems(rows.map((row) => row.order.id));
+    const canonicalItemsByOrder = await loadCanonicalOrderItems(rows.map((row) => row.order.id), reader);
     return { rows, canonicalItemsByOrder };
   })();
   // Count and page are independent. Start the count now so the badge/dashboard can
   // reuse the same pending read; item enrichment remains dependent on the page's IDs.
   const [{ rows, canonicalItemsByOrder }, count] = await Promise.all([
-    pageRead, countPortalOrders(scope, where),
+    pageRead, countPortalOrders(scope, where, reader),
   ]);
   return {
     data: rows.map((row) =>

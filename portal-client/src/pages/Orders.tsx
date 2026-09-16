@@ -1,3 +1,7 @@
+import { ExportOrdersCsv } from '@/components/orders/ExportOrdersCsv';
+import { usePortalFilters } from '@/lib/portalContext';
+import { rangeToTimestamps } from '@/lib/api/scope';
+import { useAuth } from '@/auth';
 import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -17,7 +21,7 @@ import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { useCanCustomizeTables, useOrders } from '@/lib/hooks';
 import { useDebounced } from '@/lib/useDebounced';
 import { money } from '@/lib/status';
-import type { PortalOrder } from '@/lib/api';
+import type { ListOpts, PortalOrder } from '@/lib/api';
 import { type Accent } from '@/lib/accents';
 import { cn } from '@/lib/cn';
 
@@ -86,6 +90,10 @@ function fmtWeight(value: number | string | null | undefined): string {
 
 export default function Orders() {
   const [params] = useSearchParams();
+  const { dateRange, clientId } = usePortalFilters();
+  const { userId } = useAuth();
+  const [useDates, setUseDates] = useState(false);
+  const dateBounds: Pick<ListOpts, 'dateFrom' | 'dateTo'> = useDates ? rangeToTimestamps({ from: dateRange.dateFrom, to: dateRange.dateTo }) : {};
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
   const [q, setQ] = useState(params.get('q') ?? '');
   const [page, setPage] = useState(1);
@@ -110,9 +118,11 @@ export default function Orders() {
     if (isTab(urlTab)) setTab(urlTab);
   }, [urlTab]);
 
-  useEffect(() => setPage(1), [debouncedQ, tab]);
+  useEffect(() => setPage(1), [debouncedQ, tab, clientId, dateBounds.dateFrom, dateBounds.dateTo]);
 
-  const query = useOrders({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir, status: tab, search: debouncedQ, page, pageSize });
+  const filters: ListOpts = { sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
+    status: tab, search: debouncedQ, clientId, ...dateBounds };
+  const query = useOrders({ ...filters, page, pageSize });
   const canCustomizeTables = useCanCustomizeTables();
   const rows = query.data?.data ?? [];
   const pg = query.data?.pagination;
@@ -234,6 +244,20 @@ export default function Orders() {
           placeholder="Search by order #, customer, SKU…"
           ariaLabel="Search orders"
         />
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm text-ink-2">
+              <input type="checkbox" checked={useDates} onChange={e => setUseDates(e.target.checked)}
+                className="focus-ring rounded accent-brand-600" />
+              Use selected date range
+            </label>
+            <p className="text-xs text-ink-3">{useDates
+              ? `Order dates: ${dateRange.dateFrom} to ${dateRange.dateTo} (UTC).`
+              : 'All order dates. Enable the date filter to use the range in the header.'}</p>
+          </div>
+          <ExportOrdersCsv key={JSON.stringify([userId, filters, q])} filters={filters}
+            disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
+        </div>
       </GlassPanel>
 
       {/* Search escape hatch: a search that misses inside a status tab is the

@@ -217,7 +217,7 @@ export function useOrders(opts: ListOpts = {}) {
     // pageSize MUST be in the key: the Dashboard "Open orders" peek requests this
     // same status/page with pageSize 6, and without it that 6-row response would
     // alias the full Orders list (refetchOnMount:false → sticky truncation).
-    portalReadKeys.orders(merged.clientId, merged.status ?? 'all', merged.search, merged.page, merged.pageSize, merged.sortBy, merged.sortDir),
+    portalReadKeys.orders(merged.clientId, merged.status ?? 'all', merged.search, merged.page, merged.pageSize, merged.sortBy, merged.sortDir, merged.dateFrom, merged.dateTo),
     (t) => portalApi.orders(t, merged),
     true,
     // CP-037: refetchOnWindowFocus false so returning to the tab can't trigger an
@@ -227,13 +227,13 @@ export function useOrders(opts: ListOpts = {}) {
   );
 
   useEffect(() => {
-    if (merged.status !== 'awaiting_shipment' || merged.search) return;
+    if (merged.status !== 'awaiting_shipment' || merged.search || merged.dateFrom || merged.dateTo) return;
     // Placeholder rows belong to the previous filter and cannot update a live count.
     if (query.isPlaceholderData || !query.data?.pagination) return;
     qc.setQueryData(portalQueryKey(userId, ['awaiting-count', merged.clientId ?? 'scope']), {
       count: query.data.pagination.total,
     });
-  }, [userId, merged.clientId, merged.search, merged.status, qc, query.data?.pagination, query.isPlaceholderData]);
+  }, [userId, merged.clientId, merged.search, merged.status, merged.dateFrom, merged.dateTo, qc, query.data?.pagination, query.isPlaceholderData]);
 
   return query;
 }

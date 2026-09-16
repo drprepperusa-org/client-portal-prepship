@@ -2,6 +2,8 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
+import { z } from 'zod';
+import { exportPortalOrders, OrderExportTooLarge } from '../../lib/client-portal/read-models/order-export';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
@@ -25,10 +27,21 @@ import { startBackfillBestRates, getActiveBackfillJob, getLatestBackfillJob, typ
 import { parsePage, parsePageSize, parsePositiveInt, requestedSearch, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
+const orderRangeQuery = z.object({
+  format: z.literal('csv').optional(),
+  clientId: z.coerce.number().int().positive().optional(),
+  storeId: z.coerce.number().int().positive().optional(),
+  dateFrom: z.string().datetime({ offset: true }).optional(),
+  dateTo: z.string().datetime({ offset: true }).optional(),
+}).refine(value => !value.dateFrom || !value.dateTo || Date.parse(value.dateFrom) <= Date.parse(value.dateTo));
 
 app.get('/orders', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
+  c.header('Cache-Control', 'private, no-store');
+  const range = orderRangeQuery.safeParse(c.req.query());
+  if (!range.success) return c.json({ error: 'Invalid order date range or export format.' }, 400);
+  const { dateFrom, dateTo, format } = range.data;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   // CP-069: the status filter is a whitelist of the three customer buckets (undefined / 'all'
@@ -42,10 +55,26 @@ app.get('/orders', async (c) => {
   const clientId = parsePositiveInt(c.req.query('clientId'));
   const storeId = parsePositiveInt(c.req.query('storeId'));
   const search = requestedSearch(c);
+  if (format === 'csv') {
+    try {
+      const result = await exportPortalOrders(scope, {
+        status, clientId, storeId, search, dateFrom, dateTo,
+        sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
+      });
+      await recordPortalAudit('portal.orders.export', scope, { status: status ?? 'all', clientId, storeId,
+        search, dateFrom, dateTo, rows: result.rows, sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') });
+      c.header('Content-Type', 'text/csv; charset=utf-8');
+      c.header('Content-Disposition', 'attachment; filename="orders.csv"');
+      return c.body(result.csv);
+    } catch (error) {
+      if (error instanceof OrderExportTooLarge) return c.json({ error: 'Export is too large. Narrow your filters and try again.' }, 413);
+      return c.json({ error: 'Could not export orders. Please try again.' }, 503);
+    }
+  }
   const result = await listPortalOrders(scope, {
-    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'), page, pageSize, status, clientId, storeId, search });
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'), page, pageSize, status, clientId, storeId, search, dateFrom, dateTo });
   await recordPortalAudit('portal.orders.list', scope, {
-    status: status ?? 'all', page, pageSize, clientId, storeId, search,
+    status: status ?? 'all', page, pageSize, clientId, storeId, search, dateFrom, dateTo,
     rows: result.data.length, total: result.pagination.total,
     sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
   });

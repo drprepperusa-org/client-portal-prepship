@@ -1038,6 +1038,24 @@ does not fan out, cap, merge, total, average, share, or rank them. Guard:
 | Weight (admin only) | `weightOz` | `weightOz` | `orders.weight_oz`, gated by `scope.isGlobal` in the order read-model | order import / packing update time | presentation-only (operator-only) |
 | Shipping charge | `customerShippingRate` | `customerShippingRate` | per non-voided, non-return shipment: frozen `Σ billing_line_items` (`line_type='shipping'`) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot under the versioned outbound contract; never `orders.shippingAmount` | PrepShip label/billing freeze | backend-owned-truth (PS-437/508/509, gated) |
 
+Orders CSV (`GET /orders?format=csv`) delegates to this same `listPortalOrders`
+reader and DTO, inside a read-only repeatable-read transaction. Every matching
+page uses the same status/search/client/store/date predicates and stable sort;
+there is no browser-side row collection or separate pricing/status calculation.
+`order-csv.ts` allowlists order identity, UTC order date, client, fulfillment
+status, canonical item names/SKUs/quantities, ordered units and display tracking.
+Financial columns require `canViewFinancials`; weight requires global access.
+Raw provider payloads, credentials, carrier/service identities, internal rates and
+recipient addresses are never CSV columns. Cell quoting and formula neutralization
+apply to every field. Over 10,000 rows, 16 MiB or the export work budget returns
+an explicit error, never a partial download. Audit records generated row count
+and requested filters, not the file contents or proof of a completed local download.
+
+Orders remains all-dates by default. The explicit date toggle applies the header's
+selected days as inclusive UTC bounds over `orders.order_date` to BOTH list and
+export. A dated list never populates the all-time awaiting-count cache. No business
+value changes and no schema migration are involved.
+
 Owner: `src/lib/client-portal/dto.ts` (`toPortalOrderDto`) over `orders` /
 `order_items` / `order_overrides`. Route: `src/routes/client-portal/orders.ts`.
 Tabs / counts (CP-069): `?status` is whitelisted to `awaiting_shipment | shipped |

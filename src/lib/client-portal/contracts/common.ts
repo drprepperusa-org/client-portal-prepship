@@ -22,6 +22,9 @@ export interface PortalItemIdentity {
 }
 
 export interface ListOpts extends SortOptions {
+  /** Optional inclusive UTC order-date bounds (Orders list/export only). */
+  dateFrom?: string;
+  dateTo?: string;
   status?: string;
   search?: string;
   page?: number;
