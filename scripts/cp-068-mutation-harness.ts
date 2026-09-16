@@ -31,6 +31,8 @@ const MODULE = 'portal-client/src/lib/invoiceWorkbookDownload.ts';
 const DOWNLOAD = 'portal-client/src/lib/downloadFile.ts';
 const DOMAIN = 'portal-client/src/lib/api/domains/billing.ts';
 const ROUTE = 'src/routes/client-portal/invoice-export.ts';
+const AUDIT_DOWNLOAD = 'portal-client/src/components/audit/ExportAuditCsv.tsx';
+const AUDIT_DOMAIN = 'portal-client/src/lib/api/domains/access.ts';
 
 const BUILDER = 'scripts/client-portal-invoice-export-no-local-builder-guard.ts';
 const PROXY = 'scripts/client-portal-invoice-export-proxy-guard.ts';
@@ -43,6 +45,30 @@ const WIRED_CALL = `      const file = await downloadInvoiceWorkbook(
       );`;
 
 export const MUTATIONS: readonly Mutation[] = [
+  {
+    label: 'audit download rebuilds the backend Blob without a media type',
+    file: AUDIT_DOWNLOAD, guard: BUILDER,
+    from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'audit-log.csv' });",
+    to: "downloadFile({ bytes: new Blob([file.bytes]), filename: file.filename ?? 'audit-log.csv' });",
+  },
+  {
+    label: 'an extra CSV media literal in the allowed audit UI is still forbidden',
+    file: AUDIT_DOWNLOAD, guard: BUILDER,
+    from: '    setBusy(true); setMessage(\'\');',
+    to: "    const localType = 'text/csv'; void localType;\n    setBusy(true); setMessage('');",
+  },
+  {
+    label: 'an extra CSV media literal in the allowed audit API domain is still forbidden',
+    file: AUDIT_DOMAIN, guard: BUILDER,
+    from: 'export const accessApi = {',
+    to: "const localType = 'text/csv'; void localType;\nexport const accessApi = {",
+  },
+  {
+    label: 'audit API fetcher replaces the server file after the allowed Accept expression',
+    file: AUDIT_DOMAIN, guard: BUILDER,
+    from: "apiBlob(token, '/api/client-portal/audit-log', { ...auditFilters(opts), format: 'csv' }, 'text/csv'),",
+    to: "apiBlob(token, '/api/client-portal/audit-log', { ...auditFilters(opts), format: 'csv' }, 'text/csv').then(file => ({ ...file, bytes: file.bytes.slice(0) })),",
+  },
   {
     label: 'HERMES r1: build a CSV from /invoice-details rows (cells + join + Blob text/csv)',
     file: HOOK, guard: BUILDER,
