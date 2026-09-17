@@ -42,6 +42,8 @@ const AUDIT_DOMAIN = 'portal-client/src/lib/api/domains/access.ts';
 const AUDIT_DOWNLOAD = 'portal-client/src/components/audit/ExportAuditCsv.tsx';
 const RETURN_DOMAIN = 'portal-client/src/lib/api/domains/returns.ts';
 const RETURN_DOWNLOAD = 'portal-client/src/components/returns/ExportReturnsCsv.tsx';
+const INBOUND_RECEIPT_DOMAIN = 'portal-client/src/lib/api/domains/inbound.ts';
+const INBOUND_RECEIPT_DOWNLOAD = 'portal-client/src/components/inbound/ExportInboundReceiptsCsv.tsx';
 const SHIPMENT_DOMAIN = 'portal-client/src/lib/api/domains/shipments.ts';
 const SHIPMENT_DOWNLOAD = 'portal-client/src/components/shipments/ExportShipmentsCsv.tsx';
 const INVENTORY_DOMAIN = 'portal-client/src/lib/api/domains/inventory.ts';
@@ -167,10 +169,15 @@ const RETURN_ACCEPT = `returnsCsv: (token: RequestAuth, opts: ListOpts & { order
     format: 'csv', search: opts.search, clientId: opts.clientId, status: opts.status || undefined, orderId: opts.orderId,
     dateFrom: opts.dateFrom, dateTo: opts.dateTo, sortBy: opts.sortBy, sortDir: opts.sortDir,
   }, 'text/csv')`;
+const INBOUND_RECEIPT_ACCEPT = `inboundReceiptsCsv: (token: RequestAuth, opts: ListOpts) => apiBlob(token, '/api/client-portal/inbound/receipts', {
+    format: 'csv', clientId: opts.clientId, dateFrom: opts.dateFrom, dateTo: opts.dateTo,
+    sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'text/csv')`;
 const allowedBackendMedia = new Map([[AUDIT_DOMAIN, AUDIT_ACCEPT], [AUDIT_DOWNLOAD, AUDIT_TYPE_CHECK],
   [ORDER_DOMAIN, ORDER_ACCEPT], [ORDER_DOWNLOAD, AUDIT_TYPE_CHECK],
   [INVENTORY_DOMAIN, INVENTORY_ACCEPT], [INVENTORY_DOWNLOAD, AUDIT_TYPE_CHECK],
   [RETURN_DOMAIN, RETURN_ACCEPT], [RETURN_DOWNLOAD, AUDIT_TYPE_CHECK],
+  [INBOUND_RECEIPT_DOMAIN, INBOUND_RECEIPT_ACCEPT], [INBOUND_RECEIPT_DOWNLOAD, AUDIT_TYPE_CHECK],
   [SHIPMENT_DOMAIN, SHIPMENT_ACCEPT], [SHIPMENT_DOWNLOAD, AUDIT_TYPE_CHECK]]);
 const FORBIDDEN_MEDIA = [
   ['a CSV media type', /text\/csv/],
@@ -246,6 +253,22 @@ assert.doesNotMatch(shipmentDownload, /\bBlob\(|\bFile\(|createObjectURL|TextEnc
   'Shipments UI never assembles, reads, re-encodes or replaces file bytes');
 ok('Shipments CSV UI preserves backend bytes and cannot become a local builder');
 
+const inboundReceiptDomain = read(INBOUND_RECEIPT_DOMAIN).replaceAll('\r\n', '\n');
+assert.ok(inboundReceiptDomain.includes(INBOUND_RECEIPT_ACCEPT), 'Inbound receipts CSV fetcher returns the bare backend apiBlob call');
+assert.doesNotMatch(inboundReceiptDomain, /\.then\(|\bBlob\(|\bFile\(|bytes:|arrayBuffer|\.text\(\)|TextEncoder|btoa\(/,
+  'Inbound receipts API domain never constructs, chains or reads file bytes');
+ok('Inbound receipts CSV API returns the backend file without replacing its bytes');
+
+const inboundReceiptDownload = read(INBOUND_RECEIPT_DOWNLOAD);
+assert.match(inboundReceiptDownload, /const file = await portalApi\.inboundReceiptsCsv\(\{ accessToken, signal: controller\.signal \}, filters\);/,
+  'Inbound receipts download obtains the backend CSV with caller filters and cancellation');
+assert.match(inboundReceiptDownload, /downloadFile\(\{ bytes: file\.bytes, filename: file\.filename \?\? 'inbound-receipts\.csv' \}\);/,
+  'Inbound receipts download hands the original Blob to the shared download helper');
+assert.equal(count(inboundReceiptDownload, /downloadFile\(/g), 1, 'Inbound receipts download has one file sink');
+assert.doesNotMatch(inboundReceiptDownload, /\bBlob\(|\bFile\(|createObjectURL|TextEncoder|btoa\(|arrayBuffer|\.text\(\)|\.slice\(|\.join\(|JSON\.stringify|file\.bytes\s*=/,
+  'Inbound receipts UI never assembles, reads, re-encodes or replaces file bytes');
+ok('Inbound receipts CSV UI preserves backend bytes and cannot become a local builder');
+
 const returnsDomain = read(RETURN_DOMAIN).replaceAll('\r\n', '\n');
 assert.ok(returnsDomain.includes(RETURN_ACCEPT), 'Returns CSV fetcher returns the bare backend apiBlob call');
 assert.doesNotMatch(returnsDomain, /\.then\(|\bBlob\(|\bFile\(|bytes:|arrayBuffer|\.text\(\)|TextEncoder|btoa\(/,
@@ -305,6 +328,6 @@ assert.doesNotMatch(
 );
 ok('the API-domain fetcher is the bare transport call: nothing sits between the wire and the download module');
 
-const EXPECTED_CHECKS = 18;
+const EXPECTED_CHECKS = 20;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log(`\nCP-068 invoice-export no-local-builder guard passed - ${checks}/${EXPECTED_CHECKS} checks`);

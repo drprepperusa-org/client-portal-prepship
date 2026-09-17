@@ -1373,6 +1373,20 @@ Owner: `toPortalInboundDto` over `inbound_shipments` + `inbound_items`. Route:
 `listPortalInboundReceipts` over the canonical inventory ledger; CP does not
 copy receipts into inbound tables or infer multi-SKU batches.
 
+Receiving-history CSV (`GET /inbound/receipts?format=csv`) delegates to the same
+`listPortalInboundReceipts` owner in one read-only repeatable-read transaction.
+It exports every matching page with receipt ID, client label, SKU, item name,
+`receivedUnits` and `receivedAt`. Quantity is `inventory_ledger.qty` verbatim;
+the received clock is `coalesce(effective_at, created_at)` in both the table and
+export. Optional inclusive UTC date bounds come from local receipt date inputs,
+empty by default; the global reporting date range does not truncate history.
+Client/store filters only narrow the existing inventory authorization predicate.
+Sort order and membership remain shared with the list. Operator identity, notes,
+source identifiers, financials and raw payloads are excluded from the file.
+The backend quotes/escapes CSV; the browser downloads the original bytes.
+Limits are 10,000 receipts and 16 MiB, with bounded generation time and no partial
+file on failure. No receiving or inventory-writing operation runs during export.
+
 The Client Portal Receive Inventory worksheet is available only to global admins
 and scoped operators with `settings:write`. It requires an explicit client and
 existing in-scope inventory IDs, records a critical portal audit before mutation,

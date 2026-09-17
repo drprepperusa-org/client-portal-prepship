@@ -1,5 +1,5 @@
 import type { RequestAuth } from '../transport';
-import type { Paginated } from '@client-portal-contracts/common';
+import type { ListOpts, Paginated } from '@client-portal-contracts/common';
 import type {
   NewInboundInput,
   PortalInbound,
@@ -7,20 +7,25 @@ import type {
   PortalInventoryReceiveInput,
   PortalInventoryReceiveResult,
 } from '@client-portal-contracts/inbound';
-import { apiGet, apiPatch, apiPost } from '../transport';
+import { apiBlob, apiGet, apiPatch, apiPost } from '../transport';
 
 export const inboundApi = {
   inbound: (token: RequestAuth, clientId?: number) =>
     apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
   inboundReceipts: (
     token: RequestAuth,
-    options: { sortBy?: string; sortDir?: 'asc' | 'desc'; page?: number; pageSize?: number; clientId?: number },
+    options: ListOpts,
   ) => apiGet<Paginated<PortalInboundReceipt>>(token, '/api/client-portal/inbound/receipts', {
     page: options.page ?? 1,
     pageSize: options.pageSize ?? 50,
     clientId: options.clientId,
+    dateFrom: options.dateFrom, dateTo: options.dateTo,
     sortBy: options.sortBy, sortDir: options.sortDir,
   }),
+  inboundReceiptsCsv: (token: RequestAuth, opts: ListOpts) => apiBlob(token, '/api/client-portal/inbound/receipts', {
+    format: 'csv', clientId: opts.clientId, dateFrom: opts.dateFrom, dateTo: opts.dateTo,
+    sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'text/csv'),
   receiveInventory: (token: RequestAuth, body: PortalInventoryReceiveInput) =>
     apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),
   createInbound: (token: RequestAuth, body: NewInboundInput) =>

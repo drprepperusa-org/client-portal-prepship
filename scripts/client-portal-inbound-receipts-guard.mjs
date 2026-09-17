@@ -37,7 +37,11 @@ assert.ok(
   readModel.includes('eq(inventory.clientId, clientId)'),
   'global client filter narrows receipt reads explicitly',
 );
-assert.doesNotMatch(readModel, /dateFrom|dateTo/, 'receipt history is not truncated by the global date range');
+assert.match(readModel, /dateFrom \? sql`\$\{receivedAt\} >= \$\{dateFrom\}::timestamptz` : undefined/, 'optional start date filters the canonical receipt clock');
+assert.match(readModel, /dateTo \? sql`\$\{receivedAt\} <= \$\{dateTo\}::timestamptz` : undefined/, 'optional end date is inclusive on the same clock');
+assert.ok(page.includes("[receivedFrom, setReceivedFrom] = useState('')") && page.includes("[receivedTo, setReceivedTo] = useState('')"),
+  'receipt dates start empty so opening Inbound still shows all history');
+assert.ok(hooks.includes('dates.dateFrom, dates.dateTo'), 'receipt cache keys include both optional date bounds');
 assert.doesNotMatch(
   readModel,
   /inboundShipments|\.insert\(|\.update\(|\.delete\(/,

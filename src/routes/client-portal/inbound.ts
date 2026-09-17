@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { exportPortalInboundReceipts, InboundReceiptExportTooLarge } from '../../lib/client-portal/read-models/inbound-receipt-export';
 // Client-portal sub-router — extracted from the former single-file
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
@@ -22,6 +24,13 @@ import {
 } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
+const receiptRangeQuery = z.object({
+  format: z.literal('csv').optional(),
+  clientId: z.coerce.number().int().positive().optional(),
+  storeId: z.coerce.number().int().positive().optional(),
+  dateFrom: z.string().datetime({ offset: true }).optional(),
+  dateTo: z.string().datetime({ offset: true }).optional(),
+}).refine(value => !value.dateFrom || !value.dateTo || Date.parse(value.dateFrom) <= Date.parse(value.dateTo));
 
 // ── Inbound (receiving) shipments ──────────────────────────────────────────
 // Manually-entered POs/ASNs arriving at the warehouse. Read is client-scoped;
@@ -29,24 +38,30 @@ const app = new Hono();
 app.get('/inbound/receipts', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
+  c.header('Cache-Control', 'private, no-store');
+  const range = receiptRangeQuery.safeParse(c.req.query());
+  if (!range.success) return c.json({ error: 'Invalid received date range or export format.' }, 400);
+  const { format, dateFrom, dateTo } = range.data;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'), 50);
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
-  const result = await listPortalInboundReceipts(scope, {
-    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
-    page,
-    pageSize,
-    clientId,
-    storeId,
-  });
-  await recordPortalAudit('portal.inbound.receipts.list', scope, {
-    page,
-    pageSize,
-    clientId,
-    storeId,
-    rows: result.data.length,
-  });
+  const filters = { clientId, storeId, dateFrom, dateTo,
+    sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') };
+  if (format === 'csv') {
+    try {
+      const result = await exportPortalInboundReceipts(scope, filters);
+      await recordPortalAudit('portal.inbound.receipts.export', scope, { ...filters, rows: result.rows });
+      c.header('Content-Type', 'text/csv; charset=utf-8');
+      c.header('Content-Disposition', 'attachment; filename="inbound-receipts.csv"');
+      return c.body(result.csv);
+    } catch (error) {
+      if (error instanceof InboundReceiptExportTooLarge) return c.json({ error: 'Export is too large. Narrow your filters and try again.' }, 413);
+      return c.json({ error: 'Could not export receiving history. Please try again.' }, 503);
+    }
+  }
+  const result = await listPortalInboundReceipts(scope, { ...filters, page, pageSize });
+  await recordPortalAudit('portal.inbound.receipts.list', scope, { ...filters, page, pageSize, rows: result.data.length });
   return c.json(result);
 });
 

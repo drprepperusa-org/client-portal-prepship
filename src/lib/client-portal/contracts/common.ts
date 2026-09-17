@@ -22,7 +22,7 @@ export interface PortalItemIdentity {
 }
 
 export interface ListOpts extends SortOptions {
-  /** Optional inclusive UTC bounds: order date for Orders; displayed ship date for Shipments; created date for Returns. */
+  /** Inclusive UTC bounds: order date, displayed ship date, return creation, or canonical receipt receivedAt, by endpoint. */
   dateFrom?: string;
   dateTo?: string;
   status?: string;

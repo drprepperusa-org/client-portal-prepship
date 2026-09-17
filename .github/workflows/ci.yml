@@ -64,6 +64,8 @@ jobs:
         run: npx playwright test web/e2e/client-portal-rate-sheet.spec.js --workers=1
       - name: Analysis search, full-period summary and SKU-order paging browser proof
         run: npx playwright test web/e2e/client-portal-analysis-pagination.spec.js --workers=1
+      - name: Inbound receiving-history CSV browser proof
+        run: npx playwright test web/e2e/client-portal-inbound-export.spec.js --workers=1
       - name: Returns CSV browser proof
         run: npx playwright test web/e2e/client-portal-returns-export.spec.js --workers=1
       - name: Shipments CSV filters, download, cancellation and error browser proof

@@ -70,6 +70,18 @@ export const MUTATIONS: readonly Mutation[] = [
     to: "  }, 'text/csv').then(file => ({ ...file, bytes: new Blob(['replacement']) })),",
   },
   {
+    label: 'Inbound receipts download rebuilds the backend Blob',
+    file: 'portal-client/src/components/inbound/ExportInboundReceiptsCsv.tsx', guard: BUILDER,
+    from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'inbound-receipts.csv' });",
+    to: "downloadFile({ bytes: new Blob([file.bytes]), filename: file.filename ?? 'inbound-receipts.csv' });",
+  },
+  {
+    label: 'Inbound receipts API replaces the backend file bytes',
+    file: 'portal-client/src/lib/api/domains/inbound.ts', guard: BUILDER,
+    from: "  }, 'text/csv'),",
+    to: "  }, 'text/csv').then(file => ({ ...file, bytes: new Blob(['replacement']) })),",
+  },
+  {
     label: 'Returns download rebuilds the backend Blob',
     file: 'portal-client/src/components/returns/ExportReturnsCsv.tsx', guard: BUILDER,
     from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'returns.csv' });",
