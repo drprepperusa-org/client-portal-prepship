@@ -9,7 +9,7 @@ export function loadTableSortFields(path: string, scope: { isGlobal: boolean; ca
   const tree = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   let fields = '';
   const declarations: { name: string; code: string }[] = [];
-  const prerequisites = new Set(['quantity', 'receivedAt', 'movementSku', 'movementClock']);
+  const prerequisites = new Set(['quantity', 'receivedAt', 'movementSku', 'movementClock', 'shipDate']);
   function visit(node: ts.Node) {
     if (ts.isCallExpression(node) && node.expression.getText(tree) === 'tableOrderBy') fields = node.arguments[1].getText(tree);
     if (ts.isVariableDeclaration(node) && prerequisites.has(node.name.getText(tree))) {
