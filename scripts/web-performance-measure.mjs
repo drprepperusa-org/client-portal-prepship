@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
 const root = process.cwd();
+const appRoot = path.join(root, 'portal-client');
 const args = new Set(process.argv.slice(2));
 const serve = args.has('--serve');
 const json = args.has('--json');
@@ -19,12 +20,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForUrl(targetUrl) {
+async function waitForUrl(targetUrl, child) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`Preview exited with code ${child.exitCode}; port 4173 may already be in use`);
     try {
       const res = await fetch(targetUrl, { cache: 'no-store' });
-      if (res.ok) return;
+      if (res.ok) {
+        await sleep(100);
+        if (child.exitCode === null) return;
+      }
     } catch {
       // Keep waiting for the preview server.
     }
@@ -57,7 +62,7 @@ async function measureOnce(browser, targetUrl) {
     window.__prepshipPerf = { fcp: null, lcp: null, cls: 0 };
     try {
       new PerformanceObserver((entryList) => {
-        const first = entryList.getEntries()[0];
+        const first = entryList.getEntries().find(entry => entry.name === 'first-contentful-paint');
         if (first) window.__prepshipPerf.fcp = first.startTime;
       }).observe({ type: 'paint', buffered: true });
       new PerformanceObserver((entryList) => {
@@ -77,7 +82,7 @@ async function measureOnce(browser, targetUrl) {
 
   const response = await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 60_000 });
   assert(response?.ok(), `Navigation failed: HTTP ${response?.status() ?? 'unknown'}`);
-  await page.waitForSelector('#root', { timeout: 15_000 });
+  await page.waitForSelector('#root > *', { timeout: 15_000 });
   await page.waitForTimeout(1_000);
 
   const metrics = await page.evaluate(() => {
@@ -109,15 +114,15 @@ async function measureOnce(browser, targetUrl) {
 let previewProcess = null;
 try {
   if (serve) {
-    const viteBin = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js');
+    const viteBin = path.join(appRoot, 'node_modules', 'vite', 'bin', 'vite.js');
     const previewCommand = process.execPath;
-    const previewArgs = [viteBin, 'preview', '--host', '127.0.0.1', '--port', '4173'];
+    const previewArgs = [viteBin, 'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort'];
     previewProcess = spawn(previewCommand, previewArgs, {
-      cwd: root,
+      cwd: appRoot,
       stdio: 'ignore',
       windowsHide: true,
     });
-    await waitForUrl(url);
+    await waitForUrl(url, previewProcess);
   }
 
   const browser = await chromium.launch();
@@ -142,7 +147,7 @@ try {
     'scriptCount',
     'stylesheetCount',
   ];
-  const summary = { url, runs, measuredAt: new Date().toISOString(), title: samples[0]?.title ?? null };
+  const summary = { app: 'portal-client', scope: 'unauthenticated entry page; not authenticated API latency', url, runs, measuredAt: new Date().toISOString(), title: samples[0]?.title ?? null };
   for (const key of numericKeys) {
     const values = samples
       .map((sample) => sample[key])
@@ -161,7 +166,7 @@ try {
   if (json) {
     console.log(JSON.stringify({ summary, reportPath }, null, 2));
   } else {
-    console.log('\nPrepShip web performance measurement');
+    console.log('\nClient Portal entry-page performance measurement (unauthenticated)');
     console.log(`URL: ${summary.url}`);
     console.log(`Runs: ${summary.runs}`);
     console.log(`Report: ${path.relative(root, reportPath)}`);

@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-export-count-performance": "tsx scripts/client-portal-export-count-performance.ts",
     "test:client-portal-orders-export:integration": "tsx scripts/integration/client-portal-orders-export.integration.ts",
     "test:client-portal-attention:integration": "tsx scripts/integration/client-portal-attention.integration.ts",
     "test:client-portal-rate-sheet:integration": "tsx scripts/integration/client-portal-rate-sheet.integration.ts",
@@ -62,7 +63,7 @@
     "migrate:cp-057-return-label-voided": "tsx scripts/apply-cp-057-return-label-voided-migration.ts",
     "migrate:ps-423-return-label-fencing": "tsx scripts/apply-ps-423-return-label-fencing-migration.ts",
     "perf:smoke": "node scripts/perf-smoke.mjs",
-    "perf:web": "npm run build:web:legacy && node scripts/web-performance-measure.mjs --serve",
+    "perf:web": "npm run build:web && node scripts/web-performance-measure.mjs --serve",
     "preview:web": "npm --prefix portal-client run preview",
     "preview:web:legacy": "vite preview",
     "shipstation:awaiting:diff": "tsx scripts/reconcile-shipstation-awaiting.ts --diff",

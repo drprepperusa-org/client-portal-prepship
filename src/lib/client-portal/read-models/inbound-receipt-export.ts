@@ -11,10 +11,12 @@ export async function exportPortalInboundReceipts(scope: ClientPortalScope, filt
     const lines = [inboundReceiptCsvHeader()];
     let bytes = Buffer.byteLength(lines[0]!);
     let rows = 0;
+    let snapshotTotal: number | undefined;
     const started = Date.now();
     for (let page = 1; ; page++) {
       if (Date.now() - started > 25_000) throw new InboundReceiptExportTooLarge('Export took too long');
-      const result = await listPortalInboundReceipts(scope, { ...filters, page, pageSize: 500 }, tx);
+      const result = await listPortalInboundReceipts(scope, { ...filters, page, pageSize: 500 }, tx, snapshotTotal);
+      snapshotTotal = result.pagination.total;
       if (result.pagination.total > INBOUND_RECEIPT_EXPORT_MAX_ROWS) throw new InboundReceiptExportTooLarge('Too many rows');
       for (const receipt of result.data) {
         const line = inboundReceiptCsvRow(receipt);

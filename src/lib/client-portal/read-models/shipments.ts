@@ -37,7 +37,10 @@ export async function listPortalShipments(
   scope: ClientPortalScope,
   opts: PortalShipmentListOptions,
   reader: Pick<typeof db, 'select'> = db,
+  // Only reuse the first page's count within the SAME snapshot, scope and filters.
+  snapshotTotal?: number,
 ) {
+  if (snapshotTotal !== undefined && reader === db) throw new Error('Snapshot count requires a transaction reader');
   const { page, pageSize, clientId, storeId, search, status, dateFrom, dateTo } = opts;
   // Match the existing DTO ship-date clock, including legacy label/create fallbacks.
   const shipDate = sql`coalesce(${shipments.shipDate}, ${shipments.labelShipDate}, ${shipments.createDate})`;
@@ -82,7 +85,7 @@ export async function listPortalShipments(
     }, [desc(shipments.shipDate), desc(shipments.id)], shipments.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRead = reader
+  const countRead = snapshotTotal !== undefined ? [{ count: snapshotTotal }] : reader
     .select({ count: sql<number>`count(*)::int` })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))

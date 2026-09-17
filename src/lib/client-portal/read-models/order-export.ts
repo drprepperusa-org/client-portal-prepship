@@ -14,10 +14,12 @@ export async function exportPortalOrders(scope: ClientPortalScope, filters: Omit
     const lines = [orderCsvHeader(scope)];
     let bytes = Buffer.byteLength(lines[0]!);
     let rows = 0;
+    let snapshotTotal: number | undefined;
     const started = Date.now();
     for (let page = 1; ; page++) {
       if (Date.now() - started > 25_000) throw new OrderExportTooLarge('Export took too long');
-      const result = await listPortalOrders(scope, { ...filters, page, pageSize: 500 }, tx, schemaReady);
+      const result = await listPortalOrders(scope, { ...filters, page, pageSize: 500 }, tx, schemaReady, snapshotTotal);
+      snapshotTotal = result.pagination.total;
       if (result.pagination.total > ORDER_EXPORT_MAX_ROWS) throw new OrderExportTooLarge('Too many rows');
       for (const order of result.data) {
         const line = orderCsvRow(order, scope);

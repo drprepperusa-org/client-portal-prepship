@@ -45,7 +45,10 @@ export async function listPortalInventory(
   scope: ClientPortalScope,
   opts: PortalInventoryListOptions,
   reader: Pick<typeof db, 'select' | 'execute'> = db,
+  // Only reuse the first page's count within the SAME snapshot, scope and filters.
+  snapshotTotal?: number,
 ) {
+  if (snapshotTotal !== undefined && reader === db) throw new Error('Snapshot count requires a transaction reader');
   const { page, pageSize, clientId, storeId, search, lowStock } = opts;
   const quantity = inventoryQuantitySql(inventory.id);
   const where = portalInventoryWhere(scope, { clientId, storeId, search, lowStock });
@@ -81,7 +84,7 @@ export async function listPortalInventory(
       }, [desc(inventory.updatedAt), desc(inventory.id)], inventory.id))
       .limit(pageSize)
       .offset(offset),
-    reader
+    snapshotTotal !== undefined ? [{ count: snapshotTotal }] : reader
       .select({ count: sql<number>`count(*)::int` })
       .from(inventory)
       .leftJoin(clients, eq(clients.id, inventory.clientId))

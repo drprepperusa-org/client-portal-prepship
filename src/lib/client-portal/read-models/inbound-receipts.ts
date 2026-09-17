@@ -28,7 +28,10 @@ export async function listPortalInboundReceipts(
   scope: ClientPortalScope,
   options: ReceiptListOptions,
   reader: Pick<typeof db, 'select'> = db,
+  // Only reuse the first page's count within the SAME snapshot, scope and filters.
+  snapshotTotal?: number,
 ): Promise<Paginated<PortalInboundReceipt>> {
+  if (snapshotTotal !== undefined && reader === db) throw new Error('Snapshot count requires a transaction reader');
   const { page, pageSize, clientId, storeId, dateFrom, dateTo } = options;
   const receivedAt = sql<Date | string>`coalesce(${inventoryLedger.effectiveAt}, ${inventoryLedger.createdAt})`;
   const where = and(
@@ -66,7 +69,7 @@ export async function listPortalInboundReceipts(
       }, [desc(receivedAt), desc(inventoryLedger.id)], inventoryLedger.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize),
-    reader
+    snapshotTotal !== undefined ? [{ count: snapshotTotal }] : reader
       .select({ count: sql<number>`count(*)::int` })
       .from(inventoryLedger)
       .innerJoin(inventory, eq(inventory.id, inventoryLedger.inventoryId))

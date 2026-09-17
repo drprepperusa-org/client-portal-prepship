@@ -153,7 +153,10 @@ export async function listPortalOrders(
   opts: PortalOrderListOptions,
   reader: OrderReader = db,
   schemaReady?: boolean,
+  // Only reuse the first page's count within the SAME snapshot, scope and filters.
+  snapshotTotal?: number,
 ) {
+  if (snapshotTotal !== undefined && reader === db) throw new Error('Snapshot count requires a transaction reader');
   const { page, pageSize, status, clientId, storeId, search } = opts;
   const where = and(
     orderScopePredicate(scope, { clientId, storeId }),
@@ -214,7 +217,7 @@ export async function listPortalOrders(
   // Count and page are independent. Start the count now so the badge/dashboard can
   // reuse the same pending read; item enrichment remains dependent on the page's IDs.
   const [{ rows, canonicalItemsByOrder }, count] = await Promise.all([
-    pageRead, countPortalOrders(scope, where, reader),
+    pageRead, snapshotTotal ?? countPortalOrders(scope, where, reader),
   ]);
   return {
     data: rows.map((row) =>
