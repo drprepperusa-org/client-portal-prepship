@@ -28,25 +28,22 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
-        // vite 8 (rolldown) only supports the function form of manualChunks.
-        // Same grouping as the old object form; matches on the exact
-        // node_modules package boundary so e.g. react-icons/recharts never
-        // false-match the react chunk.
-        manualChunks(id: string) {
-          const groups: Record<string, string[]> = {
+        // Do not pull React and other shared dependencies into the charts group:
+        // that makes the whole app wait for charts, even when no chart is visible.
+        codeSplitting: {
+          groups: Object.entries({
             react: ['react', 'react-dom', 'react-router-dom'],
             charts: ['recharts'],
             motion: ['framer-motion'],
             query: ['@tanstack/react-query'],
             supabase: ['@supabase/supabase-js'],
             icons: ['lucide-react'],
-          };
-          for (const [name, pkgs] of Object.entries(groups)) {
-            if (pkgs.some((p) => id.includes(`node_modules/${p}/`) || id.includes(`node_modules\\${p}\\`))) {
-              return name;
-            }
-          }
-          return undefined;
+          }).map(([name, packages]) => ({
+            name,
+            // Claim React's dependency tree before any optional visualization group.
+            priority: name === 'react' ? 100 : 10,
+            test: (id: string) => packages.some(p => id.includes(`node_modules/${p}/`) || id.includes(`node_modules\\${p}\\`)),
+          })),
         },
       },
     },

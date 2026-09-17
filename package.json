@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-dashboard-loading:browser": "playwright test --config playwright.dashboard-performance.config.mjs --workers=1 --reporter=line",
     "test:client-portal-export-count-performance": "tsx scripts/client-portal-export-count-performance.ts",
     "test:client-portal-orders-export:integration": "tsx scripts/integration/client-portal-orders-export.integration.ts",
     "test:client-portal-attention:integration": "tsx scripts/integration/client-portal-attention.integration.ts",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, Reorder } from 'framer-motion';
 import { ShoppingCart, Truck, Boxes, Inbox, Pencil, GripVertical, Eye, EyeOff, Check, RotateCcw, Columns2, Square } from 'lucide-react';
@@ -8,7 +8,7 @@ import { Skeleton, EmptyState, Tooltip } from '@/components/ui/Display';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { TableUpdateStatus } from '@/components/ui/TableUpdateStatus';
 import { QueryState } from '@/components/ui/QueryState';
-import { OrdersUnitsBarChart, VolumeBarChart } from '@/components/charts/Charts';
+import { DeferredChart } from '@/components/charts/DeferredChart';
 import { KpiPeekModal, type PeekKey } from '@/components/dashboard/KpiPeekModal';
 import { ChartDayModal, type DayPeekSource } from '@/components/dashboard/ChartDayModal';
 import { staggerContainer } from '@/lib/motion';
@@ -29,6 +29,9 @@ import {
 } from '@/lib/dashboardLayout';
 
 type DashboardTopSku = DashboardSummary['bySku'][number];
+
+const OrdersUnitsBarChart = lazy(() => import('@/components/charts/Charts').then(module => ({ default: module.OrdersUnitsBarChart })));
+const VolumeBarChart = lazy(() => import('@/components/charts/Charts').then(module => ({ default: module.VolumeBarChart })));
 
 /** Width class for a widget: half collapses to full below `lg` so it never gets
  *  cramped on small screens. gap-4 = 1rem, so half = (100% - gap) / 2. */
@@ -172,10 +175,12 @@ export default function Dashboard() {
               {loading ? (
                 <Skeleton className="h-[260px]" />
               ) : ordersUnitsSeries.length ? (
-                <OrdersUnitsBarChart
-                  data={ordersUnitsSeries}
-                  onSelectDay={edit ? undefined : openDay('orders')}
-                />
+                <DeferredChart>
+                  <OrdersUnitsBarChart
+                    data={ordersUnitsSeries}
+                    onSelectDay={edit ? undefined : openDay('orders')}
+                  />
+                </DeferredChart>
               ) : (
                 <EmptyState
                   icon={<Inbox size={24} />}
@@ -195,10 +200,12 @@ export default function Dashboard() {
               {loading ? (
                 <Skeleton className="h-[260px]" />
               ) : volumeSeries.length ? (
-                <VolumeBarChart
-                  data={volumeSeries}
-                  onSelectDay={edit ? undefined : openDay('shipments')}
-                />
+                <DeferredChart>
+                  <VolumeBarChart
+                    data={volumeSeries}
+                    onSelectDay={edit ? undefined : openDay('shipments')}
+                  />
+                </DeferredChart>
               ) : (
                 <EmptyState
                   icon={<Inbox size={24} />}

@@ -56,6 +56,9 @@ jobs:
       - name: Static guard suite
         run: npm run test:guards
 
+      - name: Production dashboard chart loading and failure isolation
+        run: npm run test:client-portal-dashboard-loading:browser
+
       - name: Connections client, search, platform and attention filters browser proof
         run: npx playwright test web/e2e/client-portal-connection-filters.spec.js --workers=1
       - name: Attention counts, scope, links and failure states browser proof

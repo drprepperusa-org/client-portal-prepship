@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './web/e2e',
+  // This proof needs real production chunks, served by its dedicated config.
+  testIgnore: '**/client-portal-dashboard-loading.spec.js',
   timeout: 30_000,
   expect: {
     timeout: 5_000,

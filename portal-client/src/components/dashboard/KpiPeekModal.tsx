@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { X, ArrowRight } from 'lucide-react';
@@ -8,7 +8,7 @@ import { liquidSpring, staggerContainer } from '@/lib/motion';
 import { cn } from '@/lib/cn';
 import type { PeekKey, KpiPeekData } from './peek/types';
 import { CountUp, PeekSection } from './peek/atoms';
-import { PeekChart } from './peek/PeekChart';
+import { DeferredChart } from '@/components/charts/DeferredChart';
 import { buildConfig } from './peek/buildConfig';
 
 // Re-exported so consumers keep importing from the modal module.
@@ -16,6 +16,7 @@ export type { PeekKey, KpiPeekData } from './peek/types';
 export { CountUp, niceDate } from './peek/atoms';
 
 const PANEL_W = 540;
+const PeekChart = lazy(() => import('./peek/PeekChart').then(module => ({ default: module.PeekChart })));
 
 function originTransform(rect: DOMRect | null, reduce: boolean | null) {
   if (!rect || reduce) return { x: 0, y: 0, scale: 0.96 };
@@ -100,7 +101,9 @@ export function KpiPeekModal({
               {/* Body */}
               <motion.div variants={staggerContainer} initial="initial" animate="enter" className="flex-1 space-y-4 overflow-y-auto px-5 pb-2 pt-4">
                 <PeekSection title={cfg.trendLabel}>
-                  <PeekChart data={cfg.series} color={ACCENTS[cfg.accent].solid} format={cfg.format} />
+                  <DeferredChart height={172}>
+                    <PeekChart data={cfg.series} color={ACCENTS[cfg.accent].solid} format={cfg.format} />
+                  </DeferredChart>
                 </PeekSection>
                 {cfg.body}
               </motion.div>

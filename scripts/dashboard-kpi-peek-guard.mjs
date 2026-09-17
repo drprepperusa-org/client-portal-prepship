@@ -50,9 +50,11 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
   assert(modal.includes('useReducedMotion'), 'animations respect prefers-reduced-motion');
   assert(
     modal.includes("from './peek/atoms'") &&
-      modal.includes("from './peek/PeekChart'") &&
+      modal.includes("lazy(() => import('./peek/PeekChart')") &&
+      modal.includes('<DeferredChart height={172}>') &&
+      modal.includes('<PeekChart data={cfg.series}') &&
       modal.includes("from './peek/buildConfig'"),
-    'modal composes the peek/ submodules',
+    'modal composes the peek/ submodules with an isolated lazy chart',
   );
 }
 
