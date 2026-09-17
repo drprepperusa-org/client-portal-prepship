@@ -1102,6 +1102,19 @@ Guard: `client-portal-order-detail-guard.ts`.
 | Customer Shipping Rate | `shippingCost` | `shippingCost` (financially gated) | frozen `Σ billing_line_items` (`line_type='shipping'`, by shipment) → strict PrepShip `shipments.selected_rate_json.cShippingRateAmount` snapshot; return labels stay `customerShippingMoneyPolicyVersion='ps-437-v1'`, while ordinary outbound accepts the version-specific `ps-437-v1`, `ps-508-v1`, and `ps-509-v1` provenance contracts; never raw cost or a Client Portal formula | PrepShip label/billing freeze | backend-owned-truth (PS-437/508/509, gated) |
 | Items | `items[]` | `items[]` | shipment `orderItems` → `order_items` | order time | presentation-only |
 
+Shipments CSV (`GET /shipments?format=csv`) uses `listPortalShipments` in one
+read-only repeatable-read snapshot for all pages. The same backend predicates
+own client/store scope, search, outbound-only admission and status. Optional
+inclusive `dateFrom`/`dateTo` UTC timestamps filter the exact existing `shipDate`
+clock: `coalesce(ship_date, label_ship_date, create_date)`. Both table and export
+honor these bounds; null dates remain visible in the all-dates view and are
+excluded when a bound applies. The browser has an explicit Use selected date
+range toggle, includes bounds in its query key, and resets paging when they change.
+`shipment-csv.ts` projects only ID, order reference, client, canonical tracking,
+ship date and fulfillment status from the existing DTO. Carrier/service identity,
+internal costs, raw payloads, label URLs, addresses and telemetry are not exported.
+The browser downloads the original server bytes without recalculating any values.
+
 Owner: `toPortalShipmentDto` over `shipments` LEFT-JOINED to `orders`. Route:
 `src/routes/client-portal/shipments.ts` + read-model
 `read-models/shipments.ts`. `deliveredAt` and `shipmentStatusDetail` are no

@@ -91,6 +91,8 @@ jobs:
         run: npm run test:client-portal-orders-performance:integration
       - name: Verify Inventory filters and ledger quantity truth
         run: npm run test:client-portal-inventory-filter:integration
+      - name: Verify Shipments CSV full pages, dates, canonical status and scope
+        run: npm run test:client-portal-shipments-export:integration
       - name: Verify Shipments loading, search and scope
         run: npm run test:client-portal-shipments-loading:integration
       - name: Verify Returns loading, reference search and scope

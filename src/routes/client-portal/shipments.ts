@@ -2,6 +2,8 @@
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
+import { z } from 'zod';
+import { exportPortalShipments, ShipmentExportTooLarge } from '../../lib/client-portal/read-models/shipment-export';
 import { and, inArray } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { shipments } from '../../db/schema/shipments';
@@ -14,10 +16,21 @@ import { resolveShipmentStatusFilterParam } from '../../lib/client-portal/shipme
 import { parsePage, parsePageSize, requestedSearch, requestedClientId, requestedStoreId, scopeOrResponse } from '../../lib/client-portal/query-params';
 
 const app = new Hono();
+const shipmentRangeQuery = z.object({
+  format: z.literal('csv').optional(),
+  clientId: z.coerce.number().int().positive().optional(),
+  storeId: z.coerce.number().int().positive().optional(),
+  dateFrom: z.string().datetime({ offset: true }).optional(),
+  dateTo: z.string().datetime({ offset: true }).optional(),
+}).refine(value => !value.dateFrom || !value.dateTo || Date.parse(value.dateFrom) <= Date.parse(value.dateTo));
 
 app.get('/shipments', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
+  c.header('Cache-Control', 'private, no-store');
+  const range = shipmentRangeQuery.safeParse(c.req.query());
+  if (!range.success) return c.json({ error: 'Invalid shipment date range or export format.' }, 400);
+  const { format, dateFrom, dateTo } = range.data;
   const page = parsePage(c.req.query('page'));
   const pageSize = parsePageSize(c.req.query('pageSize'));
   const search = requestedSearch(c);
@@ -27,7 +40,26 @@ app.get('/shipments', async (c) => {
   const status = resolvedStatus && SHIPMENT_STATUS_FILTERS.has(resolvedStatus) ? resolvedStatus : undefined;
   const clientId = requestedClientId(c);
   const storeId = requestedStoreId(c);
+  if (format === 'csv') {
+    const requestedStatus = c.req.query('status');
+    if (requestedStatus && requestedStatus !== 'all' && !status) return c.json({ error: 'Invalid shipment status.' }, 400);
+    try {
+      const result = await exportPortalShipments(scope, {
+        clientId, storeId, search, status, dateFrom, dateTo,
+        sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
+      });
+      await recordPortalAudit('portal.shipments.export', scope, { clientId, storeId, search, status: status ?? null,
+        dateFrom, dateTo, rows: result.rows, sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') });
+      c.header('Content-Type', 'text/csv; charset=utf-8');
+      c.header('Content-Disposition', 'attachment; filename="shipments.csv"');
+      return c.body(result.csv);
+    } catch (error) {
+      if (error instanceof ShipmentExportTooLarge) return c.json({ error: 'Export is too large. Narrow your filters and try again.' }, 413);
+      return c.json({ error: 'Could not export shipments. Please try again.' }, 503);
+    }
+  }
   const result = await listPortalShipments(scope, {
+    dateFrom, dateTo,
     sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir'),
     page,
     pageSize,
@@ -37,6 +69,7 @@ app.get('/shipments', async (c) => {
     status,
   });
   await recordPortalAudit('portal.shipments.list', scope, {
+    dateFrom, dateTo,
     page,
     pageSize,
     clientId,

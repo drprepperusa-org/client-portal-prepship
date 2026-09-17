@@ -241,7 +241,8 @@ export function useShipments(opts: ListOpts = {}) {
   const { clientId } = usePortalFilters();
   const merged: ListOpts = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['shipments', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.status ?? 'all', merged.clientId ?? 'scope', merged.sortBy, merged.sortDir],
+    ['shipments', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.status ?? 'all',
+      merged.clientId ?? 'scope', merged.sortBy, merged.sortDir, merged.dateFrom, merged.dateTo],
     (t) => portalApi.shipments(t, merged),
     true, { retainDataScope: ['shipments', merged.clientId ?? 'scope'] },
   );

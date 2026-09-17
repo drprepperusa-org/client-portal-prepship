@@ -27,19 +27,20 @@ function shipmentStatusFilterPredicate(status?: PortalShipmentStatus | null): SQ
   return status ? eq(portalShipmentStatusSql(), status) : undefined;
 }
 
+export type PortalShipmentListOptions = SortInput & {
+  page: number; pageSize: number; clientId?: number | null; storeId?: number | null;
+  search: string; status?: PortalShipmentStatus | null; dateFrom?: string; dateTo?: string;
+};
+
 /** Shipments read-model (extracted from routes/client-portal.ts). */
 export async function listPortalShipments(
   scope: ClientPortalScope,
-  opts: SortInput & {
-    page: number;
-    pageSize: number;
-    clientId?: number | null;
-    storeId?: number | null;
-    search: string;
-    status?: PortalShipmentStatus | null;
-  },
+  opts: PortalShipmentListOptions,
+  reader: Pick<typeof db, 'select'> = db,
 ) {
-  const { page, pageSize, clientId, storeId, search, status } = opts;
+  const { page, pageSize, clientId, storeId, search, status, dateFrom, dateTo } = opts;
+  // Match the existing DTO ship-date clock, including legacy label/create fallbacks.
+  const shipDate = sql`coalesce(${shipments.shipDate}, ${shipments.labelShipDate}, ${shipments.createDate})`;
   const where = and(
     // Voided shipments are hidden unless explicitly filtered for.
     status === 'voided' ? eq(shipments.voided, true) : eq(shipments.voided, false),
@@ -51,8 +52,10 @@ export async function listPortalShipments(
     shipmentStatusFilterPredicate(status),
     shipmentScopePredicate(scope, { clientId, storeId }),
     shipmentSearchPredicate(search),
+    dateFrom ? sql`${shipDate} >= ${dateFrom}::timestamptz` : undefined,
+    dateTo ? sql`${shipDate} <= ${dateTo}::timestamptz` : undefined,
   );
-  const pageRead = db
+  const pageRead = reader
     .select({
       shipment: shipments,
       clientName: clients.name,
@@ -75,11 +78,11 @@ export async function listPortalShipments(
       customerShippingRate: scope.canViewFinancials ? sql`(${shipmentCustomerShippingRateSql()})::numeric` : undefined,
       tracking: sql`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
       status: portalShipmentStatusSql(),
-      shipped: sql`coalesce(${shipments.shipDate}, ${shipments.labelShipDate}, ${shipments.createDate})`,
+      shipped: shipDate,
     }, [desc(shipments.shipDate), desc(shipments.id)], shipments.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
-  const countRead = db
+  const countRead = reader
     .select({ count: sql<number>`count(*)::int` })
     .from(shipments)
     .leftJoin(clients, eq(clients.id, shipments.clientId))
