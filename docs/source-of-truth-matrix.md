@@ -1263,6 +1263,22 @@ anywhere.
 
 ### Returns (CP-026 → CP-031)
 
+Returns CSV (`GET /returns?format=csv`) delegates to `returns/list.ts`, the same
+backend owner as the paginated list. Client/store access remains on the linked
+order through `returnScopePredicate`. Explicit client/store/order, search, status,
+sort and optional date filters apply to every page. Dates use `returns.created_at`
+with inclusive UTC bounds, shared by the table and export.
+`returns/export.ts` pages this owner and loads each page's `return_items` in one
+read-only repeatable-read transaction. `return-csv.ts` projects the canonical
+reference, order number, existing client label, item names/SKUs/quantities, DTO
+total quantity, persisted lifecycle status and created timestamp. Item cells
+align by `return_items.id`; total quantity keeps the list's canonical sum.
+There is no inference from delivery to lifecycle status, label lookup, tracking
+refresh, financial field or recipient/address projection in the export.
+The browser downloads backend bytes unchanged. Limits are 10,000 returns and
+16 MiB with bounded generation time; failures return no partial file. Integration
+and browser CI prove scope, snapshots, limits and byte preservation.
+
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
 | Return status | `status` | `status` | `returns.status` (workflow table) | return workflow | backend-owned-truth (CP-026) |
@@ -1533,4 +1549,3 @@ These checks do not connect to a production database or shipping provider.
 - **CP-026 → CP-031** — returns workflow/item/inspection/media tables own only
   workflow detail; label money + tracking stay on `shipments`; no portal-side
   rate-shopping; offline-mock labels only for test clients; operator-gated receiving.
-

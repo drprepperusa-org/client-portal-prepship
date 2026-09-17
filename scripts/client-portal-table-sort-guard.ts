@@ -35,7 +35,7 @@ try {
   for (const file of [
     'src/lib/client-portal/read-models/orders.ts', 'src/lib/client-portal/read-models/inventory.ts',
     'src/lib/client-portal/read-models/shipments.ts', 'src/lib/client-portal/read-models/inbound-receipts.ts',
-    'src/routes/client-portal/inventory.ts', 'src/routes/client-portal/returns/reads.ts',
+    'src/routes/client-portal/inventory.ts', 'src/routes/client-portal/returns/list.ts',
   ]) {
     const fields = loadTableSortFields(file, { isGlobal: true, canViewFinancials: true });
     for (const [key, expression] of Object.entries(fields)) {

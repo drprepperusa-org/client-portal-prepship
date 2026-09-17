@@ -309,7 +309,7 @@ export function useReturns(opts: ListOpts & { orderId?: number } = {}) {
   const { clientId } = usePortalFilters();
   const merged = { ...opts, clientId: opts.clientId ?? clientId };
   return useTokenQuery(
-    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.orderId ?? 0, merged.clientId ?? 'scope', merged.sortBy, merged.sortDir],
+    ['returns', merged.status ?? 'all', merged.search ?? '', merged.page ?? 1, merged.pageSize ?? 50, merged.orderId ?? 0, merged.clientId ?? 'scope', merged.sortBy, merged.sortDir, merged.dateFrom, merged.dateTo],
     (t) => portalApi.returns(t, merged),
     true, { retainDataScope: ['returns', merged.clientId ?? 'scope', merged.orderId ?? 0] },
   );

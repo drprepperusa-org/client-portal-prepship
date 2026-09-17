@@ -40,6 +40,8 @@ const DOMAIN = 'portal-client/src/lib/api/domains/billing.ts';
 const TRANSPORT = 'portal-client/src/lib/api/transport.ts';
 const AUDIT_DOMAIN = 'portal-client/src/lib/api/domains/access.ts';
 const AUDIT_DOWNLOAD = 'portal-client/src/components/audit/ExportAuditCsv.tsx';
+const RETURN_DOMAIN = 'portal-client/src/lib/api/domains/returns.ts';
+const RETURN_DOWNLOAD = 'portal-client/src/components/returns/ExportReturnsCsv.tsx';
 const SHIPMENT_DOMAIN = 'portal-client/src/lib/api/domains/shipments.ts';
 const SHIPMENT_DOWNLOAD = 'portal-client/src/components/shipments/ExportShipmentsCsv.tsx';
 const INVENTORY_DOMAIN = 'portal-client/src/lib/api/domains/inventory.ts';
@@ -161,9 +163,14 @@ const SHIPMENT_ACCEPT = `shipmentsCsv: (token: RequestAuth, opts: ListOpts) => a
     format: 'csv', search: opts.search, clientId: opts.clientId, status: opts.status || undefined,
     dateFrom: opts.dateFrom, dateTo: opts.dateTo, sortBy: opts.sortBy, sortDir: opts.sortDir,
   }, 'text/csv')`;
+const RETURN_ACCEPT = `returnsCsv: (token: RequestAuth, opts: ListOpts & { orderId?: number }) => apiBlob(token, '/api/client-portal/returns', {
+    format: 'csv', search: opts.search, clientId: opts.clientId, status: opts.status || undefined, orderId: opts.orderId,
+    dateFrom: opts.dateFrom, dateTo: opts.dateTo, sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'text/csv')`;
 const allowedBackendMedia = new Map([[AUDIT_DOMAIN, AUDIT_ACCEPT], [AUDIT_DOWNLOAD, AUDIT_TYPE_CHECK],
   [ORDER_DOMAIN, ORDER_ACCEPT], [ORDER_DOWNLOAD, AUDIT_TYPE_CHECK],
   [INVENTORY_DOMAIN, INVENTORY_ACCEPT], [INVENTORY_DOWNLOAD, AUDIT_TYPE_CHECK],
+  [RETURN_DOMAIN, RETURN_ACCEPT], [RETURN_DOWNLOAD, AUDIT_TYPE_CHECK],
   [SHIPMENT_DOMAIN, SHIPMENT_ACCEPT], [SHIPMENT_DOWNLOAD, AUDIT_TYPE_CHECK]]);
 const FORBIDDEN_MEDIA = [
   ['a CSV media type', /text\/csv/],
@@ -239,6 +246,22 @@ assert.doesNotMatch(shipmentDownload, /\bBlob\(|\bFile\(|createObjectURL|TextEnc
   'Shipments UI never assembles, reads, re-encodes or replaces file bytes');
 ok('Shipments CSV UI preserves backend bytes and cannot become a local builder');
 
+const returnsDomain = read(RETURN_DOMAIN).replaceAll('\r\n', '\n');
+assert.ok(returnsDomain.includes(RETURN_ACCEPT), 'Returns CSV fetcher returns the bare backend apiBlob call');
+assert.doesNotMatch(returnsDomain, /\.then\(|\bBlob\(|\bFile\(|bytes:|arrayBuffer|\.text\(\)|TextEncoder|btoa\(/,
+  'Returns API domain never constructs, chains or reads file bytes');
+ok('Returns CSV API returns the backend file without replacing its bytes');
+
+const returnsDownload = read(RETURN_DOWNLOAD);
+assert.match(returnsDownload, /const file = await portalApi\.returnsCsv\(\{ accessToken, signal: controller\.signal \}, filters\);/,
+  'Returns download obtains the backend CSV with caller filters and cancellation');
+assert.match(returnsDownload, /downloadFile\(\{ bytes: file\.bytes, filename: file\.filename \?\? 'returns\.csv' \}\);/,
+  'Returns download hands the original Blob to the shared download helper');
+assert.equal(count(returnsDownload, /downloadFile\(/g), 1, 'Returns download has one file sink');
+assert.doesNotMatch(returnsDownload, /\bBlob\(|\bFile\(|createObjectURL|TextEncoder|btoa\(|arrayBuffer|\.text\(\)|\.slice\(|\.join\(|JSON\.stringify|file\.bytes\s*=/,
+  'Returns UI never assembles, reads, re-encodes or replaces file bytes');
+ok('Returns CSV UI preserves backend bytes and cannot become a local builder');
+
 const inventoryDomain = read(INVENTORY_DOMAIN).replaceAll('\r\n', '\n');
 assert.ok(inventoryDomain.includes(INVENTORY_ACCEPT), 'Inventory CSV fetcher returns the bare backend apiBlob call');
 assert.doesNotMatch(inventoryDomain, /\.then\(|\bBlob\(|\bFile\(|bytes:|arrayBuffer|\.text\(\)|TextEncoder|btoa\(/,
@@ -282,6 +305,6 @@ assert.doesNotMatch(
 );
 ok('the API-domain fetcher is the bare transport call: nothing sits between the wire and the download module');
 
-const EXPECTED_CHECKS = 16;
+const EXPECTED_CHECKS = 18;
 assert.equal(checks, EXPECTED_CHECKS, `expected ${EXPECTED_CHECKS} checks; ${checks} ran`);
 console.log(`\nCP-068 invoice-export no-local-builder guard passed - ${checks}/${EXPECTED_CHECKS} checks`);

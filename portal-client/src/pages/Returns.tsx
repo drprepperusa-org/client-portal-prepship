@@ -1,3 +1,6 @@
+import { ExportReturnsCsv } from '@/components/returns/ExportReturnsCsv';
+import { rangeToTimestamps } from '@/lib/api/scope';
+import { useAuth } from '@/auth';
 import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -24,7 +27,7 @@ import {
   useMe,
   useReturns,
 } from '@/lib/hooks';
-import type { PortalReturnRow } from '@/lib/api';
+import type { ListOpts, PortalReturnRow } from '@/lib/api';
 import { useReturnTrackingRefresh } from '@/lib/useReturnTrackingRefresh';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate } from '@/lib/status';
@@ -34,7 +37,10 @@ import { useFilteredPage } from '@/lib/useFilteredPage';
 // CP-034: return tracking URLs are backend-built carrier links. The portal
 // renders copyable text when the carrier is unknown and never exposes identity.
 export default function Returns() {
-  const { clientId: globalClientId } = usePortalFilters();
+  const { clientId: globalClientId, dateRange } = usePortalFilters();
+  const { userId } = useAuth();
+  const [useDates, setUseDates] = useState(false);
+  const dateBounds: Pick<ListOpts, 'dateFrom' | 'dateTo'> = useDates ? rangeToTimestamps({ from: dateRange.dateFrom, to: dateRange.dateTo }) : {};
   const clients = useClients().data?.data ?? [];
   const me = useMe().data;
   const canCustomizeTables = useCanCustomizeTables();
@@ -58,17 +64,16 @@ export default function Returns() {
     if (newParam) setCreateOrderId(Number(newParam));
   }, [newParam]);
 
-  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, effectiveClientId, statusFilter, orderFilter]));
+  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, effectiveClientId, statusFilter, orderFilter, dateBounds.dateFrom, dateBounds.dateTo]));
   const tableSort = useTableSort(setPage);
 
-  const query = useReturns({ sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
+  const exportFilters = { ...dateBounds, sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
     search: debouncedSearch,
-    page,
-    pageSize,
     status: statusFilter || undefined,
     clientId: effectiveClientId,
     orderId: orderFilter,
-  });
+  };
+  const query = useReturns({ ...exportFilters, page, pageSize });
   const returnsFetchFailed = query.failureCount > 0;
   const rows = query.data?.data ?? [];
   const pagination = query.data?.pagination;
@@ -312,6 +317,18 @@ export default function Returns() {
             </label>
           )}
         </div>
+      </GlassPanel>
+
+      <GlassPanel className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="space-y-1">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-2">
+            <input type="checkbox" checked={useDates} onChange={event => setUseDates(event.target.checked)} />
+            Use selected date range
+          </label>
+          <p className="text-xs text-ink-3">{useDates ? `${dateRange.dateFrom} to ${dateRange.dateTo}` : 'All dates'} · Return created date (UTC)</p>
+        </div>
+        <ExportReturnsCsv key={JSON.stringify([userId, exportFilters, search])} filters={exportFilters}
+          disabled={!rows.length || query.isFetching || query.isError || returnsFetchFailed || search !== debouncedSearch} />
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">

@@ -11,7 +11,7 @@ import type {
   UpdateReturnRecipientNameInput,
 } from '@client-portal-contracts/returns';
 import { scopedList } from '../scope';
-import { apiGet, apiPatch, apiPost, apiUpload } from '../transport';
+import { apiBlob, apiGet, apiPatch, apiPost, apiUpload } from '../transport';
 
 export const returnsApi = {
   returns: (token: RequestAuth, opts: ListOpts & { orderId?: number } = {}) =>
@@ -23,7 +23,12 @@ export const returnsApi = {
       status: opts.status && opts.status !== 'all' ? opts.status : undefined,
       clientId: opts.clientId,
       orderId: opts.orderId,
+      dateFrom: opts.dateFrom, dateTo: opts.dateTo,
     }),
+  returnsCsv: (token: RequestAuth, opts: ListOpts & { orderId?: number }) => apiBlob(token, '/api/client-portal/returns', {
+    format: 'csv', search: opts.search, clientId: opts.clientId, status: opts.status || undefined, orderId: opts.orderId,
+    dateFrom: opts.dateFrom, dateTo: opts.dateTo, sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'text/csv'),
   returnDetail: (token: RequestAuth, id: number) =>
     apiGet<{ data: PortalReturnDetail }>(token, `/api/client-portal/returns/${id}`),
   createReturn: (token: RequestAuth, body: NewReturnInput) =>

@@ -37,6 +37,7 @@ function check(name: string, fn: () => void): void {
 const OWNER = 'src/services/return-arrival.ts';
 const DTO = 'src/routes/client-portal/returns/dto.ts';
 const READS = 'src/routes/client-portal/returns/reads.ts';
+const LIST = 'src/routes/client-portal/returns/list.ts';
 const RECEIVING = 'src/routes/client-portal/returns/receiving.ts';
 const CONTRACT = 'src/lib/client-portal/contracts/returns.ts';
 const FE_LIST = 'portal-client/src/pages/Returns.tsx';
@@ -143,7 +144,7 @@ check('dto.ts delegates to resolveReturnArrival and exposes exactly its three fi
   assert.match(src, /arrivedReadyToReceive: arrival\.arrivedReadyToReceive,/);
 });
 check('reads.ts projects tracking_status + delivered_at of the linked return shipment for BOTH the list and the detail', () => {
-  const src = read(READS);
+  const src = read(READS) + '\n' + read(LIST);
   assert.equal(src.split('returnTrackingStatus: shipments.trackingStatus,').length - 1, 2, 'trackingStatus projected twice');
   assert.equal(src.split('returnDeliveredAt: shipments.deliveredAt,').length - 1, 2, 'deliveredAt projected twice');
   assert.doesNotMatch(src, /trackingStatus:\s*row\.returnTrackingStatus/, 'the detail no longer maps trackingStatus on its own');
@@ -158,7 +159,7 @@ check('receiving.ts orders arrived-first through the SQL twin, then newest, and 
   }
 });
 check('no surface re-derives delivery: the delivered literal and the comparisons live only in the owner', () => {
-  for (const file of [DTO, READS, RECEIVING, FE_LIST, FE_QUEUE, FE_PRESENTATION]) {
+  for (const file of [DTO, READS, LIST, RECEIVING, FE_LIST, FE_QUEUE, FE_PRESENTATION]) {
     const src = read(file);
     assert.doesNotMatch(src, /['"]delivered['"]/, `${file} carries the delivered literal`);
     assert.doesNotMatch(src, /trackingStatus\s*[!=]==?/, `${file} compares trackingStatus`);
@@ -166,7 +167,7 @@ check('no surface re-derives delivery: the delivered literal and the comparisons
   }
 });
 check('AC-4: nothing on the read path writes returns.status (owner, read model, queue GET)', () => {
-  assert.doesNotMatch(read(READS), /\.update\(/, 'reads.ts updates');
+  assert.doesNotMatch(read(READS) + read(LIST), /\.update\(/, 'reads.ts updates');
   const queue = read(RECEIVING);
   const start = queue.indexOf('function registerReceivingQueueRoute');
   const end = queue.indexOf('\n}\n', start);

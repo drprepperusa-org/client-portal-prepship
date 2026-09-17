@@ -1,4 +1,6 @@
-import { tableOrderBy, referenceOrder } from '../../../lib/client-portal/read-models/table-sort';
+import { z } from 'zod';
+import { listPortalReturns } from './list';
+import { exportPortalReturns, ReturnExportTooLarge } from './export';
 import type { Hono } from 'hono';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../../db/client';
@@ -28,21 +30,33 @@ import { validatedReturnCustomerShippingRateSql } from '../../../lib/client-port
 import { resolveClientSafeReturnPdfUrl } from '../../../lib/client-portal/return-label-pdf';
 import { getReturnMediaSignedUrl } from '../../../lib/supabase';
 import { listOriginalOrderActivity, listReturnActivity } from '../../../services/return-activity';
-import { resolveReturnReference, returnReferenceSql } from '../../../services/return-reference';
+import { resolveReturnReference } from '../../../services/return-reference';
 import { toClientSafeReturnRow } from './dto';
 import {
   iso,
   isoDay,
   RETURN_STATUS_FILTERS,
   returnScopePredicate,
-  returnSearchPredicate,
 } from './shared';
+
+const returnRangeQuery = z.object({
+  format: z.literal('csv').optional(),
+  clientId: z.coerce.number().int().positive().optional(),
+  storeId: z.coerce.number().int().positive().optional(),
+  orderId: z.coerce.number().int().positive().optional(),
+  dateFrom: z.string().datetime({ offset: true }).optional(),
+  dateTo: z.string().datetime({ offset: true }).optional(),
+}).refine(value => !value.dateFrom || !value.dateTo || Date.parse(value.dateFrom) <= Date.parse(value.dateTo));
 
 function registerReturnListRoute(app: Hono): void {
   app.get('/returns', async (c) => {
     const scope = scopeOrResponse(c);
     if (!isClientPortalScope(scope)) return scope;
 
+    c.header('Cache-Control', 'private, no-store');
+    const range = returnRangeQuery.safeParse(c.req.query());
+    if (!range.success) return c.json({ error: 'Invalid return date range or export format.' }, 400);
+    const { format, dateFrom, dateTo } = range.data;
     const page = parsePage(c.req.query('page'));
     const pageSize = parsePageSize(c.req.query('pageSize'));
     const clientId = requestedClientId(c);
@@ -51,84 +65,24 @@ function registerReturnListRoute(app: Hono): void {
     const statusParam = c.req.query('status');
     const status = statusParam && RETURN_STATUS_FILTERS.has(statusParam) ? statusParam : undefined;
     const orderId = parsePositiveInt(c.req.query('orderId'));
-    const where = and(
-      returnScopePredicate(scope, { clientId, storeId }),
-      status ? eq(returns.status, status) : undefined,
-      orderId ? eq(returns.orderId, orderId) : undefined,
-      returnSearchPredicate(search),
-    );
-
-    const pageRead = db
-      .select({
-        ret: returns,
-        orderNumber: orders.orderNumber,
-        clientName: clients.name,
-        returnTracking: sql<string | null>`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
-        returnCarrier: shipments.labelCarrier,
-        returnLabelUrl: shipments.labelUrl,
-        returnShipmentSource: shipments.source,
-        returnShipmentVoided: shipments.voided,
-        returnTrackingStatus: shipments.trackingStatus,
-        returnDeliveredAt: shipments.deliveredAt,
-        validatedReturnCustomerShippingRate: validatedReturnCustomerShippingRateSql(),
-        returnedSkus: sql<string[]>`coalesce((
-          select array_agg(ri.sku order by ri.id)
-          from return_items ri
-          where ri.return_id = ${returns.id}
-        ), array[]::text[])`,
-        returnedQuantity: sql<number>`coalesce((
-          select sum(ri.quantity)::double precision
-          from return_items ri
-          where ri.return_id = ${returns.id}
-        ), 0)`,
-        recipientName: sql<string | null>`coalesce(
-          nullif(btrim(${orders.raw}->'shipTo'->>'name'), ''),
-          nullif(btrim(${orders.shipToName}), '')
-        )`,
-      })
-      .from(returns)
-      .leftJoin(orders, eq(orders.id, returns.orderId))
-      .leftJoin(clients, eq(clients.id, returns.clientId))
-      .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
-      .where(where)
-      .orderBy(...tableOrderBy({ sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') }, {
-        returnReference: referenceOrder(returnReferenceSql(returns.returnReference, orders.orderNumber, returns.orderId)),
-        order: referenceOrder(orders.orderNumber), client: sql`lower(${clients.name})`,
-        recipientName: sql`coalesce(nullif(btrim(${orders.raw}->'shipTo'->>'name'), ''), nullif(btrim(${orders.shipToName}), ''))`,
-        returnedSkus: sql`(select string_agg(ri.sku, ', ' order by ri.id) from return_items ri where ri.return_id = ${returns.id})`,
-        returnedQuantity: sql`coalesce((select sum(ri.quantity) from return_items ri where ri.return_id = ${returns.id}), 0)`,
-        status: returns.status, delivery: returns.deliveryMethod,
-        tracking: sql`coalesce(${shipments.labelTracking}, ${shipments.trackingNumber})`,
-        returnCustomerShippingRate: scope.canViewFinancials ? sql`(${validatedReturnCustomerShippingRateSql()})::numeric` : undefined,
-        created: returns.createdAt,
-      }, [desc(returns.createdAt), desc(returns.id)], returns.id))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    const countRead = db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(returns)
-      .leftJoin(orders, eq(orders.id, returns.orderId))
-      .leftJoin(shipments, eq(shipments.id, returns.returnShipmentId))
-      .where(where);
-    // Independent scoped list reads; keep audit and DTO work after both complete.
-    const [rows, countRows] = await Promise.all([pageRead, countRead]);
-    const count = countRows[0]?.count ?? rows.length;
-
-    await recordPortalAudit('portal.returns.list', scope, {
-      page,
-      pageSize,
-      status: status ?? null,
-      clientId,
-      storeId,
-      search,
-    });
-    return c.json({
-      data: await Promise.all(
-        rows.map((row) => toClientSafeReturnRow(row, { includeFinancials: scope.canViewFinancials })),
-      ),
-      pagination: { page, pageSize, total: Number(count), totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)) },
-    });
+    const filters = { clientId, storeId, orderId, search, status, dateFrom, dateTo,
+      sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') };
+    if (format === 'csv') {
+      if (statusParam && statusParam !== 'all' && !status) return c.json({ error: 'Invalid return status.' }, 400);
+      try {
+        const result = await exportPortalReturns(scope, filters);
+        await recordPortalAudit('portal.returns.export', scope, { ...filters, rows: result.rows });
+        c.header('Content-Type', 'text/csv; charset=utf-8');
+        c.header('Content-Disposition', 'attachment; filename="returns.csv"');
+        return c.body(result.csv);
+      } catch (error) {
+        if (error instanceof ReturnExportTooLarge) return c.json({ error: 'Export is too large. Narrow your filters and try again.' }, 413);
+        return c.json({ error: 'Could not export returns. Please try again.' }, 503);
+      }
+    }
+    const result = await listPortalReturns(scope, { ...filters, page, pageSize }, db);
+    await recordPortalAudit('portal.returns.list', scope, { ...filters, page, pageSize });
+    return c.json(result);
   });
 }
 
