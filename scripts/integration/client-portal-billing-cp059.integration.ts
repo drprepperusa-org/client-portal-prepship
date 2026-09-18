@@ -814,7 +814,7 @@ async function main(): Promise<void> {
       );
     }
 
-    // And every invoice-detail reader. These are the three surfaces the ps-435 guard counts.
+    // Summary reads expose identities only; the detail reader still exposes amounts.
     const detailSummary = await portalInvoiceSummary(caseScope, {
       clientId: CLIENT, dateFrom: FROM, dateTo: TO,
     } as never);
@@ -824,11 +824,12 @@ async function main(): Promise<void> {
     const detailRows = await portalInvoiceDetails(caseScope, {
       clientId: CLIENT, dateFrom: FROM, dateTo: TO,
     } as never);
-    const readerTotals = [
-      ['portalInvoiceSummary', detailSummary],
-      ['portalInvoicePeriodSummary', detailPeriod],
-      ['portalInvoiceDetails', detailRows],
-    ] as const;
+    for (const identities of [detailSummary, detailPeriod]) {
+      if (identities.some(row => Object.keys(row).some(key => /Total$|^orders$/.test(key)))) {
+        throw new Error('summary identities must not expose local financial fallbacks');
+      }
+    }
+    const readerTotals = [['portalInvoiceDetails', detailRows]] as const;
     for (const [name, result] of readerTotals) {
       const list = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? []);
       for (const row of list as ReadonlyArray<{ returnPostageTotal?: unknown }>) {

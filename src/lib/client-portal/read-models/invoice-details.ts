@@ -54,23 +54,13 @@ function parseItemsJson(raw: string | null): unknown {
 type PortalInvoiceSummaryRow = {
   client_id: number;
   client_name: string | null;
-  orders: string;
-  pickpack_total: string;
-  additional_total: string;
-  package_total: string;
-  shipping_total: string;
-  storage_total: string;
-  // CP-031: return charges broken out from the grand total so returns are a
-  // visible billing category (they were already inside row_total, just hidden).
-  returnpostage_total: string;
-  returnprocessing_total: string;
-  row_total: string;
 };
 
 /**
- * Per-client billing rollup computed entirely in SQL — no row cap, so the
- * Billing summary shows true order counts and totals no matter how many
- * line rows the range contains (the detail query is capped; this is not).
+ * Uncapped client identities for the Billing summary, not financial totals.
+ * /invoice-summary assigns all counts and money from PrepShip's canonical owner.
+ * Keep sum(total_cost) ONLY in ORDER BY to preserve the existing row order.
+ * Membership and ordering use current committed, customer-safe billing lines.
  * dateTo is the EXCLUSIVE UTC-midnight upper bound from billingDayRange.
  */
 export async function portalInvoiceSummary(
@@ -80,16 +70,7 @@ export async function portalInvoiceSummary(
   const rows = await db.execute<PortalInvoiceSummaryRow>(sql`
     select
       b.client_id,
-      c.name as client_name,
-      count(distinct b.order_id)::text as orders,
-      coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
-      coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
-      coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
-      coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
-      coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
-      coalesce(sum(case when ${isReturnPostageLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as returnpostage_total,
-      coalesce(sum(case when ${isReturnProcessingLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as returnprocessing_total,
-      coalesce(sum(b.total_cost), 0)::text as row_total
+      c.name as client_name
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
@@ -104,15 +85,6 @@ export async function portalInvoiceSummary(
   return rows.map((row) => ({
     clientId: row.client_id,
     clientName: row.client_name,
-    orders: Number(row.orders) || 0,
-    pickpackTotal: row.pickpack_total,
-    additionalTotal: row.additional_total,
-    packageTotal: row.package_total,
-    shippingTotal: row.shipping_total,
-    storageTotal: row.storage_total,
-    returnPostageTotal: row.returnpostage_total,
-    returnProcessingTotal: row.returnprocessing_total,
-    rowTotal: row.row_total,
   }));
 }
 
@@ -127,19 +99,12 @@ type PortalInvoicePeriodSummaryRow = {
   client_name: string | null;
   month_start: string;
   half: string;
-  orders: string;
-  pickpack_total: string;
-  additional_total: string;
-  package_total: string;
-  shipping_total: string;
-  storage_total: string;
-  returnpostage_total: string;
-  returnprocessing_total: string;
-  row_total: string;
 };
 
 /**
- * Per-client billing-period rollup: one row per client per period. Default
+ * Billing identities: one row per client per period, no locally computed money.
+ * The route fills all financial fields from PrepShip, never from this query.
+ * Preserve the existing sum(total_cost) sort without exposing it as a total. Default
  * granularity is SEMI-MONTHLY (1st–15th and 16th–end of month); 'month'
  * combines both halves into one full-month row (1st–EOM). UTC effective-day
  * boundaries — the same boundaries the range filters use. SQL-aggregated,
@@ -158,16 +123,7 @@ export async function portalInvoicePeriodSummary(
       b.client_id,
       c.name as client_name,
       to_char(date_trunc('month', ${invoiceEffectiveDay} at time zone 'UTC'), 'YYYY-MM-DD') as month_start,
-      ${halfExpr} as half,
-      count(distinct b.order_id)::text as orders,
-      coalesce(sum(case when b.line_type in ('pick_pack', 'pickpack') then b.total_cost else 0 end), 0)::text as pickpack_total,
-      coalesce(sum(case when b.line_type in ('additional_unit', 'additional') then b.total_cost else 0 end), 0)::text as additional_total,
-      coalesce(sum(case when b.line_type in ('package_cost', 'package') then b.total_cost else 0 end), 0)::text as package_total,
-      coalesce(sum(case when b.line_type = 'shipping' then b.total_cost else 0 end), 0)::text as shipping_total,
-      coalesce(sum(case when b.line_type = 'storage' then b.total_cost else 0 end), 0)::text as storage_total,
-      coalesce(sum(case when ${isReturnPostageLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as returnpostage_total,
-      coalesce(sum(case when ${isReturnProcessingLineTypeSql(sql`b.line_type`)} then b.total_cost else 0 end), 0)::text as returnprocessing_total,
-      coalesce(sum(b.total_cost), 0)::text as row_total
+      ${halfExpr} as half
     from billing_line_items b
     left join ${clients} c on c.id = b.client_id
     where coalesce(c.active, true) = true
@@ -190,15 +146,6 @@ export async function portalInvoicePeriodSummary(
       clientName: row.client_name,
       periodStart: half === 2 ? `${monthPrefix}16` : `${monthPrefix}01`,
       periodEnd: half === 1 ? `${monthPrefix}15` : `${monthPrefix}${String(lastDay).padStart(2, '0')}`,
-      orders: Number(row.orders) || 0,
-      pickpackTotal: row.pickpack_total,
-      additionalTotal: row.additional_total,
-      packageTotal: row.package_total,
-      shippingTotal: row.shipping_total,
-      storageTotal: row.storage_total,
-      returnPostageTotal: row.returnpostage_total,
-      returnProcessingTotal: row.returnprocessing_total,
-      rowTotal: row.row_total,
     };
   });
 }

@@ -1222,15 +1222,21 @@ and `client-portal-active-surfaces-guard.mjs`.
 
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
-| Per-client rollup | `pickpack_total`, `shipping_total`, `storage_total`, `package_total`, `row_total` | same | `portalInvoiceSummary` — SQL rollup over `billing_line_items` (no row cap) | billing time | backend-owned-truth |
-| Order count | `orders` | `orders` | `portalInvoiceSummary` (`count(distinct)`) | billing time | backend-owned-truth |
+| Per-client / period amounts | `pickpackTotal`, `additionalTotal`, `shippingTotal`, `storageTotal`, `packageTotal`, `returnPostageTotal`, `returnProcessingTotal`, `rowTotal` | same | PrepShip `/billing/invoice-totals`, assigned by `/invoice-summary` with no local money fallback (CP-067) | canonical effective billing day, period clamped to the requested range | backend-owned-truth |
+| Order count | `orders` | `orders` | PrepShip canonical invoice totals `orderCount`, assigned verbatim | same canonical billing range | backend-owned-truth |
+| Summary identity / ordering | client and period identities | `clientId`, `clientName`, `periodStart`, `periodEnd` | `portalInvoiceSummary` / `portalInvoicePeriodSummary`: uncapped, scoped customer-safe `billing_line_items`; existing `sum(total_cost)` sort retained but never exposed as money | current committed lines, effective-day range; UTC period labels | backend-owned-truth (identity), presentation-only (ordering) |
 | Line-item sort/pagination | ordering | backend order | `read-models/invoice-details.ts` | billing time | presentation-only |
 
-Owner: `read-models/invoice-details.ts` (`portalInvoiceSummary` +
-`portalInvoiceDetails`). Qty comes from canonical `order_items`, never from
+Summary money owner: PrepShip via `prepship-invoice-totals-proxy.ts` and
+`billing-summary-canonical-keys.ts`; the route footer sums those canonical rows.
+The two summary readers in `read-models/invoice-details.ts` return identity only
+(2026-09-18: discarded local counts/category aggregates removed). The retained
+`portalInvoiceDetails` rollup gets Qty from canonical `order_items`, never from
 summed billing-line quantities. **Billing generation authority stays in the
 admin app; the portal is read-only** (never re-enable portal auto-generation).
 Guards: `client-portal-billing-totals-guard.mjs`,
+`client-portal-billing-identity-performance.ts`,
+`client-portal-billing-summary-canonical-guard.ts`,
 `client-portal-billing-item-identity-guard.ts`,
 `client-portal-billing-line-item-sort-guard.mjs`,
 `client-portal-billing-shipment-modal-guard.ts`.

@@ -18,8 +18,9 @@
  * by searching the row text: a row legitimately contains $0.00 in other columns, so a substring
  * search would pass on an unrelated zero and prove nothing about the return columns.
  *
- * The source-shape checks that remain cover the summary/period read-model aggregates, which
- * have no cheap executable seam and are unchanged by CP-059 — those paths still aggregate in SQL.
+ * The source-shape checks that remain cover the retained detail aggregates and canonical
+ * summary assignments. Summary queries now select identities only; their money comes from
+ * PrepShip. The billing-identity-performance test exercises that SQL and route together.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -52,21 +53,24 @@ const page = readSourceTree([
 ]);
 const pkg = JSON.parse(read('package.json'));
 
-// -- 1. Read-model: backend-owned return aggregates in the summary/period queries -------------
-// CP-059 moved the DETAIL grain to canonical events, but summary and period totals still
-// aggregate here, so these SQL sums must stay.
+// -- 1. Retained detail aggregates and canonical summary assignments -------------------------
+// Summary/period identity queries must not regain a parallel financial owner.
+const detailReadModel = readModel.slice(readModel.indexOf('export async function portalInvoiceDetails('));
 check(readModel.length > 0, 'the invoice-details read-model exists');
 check(
-  count(readModel, /\$\{isReturnPostageLineTypeSql\([\s\S]{0,40}?\)\} then b\.total_cost/g) >= 3,
-  'summary + period + detail each SUM return_postage from billing_line_items (backend-owned)',
+  count(detailReadModel, /\$\{isReturnPostageLineTypeSql\([\s\S]{0,40}?\)\} then b\.total_cost/g) >= 1 &&
+    /returnPostageTotal: String\(totals\.returnPostageTotal\)/.test(route),
+  'detail retains return_postage aggregation; summary displays canonical PrepShip return postage',
 );
 check(
-  count(readModel, /\$\{isReturnProcessingLineTypeSql\([\s\S]{0,40}?\)\} then b\.total_cost/g) >= 3,
-  'summary + period + detail each SUM return_processing_fee from billing_line_items (backend-owned)',
+  count(detailReadModel, /\$\{isReturnProcessingLineTypeSql\([\s\S]{0,40}?\)\} then b\.total_cost/g) >= 1 &&
+    /returnProcessingTotal: String\(totals\.returnProcessingTotal\)/.test(route),
+  'detail retains return_processing_fee aggregation; summary displays canonical PrepShip return processing',
 );
 check(
-  /coalesce\(sum\(b\.total_cost\), 0\)::text as row_total/.test(readModel),
-  'row_total remains the canonical sum(total_cost) over all line types (returns already included)',
+  /coalesce\(sum\(b\.total_cost\), 0\)::text as row_total/.test(detailReadModel) &&
+    /rowTotal: String\(totals\.grandTotal\)/.test(route),
+  'detail row_total includes all line types; summary rowTotal comes from canonical PrepShip grandTotal',
 );
 
 // -- 2. /invoice-summary route exposes the return totals in its grand totals -------------------

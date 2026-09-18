@@ -314,14 +314,18 @@ async function main(): Promise<number> {
   check(clientShipment.carrierCode === null && clientShipment.serviceCode === null, 'client shipment DTO exposes NO carrier / service');
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
-  // ── Group 4: billing totals reconcile with invoice detail (CP-011) ──
-  console.log('\nGroup 4 — Billing totals reconcile with invoice detail (CP-011)');
+  // Summary reads now supply identity only; the route owns canonical-total assignment.
+  console.log('\nGroup 4 — Billing detail totals and summary identities (CP-011)');
   const s = makeScope([hugrab.id]);
   const details = await invoice.portalInvoiceDetails(s, { clientId: hugrab.id, dateFrom: FROM, dateTo: TO });
   const detailTotal = details.reduce((n, r) => n + Number(r.rowTotal), 0);
   eq(detailTotal, 9.73, 'invoice detail row totals sum to the billed amount');
   const period = await invoice.portalInvoicePeriodSummary(s, { clientId: hugrab.id, dateFrom: FROM, dateTo: TO, granularity: 'month' });
-  eq(period.reduce((n, r) => n + Number(r.rowTotal), 0), detailTotal, 'billing period-summary total == Σ invoice detail rows (no footer drift)');
+  check(period.length === 1 && period[0]?.clientId === hugrab.id
+    && period[0]?.periodStart === '2026-06-01' && period[0]?.periodEnd === '2026-06-30',
+  'billing period identity matches the scoped month');
+  check(period.every(row => Object.keys(row).sort().join(',') === 'clientId,clientName,periodEnd,periodStart'),
+    'identity query exposes no local money/count fallback; route tests verify canonical totals');
 
   // PS-437: Client Portal reads only PrepShip's frozen tuple.
   console.log('\nGroup 5 - Frozen customer shipping snapshot projection (PS-437)');

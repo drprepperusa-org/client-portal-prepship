@@ -97,9 +97,8 @@ app.get('/invoice-details', async (c) => {
   return c.json({ data: result.rows, billingVisible: true });
 });
 
-// Per-client billing rollup, aggregated in SQL with no row cap — the Billing
-// summary's source of truth (the row-capped /invoice-details is for the
-// per-client drill-in and exports).
+// Uncapped client/period identities from SQL; all displayed counts and money
+// are assigned below from PrepShip's canonical invoice totals.
 app.get('/invoice-summary', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
@@ -124,12 +123,12 @@ app.get('/invoice-summary', async (c) => {
       : await portalInvoiceSummary(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
   // ── CP-067: the LIST's money comes from PrepShip's owner, like the invoice ──
   //
-  // The rows above supply IDENTITY — which client, which period, what it is called. Their money
-  // is this repo's own aggregation, which has neither PS-491 duplicate suppression nor
-  // cancelled-no-charge. CP-066 moved the customer INVOICE onto PrepShip's canonical totals; a
+  // The rows above supply only IDENTITY — which client, which period, what it is called.
+  // They no longer calculate money that would be discarded here. CP-066 moved the customer
+  // INVOICE onto PrepShip's canonical totals; a
   // list still on the old aggregation would disagree with the invoice a customer opens from it.
   //
-  // So the identity stays and every money field is REPLACED by the canonical answer for that
+  // So the identity stays and every money field is ASSIGNED from the canonical answer for that
   // (client, period). Periods are grouped first, so this costs one upstream call per distinct
   // period on the page, not one per row. A rolling 90-day view can span seven half-months.
   const listAuthorization = c.req.header('authorization');

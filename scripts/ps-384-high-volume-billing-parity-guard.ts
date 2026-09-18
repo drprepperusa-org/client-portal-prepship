@@ -44,14 +44,16 @@ const periodSummaryBlock = sliceBetween(readModel, 'export async function portal
 const detailBlock = sliceBetween(readModel, 'export async function portalInvoiceDetails', 'const dimsFromRaw');
 const totalsBlock = sliceBetween(invoices, 'export function toBillingTotals', 'export function toPeriodSummaries');
 
-check('summary read model is SQL aggregated and uncapped for high-volume clients',
-  /count\(distinct b\.order_id\)::text as orders/.test(summaryBlock) &&
-    /coalesce\(sum\(b\.total_cost\), 0\)::text as row_total/.test(summaryBlock) &&
+check('summary identities are uncapped and preserve the existing full-scope ordering',
+  /group by b\.client_id, c\.name/.test(summaryBlock) &&
+    /order by sum\(b\.total_cost\) desc/.test(summaryBlock) &&
+    !/count\(distinct|as row_total|as pickpack_total/.test(summaryBlock) &&
     !/\blimit\b/i.test(summaryBlock));
 
-check('period summary read model is SQL aggregated and uncapped for >1000 grouped orders',
+check('period identities are SQL grouped and uncapped for >1000 grouped orders',
   /group by b\.client_id, c\.name, 3, 4/.test(periodSummaryBlock) &&
-    /count\(distinct b\.order_id\)::text as orders/.test(periodSummaryBlock) &&
+    /order by 3 desc, 4 desc, sum\(b\.total_cost\) desc/.test(periodSummaryBlock) &&
+    !/count\(distinct|as row_total|as pickpack_total/.test(periodSummaryBlock) &&
     !/\blimit\b/i.test(periodSummaryBlock));
 
 check('Billing footer consumes backend summary totals instead of reducing visible rows',
