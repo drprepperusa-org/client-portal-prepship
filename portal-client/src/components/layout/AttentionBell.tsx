@@ -1,17 +1,37 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bell, X } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '@/auth';
 import { useAttention } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 
-export function AttentionBell({ children }: { children: ReactNode }) {
+export function AttentionBell() {
   const { clientId } = usePortalFilters();
-  return <ScopedAttentionBell key={clientId ?? 'scope'}>{children}</ScopedAttentionBell>;
+  const { userId } = useAuth();
+  const scopeKey = `${userId ?? 'anonymous'}:${clientId ?? 'scope'}`;
+  return <ScopedAttentionBell key={scopeKey} scopeKey={scopeKey} />;
 }
 
-function ScopedAttentionBell({ children }: { children: ReactNode }) {
+interface ClearedCounts {
+  connectionCount: number;
+  inventoryCount: number;
+}
+
+function ScopedAttentionBell({ scopeKey }: { scopeKey: string }) {
+  const storageKey = `portal-attention-cleared:${scopeKey}`;
   const [open, setOpen] = useState(false);
-  const [clearedCounts, setClearedCounts] = useState<{ connectionCount: number; inventoryCount: number } | null>(null);
+  const [clearedCounts, setClearedCounts] = useState<ClearedCounts | null>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as Partial<ClearedCounts>;
+      return Number.isFinite(parsed.connectionCount) && Number.isFinite(parsed.inventoryCount)
+        ? { connectionCount: parsed.connectionCount!, inventoryCount: parsed.inventoryCount! }
+        : null;
+    } catch {
+      return null;
+    }
+  });
   const query = useAttention();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -37,6 +57,18 @@ function ScopedAttentionBell({ children }: { children: ReactNode }) {
   const isCleared = Boolean(data && clearedCounts
     && data.connectionCount === clearedCounts.connectionCount
     && data.inventoryCount === clearedCounts.inventoryCount);
+  useEffect(() => {
+    if (!data || !clearedCounts || isCleared) return;
+    setClearedCounts(null);
+    localStorage.removeItem(storageKey);
+  }, [clearedCounts, data, isCleared, storageKey]);
+
+  function clearAll() {
+    if (!data) return;
+    const snapshot = { connectionCount: data.connectionCount, inventoryCount: data.inventoryCount };
+    setClearedCounts(snapshot);
+    localStorage.setItem(storageKey, JSON.stringify(snapshot));
+  }
   return (
     <div ref={root} className="static sm:relative">
       <button ref={trigger} type="button" aria-label="Notifications" aria-expanded={open}
@@ -55,10 +87,7 @@ function ScopedAttentionBell({ children }: { children: ReactNode }) {
               {data && !isCleared && data.totalCount > 0 && (
                 <button type="button" aria-label="Clear all notifications"
                   className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-brand-700"
-                  onClick={() => setClearedCounts({
-                    connectionCount: data.connectionCount,
-                    inventoryCount: data.inventoryCount,
-                  })}>
+                  onClick={clearAll}>
                   Clear all
                 </button>
               )}
@@ -66,47 +95,31 @@ function ScopedAttentionBell({ children }: { children: ReactNode }) {
                 onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} /></button>
             </div>
           </div>
-          <p className="mt-1 text-xs text-ink-3">Current issues for your selected client. Date filters do not apply.</p>
-          <div className="my-3 space-y-3" aria-live="polite">
+          <div className="mt-3 space-y-2" aria-live="polite">
             {query.isPending && <p className="text-sm text-ink-3">Checking for issues…</p>}
-            {query.isError && <p className="text-sm text-ink-2">Attention items are unavailable. Please retry.</p>}
-            {data && isCleared && <p className="text-sm text-ink-2">
-              Notifications cleared. Refresh to show current issues again.
-            </p>}
-            {data && !isCleared && data.totalCount === 0 && <p className="text-sm text-ink-2">
-              {data.preferences?.connectionIssues === false && data.preferences.lowStock === false
-                ? 'All notification categories are turned off.'
-                : data.preferences?.connectionIssues === false || data.preferences?.lowStock === false
-                  ? 'No items need attention in your enabled categories.' : 'No items need attention.'}
-            </p>}
+            {query.isError && <div>
+              <p className="text-sm text-ink-2">Notifications are unavailable.</p>
+              <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()}
+                className="focus-ring mt-2 rounded-md text-xs font-semibold text-brand-700 disabled:opacity-50">
+                {query.isFetching ? 'Checking…' : 'Retry'}
+              </button>
+            </div>}
+            {data && (isCleared || data.totalCount === 0) && <p className="text-sm text-ink-2">No notifications.</p>}
             {data && !isCleared && data.connectionCount > 0 && <AttentionItem count={data.connectionCount} title="Connections need attention"
-              description="Pending approval, reconnect needed, or sync delayed." to="/connections?status=attention" />}
+              to="/connections?status=attention" />}
             {data && !isCleared && data.inventoryCount > 0 && <AttentionItem count={data.inventoryCount} title="Low or out of stock"
-              description="Products at or below their reorder level, including unavailable stock." to="/inventory?lowStock=1" />}
+              to="/inventory?lowStock=1" />}
           </div>
-          <button type="button" disabled={query.isFetching} onClick={() => {
-            setClearedCounts(null);
-            void query.refetch();
-          }}
-            className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-brand-700 disabled:opacity-50">
-            {query.isFetching ? 'Checking…' : query.isError ? 'Retry notifications' : 'Refresh notifications'}
-          </button>
-          {data && <p className="mt-1 text-xs text-ink-3">Checked {new Date(data.checkedAt).toLocaleTimeString()}</p>}
-          <Link to="/settings/notifications" className="focus-ring mt-3 inline-block rounded text-sm font-semibold text-brand-700">
-            Notification settings
-          </Link>
-          <div className="mt-3 border-t border-slate-200 pt-3">{children}</div>
         </section>
       )}
     </div>
   );
 }
 
-function AttentionItem({ count, title, description, to }: { count: number; title: string; description: string; to: string }) {
+function AttentionItem({ count, title, to }: { count: number; title: string; to: string }) {
   return <div className="rounded-glass-sm bg-slate-50 p-3">
     <p className="text-sm font-semibold text-ink">{title} <span className="tnum">({count})</span></p>
-    <p className="mt-1 text-xs text-ink-3">{description}</p>
-    <Link to={to} state={{ attention: true }} className="focus-ring mt-2 inline-block rounded text-sm font-semibold text-brand-700"
+    <Link to={to} state={{ attention: true }} className="focus-ring mt-1 inline-block rounded text-sm font-semibold text-brand-700"
       aria-label={`View details: ${title}`}>View details →</Link>
   </div>;
 }

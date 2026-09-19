@@ -3,10 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Menu, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortalFilters } from '@/lib/portalContext';
-import { useClients, useSyncStatus } from '@/lib/hooks';
-import { shortDate } from '@/lib/status';
+import { useClients } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
-import { connectionFreshnessMeta } from '@/lib/connection-status';
 import { DateRangeFilter } from './DateRangeFilter';
 import { AccountMenu } from './AccountMenu';
 import { AttentionBell } from './AttentionBell';
@@ -16,20 +14,12 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
   const { pathname } = useLocation();
   const { clientId, setClientId } = usePortalFilters();
   const clientsQuery = useClients();
-  const sync = useSyncStatus();
   const [clientOpen, setClientOpen] = useState(false);
   const [q, setQ] = useState('');
 
   const clients = clientsQuery.data?.data ?? [];
   const showClientSwitcher = clients.length > 1;
   const activeClientName = clientId ? clients.find((c) => c.id === clientId)?.name ?? 'Client' : 'All clients';
-  const lastSync = sync.data?.lastSyncAt ?? null;
-  const syncMeta = connectionFreshnessMeta(sync.data?.connectionStatus);
-  const syncTimeCopy = sync.isError
-    ? 'Connection freshness is unavailable.'
-    : lastSync
-      ? `Last synced ${shortDate(lastSync)}`
-      : 'Awaiting first sync…';
 
   function submitSearch(e: FormEvent) {
     e.preventDefault();
@@ -86,20 +76,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         {/* Date range */}
         {pathname !== '/inbound' && pathname !== '/audit-log' && <DateRangeFilter />}
 
-        <AttentionBell>
-          <p className="text-sm font-semibold text-ink">Sync status · all assigned stores</p>
-          <p className="mt-1 text-[13px] text-ink-3">{syncTimeCopy}</p>
-          <p className="mt-2 text-[13px] text-ink-3">{syncMeta.label}</p>
-          {sync.isError && (
-            <button
-              type="button"
-              onClick={() => sync.refetch()}
-              className="focus-ring mt-3 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-slate-200"
-            >
-              Retry
-            </button>
-          )}
-        </AttentionBell>
+        <AttentionBell />
 
         {/* Account */}
         <AccountMenu />

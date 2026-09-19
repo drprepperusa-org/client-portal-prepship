@@ -182,10 +182,8 @@ assert(
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
 assert(
   topbar.includes('clientsQuery.isError') &&
-    topbar.includes('Client list unavailable. Retry.') &&
-    topbar.includes('sync.isError') &&
-    topbar.includes('Connection freshness is unavailable.'),
-  'shell client and connection reads expose explicit unavailable/retry states',
+    topbar.includes('Client list unavailable. Retry.'),
+  'shell client reads expose an explicit unavailable/retry state',
 );
 const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
 const bottomNav = read('portal-client/src/components/layout/BottomNav.tsx');

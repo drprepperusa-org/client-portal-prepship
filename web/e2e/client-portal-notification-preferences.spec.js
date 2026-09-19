@@ -44,9 +44,7 @@ async function install(page, shared) {
 }
 
 test('Personal settings save to the account, control the bell and persist in a second browser context',async({page,browser})=>{
-  const shared=state();await install(page,shared);await page.goto(base+'/connections');
-  await page.getByRole('button',{name:'Notifications',exact:true}).click();
-  await page.getByRole('link',{name:'Notification settings',exact:true}).click();
+  const shared=state();await install(page,shared);await page.goto(base+'/settings/notifications');
   await expect(page).toHaveURL(/settings\/notifications/);
   await expect(page.getByRole('switch')).toHaveCount(2);
   await expect(page.getByRole('switch',{name:'Low-stock alerts',exact:true})).toHaveAttribute('aria-checked','true');
@@ -71,7 +69,7 @@ test('Personal settings save to the account, control the bell and persist in a s
     await page.reload();
     await expect(page.getByRole('switch',{name:'Connection issues'})).toHaveAttribute('aria-checked','false');
     await page.getByRole('button',{name:'Notifications',exact:true}).click();
-    await expect(bell.getByText('All notification categories are turned off.')).toBeVisible();
+    await expect(bell.getByText('No notifications.',{exact:true})).toBeVisible();
     await expect(page.getByLabel('2 items need attention')).toHaveCount(0);
     await page.keyboard.press('Escape');
     await page.setViewportSize({width:390,height:844});

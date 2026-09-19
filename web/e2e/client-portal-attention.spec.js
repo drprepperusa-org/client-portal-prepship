@@ -63,7 +63,7 @@ test('Attention shows complete counts, navigates to filtered lists, and fits mob
   await expect(page.getByRole('button',{name:'Notifications',exact:true})).toBeFocused();
 });
 
-test('Clear all acknowledges current notifications until refresh or a count changes',async({page})=>{
+test('Clear all removes current notifications across reloads until a count changes',async({page})=>{
   let inventoryCount=105;
   await setup(page,url=>url.pathname.endsWith('/attention')?summary(inventoryCount,3):undefined);
   await page.goto(base+'/connections');
@@ -71,19 +71,22 @@ test('Clear all acknowledges current notifications until refresh or a count chan
   await page.getByRole('button',{name:'Notifications',exact:true}).click();
   await panel(page).getByRole('button',{name:'Clear all notifications'}).click();
   await expect(page.getByLabel('108 items need attention')).toHaveCount(0);
-  await expect(panel(page).getByText('Notifications cleared. Refresh to show current issues again.')).toBeVisible();
+  await expect(panel(page).getByText('No notifications.',{exact:true})).toBeVisible();
   await expect(panel(page).getByRole('link',{name:/View details/})).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await page.reload();
   await page.getByRole('button',{name:'Notifications',exact:true}).click();
-  await expect(panel(page).getByText('Notifications cleared. Refresh to show current issues again.')).toBeVisible();
+  await expect(page.getByLabel('108 items need attention')).toHaveCount(0);
+  await expect(panel(page).getByText('No notifications.',{exact:true})).toBeVisible();
   inventoryCount=106;
   await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'Notifications',exact:true}).click();
   await expect(page.getByLabel('109 items need attention')).toBeVisible();
   await expect(panel(page).getByText('Low or out of stock (106)',{exact:true})).toBeVisible();
   await panel(page).getByRole('button',{name:'Clear all notifications'}).click();
-  await panel(page).getByRole('button',{name:'Refresh notifications'}).click();
-  await expect(page.getByLabel('109 items need attention')).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('109 items need attention')).toHaveCount(0);
+  await page.getByRole('button',{name:'Notifications',exact:true}).click();
+  await expect(panel(page).getByText('No notifications.',{exact:true})).toBeVisible();
 });
 
 test('Attention handles errors, fresh zero counts and retry without exposing server details',async({page})=>{
@@ -91,16 +94,17 @@ test('Attention handles errors, fresh zero counts and retry without exposing ser
   await page.route('**/api/client-portal/attention*',route=>route.fulfill(fail
     ?{status:503,json:{error:'private_database_details'}}:{json:empty?summary(0,0):summary()}));
   await page.goto(base+'/connections');await page.getByRole('button',{name:'Notifications',exact:true}).click();
-  await expect(panel(page).getByText('Attention items are unavailable. Please retry.')).toBeVisible();
-  await expect(page.getByText('No items need attention.')).toHaveCount(0);
+  await expect(panel(page).getByText('Notifications are unavailable.',{exact:true})).toBeVisible();
+  await expect(page.getByText('No notifications.')).toHaveCount(0);
   await expect(page.getByText('private_database_details')).toHaveCount(0);
-  fail=false;await panel(page).getByRole('button',{name:'Retry notifications'}).click();
+  fail=false;await panel(page).getByRole('button',{name:'Retry',exact:true}).click();
   await expect(page.getByLabel('108 items need attention')).toBeVisible();
-  fail=true;await panel(page).getByRole('button',{name:'Refresh notifications'}).click();
-  await expect(panel(page).getByRole('button',{name:'Retry notifications'})).toBeVisible();
+  fail=true;await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Notifications',exact:true}).click();
+  await expect(panel(page).getByRole('button',{name:'Retry',exact:true})).toBeVisible();
   await expect(page.getByLabel('108 items need attention')).toHaveCount(0);
-  fail=false;empty=true;await panel(page).getByRole('button',{name:'Retry notifications'}).click();
-  await expect(panel(page).getByText('No items need attention.')).toBeVisible();
+  fail=false;empty=true;await panel(page).getByRole('button',{name:'Retry',exact:true}).click();
+  await expect(panel(page).getByText('No notifications.',{exact:true})).toBeVisible();
   await expect(panel(page).getByRole('link',{name:/View details/})).toHaveCount(0);
 });
 
