@@ -38,7 +38,6 @@ export function ExportAuditCsv({ filters, disabled }: { filters: PortalAuditLogF
   return <div className="space-y-1">
     <Button variant="secondary" size="sm" disabled={disabled || !accessToken} loading={busy}
       leadingIcon={<Download size={15} />} onClick={() => void exportCsv()}>{busy ? 'Exporting…' : 'Export CSV'}</Button>
-    <p className="text-xs text-ink-3">All matching events across pages. Up to 50,000 events per export.</p>
     {message && <p role="status" className="text-xs text-ink-2">{message}</p>}
   </div>;
 }

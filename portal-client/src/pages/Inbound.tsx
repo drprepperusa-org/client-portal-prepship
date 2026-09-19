@@ -95,16 +95,18 @@ export default function Inbound() {
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">
-        <div className="flex items-center gap-2 px-3 py-3">
-          <PackageCheck size={17} className="text-emerald-600" />
-          <div>
-            <p className="text-sm font-semibold text-ink">Received inventory</p>
-            <p className="text-xs text-ink-3">Canonical receipts recorded in PrepShip</p>
+        <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <PackageCheck size={17} className="text-emerald-600" />
+            <div>
+              <p className="text-sm font-semibold text-ink">Received inventory</p>
+              <p className="text-xs text-ink-3">Canonical receipts recorded in PrepShip</p>
+            </div>
           </div>
-        </div>
-        <div className="flex justify-end px-3 pb-4">
-          <ExportInboundReceiptsCsv key={JSON.stringify([userId, exportFilters])} filters={exportFilters}
-            disabled={!receiptRows.length || receiptQuery.isFetching || receiptQuery.isError} />
+          <div className="sm:shrink-0">
+            <ExportInboundReceiptsCsv key={JSON.stringify([userId, exportFilters])} filters={exportFilters}
+              disabled={!receiptRows.length || receiptQuery.isFetching || receiptQuery.isError} />
+          </div>
         </div>
         <QueryState showUpdateStatus={false}
           isLoading={receiptQuery.isLoading}

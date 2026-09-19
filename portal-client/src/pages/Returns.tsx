@@ -313,12 +313,9 @@ export default function Returns() {
               <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
             </label>
           )}
+          <ExportReturnsCsv key={JSON.stringify([userId, exportFilters, search])} filters={exportFilters}
+            disabled={!rows.length || query.isFetching || query.isError || returnsFetchFailed || search !== debouncedSearch} />
         </div>
-      </GlassPanel>
-
-      <GlassPanel className="flex justify-end p-4">
-        <ExportReturnsCsv key={JSON.stringify([userId, exportFilters, search])} filters={exportFilters}
-          disabled={!rows.length || query.isFetching || query.isError || returnsFetchFailed || search !== debouncedSearch} />
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">

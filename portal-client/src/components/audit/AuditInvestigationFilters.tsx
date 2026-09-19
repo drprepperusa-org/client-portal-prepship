@@ -25,31 +25,18 @@ export function AuditInvestigationFilters({ value, onChange }: {
     if (to) to.setDate(to.getDate() + 1);
     onChange({ ...value, dateFrom: from?.toISOString(), dateTo: to?.toISOString() });
   }
-  return <div className="space-y-3 border-t border-slate-200/70 pt-3">
-    <form className="flex flex-wrap items-end gap-3" onSubmit={event => { event.preventDefault(); if (!invalid) applyDates(); }}>
-      <label className="min-w-0 flex-1 space-y-1 text-xs text-ink-2 sm:flex-none">Start date
+  return <div className="space-y-2 border-t border-slate-200/70 pt-3">
+    <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)_auto_auto] xl:items-end"
+      onSubmit={event => { event.preventDefault(); if (!invalid) applyDates(); }}>
+      <label className="min-w-0 space-y-1 text-xs text-ink-2">Start date
         <input type="date" aria-label="Audit start date" value={start} max={end || undefined}
           onChange={event => setStart(event.target.value)} className={inputClass} />
       </label>
-      <label className="min-w-0 flex-1 space-y-1 text-xs text-ink-2 sm:flex-none">End date
+      <label className="min-w-0 space-y-1 text-xs text-ink-2">End date
         <input type="date" aria-label="Audit end date" value={end} min={start || undefined}
           onChange={event => setEnd(event.target.value)} className={inputClass} />
       </label>
-      <Button type="submit" variant="secondary" disabled={invalid}>Apply dates</Button>
-      {(start || end || value.dateFrom || value.dateTo) && <Button type="button" variant="ghost" onClick={() => {
-        // Applied dates clear when navigation commits; an interrupted navigation
-        // must not erase inputs belonging to the prior history entry.
-        if (!value.dateFrom && !value.dateTo) { setStart(''); setEnd(''); }
-        onChange({ ...value, dateFrom: undefined, dateTo: undefined });
-      }}>Clear dates</Button>}
-    </form>
-    <p className="text-xs text-ink-3">Dates use {timezone}. {invalid ? 'End date must be on or after start date.' :
-      value.dateFrom || value.dateTo ? 'Applied date range shown below.' : 'Showing all dates.'}</p>
-    {(value.dateFrom || value.dateTo) && <p className="text-xs text-ink-2">
-      From {value.dateFrom ? new Date(value.dateFrom).toLocaleString() : 'earliest event'} to {value.dateTo ? new Date(Date.parse(value.dateTo) - 1).toLocaleString() : 'latest event'}
-    </p>}
-    <div className="flex flex-wrap items-center gap-3">
-      <label className="w-full space-y-1 text-xs text-ink-2 sm:w-64">Activity
+      <label className="min-w-0 space-y-1 text-xs text-ink-2">Activity
         <select aria-label="Filter audit log by activity" value={value.activity ?? 'all'}
           onChange={event => onChange({ ...value, activity: event.target.value as PortalAuditInvestigationFilters['activity'] })} className={inputClass}>
           <option value="all">All activity</option><option value="views">Views / data requests</option>
@@ -57,11 +44,23 @@ export function AuditInvestigationFilters({ value, onChange }: {
           <option value="failed">Failures</option><option value="denied">Denied actions</option>
         </select>
       </label>
-      <label className="flex min-h-11 items-center gap-2 text-sm text-ink-2">
+      <label className="flex min-h-11 items-center gap-2 text-sm text-ink-2 xl:whitespace-nowrap">
         <input type="checkbox" checked={value.hideBackground ?? false}
           onChange={event => onChange({ ...value, hideBackground: event.target.checked })} />Hide background checks
       </label>
+      <div className="flex items-center gap-2 sm:col-span-2 xl:col-span-1">
+        <Button type="submit" variant="secondary" disabled={invalid}>Apply dates</Button>
+        {(start || end || value.dateFrom || value.dateTo) && <Button type="button" variant="ghost" onClick={() => {
+          // Applied dates clear when navigation commits; an interrupted navigation
+          // must not erase inputs belonging to the prior history entry.
+          if (!value.dateFrom && !value.dateTo) { setStart(''); setEnd(''); }
+          onChange({ ...value, dateFrom: undefined, dateTo: undefined });
+        }}>Clear dates</Button>}
+      </div>
+    </form>
+    <div className="text-xs text-ink-3">
+      Dates use {timezone}. {invalid ? 'End date must be on or after start date.' :
+        value.dateFrom || value.dateTo ? `From ${value.dateFrom ? new Date(value.dateFrom).toLocaleString() : 'earliest event'} to ${value.dateTo ? new Date(Date.parse(value.dateTo) - 1).toLocaleString() : 'latest event'}.` : 'Showing all dates.'}
     </div>
-    <p className="text-xs text-ink-3">Background checks include session and awaiting-shipment count checks. Data requests can also happen automatically.</p>
   </div>;
 }

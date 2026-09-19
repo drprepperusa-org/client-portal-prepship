@@ -234,14 +234,14 @@ export default function Orders() {
         ))}
       </GlassPanel>
 
-      <GlassPanel className="p-4">
+      <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <SearchInput
           value={q}
           onChange={setQ}
           placeholder="Search by order #, customer, SKU…"
           ariaLabel="Search orders"
         />
-        <div className="mt-3 flex justify-end">
+        <div className="sm:shrink-0">
           <ExportOrdersCsv key={JSON.stringify([userId, filters, q])} filters={filters}
             disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
         </div>

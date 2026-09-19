@@ -204,12 +204,9 @@ export default function Shipments() {
               <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
             </label>
           )}
+          <ExportShipmentsCsv key={JSON.stringify([userId, exportFilters, q])} filters={exportFilters}
+            disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
         </div>
-      </GlassPanel>
-
-      <GlassPanel className="flex justify-end p-4">
-        <ExportShipmentsCsv key={JSON.stringify([userId, exportFilters, q])} filters={exportFilters}
-          disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">

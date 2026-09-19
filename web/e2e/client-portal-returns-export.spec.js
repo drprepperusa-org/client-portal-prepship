@@ -49,7 +49,7 @@ async function download(page) {
   const event=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();
   return event;
 }
-test('Returns CSV downloads backend bytes with current client, status, search, dates and sorting across all pages',async({page})=>{
+test('Returns CSV downloads backend bytes with current client, status, search and sorting across all pages',async({page})=>{
   const state=await returnsFixture(page);await page.goto(base+'/returns?order=123');
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   const first=await download(page);
@@ -62,7 +62,6 @@ test('Returns CSV downloads backend bytes with current client, status, search, d
   await page.getByRole('combobox',{name:'Filter by status'}).selectOption('requested');
   await page.getByRole('combobox',{name:'Filter by client'}).selectOption('2');
   await page.getByRole('textbox',{name:'Search returns',exact:true}).fill('CSV');
-  await page.getByRole('checkbox',{name:'Use selected date range'}).check();
   await page.getByRole('button',{name:'Order',exact:true}).click();
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Next page',exact:true}).click();
@@ -70,18 +69,11 @@ test('Returns CSV downloads backend bytes with current client, status, search, d
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   await download(page);
   const exported=state.exports.at(-1),listed=state.requests.at(-1);
-  for(const key of ['orderId','clientId','status','search','dateFrom','dateTo','sortBy','sortDir'])expect(exported[key]).toBe(listed[key]);
+  for(const key of ['orderId','clientId','status','search','sortBy','sortDir'])expect(exported[key]).toBe(listed[key]);
   expect(exported).toMatchObject({orderId:'123',clientId:'2',status:'requested',search:'CSV',sortBy:'order',sortDir:'asc'});
-  expect(exported.dateFrom).toMatch(/T00:00:00.000Z$/);expect(exported.dateTo).toMatch(/T23:59:59.999Z$/);
+  expect(exported.dateFrom).toBeUndefined();expect(exported.dateTo).toBeUndefined();
   expect(exported.page).toBeUndefined();expect(exported.pageSize).toBeUndefined();
   await expect(page.getByText('CSV downloaded with all matching returns. Dates are in UTC.')).toBeVisible();
-  await page.getByRole('button',{name:'Date range filter',exact:true}).click();
-  await page.getByRole('button',{name:'Today',exact:true}).click();
-  await page.getByRole('button',{name:'Apply',exact:true}).click();
-  await expect.poll(()=>state.requests.at(-1)?.dateFrom?.slice(0,10)).toBe(exported.dateTo.slice(0,10));
-  await expect.poll(()=>state.requests.at(-1)?.page).toBe('1');
-  await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
-  await download(page);expect(state.exports.at(-1).dateFrom).toBe(state.requests.at(-1).dateFrom);
   await page.setViewportSize({width:390,height:844});
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

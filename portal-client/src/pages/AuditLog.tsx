@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ClipboardList, Inbox, RefreshCw, Search, Store } from 'lucide-react';
+import { ClipboardList, Inbox, RefreshCw, Store } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { Chip, EmptyState, Skeleton } from '@/components/ui/Display';
@@ -12,6 +12,7 @@ import type { PortalAuditLogRow } from '@/lib/api';
 import { AuditInvestigationFilters } from '@/components/audit/AuditInvestigationFilters';
 import { CopyAuditView } from '@/components/audit/CopyAuditView';
 import { ExportAuditCsv } from '@/components/audit/ExportAuditCsv';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { useAuditView } from '@/lib/useAuditView';
 
 function formatDate(value: string): string {
@@ -300,17 +301,8 @@ export default function AuditLog() {
             }
           />
         </div>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <label className="relative block w-full max-w-xl">
-            <span className="sr-only">Search event or user</span>
-            <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search event or user"
-              className="focus-ring h-11 w-full rounded-glass-sm border border-slate-200/80 bg-white/75 pl-10 pr-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-brand-300"
-            />
-          </label>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search event or user" ariaLabel="Search event or user" />
           <label className="relative block w-full sm:w-64">
             <span className="sr-only">Filter audit log by store</span>
             <Store size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-ink-3" />
@@ -338,16 +330,20 @@ export default function AuditLog() {
               {(audit.data?.filters.users ?? []).map((email) => <option key={email} value={email}>{email}</option>)}
             </select>
           </label>
+          <div className="xl:ml-auto xl:shrink-0">
+            <ExportAuditCsv key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters])}
+              filters={{ ...filters, search: debouncedSearch, storeId: storeFilter, actorEmail: userFilter }} disabled={searchPending || invalid} />
+          </div>
         </div>
         {invalid && <p role="alert" className="text-sm text-ink-2">Some link filters were invalid and were reset. Check the selected filters below.</p>}
         <AuditInvestigationFilters key={`${dateDraftKey}/${filters.dateFrom ?? ''}/${filters.dateTo ?? ''}`} value={filters} onChange={setFilters} />
-        <CopyAuditView key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters, page])} getUrl={copyUrl} disabled={searchPending} />
-        <ExportAuditCsv key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters])}
-          filters={{ ...filters, search: debouncedSearch, storeId: storeFilter, actorEmail: userFilter }} disabled={searchPending || invalid} />
-        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
-          <ClipboardList size={14} />
-          <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>
-          <span>events on page {page} · {userFilter || 'All users'}</span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CopyAuditView key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters, page])} getUrl={copyUrl} disabled={searchPending} />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
+            <ClipboardList size={14} />
+            <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>
+            <span>events on page {page} · {userFilter || 'All users'}</span>
+          </div>
         </div>
       </GlassPanel>
 

@@ -26,7 +26,7 @@ async function setup(page, custom) {
 
 const fileBytes = '\uFEFF"Receipt ID","SKU","Received quantity"\r\n"1","SKU-A","3"\r\n"505","SKU-B","9"\r\n';
 async function receiptsFixture(page) {
-  const state = { requests: [], exports: [], failure: 0, gate: null };
+  const state = { requests: [], exports: [], failure: 0, gate: null, empty: false };
   await setup(page);
   await page.route('**/api/client-portal/inbound/receipts?*',async route=>{
     const url=new URL(route.request().url());const params=Object.fromEntries(url.searchParams);
@@ -39,7 +39,7 @@ async function receiptsFixture(page) {
     }
     state.requests.push(params);
     const p=Number(params.page||1),size=Number(params.pageSize||50);
-    const total=params.dateFrom?.startsWith('2030')?0:505;
+    const total=state.empty?0:505;
     await route.fulfill({json:{data:total?[{id:p,inventoryId:1,clientId:1,clientName:'Alpha',sku:'SKU-A',name:'Widget',
       receivedUnits:3,receivedAt:'2026-09-01T00:00:00Z',note:null}]:[],
       pagination:{page:p,pageSize:size,total,totalPages:Math.max(1,Math.ceil(total/size))}}});
@@ -50,7 +50,7 @@ async function download(page) {
   const event=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();
   return event;
 }
-test('Inbound CSV preserves backend bytes and matches client, received dates and sort across pages',async({page})=>{
+test('Inbound CSV preserves backend bytes and matches client and sort across all receipt history',async({page})=>{
   const state=await receiptsFixture(page);await page.goto(base+'/inbound');
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Date range filter',exact:true})).toHaveCount(0);
@@ -63,8 +63,6 @@ test('Inbound CSV preserves backend bytes and matches client, received dates and
   await page.getByRole('button',{name:'All clients',exact:true}).click();
   await page.getByRole('button',{name:'Alpha',exact:true}).click();
   await page.getByRole('combobox',{name:'Filter by client'}).selectOption('2');
-  await page.getByLabel('Received from',{exact:true}).fill('2026-09-01');
-  await page.getByLabel('Received through',{exact:true}).fill('2026-09-14');
   await page.getByRole('button',{name:'SKU',exact:true}).click();
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Next page',exact:true}).click();
@@ -72,20 +70,15 @@ test('Inbound CSV preserves backend bytes and matches client, received dates and
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   await download(page);
   const exported=state.exports.at(-1),listed=state.requests.at(-1);
-  for(const key of ['clientId','dateFrom','dateTo','sortBy','sortDir'])expect(exported[key]).toBe(listed[key]);
-  expect(exported).toMatchObject({clientId:'2',dateFrom:'2026-09-01T00:00:00.000Z',dateTo:'2026-09-14T23:59:59.999Z',sortBy:'sku',sortDir:'asc'});
+  for(const key of ['clientId','sortBy','sortDir'])expect(exported[key]).toBe(listed[key]);
+  expect(exported).toMatchObject({clientId:'2',sortBy:'sku',sortDir:'asc'});
+  expect(exported.dateFrom).toBeUndefined();expect(exported.dateTo).toBeUndefined();
   expect(exported.page).toBeUndefined();expect(exported.pageSize).toBeUndefined();
   await expect(page.getByText('CSV downloaded with all matching receipts. Dates are in UTC.')).toBeVisible();
-  await page.getByLabel('Received through',{exact:true}).fill('2026-09-15');
-  await expect.poll(()=>state.requests.at(-1)?.page).toBe('1');
-  await expect.poll(()=>state.requests.at(-1)?.dateTo).toBe('2026-09-15T23:59:59.999Z');
   await page.setViewportSize({width:390,height:844});
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.screenshot({path:test.info().outputPath('inbound-export-mobile.png')});
-  await page.getByRole('button',{name:'Clear dates',exact:true}).click();
-  await expect.poll(()=>state.requests.at(-1)?.dateFrom).toBeUndefined();
-  await expect.poll(()=>state.requests.at(-1)?.dateTo).toBeUndefined();
 });
 test('Inbound export reports progress and safe errors, permits retry and disables empty exports',async({page})=>{
   const state=await receiptsFixture(page);await page.goto(base+'/inbound');
@@ -101,9 +94,9 @@ test('Inbound export reports progress and safe errors, permits retry and disable
   await expect(page.getByRole('alert').filter({hasText:'Export is too large'})).toBeVisible();
   state.failure=403;await page.getByRole('button',{name:'Export CSV',exact:true}).click();
   await expect(page.getByRole('alert').filter({hasText:'Your access could not be verified'})).toBeVisible();
-  state.failure=0;await download(page);
-  await page.getByLabel('Received from',{exact:true}).fill('2030-01-01');
-  await expect(page.getByText('No matching receipts',{exact:true})).toBeVisible();
+  state.failure=0;await download(page);state.empty=true;
+  await page.getByRole('combobox',{name:'Filter by client'}).selectOption('2');
+  await expect(page.getByText('No received inventory',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeDisabled();
 });
 test('Changing client cancels pending receiving-history export without downloading another client file',async({page})=>{
@@ -120,22 +113,15 @@ test('Changing client cancels pending receiving-history export without downloadi
   await expect(page.getByText('CSV downloaded with all matching receipts. Dates are in UTC.')).toHaveCount(0);
   await download(page);expect(downloads).toHaveLength(1);expect(state.exports.at(-1).clientId).toBe('2');
 });
-test('Changing dates cancels the old export and inverted ranges do not request or export receipts',async({page})=>{
+test('Changing receipt sorting cancels the old export and exports the current ordering',async({page})=>{
   const state=await receiptsFixture(page);const downloads=[];page.on('download',file=>downloads.push(file));
   await page.goto(base+'/inbound');await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   let release;state.gate=new Promise(resolve=>release=resolve);
   await page.getByRole('button',{name:'Export CSV',exact:true}).click();
   await expect.poll(()=>state.exports.length).toBe(1);
-  await page.getByLabel('Received from',{exact:true}).fill('2026-09-02');
-  await expect.poll(()=>state.requests.at(-1)?.dateFrom).toBe('2026-09-02T00:00:00.000Z');
+  await page.getByRole('button',{name:'SKU',exact:true}).click();
+  await expect.poll(()=>state.requests.at(-1)?.sortBy).toBe('sku');
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
-  const requests=state.requests.length;
-  await page.getByLabel('Received through',{exact:true}).fill('2026-09-01');
-  await expect(page.getByRole('alert').filter({hasText:'Received from must be on or before Received through.'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeDisabled();
-  expect(state.requests).toHaveLength(requests);
   release();state.gate=null;
-  await page.getByRole('button',{name:'Clear dates',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
-  await download(page);expect(downloads).toHaveLength(1);
+  await download(page);expect(downloads).toHaveLength(1);expect(state.exports.at(-1).sortBy).toBe('sku');
 });
