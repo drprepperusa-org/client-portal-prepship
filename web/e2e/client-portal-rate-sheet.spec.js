@@ -26,7 +26,10 @@ async function setup(page, custom) {
 const services={pickPackFee:'2.50',includedUnits:3,additionalUnitFee:'0.75',storageFeePerCuFt:'0.1234',updatedAt:'2026-09-01T12:00:00Z'};
 const sheets=[
   {clientId:1,clientName:'Alpha',configurationStatus:'configured',services,
-    packages:[{packageId:11,name:'Small box',dimensions:'7 × 4 × 2 in',configuredPrice:'0.20',updatedAt:'2026-09-05T12:00:00Z'}]},
+    packages:[
+      {packageId:11,name:'Small box',dimensions:'7 × 4 × 2 in',configuredPrice:'0.20',updatedAt:'2026-09-05T12:00:00Z'},
+      {packageId:12,name:'Medium box',dimensions:'10 × 8 × 4 in',configuredPrice:'0.35',updatedAt:'2026-09-06T12:00:00Z'},
+    ]},
   {clientId:2,clientName:'Beta',configurationStatus:'inactive',services:{...services,pickPackFee:'9.99'},packages:[]},
   {clientId:3,clientName:'Missing rates',configurationStatus:'not_configured',services:null,packages:[]},
   {clientId:4,clientName:'Zero rates',configurationStatus:'configured',services:{...services,pickPackFee:'0.00'},packages:[]},
@@ -39,13 +42,29 @@ test('Rate Sheet renders exact prices, precision, dates and missing/zero/inactiv
  await page.setViewportSize({width:1440,height:1000});const requests=[];
  await setup(page,url=>{if(url.pathname.endsWith('/rate-sheet'))requests.push(url);return fixture(url);});
  await page.goto(base+'/rates');
+ await expect(page.getByRole('button',{name:'Collapse rates for Alpha'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Expand rates for Beta'})).toBeVisible();
  await expect(page.getByText('$2.50',{exact:true})).toBeVisible();
  await expect(page.getByText('$0.1234',{exact:true}).first()).toBeVisible();
- await expect(page.getByText('$0.00',{exact:true})).toBeVisible();
- await expect(page.getByText('A missing rate does not mean the service is free.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Expand rates for Beta'}).click();
  await expect(page.getByText('Billing is inactive for this client.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Expand rates for Missing rates'}).click();
+ await expect(page.getByText('A missing rate does not mean the service is free.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Expand rates for Zero rates'}).click();
+ await expect(page.getByText('$0.00',{exact:true})).toBeVisible();
  await expect(page.getByText('Service rates updated Sep 1, 2026',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('Configured box prices before billing adjustments.',{exact:false}).first()).toBeVisible();
+ const packageSearch=page.getByRole('combobox',{name:'Find packaging for Alpha'});
+ await expect(packageSearch).toHaveAttribute('list',/.+/);
+ await packageSearch.fill('Medium');
+ await expect(page.getByRole('cell',{name:'Medium box',exact:false})).toBeVisible();
+ await expect(page.getByRole('cell',{name:'Small box',exact:false})).toHaveCount(0);
+ await packageSearch.fill('mailer');
+ await expect(page.getByText('No packaging matches “mailer”.',{exact:true})).toBeVisible();
+ await packageSearch.fill('');
+ await page.getByRole('button',{name:'Collapse rates for Alpha'}).click();
+ await expect(page.getByText('$2.50',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Expand rates for Alpha'}).click();
  await page.getByRole('button',{name:'All clients',exact:true}).click();
  await page.getByRole('button',{name:'Alpha',exact:true}).click();
  await expect(page.getByText('$9.99',{exact:true})).toHaveCount(0);

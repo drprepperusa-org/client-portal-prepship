@@ -1,5 +1,6 @@
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, ReceiptText } from 'lucide-react';
+import { ChevronDown, RefreshCw, ReceiptText, Search } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
@@ -45,7 +46,9 @@ export default function Rates() {
         isEmpty={canView && rows.length === 0} emptyTitle="No rate sheets for this client selection"
         emptyMessage="Choose another client or ask your account manager to check your access.">
         {canView ? (
-          <div className="space-y-4">{rows.map((row) => <ClientRates key={row.clientId} sheet={row} />)}</div>
+          <div className="space-y-4">{rows.map((row, index) => (
+            <ClientRates key={row.clientId} sheet={row} defaultOpen={rows.length === 1 || index === 0} />
+          ))}</div>
         ) : (
           <GlassPanel className="p-6">
             <h2 className="font-semibold text-ink">Financial access required</h2>
@@ -68,11 +71,27 @@ function ServiceRate({ label, value, unit }: { label: string; value: string; uni
   );
 }
 
-function ClientRates({ sheet }: { sheet: PortalRateSheet }) {
+function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOpen: boolean }) {
   const service = sheet.services;
   const canCustomizeTables = useCanCustomizeTables();
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [packageQuery, setPackageQuery] = useState('');
+  const packageListId = useId();
+  const packagePanelId = `client-rates-${sheet.clientId}`;
+  const filteredPackages = useMemo(() => {
+    const query = packageQuery.trim().toLocaleLowerCase();
+    if (!query) return sheet.packages;
+    return sheet.packages.filter((box) =>
+      `${box.name} ${box.dimensions ?? ''}`.toLocaleLowerCase().includes(query),
+    );
+  }, [packageQuery, sheet.packages]);
+
+  useEffect(() => {
+    if (defaultOpen) setIsOpen(true);
+  }, [defaultOpen]);
+
   return (
-    <GlassPanel className="space-y-5 p-4 sm:p-6">
+    <GlassPanel className="p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-semibold text-ink">{sheet.clientName}</h2>
@@ -80,38 +99,79 @@ function ClientRates({ sheet }: { sheet: PortalRateSheet }) {
             {service ? `Service rates updated ${shortDate(service.updatedAt)}` : 'Service rates have not been configured.'}
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-ink-2">
-          {statusLabels[sheet.configurationStatus]}
-        </span>
-      </div>
-      {sheet.configurationStatus === 'inactive' && (
-        <p className="rounded-glass-sm bg-amber-50 p-3 text-sm text-amber-800">
-          Billing is inactive for this client. The saved rates below are shown for reference.
-        </p>
-      )}
-      {service ? (
-        <dl className="grid gap-3 sm:grid-cols-3">
-          <ServiceRate label="Pick & pack" value={service.pickPackFee}
-            unit={`Includes up to ${service.includedUnits} ${service.includedUnits === 1 ? 'unit' : 'units'}`} />
-          <ServiceRate label="Additional units" value={service.additionalUnitFee} unit="Per unit above the included quantity" />
-          <ServiceRate label="Storage" value={service.storageFeePerCuFt} unit="Per cubic foot per month" />
-        </dl>
-      ) : (
-        <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">
-          Prep and storage rates are not configured. A missing rate does not mean the service is free.
-        </p>
-      )}
-      <section aria-label={`Packaging rates for ${sheet.clientName}`} className="space-y-3">
-        <div>
-          <h3 className="font-semibold text-ink">Packaging</h3>
-          <p className="mt-1 text-sm text-ink-3">Configured box prices before billing adjustments. Final charges appear on invoices.</p>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-ink-2">
+            {statusLabels[sheet.configurationStatus]}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={isOpen}
+            aria-controls={packagePanelId}
+            aria-label={`${isOpen ? 'Collapse' : 'Expand'} rates for ${sheet.clientName}`}
+            trailingIcon={<ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />}
+            onClick={() => setIsOpen((open) => !open)}
+          >
+            {isOpen ? 'Hide details' : 'View details'}
+          </Button>
         </div>
-        {sheet.packages.length ? (
-          <DataTable columns={packageColumns} rows={sheet.packages} rowKey={(box) => String(box.packageId)}
-            tableId={`portal-rates-packaging-${sheet.clientId}`} allowColumnCustomization={canCustomizeTables} />
-        ) : <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No packaging prices configured for this client.</p>}
-        <p className="text-xs text-ink-3">Only saved box prices are listed. An unlisted box has no published price here.</p>
-      </section>
+      </div>
+      {isOpen && (
+        <div id={packagePanelId} className="mt-5 space-y-5">
+          {sheet.configurationStatus === 'inactive' && (
+            <p className="rounded-glass-sm bg-amber-50 p-3 text-sm text-amber-800">
+              Billing is inactive for this client. The saved rates below are shown for reference.
+            </p>
+          )}
+          {service ? (
+            <dl className="grid gap-3 sm:grid-cols-3">
+              <ServiceRate label="Pick & pack" value={service.pickPackFee}
+                unit={`Includes up to ${service.includedUnits} ${service.includedUnits === 1 ? 'unit' : 'units'}`} />
+              <ServiceRate label="Additional units" value={service.additionalUnitFee} unit="Per unit above the included quantity" />
+              <ServiceRate label="Storage" value={service.storageFeePerCuFt} unit="Per cubic foot per month" />
+            </dl>
+          ) : (
+            <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">
+              Prep and storage rates are not configured. A missing rate does not mean the service is free.
+            </p>
+          )}
+          <section aria-label={`Packaging rates for ${sheet.clientName}`} className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="font-semibold text-ink">Packaging</h3>
+                <p className="mt-1 text-sm text-ink-3">Configured box prices before billing adjustments. Final charges appear on invoices.</p>
+              </div>
+              {sheet.packages.length > 0 && (
+                <label className="relative flex w-full items-center sm:max-w-sm">
+                  <Search size={16} className="absolute left-3 text-ink-3" aria-hidden />
+                  <input
+                    type="search"
+                    list={packageListId}
+                    value={packageQuery}
+                    onChange={(event) => setPackageQuery(event.target.value)}
+                    placeholder="Search or choose packaging"
+                    aria-label={`Find packaging for ${sheet.clientName}`}
+                    autoComplete="off"
+                    className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90"
+                  />
+                  <datalist id={packageListId}>
+                    {sheet.packages.map((box) => <option key={box.packageId} value={box.name} />)}
+                  </datalist>
+                </label>
+              )}
+            </div>
+            {filteredPackages.length ? (
+              <DataTable columns={packageColumns} rows={filteredPackages} rowKey={(box) => String(box.packageId)}
+                tableId={`portal-rates-packaging-${sheet.clientId}`} allowColumnCustomization={canCustomizeTables} />
+            ) : sheet.packages.length ? (
+              <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No packaging matches “{packageQuery}”.</p>
+            ) : (
+              <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No packaging prices configured for this client.</p>
+            )}
+            <p className="text-xs text-ink-3">Only saved box prices are listed. An unlisted box has no published price here.</p>
+          </section>
+        </div>
+      )}
     </GlassPanel>
   );
 }
