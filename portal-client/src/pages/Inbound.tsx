@@ -23,11 +23,6 @@ import { Pagination } from '@/components/ui/Pagination';
 export default function Inbound() {
   const { clientId: globalClientId } = usePortalFilters();
   const { userId } = useAuth();
-  const [receivedFrom, setReceivedFrom] = useState('');
-  const [receivedTo, setReceivedTo] = useState('');
-  const invalidDates = Boolean(receivedFrom && receivedTo && receivedFrom > receivedTo);
-  const receiptDates = { dateFrom: receivedFrom ? `${receivedFrom}T00:00:00.000Z` : undefined,
-    dateTo: receivedTo ? `${receivedTo}T23:59:59.999Z` : undefined };
   const clients = useClients().data?.data ?? [];
   const me = useMe().data;
   const isAdmin = me?.isAdmin ?? false;
@@ -55,11 +50,11 @@ export default function Inbound() {
   }, [searchParams, isAdmin, setSearchParams]);
 
   const effectiveClientId = clientFilter ?? globalClientId;
-  const [receiptPage, setReceiptPage] = useFilteredPage(JSON.stringify([effectiveClientId, receivedFrom, receivedTo]));
+  const [receiptPage, setReceiptPage] = useFilteredPage(JSON.stringify([effectiveClientId]));
   const receiptSort = useTableSort(setReceiptPage);
   const query = useInbound(effectiveClientId);
-  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize, receiptSort.sortBy, receiptSort.sortDir, receiptDates, !invalidDates);
-  const exportFilters = { ...receiptDates, clientId: effectiveClientId, sortBy: receiptSort.sortBy, sortDir: receiptSort.sortDir };
+  const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize, receiptSort.sortBy, receiptSort.sortDir);
+  const exportFilters = { clientId: effectiveClientId, sortBy: receiptSort.sortBy, sortDir: receiptSort.sortDir };
   const rows = query.data?.data ?? [];
   const receiptRows = receiptQuery.data?.data ?? [];
   const receiptPagination = receiptQuery.data?.pagination;
@@ -107,32 +102,19 @@ export default function Inbound() {
             <p className="text-xs text-ink-3">Canonical receipts recorded in PrepShip</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-end justify-between gap-3 px-3 pb-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="space-y-1 text-xs text-ink-2">Received from
-              <input type="date" value={receivedFrom} onChange={event => setReceivedFrom(event.target.value)}
-                className="focus-ring block h-11 min-w-0 rounded-glass-sm border border-slate-200 bg-white px-3 text-sm text-ink" />
-            </label>
-            <label className="space-y-1 text-xs text-ink-2">Received through
-              <input type="date" value={receivedTo} onChange={event => setReceivedTo(event.target.value)}
-                className="focus-ring block h-11 min-w-0 rounded-glass-sm border border-slate-200 bg-white px-3 text-sm text-ink" />
-            </label>
-            {(receivedFrom || receivedTo) && <Button variant="ghost" size="sm" onClick={() => { setReceivedFrom(''); setReceivedTo(''); }}>Clear dates</Button>}
-            <p className="w-full text-xs text-ink-3">{receivedFrom || receivedTo ? 'Received dates are in UTC.' : 'All receipt dates. Choose dates to narrow the history and export.'}</p>
-            {invalidDates && <p role="alert" className="w-full text-xs text-ink-2">Received from must be on or before Received through.</p>}
-          </div>
+        <div className="flex justify-end px-3 pb-4">
           <ExportInboundReceiptsCsv key={JSON.stringify([userId, exportFilters])} filters={exportFilters}
-            disabled={invalidDates || !receiptRows.length || receiptQuery.isFetching || receiptQuery.isError} />
+            disabled={!receiptRows.length || receiptQuery.isFetching || receiptQuery.isError} />
         </div>
-        {!invalidDates && <QueryState showUpdateStatus={false}
+        <QueryState showUpdateStatus={false}
           isLoading={receiptQuery.isLoading}
           isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
           isError={receiptQuery.isError}
           error={receiptQuery.error}
           isEmpty={receiptRows.length === 0}
           onRetry={() => receiptQuery.refetch()}
-          emptyTitle={receivedFrom || receivedTo ? 'No matching receipts' : 'No received inventory'}
-          emptyMessage={receivedFrom || receivedTo ? 'No receipts match this client and received-date range.' : 'No PrepShip receipts have been recorded.'}
+          emptyTitle="No received inventory"
+          emptyMessage="No PrepShip receipts have been recorded."
         >
           <DataTable isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
             tableId="inbound-receipts"
@@ -153,7 +135,7 @@ export default function Inbound() {
               onPageSize={(size) => { setReceiptPageSize(size); setReceiptPage(1); }}
             />
           )}
-        </QueryState>}
+        </QueryState>
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">

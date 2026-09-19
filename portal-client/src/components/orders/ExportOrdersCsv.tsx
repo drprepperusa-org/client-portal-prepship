@@ -46,7 +46,6 @@ export function ExportOrdersCsv({ filters, disabled }: { filters: ListOpts; disa
   return <div className="space-y-1">
     <Button variant="secondary" size="sm" disabled={disabled || !accessToken} loading={busy}
       leadingIcon={<Download size={15} />} onClick={() => void exportCsv()}>{busy ? 'Exporting…' : 'Export CSV'}</Button>
-    <p className="text-xs text-ink-3">All matching orders across pages. Up to 10,000 orders per export.</p>
     {busy && <p role="status" className="text-xs text-ink-2">Preparing your CSV…</p>}
     {message && <p role={failed ? 'alert' : 'status'} className="text-xs text-ink-2">{message}</p>}
   </div>;

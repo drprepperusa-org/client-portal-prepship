@@ -1,5 +1,4 @@
 import { ExportShipmentsCsv } from '@/components/shipments/ExportShipmentsCsv';
-import { rangeToTimestamps } from '@/lib/api/scope';
 import { useAuth } from '@/auth';
 import { useTableSort } from '@/lib/useTableSort';
 import { StartReturnButton } from '@/components/returns/StartReturnButton';
@@ -24,7 +23,7 @@ import { useDebounced } from '@/lib/useDebounced';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
-import type { ListOpts, PortalShipment } from '@/lib/api';
+import type { PortalShipment } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 const CLIENT_ACCENTS: Accent[] = ['emerald', 'rose', 'indigo', 'amber', 'teal', 'violet', 'sky'];
@@ -49,10 +48,8 @@ const STATUS_OPTIONS = (['shipped', 'label_created', 'cancelled', 'voided', 'una
 
 export default function Shipments() {
   const toast = useToast();
-  const { clientId: globalClientId, dateRange } = usePortalFilters();
+  const { clientId: globalClientId } = usePortalFilters();
   const { userId } = useAuth();
-  const [useDates, setUseDates] = useState(false);
-  const dateBounds: Pick<ListOpts, 'dateFrom' | 'dateTo'> = useDates ? rangeToTimestamps({ from: dateRange.dateFrom, to: dateRange.dateTo }) : {};
   const clients = useClients().data?.data ?? [];
   const [q, setQ] = useState('');
   const [pageSize, setPageSize] = useState(50);
@@ -66,10 +63,10 @@ export default function Shipments() {
   const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
 
-  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedQ, effectiveClientId, statusFilter, dateBounds.dateFrom, dateBounds.dateTo]));
+  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedQ, effectiveClientId, statusFilter]));
   const tableSort = useTableSort(setPage);
 
-  const exportFilters = { ...dateBounds, sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
+  const exportFilters = { sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
     search: debouncedQ, clientId: effectiveClientId, status: statusFilter || undefined };
   const query = useShipments({ ...exportFilters, page, pageSize });
   const canCustomizeTables = useCanCustomizeTables();
@@ -210,11 +207,7 @@ export default function Shipments() {
         </div>
       </GlassPanel>
 
-      <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <label className="flex items-center gap-2 text-sm text-ink-2">
-          <input type="checkbox" checked={useDates} onChange={event => setUseDates(event.target.checked)} className="focus-ring" />
-          Use selected date range
-        </label>
+      <GlassPanel className="flex justify-end p-4">
         <ExportShipmentsCsv key={JSON.stringify([userId, exportFilters, q])} filters={exportFilters}
           disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
       </GlassPanel>

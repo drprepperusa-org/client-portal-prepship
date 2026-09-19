@@ -39,8 +39,11 @@ assert.ok(
 );
 assert.match(readModel, /dateFrom \? sql`\$\{receivedAt\} >= \$\{dateFrom\}::timestamptz` : undefined/, 'optional start date filters the canonical receipt clock');
 assert.match(readModel, /dateTo \? sql`\$\{receivedAt\} <= \$\{dateTo\}::timestamptz` : undefined/, 'optional end date is inclusive on the same clock');
-assert.ok(page.includes("[receivedFrom, setReceivedFrom] = useState('')") && page.includes("[receivedTo, setReceivedTo] = useState('')"),
-  'receipt dates start empty so opening Inbound still shows all history');
+assert.doesNotMatch(page, /receivedFrom|receivedTo|type="date"/, 'Inbound exposes no receipt-date controls');
+assert.ok(
+  page.includes('useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize, receiptSort.sortBy, receiptSort.sortDir)'),
+  'Inbound requests the full receipt history without hidden date bounds',
+);
 assert.ok(hooks.includes('dates.dateFrom, dates.dateTo'), 'receipt cache keys include both optional date bounds');
 assert.doesNotMatch(
   readModel,

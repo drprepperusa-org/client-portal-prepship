@@ -1,6 +1,5 @@
 import { ExportOrdersCsv } from '@/components/orders/ExportOrdersCsv';
 import { usePortalFilters } from '@/lib/portalContext';
-import { rangeToTimestamps } from '@/lib/api/scope';
 import { useAuth } from '@/auth';
 import { useTableSort } from '@/lib/useTableSort';
 import { useEffect, useState } from 'react';
@@ -90,10 +89,8 @@ function fmtWeight(value: number | string | null | undefined): string {
 
 export default function Orders() {
   const [params] = useSearchParams();
-  const { dateRange, clientId } = usePortalFilters();
+  const { clientId } = usePortalFilters();
   const { userId } = useAuth();
-  const [useDates, setUseDates] = useState(false);
-  const dateBounds: Pick<ListOpts, 'dateFrom' | 'dateTo'> = useDates ? rangeToTimestamps({ from: dateRange.dateFrom, to: dateRange.dateTo }) : {};
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
   const [q, setQ] = useState(params.get('q') ?? '');
   const [page, setPage] = useState(1);
@@ -118,10 +115,10 @@ export default function Orders() {
     if (isTab(urlTab)) setTab(urlTab);
   }, [urlTab]);
 
-  useEffect(() => setPage(1), [debouncedQ, tab, clientId, dateBounds.dateFrom, dateBounds.dateTo]);
+  useEffect(() => setPage(1), [debouncedQ, tab, clientId]);
 
   const filters: ListOpts = { sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
-    status: tab, search: debouncedQ, clientId, ...dateBounds };
+    status: tab, search: debouncedQ, clientId };
   const query = useOrders({ ...filters, page, pageSize });
   const canCustomizeTables = useCanCustomizeTables();
   const rows = query.data?.data ?? [];
@@ -244,17 +241,7 @@ export default function Orders() {
           placeholder="Search by order #, customer, SKU…"
           ariaLabel="Search orders"
         />
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <label className="flex items-center gap-2 text-sm text-ink-2">
-              <input type="checkbox" checked={useDates} onChange={e => setUseDates(e.target.checked)}
-                className="focus-ring rounded accent-brand-600" />
-              Use selected date range
-            </label>
-            <p className="text-xs text-ink-3">{useDates
-              ? `Order dates: ${dateRange.dateFrom} to ${dateRange.dateTo} (UTC).`
-              : 'All order dates. Enable the date filter to use the range in the header.'}</p>
-          </div>
+        <div className="mt-3 flex justify-end">
           <ExportOrdersCsv key={JSON.stringify([userId, filters, q])} filters={filters}
             disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
         </div>
