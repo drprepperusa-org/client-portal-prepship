@@ -63,6 +63,29 @@ test('Attention shows complete counts, navigates to filtered lists, and fits mob
   await expect(page.getByRole('button',{name:'Notifications',exact:true})).toBeFocused();
 });
 
+test('Clear all acknowledges current notifications until refresh or a count changes',async({page})=>{
+  let inventoryCount=105;
+  await setup(page,url=>url.pathname.endsWith('/attention')?summary(inventoryCount,3):undefined);
+  await page.goto(base+'/connections');
+  await expect(page.getByLabel('108 items need attention')).toBeVisible();
+  await page.getByRole('button',{name:'Notifications',exact:true}).click();
+  await panel(page).getByRole('button',{name:'Clear all notifications'}).click();
+  await expect(page.getByLabel('108 items need attention')).toHaveCount(0);
+  await expect(panel(page).getByText('Notifications cleared. Refresh to show current issues again.')).toBeVisible();
+  await expect(panel(page).getByRole('link',{name:/View details/})).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Notifications',exact:true}).click();
+  await expect(panel(page).getByText('Notifications cleared. Refresh to show current issues again.')).toBeVisible();
+  inventoryCount=106;
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Notifications',exact:true}).click();
+  await expect(page.getByLabel('109 items need attention')).toBeVisible();
+  await expect(panel(page).getByText('Low or out of stock (106)',{exact:true})).toBeVisible();
+  await panel(page).getByRole('button',{name:'Clear all notifications'}).click();
+  await panel(page).getByRole('button',{name:'Refresh notifications'}).click();
+  await expect(page.getByLabel('109 items need attention')).toBeVisible();
+});
+
 test('Attention handles errors, fresh zero counts and retry without exposing server details',async({page})=>{
   await setup(page);let fail=true,empty=false;
   await page.route('**/api/client-portal/attention*',route=>route.fulfill(fail
