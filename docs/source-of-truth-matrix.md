@@ -69,6 +69,23 @@ DTO and opens a detail dialog, without deriving outcomes or requesting raw provi
 payloads. Checks: `test:client-portal-audit-log`, contract/architecture/shadow-renderer
 and access-security guards, plus desktop/mobile detailed-audit browser proofs.
 
+### Admin client activity summary
+
+The read model `read-models/client-activity.ts` owns the 7/30/90-day overview over
+`client_portal_audit_logs.created_at`. Client names and active flags come from
+`clients`; latest event and three recent action/navigation events use deterministic
+created_at/id ordering. Failed/denied counts count recorded event suffixes, not
+operations. Shared audit classification excludes background checks. The shared
+`audit-log-client-attribution.ts` selector owns both summary and client-filtered
+list/CSV attribution; explicit metadata and current canonical resource ownership
+precede singleton session scope. Unattributed global/multi-client session events
+are not assigned to every client. Current ownership is not historical membership.
+
+The summary returns sanitized `PortalAuditActivity` projections, never raw metadata.
+Global `canViewAudit` is checked before reads. React shows DTOs and exact-window
+links, including missing-activity and error states; it never infers online status,
+sign-ins, successful operations or activity from only the current audit page.
+
 ### Orders
 
 Status: `[MIXED]`

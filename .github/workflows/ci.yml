@@ -56,6 +56,9 @@ jobs:
       - name: Saved filter views, scope, persistence and storage failure browser proof
         run: npx playwright test web/e2e/client-portal-saved-views.spec.js --workers=1
 
+      - name: Admin client activity, drill-down and failure states browser proof
+        run: npm run test:client-portal-client-activity:browser
+
       - name: Static guard suite
         run: npm run test:guards
 

@@ -101,6 +101,8 @@
     "test:client-portal-analysis-pending-sot": "node scripts/client-portal-analysis-pending-sot-guard.mjs",
     "test:client-portal-analysis-ship-bucket": "node scripts/client-portal-analysis-ship-bucket-guard.mjs",
     "test:client-portal-analytics-parity": "node scripts/client-portal-analytics-parity-guard.mjs",
+    "test:client-portal-client-activity:integration": "tsx scripts/integration/client-portal-client-activity.integration.ts",
+    "test:client-portal-client-activity:browser": "playwright test web/e2e/client-portal-client-activity.spec.js --workers=1",
     "test:client-portal-audit-log": "node scripts/client-portal-audit-log-guard.mjs && tsx scripts/client-portal-audit-metadata-runtime.ts && tsx scripts/client-portal-audit-store-filter-runtime.ts && tsx scripts/client-portal-audit-activity-runtime.ts",
     "test:client-portal-billing-column-order": "node scripts/client-portal-billing-column-order-guard.mjs",
     "test:client-portal-billing-cp059:integration": "tsx scripts/integration/client-portal-billing-cp059.integration.ts",

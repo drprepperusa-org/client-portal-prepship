@@ -38,6 +38,7 @@ export interface PortalAuditInvestigationFilters {
 export interface PortalAuditLogFilters extends PortalAuditInvestigationFilters {
   search?: string;
   storeId?: number | null;
+  clientId?: number | null;
   actorEmail?: string;
 }
 
@@ -66,6 +67,7 @@ export interface PortalAuditLogResponse {
   filters: {
     stores: PortalAuditLogStoreFilter[];
     users?: string[];
+    clients?: PortalAuditLogStoreFilter[];
   };
   pagination?: { page: number; pageSize: number; hasMore: boolean };
 }
@@ -125,4 +127,26 @@ export interface AccessUserInviteResult {
     role: 'admin' | 'client_user';
     clientIds: number[];
   };
+}
+
+/** Backend-owned audit overview. Recorded events are not proof of online presence. */
+export interface PortalClientActivityEvent {
+  id: number;
+  actorEmail: string | null;
+  actorUserId: string | null;
+  createdAt: string;
+  activity: PortalAuditActivity;
+}
+export interface PortalClientActivityResponse {
+  data: Array<{
+    clientId: number;
+    clientName: string;
+    active: boolean;
+    latestEvent: PortalClientActivityEvent | null;
+    recentActions: PortalClientActivityEvent[];
+    failedCount: number;
+    deniedCount: number;
+  }>;
+  window: { dateFrom: string; dateTo: string; days: number };
+  pagination: { page: number; pageSize: number; hasMore: boolean };
 }

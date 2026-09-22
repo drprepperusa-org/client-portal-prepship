@@ -54,7 +54,7 @@ export function useCanCustomizeTables(): boolean {
   return Boolean(me?.isAdmin || me?.isGlobal);
 }
 export function useAuditLog(search = '', limit = 100, storeId?: number | null, actorEmail = '', page = 1,
-  filters: import('@client-portal-contracts/access').PortalAuditInvestigationFilters = {}) {
+  filters: import('@client-portal-contracts/access').PortalAuditInvestigationFilters & { clientId?: number | null } = {}) {
   return useTokenQuery(['audit-log', search, limit, storeId ?? 'all-stores', actorEmail, page, filters],
     (t) => portalApi.auditLog(t, { search, limit, storeId, actorEmail, page, ...filters }), true, {
     refetchInterval: page === 1 ? 30_000 : undefined,

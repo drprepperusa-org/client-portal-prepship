@@ -1,3 +1,4 @@
+import { auditActivityClientPredicate } from '../../lib/client-portal/read-models/audit-log-client-attribution';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ import { auditCsv, AUDIT_EXPORT_MAX_ROWS } from '../../lib/client-portal/audit-c
 const app = new Hono();
 
 const investigationQuery = z.object({
+  clientId: z.coerce.number().int().min(1).max(2_147_483_647).optional(),
   format: z.enum(['csv']).optional(),
   dateFrom: z.string().datetime({ offset: true }).optional(),
   dateTo: z.string().datetime({ offset: true }).optional(),
@@ -147,6 +149,7 @@ app.get('/audit-log', async (c) => {
   const where = and(
     ...[
       ne(clientPortalAuditLogs.event, 'portal.audit_log.view'),
+      investigation.clientId ? auditActivityClientPredicate(investigation.clientId) : undefined,
       investigation.dateFrom ? gte(clientPortalAuditLogs.createdAt, new Date(investigation.dateFrom)) : undefined,
       investigation.dateTo ? lt(clientPortalAuditLogs.createdAt, new Date(investigation.dateTo)) : undefined,
       ...auditInvestigationPredicates(sql`${clientPortalAuditLogs.event}`, {
@@ -166,7 +169,7 @@ app.get('/audit-log', async (c) => {
     ].filter(<T>(value: T | undefined): value is T => value !== undefined),
   );
 
-  const [pageRows, storeFilters, userFilters] = await Promise.all([
+  const [pageRows, storeFilters, userFilters, clientFilters] = await Promise.all([
     db
       .select({
         id: clientPortalAuditLogs.id,
@@ -189,6 +192,7 @@ app.get('/audit-log', async (c) => {
       .from(clientPortalAuditLogs)
       .where(and(isNotNull(clientPortalAuditLogs.actorEmail), ne(clientPortalAuditLogs.event, 'portal.audit_log.view')))
       .orderBy(asc(clientPortalAuditLogs.actorEmail)),
+    exporting ? [] : db.select({ id: clients.id, name: clients.name }).from(clients).orderBy(asc(clients.name), asc(clients.id)),
   ]);
   if (exporting && pageRows.length > AUDIT_EXPORT_MAX_ROWS) {
     return c.json({ error: 'Too many events to export. Narrow the date range or filters and try again.' }, 413);
@@ -221,6 +225,7 @@ app.get('/audit-log', async (c) => {
     data,
     filters: {
       stores: storeFilters,
+      clients: clientFilters,
       users: userFilters.flatMap((user) => user.email ? [user.email] : []),
     },
     pagination: { page, pageSize: limit, hasMore: pageRows.length > limit },

@@ -73,6 +73,8 @@ jobs:
       - run: npm ci
       - name: Apply schema to the test database
         run: npm run test:client-portal-integration:setup
+      - name: Verify admin client activity, audit attribution and complete period counts
+        run: npm run test:client-portal-client-activity:integration
       - name: Run client-portal integration suite
         run: npm run test:client-portal-integration
       - name: Verify Connections filters, complete listing and client isolation

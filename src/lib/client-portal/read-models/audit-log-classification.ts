@@ -14,14 +14,19 @@ export function classifyPortalAuditEvent(event: string): Pick<PortalAuditActivit
   return { category: DATA_ACTIONS.includes(action) ? 'Data request' : 'Action', outcome: 'Recorded' };
 }
 
-export function auditInvestigationPredicates(event: SQL, filters: PortalAuditInvestigationFilters): SQL[] {
+export function auditEventCategory(event: SQL): SQL {
   const action = sql`regexp_replace(${event}, '^.*[.]', '')`;
-  const category = sql`case
+  return sql`case
     when ${inArray(action, Object.keys(OUTCOMES))} then 'Action'
     when ${event} = 'portal.ui.click' then 'Navigation'
     when ${inArray(event, BACKGROUND_EVENTS)} then 'Background check'
     when ${inArray(action, DATA_ACTIONS)} then 'Data request'
     else 'Action' end`;
+}
+
+export function auditInvestigationPredicates(event: SQL, filters: PortalAuditInvestigationFilters): SQL[] {
+  const action = sql`regexp_replace(${event}, '^.*[.]', '')`;
+  const category = auditEventCategory(event);
   const predicates: SQL[] = [];
   if (filters.hideBackground) predicates.push(sql`${category} <> 'Background check'`);
   if (filters.activity === 'views') predicates.push(sql`${category} = 'Data request'`);

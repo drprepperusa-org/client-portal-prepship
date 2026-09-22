@@ -5,6 +5,7 @@ import type {
   AccessUserPatch,
   PortalAccessUser,
   PortalAuditClickInput,
+  PortalClientActivityResponse,
   PortalAuditLogResponse,
   PortalAuditLogFilters,
   PortalClientRow,
@@ -13,11 +14,13 @@ import type {
 import { apiBlob, apiDelete, apiGet, apiPatch, apiPost } from '../transport';
 
 const auditFilters = (opts: PortalAuditLogFilters) => ({
-  search: opts.search, storeId: opts.storeId, actorEmail: opts.actorEmail,
+  search: opts.search, storeId: opts.storeId, clientId: opts.clientId, actorEmail: opts.actorEmail,
   dateFrom: opts.dateFrom, dateTo: opts.dateTo, activity: opts.activity, hideBackground: opts.hideBackground,
 });
 
 export const accessApi = {
+  clientActivity: (token: RequestAuth, opts: { search: string; page: number; days: number }) =>
+    apiGet<PortalClientActivityResponse>(token, '/api/client-portal/audit-log/client-activity', opts),
   me: (token: RequestAuth) => apiGet<PortalMe>(token, '/api/client-portal/me'),
   auditLog: (token: RequestAuth, opts: PortalAuditLogFilters & { limit?: number; page?: number } = {}) =>
     apiGet<PortalAuditLogResponse>(token, '/api/client-portal/audit-log', {

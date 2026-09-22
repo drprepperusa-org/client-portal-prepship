@@ -13,6 +13,7 @@ import { AuditInvestigationFilters } from '@/components/audit/AuditInvestigation
 import { CopyAuditView } from '@/components/audit/CopyAuditView';
 import { ExportAuditCsv } from '@/components/audit/ExportAuditCsv';
 import { SearchInput } from '@/components/ui/SearchInput';
+import { ClientActivityPanel } from '@/components/audit/ClientActivityPanel';
 import { useAuditView } from '@/lib/useAuditView';
 
 function formatDate(value: string): string {
@@ -211,11 +212,11 @@ function scopeLabel(row: PortalAuditLogRow): string {
 }
 
 export default function AuditLog() {
-  const { search, setSearch, debouncedSearch, storeFilter, setStoreFilter, userFilter, setUserFilter,
+  const { clientFilter, setClientFilter, search, setSearch, debouncedSearch, storeFilter, setStoreFilter, userFilter, setUserFilter,
     filters, setFilters, page, setPage, invalid, copyUrl, searchPending, dateDraftKey } = useAuditView();
   const [selected, setSelected] = useState<PortalAuditLogRow | null>(null);
 
-  const audit = useAuditLog(debouncedSearch, 100, storeFilter, userFilter, page, filters);
+  const audit = useAuditLog(debouncedSearch, 100, storeFilter, userFilter, page, { ...filters, clientId: clientFilter });
   const canCustomizeTables = useCanCustomizeTables();
   const rows = audit.data?.data ?? [];
   const storeFilters = audit.data?.filters.stores ?? [];
@@ -284,6 +285,7 @@ export default function AuditLog() {
 
   return (
     <div className="space-y-4">
+      <ClientActivityPanel />
       <GlassPanel className="space-y-4 p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionTitle
@@ -331,14 +333,24 @@ export default function AuditLog() {
             </select>
           </label>
           <div className="xl:ml-auto xl:shrink-0">
-            <ExportAuditCsv key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters])}
-              filters={{ ...filters, search: debouncedSearch, storeId: storeFilter, actorEmail: userFilter }} disabled={searchPending || invalid} />
+            <ExportAuditCsv key={JSON.stringify([clientFilter, debouncedSearch, storeFilter, userFilter, filters])}
+              filters={{ ...filters, clientId: clientFilter, search: debouncedSearch, storeId: storeFilter, actorEmail: userFilter }} disabled={searchPending || invalid} />
           </div>
         </div>
+        <label className="flex flex-col gap-2 text-sm text-ink-2 sm:flex-row sm:items-center">Activity client
+          <select aria-label="Filter audit log by client" value={clientFilter ?? ''}
+            onChange={e => setClientFilter(e.target.value ? Number(e.target.value) : null)}
+            className="focus-ring h-11 min-w-0 max-w-full rounded-glass-sm bg-white/70 px-3 ring-1 ring-slate-200">
+            <option value="">All clients</option>
+            {clientFilter && !audit.data?.filters.clients?.some(client => client.id === clientFilter)
+              && <option value={clientFilter}>Client #{clientFilter}</option>}
+            {(audit.data?.filters.clients ?? []).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
+          </select>
+        </label>
         {invalid && <p role="alert" className="text-sm text-ink-2">Some link filters were invalid and were reset. Check the selected filters below.</p>}
         <AuditInvestigationFilters key={`${dateDraftKey}/${filters.dateFrom ?? ''}/${filters.dateTo ?? ''}`} value={filters} onChange={setFilters} />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CopyAuditView key={JSON.stringify([debouncedSearch, storeFilter, userFilter, filters, page])} getUrl={copyUrl} disabled={searchPending} />
+          <CopyAuditView key={JSON.stringify([clientFilter, debouncedSearch, storeFilter, userFilter, filters, page])} getUrl={copyUrl} disabled={searchPending} />
           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
             <ClipboardList size={14} />
             <span className="font-semibold text-ink-2">{visibleRows.length.toLocaleString()}</span>
@@ -381,7 +393,7 @@ export default function AuditLog() {
             icon={<Inbox size={24} />}
             title="No audit events"
             message={
-              debouncedSearch || storeFilter || userFilter || filters.dateFrom || filters.dateTo || filters.hideBackground || (filters.activity && filters.activity !== 'all')
+              clientFilter || debouncedSearch || storeFilter || userFilter || filters.dateFrom || filters.dateTo || filters.hideBackground || (filters.activity && filters.activity !== 'all')
                 ? 'No events match the selected filters.'
                 : 'Portal audit events will appear here as users sign in and navigate.'
             }

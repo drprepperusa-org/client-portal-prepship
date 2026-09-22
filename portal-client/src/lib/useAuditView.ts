@@ -5,6 +5,7 @@ import type { PortalAuditInvestigationFilters } from '@client-portal-contracts/a
 interface AuditView {
   search: string;
   storeId: number | null;
+  clientId: number | null;
   actorEmail: string;
   page: number;
   filters: PortalAuditInvestigationFilters;
@@ -41,6 +42,7 @@ function readView(params: URLSearchParams): { view: AuditView; invalid: boolean 
   if (!validActivity || (hideBackground && !['true', 'false'].includes(hideBackground))) invalid = true;
   const view: AuditView = {
     search: (params.get('search') ?? '').trim().slice(0, 120),
+    clientId: positiveInt('clientId', 2_147_483_647, null),
     storeId: positiveInt('storeId', 2_147_483_647, null),
     actorEmail: (params.get('actorEmail') ?? '').trim(),
     page: positiveInt('page', 1_000_000, 1)!,
@@ -56,6 +58,7 @@ function readView(params: URLSearchParams): { view: AuditView; invalid: boolean 
 function viewParams(view: AuditView) {
   const params = new URLSearchParams();
   if (view.search) params.set('search', view.search);
+  if (view.clientId) params.set('clientId', String(view.clientId));
   if (view.storeId) params.set('storeId', String(view.storeId));
   if (view.actorEmail) params.set('actorEmail', view.actorEmail);
   if (view.page > 1) params.set('page', String(view.page));
@@ -96,9 +99,10 @@ export function useAuditView() {
     return next;
   }
   return {
-    search, debouncedSearch: view.search, storeFilter: view.storeId, userFilter: view.actorEmail,
+    search, debouncedSearch: view.search, clientFilter: view.clientId, storeFilter: view.storeId, userFilter: view.actorEmail,
     page: view.page, filters: view.filters, invalid, dateDraftKey,
     setSearch: (value: string) => setDraft({ key: location.key, search: value }),
+    setClientFilter: (clientId: number | null) => update({ clientId }),
     setStoreFilter: (storeId: number | null) => update({ storeId }),
     setUserFilter: (actorEmail: string) => update({ actorEmail }),
     setFilters: (filters: PortalAuditInvestigationFilters) => update({ filters }),
