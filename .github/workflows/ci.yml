@@ -53,6 +53,9 @@ jobs:
       - name: Build portal (production)
         run: npm run build:web
 
+      - name: Saved filter views, scope, persistence and storage failure browser proof
+        run: npx playwright test web/e2e/client-portal-saved-views.spec.js --workers=1
+
       - name: Static guard suite
         run: npm run test:guards
 

@@ -15,6 +15,10 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useCanCustomizeTables, useInventory, useInventoryHistory } from '@/lib/hooks';
 import { inventoryStockStatusMeta } from '@/lib/inventory-status';
 import { useDebounced } from '@/lib/useDebounced';
+import { useSearchDraft } from '@/lib/useSearchDraft';
+import { SavedViewsBar } from '@/components/ui/SavedViewsBar';
+import { useQueryClient } from '@tanstack/react-query';
+import { portalQueryKey, portalReadKeys } from '@/lib/query-keys';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 import { usePortalFilters } from '@/lib/portalContext';
 import type { PortalInventory, InventoryMovement } from '@/lib/api';
@@ -97,8 +101,9 @@ function InventoryView() {
 
 /* ============================= Stock Levels ============================= */
 function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void }) {
-  const [q, setQ] = useState('');
+  const { search: q, setSearch: setQ, appliedSearch: debouncedQ, applySearch } = useSearchDraft();
   const { userId } = useAuth();
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const lowOnly = params.get('lowStock') === '1';
   const setLowOnly = (enabled: boolean) => setParams((previous) => {
@@ -108,7 +113,6 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
   });
   const [pageSize, setPageSize] = useState(100);
   const canCustomizeTables = useCanCustomizeTables();
-  const debouncedQ = useDebounced(q, 350);
   const { clientId } = usePortalFilters();
   const [page, setPage] = useFilteredPage(JSON.stringify([clientId, debouncedQ, lowOnly]));
   const tableSort = useTableSort(setPage);
@@ -194,7 +198,7 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
 
   return (
     <>
-      <GlassPanel className="p-4">
+      <GlassPanel className="space-y-3 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SearchInput
             value={q}
@@ -206,6 +210,15 @@ function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void })
           <ExportInventoryCsv key={JSON.stringify([userId, exportFilters, q])} filters={exportFilters}
             disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
         </div>
+        <SavedViewsBar current={{ page: 'inventory', search: q, lowStock: lowOnly, sort: tableSort.sort, pageSize }} onApply={(view) => {
+          if (view.page !== 'inventory') return;
+          applySearch(view.search); setLowOnly(view.lowStock); setPageSize(view.pageSize); setPage(1);
+          const allowedSort = view.sort && columns.some((column) => column.key === view.sort?.key && column.sortAccessor);
+          const sort = allowedSort ? view.sort : null;
+          tableSort.onSortChange(sort);
+          void queryClient.invalidateQueries({ exact: true, queryKey: portalQueryKey(userId,
+            portalReadKeys.inventory(clientId, view.search, 1, view.pageSize, view.lowStock, sort?.key, sort?.dir)) });
+        }} />
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">

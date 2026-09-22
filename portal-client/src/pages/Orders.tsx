@@ -18,7 +18,10 @@ import { StartReturnButton } from '@/components/returns/StartReturnButton';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { useCanCustomizeTables, useOrders } from '@/lib/hooks';
-import { useDebounced } from '@/lib/useDebounced';
+import { useSearchDraft } from '@/lib/useSearchDraft';
+import { SavedViewsBar } from '@/components/ui/SavedViewsBar';
+import { useQueryClient } from '@tanstack/react-query';
+import { portalQueryKey, portalReadKeys } from '@/lib/query-keys';
 import { money } from '@/lib/status';
 import type { ListOpts, PortalOrder } from '@/lib/api';
 import { type Accent } from '@/lib/accents';
@@ -88,18 +91,18 @@ function fmtWeight(value: number | string | null | undefined): string {
 }
 
 export default function Orders() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const { clientId } = usePortalFilters();
   const { userId } = useAuth();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('awaiting_shipment');
-  const [q, setQ] = useState(params.get('q') ?? '');
+  const { search: q, setSearch: setQ, appliedSearch: debouncedQ, applySearch } = useSearchDraft(params.get('q') ?? '');
   const [page, setPage] = useState(1);
   const tableSort = useTableSort(setPage);
   const [pageSize, setPageSize] = useState(50);
   const [selected, setSelected] = useState<PortalOrder | null>(null);
   // CP-029: "Start return" opens the create-return modal for the selected order.
   const [returnOrderId, setReturnOrderId] = useState<number | null>(null);
-  const debouncedQ = useDebounced(q, 350);
 
   // Adopt the ?q= param whenever it changes. useState only reads it at mount, so
   // a top-bar search performed while Orders is ALREADY open would otherwise be
@@ -234,17 +237,35 @@ export default function Orders() {
         ))}
       </GlassPanel>
 
-      <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <SearchInput
-          value={q}
-          onChange={setQ}
-          placeholder="Search by order #, customer, SKU…"
-          ariaLabel="Search orders"
-        />
-        <div className="sm:shrink-0">
-          <ExportOrdersCsv key={JSON.stringify([userId, filters, q])} filters={filters}
-            disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
+      <GlassPanel className="space-y-3 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SearchInput
+            value={q}
+            onChange={setQ}
+            placeholder="Search by order #, customer, SKU…"
+            ariaLabel="Search orders"
+          />
+          <div className="sm:shrink-0">
+            <ExportOrdersCsv key={JSON.stringify([userId, filters, q])} filters={filters}
+              disabled={query.isFetching || query.isError || !pg?.total || q !== debouncedQ} />
+          </div>
         </div>
+        <SavedViewsBar current={{ page: 'orders', search: q, status: tab, sort: tableSort.sort, pageSize }} onApply={(view) => {
+          if (view.page !== 'orders') return;
+          applySearch(view.search); setTab(view.status); setPageSize(view.pageSize); setPage(1);
+          const allowedSort = view.sort && columns.some((column) => column.key === view.sort?.key && column.sortAccessor);
+          const sort = allowedSort ? view.sort : null;
+          tableSort.onSortChange(sort);
+          // Refresh exactly the restored view, including when its query is already cached/active.
+          void queryClient.invalidateQueries({ exact: true, queryKey: portalQueryKey(userId,
+            portalReadKeys.orders(clientId, view.status, view.search, 1, view.pageSize, sort?.key, sort?.dir)) });
+          setSelected(null); setReturnOrderId(null);
+          setParams((previous) => {
+            const next = new URLSearchParams(previous);
+            next.set('q', view.search); next.set('tab', view.status);
+            return next;
+          });
+        }} />
       </GlassPanel>
 
       {/* Search escape hatch: a search that misses inside a status tab is the

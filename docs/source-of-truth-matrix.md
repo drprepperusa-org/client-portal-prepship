@@ -1432,6 +1432,18 @@ scoped store set. The page keys requests by user, client and filters, and closes
 store editors when the selected client changes. Date filters do not apply to
 current connection state.
 
+### Saved filter views — Orders and Inventory Stock Levels
+
+`SavedViewsBar` / `saved-views.ts` persist allowlisted presentation intent only:
+search, status or low/out filter, sort and page size. Storage is versioned and
+partitioned by authenticated user, current client filter and page. No client/store
+IDs are restored from filter payloads; backend tenant predicates remain the authority.
+The Orders and Inventory read models still own membership, status, stock and totals;
+existing CSV owners still receive the same applied filters. Opening resets page 1
+and fetches current backend data. No result rows, dates, credentials or financial
+values are saved. Dates are excluded because these two lists do not consume them.
+Stored filters and sort keys are validated before use; storage failure is explicit.
+
 ### Notification bell — Needs attention
 
 `GET /attention` composes current canonical read owners for enabled categories. `inventoryCount` uses
