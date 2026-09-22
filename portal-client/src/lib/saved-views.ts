@@ -1,3 +1,4 @@
+import { RETURN_STATUS_OPTIONS } from '@/components/returns/returnPresentation';
 import type { SortState } from '@/components/ui/data-table/types';
 
 type CommonFilters = { search: string; sort: SortState; pageSize: number };
@@ -5,12 +6,16 @@ export type OrderViewStatus = 'all' | 'awaiting_shipment' | 'shipped' | 'cancell
 export type SavedFilters = CommonFilters & (
   | { page: 'orders'; status: OrderViewStatus }
   | { page: 'inventory'; lowStock: boolean }
+  | { page: 'shipments' | 'returns'; status: string }
 );
 export type SavedView = { id: string; name: string; filters: SavedFilters };
 export const MAX_SAVED_VIEWS = 20;
 const SORT_KEYS = {
   orders: ['date', 'client', 'status', 'order', 'items', 'sku', 'qty', 'weight', 'total', 'customerShipping'],
   inventory: ['sku', 'name', 'client', 'dims', 'cuft', 'stock', 'whseShipped30', 'unitsPack', 'min', 'status'],
+  shipments: ['order', 'items', 'sku', 'client', 'customerShippingRate', 'tracking', 'status', 'shipped'],
+  returns: ['returnReference', 'order', 'client', 'recipientName', 'returnedSkus', 'returnedQuantity',
+    'status', 'delivery', 'tracking', 'returnCustomerShippingRate', 'created'],
 };
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -19,7 +24,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
 export function parseSavedFilters(value: unknown, page: SavedFilters['page']): SavedFilters | null {
   if (!record(value) || value.page !== page || typeof value.search !== 'string' || value.search.length > 120
     || ![50, 100, 200, 300, 500].includes(value.pageSize as number)) return null;
-  const allowed = ['page', 'search', 'sort', 'pageSize', page === 'orders' ? 'status' : 'lowStock'];
+  const allowed = ['page', 'search', 'sort', 'pageSize', page === 'inventory' ? 'lowStock' : 'status'];
   if (Object.keys(value).some((key) => !allowed.includes(key))) return null;
   let sort: SortState = null;
   if (value.sort !== null) {
@@ -33,6 +38,11 @@ export function parseSavedFilters(value: unknown, page: SavedFilters['page']): S
     return { ...common, page, status: value.status as OrderViewStatus };
   }
   if (page === 'inventory' && typeof value.lowStock === 'boolean') return { ...common, page, lowStock: value.lowStock };
+  const statuses: readonly string[] = page === 'shipments'
+    ? ['', 'shipped', 'label_created', 'cancelled', 'voided', 'unavailable'] : ['', ...RETURN_STATUS_OPTIONS];
+  if ((page === 'shipments' || page === 'returns') && typeof value.status === 'string' && statuses.includes(value.status)) {
+    return { ...common, page, status: value.status };
+  }
   return null;
 }
 

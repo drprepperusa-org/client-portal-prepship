@@ -60,12 +60,15 @@ check(
   'Inbound receipt cache key and request include page size',
 );
 for (const key of ["['shipments'", "['inventory'", "['inventory-history'", "['returns'"]) {
-  const source = key === "['inventory'" ? queryKeys : hooks;
+  const source = key === "['inventory-history'" ? hooks : queryKeys;
   const line = source.split('\n').find((value) => value.includes(key)) ?? '';
   check(line.includes('pageSize'), `${key.slice(2, -1)} cache key includes page size`);
 }
 check(/portalReadKeys\.inventory\(merged\.clientId, merged\.search, merged\.page, merged\.pageSize, merged\.lowStock(?:,|\))/.test(hooks),
   'Inventory reads use the shared key with page size and filters');
+for (const page of ['shipments', 'returns']) {
+  check(hooks.includes(`portalReadKeys.${page}(merged)`), `${page} reads use the shared key with page size and filters`);
+}
 check(inventoryApi.includes('pageSize: opts.pageSize ?? 50'), 'Inventory history API forwards page size');
 // CP-069: the page-load tracking refresh moved from the outbound Shipments page (whose status is
 // PrepShip fulfillment truth, not telemetry) to the Returns page, whose CP-062 arrival signal is.

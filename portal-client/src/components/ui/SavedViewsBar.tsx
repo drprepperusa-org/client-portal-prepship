@@ -5,11 +5,12 @@ import { MAX_SAVED_VIEWS, parseSavedFilters, readSavedViews, type SavedFilters, 
 import { Button } from './Button';
 import { Modal } from './Modal';
 
-type Props = { current: SavedFilters; onApply: (filters: SavedFilters) => void };
+type Props = { scopeClientId?: number; current: SavedFilters; onApply: (filters: SavedFilters) => void };
 
 export function SavedViewsBar(props: Props) {
   const { userId } = useAuth();
-  const { clientId } = usePortalFilters();
+  const { clientId: globalClientId } = usePortalFilters();
+  const clientId = props.scopeClientId ?? globalClientId;
   if (!userId) return null;
   const storageKey = `portal-saved-views:v1:${JSON.stringify([userId, clientId ?? null, props.current.page])}`;
   return <ScopedSavedViews key={storageKey} {...props} storageKey={storageKey} />;
@@ -90,6 +91,9 @@ function ScopedSavedViews({ current, onApply, storageKey }: Props & { storageKey
     <Modal open={dialog !== null} onClose={() => setDialog(null)} title={dialog === 'manage' ? 'Manage saved views' : 'Save current view'}>
       {dialog === 'save' && <form onSubmit={save} className="space-y-4">
         <p className="text-sm text-ink-2">Save search, filters, sorting and rows per page. Opening a view starts on page 1.</p>
+        {(current.page === 'shipments' || current.page === 'returns') && <p className="text-xs text-ink-3">
+          Your current client and any order filter stay unchanged.
+        </p>}
         <label className="block text-sm text-ink">View name
           <input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} required
             className="focus-ring mt-1 h-11 w-full rounded-glass-sm bg-white/70 px-3 ring-1 ring-slate-200" />

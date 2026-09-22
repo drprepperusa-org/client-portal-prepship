@@ -1,3 +1,6 @@
+import { SavedViewsBar } from '@/components/ui/SavedViewsBar';
+import { useQueryClient } from '@tanstack/react-query';
+import { portalQueryKey, portalReadKeys } from '@/lib/query-keys';
 import { useUrlSearchDraft } from '@/lib/useUrlSearchDraft';
 import { ExportReturnsCsv } from '@/components/returns/ExportReturnsCsv';
 import { useAuth } from '@/auth';
@@ -38,13 +41,14 @@ import { useFilteredPage } from '@/lib/useFilteredPage';
 export default function Returns() {
   const { clientId: globalClientId } = usePortalFilters();
   const { userId } = useAuth();
+  const queryClient = useQueryClient();
   const clients = useClients().data?.data ?? [];
   const me = useMe().data;
   const canCustomizeTables = useCanCustomizeTables();
   // Backend capability remains authoritative; this only selects the matching UI.
   const canInspectReturns = me?.canInspectReturns ?? false;
-  const [params] = useSearchParams();
-  const { search, setSearch, appliedSearch: debouncedSearch } = useUrlSearchDraft();
+  const [params, setParams] = useSearchParams();
+  const { search, setSearch, appliedSearch: debouncedSearch, applySearch } = useUrlSearchDraft();
   const [pageSize, setPageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState('');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
@@ -73,7 +77,6 @@ export default function Returns() {
   const returnsFetchFailed = query.failureCount > 0;
   const rows = query.data?.data ?? [];
   const pagination = query.data?.pagination;
-
   // CP-069: the page-load carrier refresh for the return labels on screen (the only surface
   // whose display depends on telemetry — CP-033 advance, CP-062 arrival). See the hook.
   useReturnTrackingRefresh(rows, () => query.refetch());
@@ -265,56 +268,73 @@ export default function Returns() {
 
   return (
     <div className="space-y-4">
-      <GlassPanel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search return ref, order #, tracking, reason..."
-          ariaLabel="Search returns"
-        />
-        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-          {canInspectReturns && (
-            <Button leadingIcon={<PackageCheck size={16} />} onClick={() => setReceivingOpen(true)}>
-              Receive returns
-            </Button>
-          )}
-          <label className="relative flex items-center">
-            <Filter size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              aria-label="Filter by status"
-              className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
-            >
-              <option value="">All statuses</option>
-              {RETURN_STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>{returnStatusMeta(status).label}</option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
-          </label>
-          {clients.length > 1 && (
+      <GlassPanel className="space-y-3 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search return ref, order #, tracking, reason..."
+            ariaLabel="Search returns"
+          />
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+            {canInspectReturns && (
+              <Button leadingIcon={<PackageCheck size={16} />} onClick={() => setReceivingOpen(true)}>
+                Receive returns
+              </Button>
+            )}
             <label className="relative flex items-center">
-              <Building2 size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
+              <Filter size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
               <select
-                value={clientFilter ?? ''}
-                onChange={(event) => setClientFilter(event.target.value ? Number(event.target.value) : undefined)}
-                aria-label="Filter by client"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                aria-label="Filter by status"
                 className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
               >
-                <option value="">All clients</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name ?? `Client ${client.id}`}
-                  </option>
+                <option value="">All statuses</option>
+                {RETURN_STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>{returnStatusMeta(status).label}</option>
                 ))}
               </select>
               <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
             </label>
-          )}
-          <ExportReturnsCsv key={JSON.stringify([userId, exportFilters, search])} filters={exportFilters}
-            disabled={!rows.length || query.isFetching || query.isError || returnsFetchFailed || search !== debouncedSearch} />
+            {clients.length > 1 && (
+              <label className="relative flex items-center">
+                <Building2 size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
+                <select
+                  value={clientFilter ?? ''}
+                  onChange={(event) => setClientFilter(event.target.value ? Number(event.target.value) : undefined)}
+                  aria-label="Filter by client"
+                  className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
+                >
+                  <option value="">All clients</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name ?? `Client ${client.id}`}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
+              </label>
+            )}
+            <ExportReturnsCsv key={JSON.stringify([userId, exportFilters, search])} filters={exportFilters}
+              disabled={!rows.length || query.isFetching || query.isError || returnsFetchFailed || search !== debouncedSearch} />
+          </div>
         </div>
+        <SavedViewsBar scopeClientId={effectiveClientId}
+          current={{ page: 'returns', search: search, status: statusFilter, sort: tableSort.sort, pageSize }} onApply={(view) => {
+            if (view.page !== 'returns') return;
+            applySearch(view.search); setStatusFilter(view.status); setPageSize(view.pageSize); setPage(1);
+            const allowedSort = view.sort && columns.some((column) => column.key === view.sort?.key && column.sortAccessor);
+            const sort = allowedSort ? view.sort : null;
+            tableSort.onSortChange(sort);
+            void queryClient.invalidateQueries({ exact: true, queryKey: portalQueryKey(userId,
+              portalReadKeys.returns({ ...exportFilters, search: view.search, status: view.status || undefined,
+                page: 1, pageSize: view.pageSize, sortBy: sort?.key, sortDir: sort?.dir })) });
+            setSelectedId(null);
+            setParams((previous) => {
+              const next = new URLSearchParams(previous); next.set('q', view.search); return next;
+            });
+          }} />
       </GlassPanel>
 
       <GlassPanel className="p-2 sm:p-3">

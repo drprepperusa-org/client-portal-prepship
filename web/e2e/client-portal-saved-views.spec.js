@@ -31,12 +31,16 @@ async function fixture(page) {
   const state={requests:[],exports:[]};
   await setup(page,url=>{
     const name=url.pathname.split('/').at(-1);
-    if(!['orders','inventory'].includes(name))return;
+    if(!['orders','inventory','shipments','returns'].includes(name))return;
     const params=Object.fromEntries(url.searchParams);
     state.requests.push({name,...params});
     const p=Number(params.page||1),size=Number(params.pageSize||50);
     const row=name==='orders'
       ?{id:p,orderNumber:`ORDER-${p}`,orderDate:'2026-09-01',clientName:'Alpha',fulfillmentStatus:'pending',orderedUnits:1,items:[],orderTotal:10}
+      :name==='shipments'?{id:p,orderNumber:`SHIP-${p}`,clientName:'Alpha',shipmentStatus:'shipped',
+        displayTrackingNumber:'CANON-TRACK',shipDate:'2026-09-01',items:[]}
+      :name==='returns'?{id:p,orderNumber:`RETURN-${p}`,clientName:'Alpha',returnReference:`RETURN-${p}-REF`,
+        status:'requested',trackingNumber:null,createdAt:'2026-09-01',returnedSkus:['SKU-A'],returnedQuantity:2}
       :{id:p,sku:`SKU-${p}`,name:'Current backend item',clientName:'Alpha',inventoryQuantity:7,reorderLevel:10,stockStatus:'low',
         warehouseShipped30d:3,length:null,width:null,height:null,cuFt:null,packageLength:null,active:true};
     return {data:[row],pagination:{page:p,pageSize:size,total:505,totalPages:Math.ceil(505/size)}};
@@ -204,3 +208,81 @@ test('The saved-view limit is explicit and deleting a view frees a slot',async({
   await save(page,'View 21');
   expect(await page.evaluate(k=>JSON.parse(localStorage.getItem(k)).views.length,key())).toBe(20);
 });
+
+for (const surface of ['shipments', 'returns']) {
+  test(`${surface} saved views restore fresh list and CSV intent while preserving order scope`, async ({ page }) => {
+    const state = await fixture(page);
+    const status = surface === 'shipments' ? 'shipped' : 'requested';
+    await page.goto(base + '/' + surface + (surface === 'returns' ? '?order=123' : ''));
+    await page.getByRole('combobox', { name: 'Filter by status' }).selectOption(status);
+    await page.getByRole('textbox', { name: `Search ${surface}`, exact: true }).fill('Daily');
+    await page.getByRole('button', { name: 'Order', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Rows per page' }).selectOption('100');
+    await save(page, 'Daily view');
+    const stored = await page.evaluate(k => JSON.parse(localStorage.getItem(k)), key(surface));
+    expect(stored.views[0].filters).toEqual({ page: surface, search: 'Daily', status,
+      sort: { key: 'order', dir: 'asc' }, pageSize: 100 });
+    await page.reload();
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    await expect.poll(() => state.requests.filter(request => request.name === surface).at(-1).page).toBe('2');
+    await page.getByRole('textbox', { name: `Search ${surface}`, exact: true }).fill('unapplied draft');
+    await open(page, 'Daily view');
+    const expected = { name: surface, search: 'Daily', status, sortBy: 'order', sortDir: 'asc', page: '1', pageSize: '100' };
+    await expect.poll(() => state.requests.filter(request => request.name === surface).at(-1)).toMatchObject(expected);
+    await expect(page.getByRole('textbox', { name: `Search ${surface}`, exact: true })).toHaveValue('Daily');
+    await expect(page).toHaveURL(new RegExp('q=Daily'));
+    await expect(page.getByRole('button', { name: 'Export CSV', exact: true })).toBeEnabled();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export CSV', exact: true }).click(); await download;
+    expect(state.exports.at(-1)).toMatchObject({ search: 'Daily', status, sortBy: 'order', sortDir: 'asc' });
+    if (surface === 'returns') {
+      expect(state.requests.filter(request => request.name === surface).at(-1).orderId).toBe('123'); expect(state.exports.at(-1).orderId).toBe('123');
+      expect(new URL(page.url()).searchParams.get('order')).toBe('123');
+    }
+    const count = state.requests.filter(request => request.name === surface).length;
+    await open(page, 'Daily view');
+    await expect.poll(() => state.requests.filter(request => request.name === surface).length).toBeGreaterThan(count);
+    await expect.poll(() => state.requests.filter(request => request.name === surface).at(-1)).toMatchObject(expected);
+    await page.screenshot({ path: test.info().outputPath(`${surface}-saved-view-desktop.png`) });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.getByRole('button', { name: 'Save view', exact: true }).click();
+    await expect(dialog(page)).toHaveCSS('opacity', '1');
+    await expect(dialog(page)).toContainText('Your current client and any order filter stay unchanged.');
+    await page.screenshot({ path: test.info().outputPath(`${surface}-saved-view-mobile.png`) });
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Save view', exact: true })).toBeFocused();
+  });
+
+  test(`${surface} saved views follow effective client and isolate pages and users`, async ({ page }) => {
+    const state = await fixture(page);
+    await page.addInitScript(k => localStorage.setItem(k, JSON.stringify({version:1,views:[{id:'private',name:'Other user view',
+      filters:{page:k.includes('shipments')?'shipments':'returns',search:'private',status:'',sort:null,pageSize:50}}]})), key(surface,'other-user',1));
+    await page.goto(base + '/' + surface);
+    await page.getByRole('combobox', { name: 'Filter by client' }).selectOption('1');
+    await save(page, 'Alpha work');
+    await page.getByRole('combobox', { name: 'Filter by client' }).selectOption('2');
+    await expect(page.getByRole('combobox', { name: 'Open saved view' })).toBeDisabled();
+    await page.getByRole('combobox', { name: 'Filter by client' }).selectOption('');
+    await page.getByRole('button', { name: 'All clients', exact: true }).click();
+    await page.getByRole('button', { name: 'Alpha', exact: true }).click();
+    await open(page, 'Alpha work');
+    await expect.poll(() => state.requests.filter(request => request.name === surface).at(-1).clientId).toBe('1');
+    await expect(page.getByRole('option', { name: 'Other user view' })).toHaveCount(0);
+    await page.goto(base + '/' + (surface === 'shipments' ? 'returns' : 'shipments'));
+    await expect(page.getByRole('combobox', { name: 'Open saved view' })).toBeDisabled();
+  });
+
+  test(`${surface} rejects saved scope injection and invalid status`, async ({ page }) => {
+    const state = await fixture(page); await page.goto(base + '/' + surface);
+    for (const invalid of [{ clientId: 999 }, { orderId: 999 }, { status: 'invented' }, { sort: { key:'privateCost', dir:'asc' } }]) {
+      await page.evaluate(({ k, surface, invalid }) => localStorage.setItem(k, JSON.stringify({version:1,views:[
+        {id:'invalid',name:'Invalid view',filters:{page:surface,search:'injected',status:'',sort:null,pageSize:50,...invalid}}
+      ]})), { k:key(surface), surface, invalid });
+      await page.reload();
+      await expect(page.getByRole('alert').filter({ hasText:'Saved views could not be read' })).toBeVisible();
+      await expect(page.getByRole('combobox', { name:'Open saved view' })).toBeDisabled();
+      expect(state.requests.some(r => r.clientId === '999' || r.orderId === '999' || r.search === 'injected')).toBe(false);
+    }
+  });
+}
