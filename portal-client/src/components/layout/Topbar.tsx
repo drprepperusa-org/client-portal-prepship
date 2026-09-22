@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from '@/components/ui/Modal';
 import { Search, Menu, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -27,14 +27,14 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
   }
 
   return (
-    <header className="glass-strong sticky top-0 z-30 flex items-center gap-2 rounded-glass px-3 py-2.5 sm:gap-3 sm:px-4">
-      <button onClick={onOpenMenu} aria-label="Open menu" className="focus-ring grid h-10 w-10 cursor-pointer place-items-center rounded-glass-sm text-ink-2 transition-colors hover:bg-slate-100 lg:hidden">
+    <header className="glass-strong sticky top-0 z-30 flex flex-wrap items-center gap-2 rounded-glass px-3 py-2.5 sm:flex-nowrap sm:gap-3 sm:px-4">
+      <button onClick={onOpenMenu} aria-label="Open menu" className="focus-ring grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-glass-sm text-ink-2 transition-colors hover:bg-slate-100 lg:hidden">
         <Menu size={20} />
       </button>
 
-      <h1 className="min-w-0 truncate font-display text-lg font-bold tracking-tight text-ink sm:text-xl">{title}</h1>
+      <h1 className="min-w-0 flex-1 truncate font-display text-lg font-bold tracking-tight text-ink sm:flex-none sm:text-xl">{title}</h1>
 
-      <div className="ml-auto flex items-center gap-2 sm:gap-2.5">
+      <div className="contents sm:ml-auto sm:flex sm:min-w-0 sm:items-center sm:gap-2.5">
         {/* Search */}
         <form onSubmit={submitSearch} className="group relative hidden items-center md:flex">
           <Search size={16} className="absolute left-3 text-ink-3" />
@@ -54,31 +54,37 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
           <Search size={20} />
         </button>
 
-        {/* Client switcher */}
-        {clientsQuery.isError && (
-          <button
-            type="button"
-            onClick={() => clientsQuery.refetch()}
-            title="Client list unavailable — retry"
-            aria-label="Client list unavailable. Retry."
-            className="focus-ring grid h-10 w-10 place-items-center rounded-glass-sm bg-amber-50 text-amber-700 ring-1 ring-amber-200"
-          >
-            <AlertTriangle size={17} />
-          </button>
-        )}
-        {showClientSwitcher && (
-          <Dropdown
-            open={clientOpen}
-            setOpen={setClientOpen}
-            label={activeClientName}
-            items={[{ id: undefined as number | undefined, name: 'All clients' }, ...clients]}
-            activeId={clientId}
-            onPick={(id) => setClientId(id)}
-          />
-        )}
+        {(clientsQuery.isLoading || clientsQuery.isError || showClientSwitcher ||
+          !['/inbound', '/audit-log', '/search'].includes(pathname)) && (
+          <div role="group" aria-label="Portal filters" className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
+            {/* Client switcher */}
+            {clientsQuery.isLoading && <span role="status" className="text-xs text-ink-3">Loading clients…</span>}
+            {clientsQuery.isError && (
+              <button
+                type="button"
+                onClick={() => clientsQuery.refetch()}
+                title="Client list unavailable — retry"
+                aria-label="Client list unavailable. Retry."
+                className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-glass-sm bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+              >
+                <AlertTriangle size={17} />
+              </button>
+            )}
+            {showClientSwitcher && !clientsQuery.isError && !clientsQuery.isLoading && (
+              <ClientPicker
+                open={clientOpen}
+                setOpen={setClientOpen}
+                label={activeClientName}
+                items={[{ id: undefined as number | undefined, name: 'All clients' }, ...clients]}
+                activeId={clientId}
+                onPick={(id) => setClientId(id)}
+              />
+            )}
 
-        {/* Date range */}
-        {pathname !== '/inbound' && pathname !== '/audit-log' && pathname !== '/search' && <DateRangeFilter />}
+            {/* Date range */}
+            {pathname !== '/inbound' && pathname !== '/audit-log' && pathname !== '/search' && <DateRangeFilter />}
+
+          </div>)}
 
         <AttentionBell />
 
@@ -89,7 +95,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
   );
 }
 
-function Dropdown({
+function ClientPicker({
   open,
   setOpen,
   label,
@@ -105,45 +111,31 @@ function Dropdown({
   onPick: (id?: number) => void;
 }) {
   return (
-    <div className="relative hidden sm:block">
+    <div className="min-w-0 flex-1 sm:flex-none">
       <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="focus-ring flex h-10 max-w-[160px] cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90"
+        className={cn('focus-ring flex h-11 w-full cursor-pointer items-center gap-1.5 rounded-glass-sm border border-white/80 bg-white/60 px-3',
+          'text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90 sm:h-10 sm:max-w-[160px]')}
       >
         <span className="truncate">{label}</span>
         <ChevronDown size={15} className={cn('shrink-0 text-ink-3 transition-transform', open && 'rotate-180')} />
       </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.14 }}
-              className="glass-strong absolute right-0 z-20 mt-2 max-h-72 w-56 overflow-auto rounded-glass-sm p-1.5 shadow-glass-lg"
-            >
-              {items.map((c) => (
-                <button
-                  key={c.id ?? 'all'}
-                  onClick={() => {
-                    onPick(c.id);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors',
-                    c.id === activeId ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100',
-                  )}
-                >
-                  <span className="truncate">{c.name ?? `Client #${c.id}`}</span>
-                  {c.id === activeId && <Check size={15} className="shrink-0 text-brand-600" />}
-                </button>
-              ))}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <Modal open={open} onClose={() => setOpen(false)} title="Select client" maxWidth={440}>
+        <div className="space-y-1">
+          {items.map((client) => (
+            <button key={client.id ?? 'all'} type="button" aria-pressed={client.id === activeId}
+              onClick={() => { onPick(client.id); setOpen(false); }}
+              className={cn('focus-ring flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm',
+                client.id === activeId ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100')}>
+              <span className="min-w-0 break-words">{client.name ?? `Client #${client.id}`}</span>
+              {client.id === activeId && <Check size={15} className="shrink-0 text-brand-600" />}
+            </button>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }

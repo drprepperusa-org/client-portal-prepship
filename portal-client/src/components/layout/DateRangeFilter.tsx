@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Modal } from '@/components/ui/Modal';
 import { CalendarDays, Check, ChevronDown, X } from 'lucide-react';
 import { CalendarMonth, MONTHS_SHORT, parseYmd, sameDay, toYmd } from '@/components/ui/datetime';
 import { usePortalFilters } from '@/lib/portalContext';
@@ -149,107 +149,97 @@ export function DateRangeFilter() {
   }
 
   return (
-    <div className="relative hidden sm:block">
+    <div className="min-w-0 flex-1 sm:flex-none">
       <button
         type="button"
         onClick={() => setOpen((next) => !next)}
         aria-label="Date range filter"
-        className="focus-ring flex h-10 cursor-pointer items-center gap-2 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="focus-ring flex h-11 w-full cursor-pointer items-center gap-2 rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink-2 ring-1 ring-slate-200/70 transition-colors hover:bg-white/90 sm:h-10"
       >
         <CalendarDays size={15} className="shrink-0 text-ink-3" />
-        <span className="hidden max-w-[13rem] truncate lg:inline">{rangeLabel(dateRange.dateFrom, dateRange.dateTo)}</span>
-        <span className="lg:hidden">{dateRange.preset === 'last_30' ? 'Last 30 days' : 'Date range'}</span>
+        <span className="max-w-[13rem] truncate sm:hidden lg:inline">{rangeLabel(dateRange.dateFrom, dateRange.dateTo)}</span>
+        <span className="hidden sm:inline lg:hidden">{dateRange.preset === 'last_30' ? 'Last 30 days' : 'Date range'}</span>
         <ChevronDown size={15} className={cn('shrink-0 text-ink-3 transition-transform', open && 'rotate-180')} />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.98 }}
-              transition={{ duration: 0.14 }}
-              className="glass-strong absolute right-0 z-20 mt-2 w-[min(92vw,620px)] overflow-hidden rounded-glass shadow-glass-lg"
-            >
-              <div className="grid sm:grid-cols-[170px_minmax(0,1fr)]">
-                <div className="border-b border-white/70 bg-white/45 p-2 sm:border-b-0 sm:border-r">
-                  {PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => choosePreset(preset.id)}
-                      className={cn(
-                        'flex h-9 w-full cursor-pointer items-center justify-between rounded-md px-3 text-left text-sm transition-colors',
-                        activePreset === preset.id ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100',
-                      )}
-                    >
-                      <span>{preset.label}</span>
-                      {activePreset === preset.id && <Check size={15} className="shrink-0 text-brand-600" />}
-                    </button>
-                  ))}
-                </div>
+      <Modal open={open} onClose={() => setOpen(false)} title="Date range" maxWidth={660}>
+        <div className="grid sm:grid-cols-[170px_minmax(0,1fr)]">
+          <div className="grid grid-cols-2 gap-1 border-b border-white/70 bg-white/45 pb-3 sm:block sm:border-b-0 sm:border-r sm:p-2">
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => choosePreset(preset.id)}
+                className={cn(
+                  'flex min-h-11 w-full cursor-pointer items-center justify-between rounded-md px-3 text-left text-sm transition-colors',
+                  activePreset === preset.id ? 'bg-brand-50 text-brand-700' : 'text-ink-2 hover:bg-slate-100',
+                )}
+              >
+                <span>{preset.label}</span>
+                {activePreset === preset.id && <Check size={15} className="shrink-0 text-brand-600" />}
+              </button>
+            ))}
+          </div>
 
-                <div className="p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-ink">{MONTHS_SHORT[view.month]} {view.year}</p>
-                    <div className="inline-flex rounded-md bg-slate-100 p-0.5 text-[11px] font-bold text-ink-3">
-                      <span className="rounded bg-brand-500 px-2 py-1 text-white">D</span>
-                      <span className="px-2 py-1">M</span>
-                      <span className="px-2 py-1">Y</span>
-                    </div>
-                  </div>
-
-                  <CalendarMonth
-                    year={view.year}
-                    month={view.month}
-                    onNavigate={(year, month) => setView({ year, month })}
-                    rangeStart={pendingStart ?? draftStart}
-                    rangeEnd={pendingStart ? null : draftEnd}
-                    onPick={pickDay}
-                  />
-
-                  <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
-                    <label className="min-w-[130px] flex-1">
-                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-ink-3">FROM</span>
-                      <input
-                        type="date"
-                        value={draft.dateFrom}
-                        onChange={(event) => updateDraft('dateFrom', event.target.value)}
-                        className="focus-ring h-9 w-full rounded-md border border-slate-200 bg-white/80 px-2 text-sm text-ink"
-                      />
-                    </label>
-                    <label className="min-w-[130px] flex-1">
-                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-ink-3">TO</span>
-                      <input
-                        type="date"
-                        value={draft.dateTo}
-                        onChange={(event) => updateDraft('dateTo', event.target.value)}
-                        className="focus-ring h-9 w-full rounded-md border border-slate-200 bg-white/80 px-2 text-sm text-ink"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setOpen(false)}
-                      className="focus-ring inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white/70 px-3 text-sm font-medium text-ink-2 transition-colors hover:bg-white"
-                    >
-                      <X size={14} /> Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={apply}
-                      className="focus-ring inline-flex h-9 cursor-pointer items-center rounded-md bg-gradient-to-br from-brand-400 to-brand-600 px-4 text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </div>
+          <div className="min-w-0 pt-3 sm:p-3 [&_button]:min-h-11">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-ink">{MONTHS_SHORT[view.month]} {view.year}</p>
+              <div className="inline-flex rounded-md bg-slate-100 p-0.5 text-[11px] font-bold text-ink-3">
+                <span className="rounded bg-brand-500 px-2 py-1 text-white">D</span>
+                <span className="px-2 py-1">M</span>
+                <span className="px-2 py-1">Y</span>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+            </div>
+
+            <CalendarMonth
+              year={view.year}
+              month={view.month}
+              onNavigate={(year, month) => setView({ year, month })}
+              rangeStart={pendingStart ?? draftStart}
+              rangeEnd={pendingStart ? null : draftEnd}
+              onPick={pickDay}
+            />
+
+            <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
+              <label className="min-w-[130px] max-w-full flex-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-ink-3">FROM</span>
+                <input
+                  type="date"
+                  value={draft.dateFrom}
+                  onChange={(event) => updateDraft('dateFrom', event.target.value)}
+                  className="focus-ring h-11 w-full rounded-md border border-slate-200 bg-white/80 px-2 text-sm text-ink"
+                />
+              </label>
+              <label className="min-w-[130px] max-w-full flex-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-ink-3">TO</span>
+                <input
+                  type="date"
+                  value={draft.dateTo}
+                  onChange={(event) => updateDraft('dateTo', event.target.value)}
+                  className="focus-ring h-11 w-full rounded-md border border-slate-200 bg-white/80 px-2 text-sm text-ink"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="focus-ring inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white/70 px-3 text-sm font-medium text-ink-2 transition-colors hover:bg-white"
+              >
+                <X size={14} /> Cancel
+              </button>
+              <button
+                type="button"
+                onClick={apply}
+                className={cn('focus-ring inline-flex h-11 cursor-pointer items-center rounded-md bg-gradient-to-br from-brand-400 to-brand-600 px-4',
+                  'text-sm font-semibold text-white shadow-glass transition-opacity hover:opacity-95')}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

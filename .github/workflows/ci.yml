@@ -62,6 +62,9 @@ jobs:
       - name: Portal-wide search, scope, navigation and failure isolation browser proof
         run: npx playwright test web/e2e/client-portal-global-search.spec.js --workers=1
 
+      - name: Mobile client and date controls, focus, scope and responsive layout browser proof
+        run: npx playwright test web/e2e/client-portal-mobile-controls.spec.js --workers=1
+
       - name: Static guard suite
         run: npm run test:guards
 

@@ -1623,3 +1623,14 @@ DTO fields only. All dates and statuses are searched; the current client filter
 applies. Full-list links carry the query (Orders also uses the All tab). Each
 category reports its own failure instead of displaying a false zero. No new
 business computation, database schema, mutation or provider operation is added.
+
+### Responsive portal filter controls (September 22, 2026)
+
+Desktop and mobile render one client picker and one date-range editor over the
+existing PortalFiltersProvider request intent. Client IDs/names come exclusively
+from /api/client-portal/clients (access/reads.ts with clientFilterPredicate and
+active-client filtering). All clients means all clients authorized by that endpoint
+and session, not global authorization. Mobile adds no independent date or scope
+policy; DateRangeFilter retains its preset/custom range logic and Apply/Cancel.
+Backend selectors, DTOs, report clocks, counts, redaction and query scope retain
+their existing owners. Client-list failure shows Retry without an enabled picker.
