@@ -60,7 +60,7 @@ assert.ok(
 );
 assert.ok(page.includes('Received inventory'), 'Inbound renders its received inventory section');
 assert.ok(
-  read('portal-client/src/components/layout/Topbar.tsx').includes("pathname !== '/inbound' && pathname !== '/audit-log' && <DateRangeFilter />"),
+  read('portal-client/src/components/layout/Topbar.tsx').includes("pathname !== '/inbound' && pathname !== '/audit-log' && pathname !== '/search' && <DateRangeFilter />"),
   'Inbound hides the global date-range control on mobile and desktop',
 );
 assert.ok(

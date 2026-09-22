@@ -21,6 +21,7 @@ function assert(condition, message) {
 
 const ordersPage = read('portal-client/src/pages/Orders.tsx');
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
+const search = read('portal-client/src/lib/portal-search.ts');
 const api = readActiveClientPortalApiSource();
 const predicates = read('src/lib/client-portal/predicates.ts');
 const readModel = read('src/lib/client-portal/read-models/orders.ts');
@@ -39,8 +40,8 @@ assert(
   'an in-tab search miss offers the cross-status "Search all orders" escape',
 );
 assert(
-  topbar.includes('&tab=all'),
-  'global top-bar search navigates to the All tab, never the default Awaiting cage',
+  topbar.includes('nav(`/search?q=') && search.includes("params.set('tab', 'all')") && search.includes("status: 'all'"),
+  'global search reads all order statuses and its full-list link selects the All tab',
 );
 assert(
   api.includes("status: opts.status && opts.status !== 'all' ? opts.status : undefined"),

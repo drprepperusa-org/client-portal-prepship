@@ -1611,3 +1611,15 @@ These checks do not connect to a production database or shipping provider.
 - **CP-026 → CP-031** — returns workflow/item/inspection/media tables own only
   workflow detail; label money + tracking stay on `shipments`; no portal-side
   rate-shopping; offline-mock labels only for test clients; operator-gated receiving.
+
+### Portal-wide search (September 22, 2026)
+
+The `/search` page queries the existing scoped Orders, Shipments, Inventory,
+Returns and Replacements list endpoints independently with page 1 / page size 5.
+Matching, ordering, total counts, tenant scope and redaction remain owned by those
+backend selectors. Search shows each endpoint’s pagination total without a combined
+count or client-computed ranking. It formats existing identifier, client and status
+DTO fields only. All dates and statuses are searched; the current client filter
+applies. Full-list links carry the query (Orders also uses the All tab). Each
+category reports its own failure instead of displaying a false zero. No new
+business computation, database schema, mutation or provider operation is added.

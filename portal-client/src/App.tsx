@@ -13,6 +13,7 @@ import ResetPassword from './pages/ResetPassword';
 
 // Lazy: each authenticated page is its own chunk, loaded on navigation.
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const PortalSearch = lazy(() => import('./pages/PortalSearch'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Inbound = lazy(() => import('./pages/Inbound'));
 const Shipments = lazy(() => import('./pages/Shipments'));
@@ -106,6 +107,7 @@ export default function App() {
             </Suspense>
           }
         />
+        <Route path="/search" element={<Lazy el={<PortalSearch />} />} />
         <Route path="/orders" element={<Lazy el={<Orders />} />} />
         <Route path="/inbound" element={<Lazy el={<Inbound />} />} />
         <Route path="/shipments" element={<Lazy el={<Shipments />} />} />

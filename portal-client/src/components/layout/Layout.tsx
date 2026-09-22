@@ -14,7 +14,7 @@ function useTitle() {
   const { pathname } = useLocation();
   const all = [...NAV, COMPONENTS_NAV];
   const match = all.find((n) => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)));
-  return match?.label ?? 'Dashboard';
+  return pathname === '/search' ? 'Search' : match?.label ?? 'Dashboard';
 }
 
 export function Layout() {

@@ -1,3 +1,4 @@
+import { useUrlSearchDraft } from '@/lib/useUrlSearchDraft';
 import { ExportShipmentsCsv } from '@/components/shipments/ExportShipmentsCsv';
 import { useAuth } from '@/auth';
 import { useTableSort } from '@/lib/useTableSort';
@@ -19,7 +20,6 @@ import { useCanCustomizeTables, useShipments, useClients } from '@/lib/hooks';
 import { ReturnCreateModal } from '@/components/returns/ReturnCreateModal';
 import { ShippingRateCell } from '@/components/ShippingRateCell';
 import { usePortalFilters } from '@/lib/portalContext';
-import { useDebounced } from '@/lib/useDebounced';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 import { money, shipmentStatusMeta, shortDate } from '@/lib/status';
 import { type Accent } from '@/lib/accents';
@@ -51,7 +51,7 @@ export default function Shipments() {
   const { clientId: globalClientId } = usePortalFilters();
   const { userId } = useAuth();
   const clients = useClients().data?.data ?? [];
-  const [q, setQ] = useState('');
+  const { search: q, setSearch: setQ, appliedSearch: debouncedQ } = useUrlSearchDraft();
   const [pageSize, setPageSize] = useState(50);
   // Per-page client filter (like Orders' client switcher) for fast scoping.
   // undefined = follow the global "All clients" topbar filter.
@@ -60,7 +60,6 @@ export default function Shipments() {
   const [selected, setSelected] = useState<PortalShipment | null>(null);
   // CP-029: "Start return" opens the create-return modal for the shipment's order.
   const [returnOrderId, setReturnOrderId] = useState<number | null>(null);
-  const debouncedQ = useDebounced(q, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
 
   const [page, setPage] = useFilteredPage(JSON.stringify([debouncedQ, effectiveClientId, statusFilter]));

@@ -1,3 +1,4 @@
+import { useUrlSearchDraft } from '@/lib/useUrlSearchDraft';
 import { useMemo, useState } from 'react';
 import { Info, Plus, Repeat, ShoppingCart, Trash2, Undo2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -16,7 +17,6 @@ import { useAuth } from '@/auth';
 import { useMe, useReplacement, useReplacements, useReplacementReasonContract } from '@/lib/hooks';
 import { shortDate } from '@/lib/status';
 import { usePortalFilters } from '@/lib/portalContext';
-import { useDebounced } from '@/lib/useDebounced';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Pagination } from '@/components/ui/Pagination';
@@ -65,10 +65,9 @@ function reasonLabelFrom(reasonCode: string | null, labels: Map<string, string>)
 
 export default function Replace() {
   const { clientId } = usePortalFilters();
-  const [search, setSearch] = useState('');
+  const { search, setSearch, appliedSearch: debouncedSearch } = useUrlSearchDraft();
   const [status, setStatus] = useState('');
   const [pageSize, setPageSize] = useState(50);
-  const debouncedSearch = useDebounced(search, 300);
   const [page, setPage] = useFilteredPage(JSON.stringify([clientId, debouncedSearch, status]));
   const q = useReplacements({ search: debouncedSearch, status, page, pageSize });
   const me = useMe();

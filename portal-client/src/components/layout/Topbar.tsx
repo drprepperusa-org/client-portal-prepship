@@ -23,9 +23,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
 
   function submitSearch(e: FormEvent) {
     e.preventDefault();
-    // tab=all: a global search must span every order status — landing on the
-    // default Awaiting tab hid shipped/cancelled matches and read as broken.
-    if (q.trim()) nav(`/orders?q=${encodeURIComponent(q.trim())}&tab=all`);
+    if (q.trim()) nav(`/search?q=${encodeURIComponent(q.trim().slice(0, 120))}`);
   }
 
   return (
@@ -34,7 +32,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         <Menu size={20} />
       </button>
 
-      <h1 className="font-display text-lg font-bold tracking-tight text-ink sm:text-xl">{title}</h1>
+      <h1 className="min-w-0 truncate font-display text-lg font-bold tracking-tight text-ink sm:text-xl">{title}</h1>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-2.5">
         {/* Search */}
@@ -44,11 +42,17 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
             value={q}
             onChange={(e) => setQ(e.target.value)}
             type="search"
-            placeholder="Search orders…"
+            placeholder="Search portal…"
+            maxLength={120}
             aria-label="Global search"
             className="focus-ring h-10 w-40 rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 transition-all duration-300 placeholder:text-slate-400 focus:w-56 focus:bg-white/90"
           />
         </form>
+
+        <button type="button" aria-label="Search portal" onClick={() => nav('/search')}
+          className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-glass-sm text-ink-2 hover:bg-slate-100 md:hidden">
+          <Search size={20} />
+        </button>
 
         {/* Client switcher */}
         {clientsQuery.isError && (
@@ -74,7 +78,7 @@ export function Topbar({ title, onOpenMenu }: { title: string; onOpenMenu: () =>
         )}
 
         {/* Date range */}
-        {pathname !== '/inbound' && pathname !== '/audit-log' && <DateRangeFilter />}
+        {pathname !== '/inbound' && pathname !== '/audit-log' && pathname !== '/search' && <DateRangeFilter />}
 
         <AttentionBell />
 

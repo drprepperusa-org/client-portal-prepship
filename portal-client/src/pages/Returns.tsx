@@ -1,3 +1,4 @@
+import { useUrlSearchDraft } from '@/lib/useUrlSearchDraft';
 import { ExportReturnsCsv } from '@/components/returns/ExportReturnsCsv';
 import { useAuth } from '@/auth';
 import { useTableSort } from '@/lib/useTableSort';
@@ -30,7 +31,6 @@ import type { PortalReturnRow } from '@/lib/api';
 import { useReturnTrackingRefresh } from '@/lib/useReturnTrackingRefresh';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate } from '@/lib/status';
-import { useDebounced } from '@/lib/useDebounced';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 
 // CP-034: return tracking URLs are backend-built carrier links. The portal
@@ -44,14 +44,13 @@ export default function Returns() {
   // Backend capability remains authoritative; this only selects the matching UI.
   const canInspectReturns = me?.canInspectReturns ?? false;
   const [params] = useSearchParams();
-  const [search, setSearch] = useState('');
+  const { search, setSearch, appliedSearch: debouncedSearch } = useUrlSearchDraft();
   const [pageSize, setPageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState('');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOrderId, setCreateOrderId] = useState<number | null>(null);
   const [receivingOpen, setReceivingOpen] = useState(false);
-  const debouncedSearch = useDebounced(search, 350);
   const effectiveClientId = clientFilter ?? globalClientId;
   const orderParam = params.get('order');
   const orderFilter = orderParam ? Number(orderParam) : undefined;

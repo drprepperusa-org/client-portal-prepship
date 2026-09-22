@@ -59,6 +59,9 @@ jobs:
       - name: Admin client activity, drill-down and failure states browser proof
         run: npm run test:client-portal-client-activity:browser
 
+      - name: Portal-wide search, scope, navigation and failure isolation browser proof
+        run: npx playwright test web/e2e/client-portal-global-search.spec.js --workers=1
+
       - name: Static guard suite
         run: npm run test:guards
 

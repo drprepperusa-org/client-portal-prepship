@@ -1,3 +1,4 @@
+import { useUrlSearchDraft } from '@/lib/useUrlSearchDraft';
 import { ExportInventoryCsv } from '@/components/inventory/ExportInventoryCsv';
 import { useAuth } from '@/auth';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -15,7 +16,6 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useCanCustomizeTables, useInventory, useInventoryHistory } from '@/lib/hooks';
 import { inventoryStockStatusMeta } from '@/lib/inventory-status';
 import { useDebounced } from '@/lib/useDebounced';
-import { useSearchDraft } from '@/lib/useSearchDraft';
 import { SavedViewsBar } from '@/components/ui/SavedViewsBar';
 import { useQueryClient } from '@tanstack/react-query';
 import { portalQueryKey, portalReadKeys } from '@/lib/query-keys';
@@ -101,7 +101,7 @@ function InventoryView() {
 
 /* ============================= Stock Levels ============================= */
 function StockLevels({ onHistory }: { onHistory: (sku: string | null) => void }) {
-  const { search: q, setSearch: setQ, appliedSearch: debouncedQ, applySearch } = useSearchDraft();
+  const { search: q, setSearch: setQ, appliedSearch: debouncedQ, applySearch } = useUrlSearchDraft();
   const { userId } = useAuth();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
