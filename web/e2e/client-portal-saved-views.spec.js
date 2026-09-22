@@ -27,13 +27,14 @@ async function setup(page, custom) {
 
 const key=(page='orders',user='sort-test',client=null)=>`portal-saved-views:v1:${JSON.stringify([user,client,page])}`;
 const dialog=page=>page.getByRole('dialog',{name:'Save current view',exact:true});
-async function fixture(page) {
+async function fixture(page, trackedPage = 'orders') {
   const state={requests:[],exports:[]};
   await setup(page,url=>{
     const name=url.pathname.split('/').at(-1);
     if(!['orders','inventory','shipments','returns'].includes(name))return;
     const params=Object.fromEntries(url.searchParams);
-    state.requests.push({name,...params});
+    // Background navigation prefetches must not replace the page request under test.
+    if (name === trackedPage) state.requests.push({name,...params});
     const p=Number(params.page||1),size=Number(params.pageSize||50);
     const row=name==='orders'
       ?{id:p,orderNumber:`ORDER-${p}`,orderDate:'2026-09-01',clientName:'Alpha',fulfillmentStatus:'pending',orderedUnits:1,items:[],orderTotal:10}
@@ -93,7 +94,7 @@ test('Orders saves and restores current filters, sort and page size across reloa
 });
 
 test('Inventory restores low-stock search, sorting and page size and keeps views separate from Orders',async({page})=>{
-  const state=await fixture(page);await page.goto(base+'/inventory');
+  const state=await fixture(page, 'inventory');await page.goto(base+'/inventory');
   await page.getByRole('textbox',{name:'Search inventory',exact:true}).fill('SKU');
   await page.getByText('Low/Out only',{exact:true}).click();
   await expect(page.getByRole('checkbox',{name:'Low/Out only'})).toBeChecked();
@@ -211,7 +212,7 @@ test('The saved-view limit is explicit and deleting a view frees a slot',async({
 
 for (const surface of ['shipments', 'returns']) {
   test(`${surface} saved views restore fresh list and CSV intent while preserving order scope`, async ({ page }) => {
-    const state = await fixture(page);
+    const state = await fixture(page, surface);
     const status = surface === 'shipments' ? 'shipped' : 'requested';
     await page.goto(base + '/' + surface + (surface === 'returns' ? '?order=123' : ''));
     await page.getByRole('combobox', { name: 'Filter by status' }).selectOption(status);
@@ -255,7 +256,7 @@ for (const surface of ['shipments', 'returns']) {
   });
 
   test(`${surface} saved views follow effective client and isolate pages and users`, async ({ page }) => {
-    const state = await fixture(page);
+    const state = await fixture(page, surface);
     await page.addInitScript(k => localStorage.setItem(k, JSON.stringify({version:1,views:[{id:'private',name:'Other user view',
       filters:{page:k.includes('shipments')?'shipments':'returns',search:'private',status:'',sort:null,pageSize:50}}]})), key(surface,'other-user',1));
     await page.goto(base + '/' + surface);
@@ -274,7 +275,7 @@ for (const surface of ['shipments', 'returns']) {
   });
 
   test(`${surface} rejects saved scope injection and invalid status`, async ({ page }) => {
-    const state = await fixture(page); await page.goto(base + '/' + surface);
+    const state = await fixture(page, surface); await page.goto(base + '/' + surface);
     for (const invalid of [{ clientId: 999 }, { orderId: 999 }, { status: 'invented' }, { sort: { key:'privateCost', dir:'asc' } }]) {
       await page.evaluate(({ k, surface, invalid }) => localStorage.setItem(k, JSON.stringify({version:1,views:[
         {id:'invalid',name:'Invalid view',filters:{page:surface,search:'injected',status:'',sort:null,pageSize:50,...invalid}}
