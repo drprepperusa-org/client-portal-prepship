@@ -30,12 +30,13 @@ function portalInventoryWhere(scope: ClientPortalScope, { clientId, storeId, sea
   );
 }
 
-/** Same selector as the paginated list; no item DTOs or shipment-history query needed. */
-export async function countPortalInventoryAttention(scope: ClientPortalScope, clientId?: number) {
-  const rows = await db.select({ count: sql<number>`count(*)::int` })
+/** Complete scoped membership using the list selector, without loading item DTOs. */
+export async function listPortalInventoryAttentionIds(scope: ClientPortalScope, clientId?: number) {
+  const rows = await db.select({ id: inventory.id })
     .from(inventory).leftJoin(clients, eq(clients.id, inventory.clientId))
-    .where(portalInventoryWhere(scope, { clientId, search: '', lowStock: true }));
-  return Number(rows[0]?.count ?? 0);
+    .where(portalInventoryWhere(scope, { clientId, search: '', lowStock: true }))
+    .orderBy(inventory.id);
+  return rows.map((row) => row.id);
 }
 
 export type PortalInventoryListOptions = SortInput & InventoryFilter & { page: number; pageSize: number };

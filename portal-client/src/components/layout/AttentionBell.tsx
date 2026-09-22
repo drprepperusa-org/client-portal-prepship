@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { useAttention } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
+import { useAttentionDismissals } from './useAttentionDismissals';
 
 export function AttentionBell() {
   const { clientId } = usePortalFilters();
@@ -12,26 +13,9 @@ export function AttentionBell() {
   return <ScopedAttentionBell key={scopeKey} scopeKey={scopeKey} />;
 }
 
-interface ClearedCounts {
-  connectionCount: number;
-  inventoryCount: number;
-}
-
 function ScopedAttentionBell({ scopeKey }: { scopeKey: string }) {
-  const storageKey = `portal-attention-cleared:${scopeKey}`;
   const [open, setOpen] = useState(false);
-  const [clearedCounts, setClearedCounts] = useState<ClearedCounts | null>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (!saved) return null;
-      const parsed = JSON.parse(saved) as Partial<ClearedCounts>;
-      return Number.isFinite(parsed.connectionCount) && Number.isFinite(parsed.inventoryCount)
-        ? { connectionCount: parsed.connectionCount!, inventoryCount: parsed.inventoryCount! }
-        : null;
-    } catch {
-      return null;
-    }
-  });
+  const [showDismissed, setShowDismissed] = useState(false);
   const query = useAttention();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -53,30 +37,25 @@ function ScopedAttentionBell({ scopeKey }: { scopeKey: string }) {
     };
   }, [open]);
   // Never show cached counts as current after a failed refresh.
-  const data = query.isError ? undefined : query.data;
-  const isCleared = Boolean(data && clearedCounts
-    && data.connectionCount === clearedCounts.connectionCount
-    && data.inventoryCount === clearedCounts.inventoryCount);
-  useEffect(() => {
-    if (!data || !clearedCounts || isCleared) return;
-    setClearedCounts(null);
-    localStorage.removeItem(storageKey);
-  }, [clearedCounts, data, isCleared, storageKey]);
-
-  function clearAll() {
-    if (!data) return;
-    const snapshot = { connectionCount: data.connectionCount, inventoryCount: data.inventoryCount };
-    setClearedCounts(snapshot);
-    localStorage.setItem(storageKey, JSON.stringify(snapshot));
-  }
+  // During a rolling deploy, an old API cannot supply safe dismissal membership.
+  const unavailable = query.isError || Boolean(query.data && (
+    !Array.isArray(query.data.inventoryIssueIds) || !Array.isArray(query.data.connectionIssueIds)
+    || !query.data.preferences));
+  const data = unavailable ? undefined : query.data;
+  const { inventoryCount, connectionCount, dismissAll, storageFailed } = useAttentionDismissals(scopeKey, data, query.isFetching);
+  // Badge counts only visible notifications, not the canonical unresolved total.
+  const visibleCount = inventoryCount + connectionCount;
+  const dismissedInventory = data ? data.inventoryCount - inventoryCount : 0;
+  const dismissedConnections = data ? data.connectionCount - connectionCount : 0;
+  const dismissedCount = dismissedInventory + dismissedConnections;
   return (
     <div ref={root} className="static sm:relative">
       <button ref={trigger} type="button" aria-label="Notifications" aria-expanded={open}
         aria-controls="portal-attention" className="focus-ring relative grid h-10 w-10 place-items-center rounded-glass-sm text-ink-2 hover:bg-slate-100"
         onClick={() => { setOpen(!open); if (!open) void query.refetch(); }}>
         <Bell size={19} />
-        {data && !isCleared && data.totalCount > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-rose-600 px-1.5 text-xs font-semibold text-white"
-          aria-label={`${data.totalCount} items need attention`}>{data.totalCount > 99 ? '99+' : data.totalCount}</span>}
+        {data && visibleCount > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-rose-600 px-1.5 text-xs font-semibold text-white"
+          aria-label={`${visibleCount} items need attention`}>{visibleCount > 99 ? '99+' : visibleCount}</span>}
       </button>
       {open && (
         <section id="portal-attention" aria-label="Needs attention"
@@ -84,11 +63,11 @@ function ScopedAttentionBell({ scopeKey }: { scopeKey: string }) {
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-ink">Needs attention</h2>
             <div className="flex items-center gap-1">
-              {data && !isCleared && data.totalCount > 0 && (
-                <button type="button" aria-label="Clear all notifications"
-                  className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-brand-700"
-                  onClick={clearAll}>
-                  Clear all
+              {data && visibleCount > 0 && (
+                <button type="button" aria-label="Dismiss all notifications" disabled={query.isFetching}
+                  className="focus-ring rounded-md px-2 py-1 text-xs font-semibold text-brand-700 disabled:opacity-50"
+                  onClick={dismissAll}>
+                  Dismiss all
                 </button>
               )}
               <button type="button" aria-label="Close notifications" className="focus-ring rounded p-1 text-ink-3"
@@ -97,18 +76,31 @@ function ScopedAttentionBell({ scopeKey }: { scopeKey: string }) {
           </div>
           <div className="mt-3 space-y-2" aria-live="polite">
             {query.isPending && <p className="text-sm text-ink-3">Checking for issues…</p>}
-            {query.isError && <div>
+            {unavailable && <div>
               <p className="text-sm text-ink-2">Notifications are unavailable.</p>
               <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()}
                 className="focus-ring mt-2 rounded-md text-xs font-semibold text-brand-700 disabled:opacity-50">
                 {query.isFetching ? 'Checking…' : 'Retry'}
               </button>
             </div>}
-            {data && (isCleared || data.totalCount === 0) && <p className="text-sm text-ink-2">No notifications.</p>}
-            {data && !isCleared && data.connectionCount > 0 && <AttentionItem count={data.connectionCount} title="Connections need attention"
+            {data && data.totalCount === 0 && <p className="text-sm text-ink-2">No notifications.</p>}
+            {data && visibleCount === 0 && dismissedCount > 0 && <p className="text-sm text-ink-2">No new notifications.</p>}
+            {data && connectionCount > 0 && <AttentionItem count={connectionCount} title="Connections need attention"
               to="/connections?status=attention" />}
-            {data && !isCleared && data.inventoryCount > 0 && <AttentionItem count={data.inventoryCount} title="Low or out of stock"
+            {data && inventoryCount > 0 && <AttentionItem count={inventoryCount} title="Low or out of stock"
               to="/inventory?lowStock=1" />}
+            {data && dismissedCount > 0 && <div className="border-t border-slate-200 pt-2">
+              <p className="text-xs text-ink-3">{dismissedCount} dismissed {dismissedCount === 1 ? 'issue still needs' : 'issues still need'} attention.</p>
+              <button type="button" aria-expanded={showDismissed} onClick={() => setShowDismissed(!showDismissed)}
+                className="focus-ring my-2 rounded text-xs font-semibold text-brand-700">
+                {showDismissed ? 'Hide dismissed' : 'Show dismissed'}
+              </button>
+              {showDismissed && <div className="space-y-2">
+                {dismissedConnections > 0 && <AttentionItem count={dismissedConnections} title="Dismissed connections" to="/connections?status=attention" />}
+                {dismissedInventory > 0 && <AttentionItem count={dismissedInventory} title="Dismissed stock issues" to="/inventory?lowStock=1" />}
+              </div>}
+            </div>}
+            {storageFailed && <p role="status" className="text-xs text-ink-3">Dismissals cannot be saved in this browser. They may return after reloading.</p>}
           </div>
         </section>
       )}

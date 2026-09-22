@@ -39,6 +39,8 @@ async function install(page, shared) {
   await page.route('**/api/client-portal/attention*',route=>{
     const inventoryCount=shared.saved.lowStock?5:0,connectionCount=shared.saved.connectionIssues?2:0;
     return route.fulfill({json:{inventoryCount,connectionCount,totalCount:inventoryCount+connectionCount,
+      inventoryIssueIds:Array.from({length:inventoryCount},(_,i)=>`inventory:${i}`),
+      connectionIssueIds:Array.from({length:connectionCount},(_,i)=>`connection:${i}`),
       checkedAt:'2026-09-16T12:00:00Z',preferences:shared.saved}});
   });
 }

@@ -67,13 +67,21 @@ try {
       (${b.id},'shopify','Private Beta','private-fixture','{}'::jsonb,'admin',true,'auth')`;
   const alpha=appFor([a.id]), admin=appFor([],[],true);
   const summary=await get(alpha);
-  assert.deepEqual(Object.keys(summary).sort(),['checkedAt','connectionCount','inventoryCount','preferences','totalCount']);
+  assert.deepEqual(Object.keys(summary).sort(),['checkedAt','connectionCount','connectionIssueIds','inventoryCount','inventoryIssueIds','preferences','totalCount']);
   assert.equal(summary.inventoryCount,105); assert.equal(summary.connectionCount,3); assert.equal(summary.totalCount,108);
+  assert.equal(new Set(summary.inventoryIssueIds).size,105);
+  assert.equal(new Set(summary.connectionIssueIds).size,3);
+  assert.ok(summary.inventoryIssueIds.every((id: string) => /^inventory:\d+$/.test(id)));
+  assert.ok(summary.connectionIssueIds.every((id: string) => /^connection:\d+:(pending|reconnect|degraded):[a-z_]+$/.test(id)));
+  assert.deepEqual((await get(alpha)).inventoryIssueIds,summary.inventoryIssueIds,'unchanged membership is stable across reads');
+  assert.deepEqual((await get(alpha)).connectionIssueIds,summary.connectionIssueIds);
   assert.ok(Number.isFinite(Date.parse(summary.checkedAt)));
   assert.equal(summary.inventoryCount,(await get(alpha,'/inventory?lowStock=1&pageSize=1')).pagination.total);
   assert.equal(summary.connectionCount,(await get(alpha,'/integrations?status=attention')).data.length);
   const selected=await get(admin,`/attention?clientId=${b.id}`);
   assert.equal(selected.totalCount,2);
+  assert.ok(!selected.inventoryIssueIds.some((id: string) => summary.inventoryIssueIds.includes(id)));
+  assert.ok(!selected.connectionIssueIds.some((id: string) => summary.connectionIssueIds.includes(id)));
   assert.equal((await get(alpha,`/attention?clientId=${b.id}`)).totalCount,0,'cannot widen assigned scope');
   assert.equal((await get(appFor([],[98762]))).inventoryCount,1,'inventory follows existing store scope');
   assert.equal((await get(appFor([],[98762]))).connectionCount,0,'connections remain fail closed for store-only users');
@@ -87,6 +95,19 @@ try {
   await sql`insert into inventory_ledger(inventory_id,client_id,sku,type,qty,created_by,idempotency_key,source_entity,source_id)
     values (${stock.id},${a.id},'attention-1','receive',20,'fixture','attention-refresh','fixture','attention-refresh')`;
   assert.equal((await get(alpha)).inventoryCount,104,'fresh committed ledger movement clears attention');
+  const [replacement] = await sql`insert into inventory(client_id,sku,reorder_level)
+    values (${a.id},'attention-replacement',5) returning id`;
+  assert.ok(replacement);
+  const replaced = await get(alpha);
+  assert.equal(replaced.inventoryCount,summary.inventoryCount,'same count, different member');
+  assert.ok(!replaced.inventoryIssueIds.includes(`inventory:${stock.id}`));
+  assert.ok(replaced.inventoryIssueIds.includes(`inventory:${replacement.id}`));
+  assert.notDeepEqual(replaced.inventoryIssueIds,summary.inventoryIssueIds);
+  await sql`delete from inventory where id=${replacement.id}`;
+  await sql`update store_accounts set last_sync_error='auth' where client_id=${a.id} and label='Attention delayed'`;
+  const changedCondition = await get(alpha);
+  assert.equal(changedCondition.connectionCount,summary.connectionCount);
+  assert.notDeepEqual(changedCondition.connectionIssueIds,summary.connectionIssueIds,'canonical status change creates a new issue key');
   const put = (body: unknown) => alpha.request('/notification-preferences', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
@@ -102,9 +123,11 @@ try {
   assert.deepEqual(await get(alpha,'/notification-preferences?userId=other'),{connectionIssues:false,lowStock:true});
   assert.deepEqual(await get(appFor([a.id],[],false,'other'),'/notification-preferences'), defaults);
   assert.equal((await get(alpha)).connectionCount,0);
+  assert.deepEqual((await get(alpha)).connectionIssueIds,[]);
   assert.equal((await get(alpha)).inventoryCount,104);
   await put({connectionIssues:false,lowStock:false});
   assert.equal((await get(alpha)).totalCount,0,'both categories muted at backend');
+  assert.deepEqual((await get(alpha)).inventoryIssueIds,[]);
   await put({connectionIssues:true,lowStock:false});
   assert.equal((await get(alpha)).totalCount,3,'only connection count remains');
   assert.equal((await appFor([a.id],[],false,'').request('/notification-preferences')).status,401);

@@ -1441,10 +1441,23 @@ the existing `filterPortalIntegrations(status=attention)` policy (pending,
 reconnect, degraded). `totalCount` is their backend-owned sum; `checkedAt` is
 response completion time, not a source sync timestamp. Selected client narrows
 authenticated scope; no historical date filter applies. Store-only access follows
-each source's existing policy. The response contains counts, personal category choices and the clock;
+each source's existing policy. The response contains counts, complete scoped issue keys,
+personal category choices and the clock;
 failed reads return unavailable, never zero. UI renders counts and links to
 `/inventory?lowStock=1` and `/connections?status=attention` and keys reads by user
 and client. No local stock/health policy, financial data or provider diagnostics.
+
+Dismissal identity is owned by `read-models/attention.ts`: inventory keys use the
+scoped inventory row ID; connection keys use the scoped store ID and its canonical
+public status/reconnect reason. Counts and keys come from the same membership read.
+`useAttentionDismissals` stores only personal visibility choices in versioned browser
+storage scoped by user and selected client. The badge is the number of undismissed
+backend keys, not a replacement stock/health total. Dismissed issues remain unresolved
+and accessible through Show dismissed. A successful enabled-category read retires
+absent keys; errors, loading, and muted categories cannot retire them. A returning
+issue is new after its absence has been observed. This current-state endpoint cannot
+detect resolution and recurrence entirely between reads. No event history is implied.
+Legacy count-only snapshots are ignored because they cannot identify dismissed issues.
 
 Notification preferences: backend owner `notification-preferences.ts` reads and
 writes only the authenticated user's `user_metadata.portal_notification_preferences`
