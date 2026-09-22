@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 const base = 'http://127.0.0.1:5177';
 const categories = ['orders', 'shipments', 'inventory', 'returns', 'replacements'];
 const titles = ['Orders', 'Shipments', 'Inventory', 'Returns', 'Replacements'];
-test.use({ reducedMotion: 'reduce' });
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 const group = (page, title) => page.getByRole('region', { name: `${title} search results`, exact: true });
 async function setup(page) {
   const state = { requests: [], failed: null, hold: null };

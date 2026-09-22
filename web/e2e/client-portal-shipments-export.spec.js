@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 const base = 'http://127.0.0.1:5177';
-test.use({ reducedMotion: 'reduce' });
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 async function setup(page, custom) {
   const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
   const user={id:'sort-test',aud:'authenticated',role:'authenticated',email:'sort@portal-e2e.test',app_metadata:{role:'admin',permissions:['scope:global']},user_metadata:{}};

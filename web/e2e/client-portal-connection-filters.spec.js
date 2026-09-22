@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 // Continuous card float is decorative; use the supported accessibility setting for stable clicks.
-test.use({ reducedMotion: 'reduce' });
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 const base = 'http://127.0.0.1:5177';
 async function setup(page, custom) {
   const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
@@ -73,6 +73,8 @@ test('Changing client requests fresh scoped rows and closes the previous client 
   await expect(page.getByRole('status').filter({hasText:'3 connections'})).toBeVisible();
   expect(requests.at(-1).searchParams.get('clientId')).toBe('1');
   await expect(page.getByRole('button',{name:'Rename Beta Delayed',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('dialog',{name:'Select client',exact:true})).toHaveCount(0);
+  expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
   await page.getByRole('button',{name:'Rename Alpha Main',exact:true}).click();
   await expect(page.getByRole('dialog',{name:'Rename store connection'})).toBeVisible();
   // The topbar remains mounted; simulate a global client change while a dialog is open.

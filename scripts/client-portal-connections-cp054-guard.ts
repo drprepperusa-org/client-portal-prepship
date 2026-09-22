@@ -252,11 +252,16 @@ check(
   'portal exposes a thin rename action backed by the scoped integration label endpoint',
 );
 const topbar = read('portal-client/src/components/layout/Topbar.tsx');
+const attentionBell = read('portal-client/src/components/layout/AttentionBell.tsx');
+// a156ad5 retired the shell sync notice. The current bell delegates to the
+// scoped attention DTO; integration and sync-status ownership remain checked above.
 check(
-  topbar.includes('connectionFreshnessMeta(sync.data?.connectionStatus)') &&
+  topbar.includes('<AttentionBell />') && !topbar.includes('useSyncStatus') &&
+    attentionBell.includes('useAttention()') &&
+    attentionBell.includes('to="/connections?status=attention"') &&
     !topbar.includes("lastSync ? 'bg-emerald-500'") &&
     !topbar.includes("You're all caught up."),
-  'Topbar renders backend-owned aggregate connection status without timestamp health policy',
+  'Topbar delegates connection attention to the scoped bell without a parallel sync-health policy',
 );
 const hooks = read('portal-client/src/lib/hooks.ts');
 check(

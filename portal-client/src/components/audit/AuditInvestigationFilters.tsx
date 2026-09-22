@@ -60,7 +60,10 @@ export function AuditInvestigationFilters({ value, onChange }: {
     </form>
     <div className="text-xs text-ink-3">
       Dates use {timezone}. {invalid ? 'End date must be on or after start date.' :
-        value.dateFrom || value.dateTo ? `From ${value.dateFrom ? new Date(value.dateFrom).toLocaleString() : 'earliest event'} to ${value.dateTo ? new Date(Date.parse(value.dateTo) - 1).toLocaleString() : 'latest event'}.` : 'Showing all dates.'}
+        value.dateFrom || value.dateTo
+          ? `From ${value.dateFrom ? new Date(value.dateFrom).toLocaleString() : 'earliest event'} to ${value.dateTo
+            ? new Date(Date.parse(value.dateTo) - 1).toLocaleString() : 'latest event'}.`
+          : 'Showing all dates.'}
     </div>
   </div>;
 }

@@ -1425,7 +1425,7 @@ stock-and-ledger owner. The browser never computes the resulting stock balance.
 | Connection status | `connectionStatus` | `connectionStatus` | `resolvePortalConnectionStatus`: pending from store source; reconnect from safe known error class; degraded from other sync error; otherwise canonical active flag | latest account/sync state | derived-from-canonical (backend-owned) |
 | Reconnect guidance | `reconnectReasonCode` | `reconnectReasonCode` | backend mapping of detailed sync error to `authentication_required`, `permissions_required`, or `configuration_required` | latest failed sync | redacted-backend-truth |
 | Last sync | `lastSyncedAt` | `lastSyncedAt` | tenant-scoped `store_accounts.last_synced_at` | latest successful store sync | backend-owned-truth |
-| Top-bar connection freshness | `connectionStatus`/`lastSyncAt` | GET `/sync-status` | tenant-scoped store connection DTOs; aggregate precedence attention > active > pending > inactive > not connected; timestamp = max successful sync clock | latest account/sync state | derived-from-canonical (backend-owned) |
+| Connection freshness API (retained; no Topbar sync panel) | `connectionStatus`/`lastSyncAt` | GET `/sync-status` | tenant-scoped store connection DTOs; aggregate precedence attention > active > pending > inactive > not connected; timestamp = max successful sync clock | latest account/sync state | derived-from-canonical (backend-owned) |
 | Pending request | `connectionStatus='pending'` | POST `/integrations` then `toPortalIntegrationDto` | server-persisted request row (never client-only state) | request time | backend-owned-truth |
 
 Owner: `toPortalIntegrationDto` + read-model `listPortalIntegrations`
