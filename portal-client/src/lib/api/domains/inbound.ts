@@ -10,8 +10,11 @@ import type {
 import { apiBlob, apiGet, apiPatch, apiPost } from '../transport';
 
 export const inboundApi = {
-  inbound: (token: RequestAuth, clientId?: number) =>
-    apiGet<{ data: PortalInbound[] }>(token, '/api/client-portal/inbound', { clientId }),
+  inbound: (token: RequestAuth, options: ListOpts = {}) =>
+    apiGet<Paginated<PortalInbound>>(token, '/api/client-portal/inbound', {
+      clientId: options.clientId, search: options.search || undefined, status: options.status || undefined,
+      page: options.page ?? 1, pageSize: options.pageSize ?? 50,
+    }),
   inboundReceipts: (
     token: RequestAuth,
     options: ListOpts,

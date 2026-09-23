@@ -1396,6 +1396,13 @@ Owner: `toPortalInboundDto` over `inbound_shipments` + `inbound_items`. Route:
 `listPortalInboundReceipts` over the canonical inventory ledger; CP does not
 copy receipts into inbound tables or infer multi-SKU batches.
 
+Expected-shipment search and pagination delegate to `listPortalInbound` over these
+same headers and items. Literal case-insensitive reference, supplier, tracking or
+SKU search and status filters apply before counting and paging. Count, headers
+and full item totals share a read-only snapshot; rows sort by created_at then id.
+Restricted access still requires explicit client assignment, and a selected
+client can only narrow it. React sends filter/page intent and displays the DTO.
+
 New Inbound creation delegates to `createPortalInbound`: header, item rows and
 actor-scoped retry receipt commit in one transaction. The saved confirmation and
 Open shipment action use its persisted `PortalInbound` DTO (including the existing

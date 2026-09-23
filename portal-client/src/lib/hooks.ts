@@ -329,10 +329,10 @@ export function useReturnsReceiving(search: string, enabled = true) {
   );
 }
 
-export function useInbound(clientId?: number) {
+export function useInbound(clientId?: number, options: ListOpts = {}) {
   const { clientId: globalClientId } = usePortalFilters();
   const cid = clientId ?? globalClientId;
-  return useTokenQuery(['inbound', cid ?? 'scope'], (t) => portalApi.inbound(t, cid));
+  return useTokenQuery(['inbound', cid ?? 'scope', options], (t) => portalApi.inbound(t, { ...options, clientId: cid }));
 }
 
 /** Orders for a single SKU (Analysis drill-down panel). */

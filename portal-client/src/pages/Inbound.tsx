@@ -1,6 +1,7 @@
 import { useAuth } from '@/auth';
 import { ExportInboundReceiptsCsv } from '@/components/inbound/ExportInboundReceiptsCsv';
 import { useTableSort } from '@/lib/useTableSort';
+import { useDebounced } from '@/lib/useDebounced';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -56,7 +57,14 @@ export default function Inbound() {
   useEffect(() => { setConfirmation(null); }, [confirmationScope]);
   const [receiptPage, setReceiptPage] = useFilteredPage(JSON.stringify([effectiveClientId]));
   const receiptSort = useTableSort(setReceiptPage);
-  const query = useInbound(effectiveClientId);
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounced(searchInput.trim(), 300);
+  const [status, setStatus] = useState('');
+  const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useFilteredPage(JSON.stringify([userId, effectiveClientId, search, status, pageSize]));
+  const query = useInbound(effectiveClientId, { search, status, page, pageSize });
+  const pagination = query.data?.pagination;
+  const filtered = Boolean(search || status);
   const receiptQuery = useInboundReceipts(effectiveClientId, receiptPage, receiptPageSize, receiptSort.sortBy, receiptSort.sortDir);
   const exportFilters = { clientId: effectiveClientId, sortBy: receiptSort.sortBy, sortDir: receiptSort.sortDir };
   const rows = query.data?.data ?? [];
@@ -153,13 +161,31 @@ export default function Inbound() {
         </QueryState>
       </GlassPanel>
 
-      <GlassPanel className="p-2 sm:p-3">
+      <GlassPanel className="p-2 sm:p-3" role="region" aria-label="Expected shipments">
         <div className="flex items-center gap-2 px-3 py-3">
           <PackageOpen size={17} className="text-brand-600" />
           <div>
             <p className="text-sm font-semibold text-ink">Expected shipments</p>
             <p className="text-xs text-ink-3">Purchase orders and ASNs arriving at the warehouse</p>
           </div>
+        </div>
+        <div className="flex flex-wrap gap-3 px-3 pb-3">
+          <label className="min-w-0 basis-full text-xs text-ink-2 sm:flex-1">
+            Search shipments
+            <input type="search" value={searchInput} maxLength={120} onChange={event => setSearchInput(event.target.value)}
+              placeholder="PO, supplier, tracking number or SKU"
+              className="focus-ring mt-1 h-11 w-full rounded-glass-sm border border-slate-200 bg-white/70 px-3 text-sm text-ink" />
+          </label>
+          <label className="text-xs text-ink-2">
+            Shipment status
+            <select aria-label="Shipment status" value={status} onChange={event => setStatus(event.target.value)}
+              className="focus-ring mt-1 block h-11 rounded-glass-sm border border-slate-200 bg-white/70 px-3 text-sm text-ink">
+              <option value="">All statuses</option><option value="expected">Expected</option>
+              <option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          {(searchInput || status) && <Button variant="secondary" className="self-end"
+            onClick={() => { setSearchInput(''); setStatus(''); }}>Clear filters</Button>}
         </div>
         <QueryState showUpdateStatus={false}
           isLoading={query.isLoading}
@@ -168,8 +194,10 @@ export default function Inbound() {
           error={query.error}
           isEmpty={rows.length === 0}
           onRetry={() => query.refetch()}
-          emptyTitle="No inbound shipments"
-          emptyMessage={isAdmin ? 'Click “New inbound” to record an expected purchase order, or Import a CSV feed.' : 'Inbound purchase orders will appear here once your operator records them.'}
+          emptyTitle={filtered ? 'No matching shipments' : 'No inbound shipments'}
+          emptyMessage={filtered ? 'Try another reference, supplier, tracking number or SKU, or clear your filters.'
+            : isAdmin ? 'Click “New inbound” to record an expected purchase order, or Import a CSV feed.'
+              : 'Inbound purchase orders will appear here once your operator records them.'}
         >
           <DataTable isUpdating={query.isFetching && !query.isLoading}
             tableId="inbound"
@@ -181,6 +209,8 @@ export default function Inbound() {
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
           />
+          {pagination && <Pagination page={pagination.page} totalPages={pagination.totalPages} total={pagination.total}
+            pageSize={pagination.pageSize} onPage={setPage} onPageSize={setPageSize} />}
         </QueryState>
       </GlassPanel>
 

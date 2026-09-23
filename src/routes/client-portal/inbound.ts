@@ -7,7 +7,7 @@ import { exportPortalInboundReceipts, InboundReceiptExportTooLarge } from '../..
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { clients } from '../../db/schema/clients';
 import { inventory } from '../../db/schema/inventory';
@@ -15,12 +15,11 @@ import { inboundShipments, inboundItems } from '../../db/schema/inbound';
 import { applyInventoryMovementInTransaction } from '../../services/inventory-movement';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
-import { toPortalInboundDto } from '../../lib/client-portal/dto';
+import { listPortalInbound } from '../../lib/client-portal/read-models/inbound';
 import { listPortalInboundReceipts } from '../../lib/client-portal/read-models/inbound-receipts';
 import {
   parsePage,
   parsePageSize,
-  parsePositiveInt,
   requestedClientId,
   requestedStoreId,
   scopeOrResponse,
@@ -68,48 +67,23 @@ app.get('/inbound/receipts', async (c) => {
   return c.json(result);
 });
 
+const inboundListQuery = z.object({
+  clientId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(120).optional(),
+  status: z.enum(['expected', 'in_transit', 'received', 'cancelled']).optional(),
+  page: z.coerce.number().int().positive().max(2147483647).optional(),
+  pageSize: z.coerce.number().int().positive().optional(),
+});
 app.get('/inbound', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  const clientId = parsePositiveInt(c.req.query('clientId'));
-
-  const preds: (SQL | undefined)[] = [];
-  if (!scope.isGlobal) {
-    if (!scope.clientIds.length) return c.json({ data: [] });
-    preds.push(inArray(inboundShipments.clientId, scope.clientIds));
-  }
-  if (clientId != null) {
-    if (!scope.isGlobal && !scope.clientIds.includes(clientId)) return c.json({ data: [] });
-    preds.push(eq(inboundShipments.clientId, clientId));
-  }
-  const where = preds.length ? and(...preds) : undefined;
-
-  const heads = await db
-    .select({
-      shipment: inboundShipments,
-      clientName: clients.name,
-    })
-    .from(inboundShipments)
-    .leftJoin(clients, eq(clients.id, inboundShipments.clientId))
-    .where(where)
-    .orderBy(desc(inboundShipments.createdAt), desc(inboundShipments.id))
-    .limit(200);
-
-  const ids = heads.map((h) => h.shipment.id);
-  const items = ids.length
-    ? await db.select().from(inboundItems).where(inArray(inboundItems.inboundId, ids))
-    : [];
-  const byInbound = new Map<number, typeof items>();
-  for (const it of items) {
-    const list = byInbound.get(it.inboundId) ?? [];
-    list.push(it);
-    byInbound.set(it.inboundId, list);
-  }
-
-  await recordPortalAudit('portal.inbound.list', scope, { clientId, rows: heads.length });
-  return c.json({
-    data: heads.map((h) => toPortalInboundDto({ ...h.shipment, clientName: h.clientName }, byInbound.get(h.shipment.id) ?? [])),
-  });
+  c.header('Cache-Control', 'private, no-store');
+  const parsed = inboundListQuery.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: 'Invalid inbound search, status or pagination.' }, 400);
+  const options = { ...parsed.data, page: parsePage(c.req.query('page')), pageSize: parsePageSize(c.req.query('pageSize'), 50) };
+  const result = await listPortalInbound(scope, options);
+  await recordPortalAudit('portal.inbound.list', scope, { ...options, rows: result.data.length });
+  return c.json(result);
 });
 
 app.post('/inbound', async (c) => {
