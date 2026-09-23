@@ -2,6 +2,7 @@ import type { RequestAuth } from '../transport';
 import type { ListOpts, Paginated } from '@client-portal-contracts/common';
 import type {
   NewInboundInput,
+  InboundReceiveInput,
   PortalInbound,
   PortalInboundReceipt,
   PortalInventoryReceiveInput,
@@ -36,7 +37,7 @@ export const inboundApi = {
   receiveInbound: (
     token: RequestAuth,
     id: number,
-    body: { addToInventory?: boolean; items?: Array<{ id: number; receivedQty: number }> },
+    body: InboundReceiveInput,
   ) =>
     apiPatch<{
       data: { id: number; status: string; bumps: Array<{ sku: string; qty: number; matched: boolean }> };

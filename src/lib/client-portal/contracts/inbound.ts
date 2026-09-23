@@ -62,3 +62,8 @@ export interface PortalInventoryReceiveResult {
   received: number;
   totalUnits: number;
 }
+
+export interface InboundReceiveInput {
+  addToInventory: boolean;
+  items: Array<{ id: number; receivedQty: number }>;
+}

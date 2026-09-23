@@ -1409,6 +1409,15 @@ Open shipment action use its persisted `PortalInbound` DTO (including the existi
 backend unit totals); they never claim draft values were saved. Replay rechecks
 current client scope. Private request keys/hashes do not enter customer DTOs.
 
+Receive shipment delegates to `receivePortalInbound`. Shared request validation
+rejects invalid quantities before persistence. The service locks the header,
+checks client scope, status and exact item membership, then saves quantities and
+canonical inventory movements atomically. Already received/cancelled shipments
+cannot be written again. Inventory additions require an assigned client and an
+unambiguous SKU match; unmatched rows are explicit in the response. The protected
+worksheet keeps failed drafts and refreshes inbound receipts and inventory after
+success; a later read failure cannot be presented as a failed receive.
+
 Receiving-history CSV (`GET /inbound/receipts?format=csv`) delegates to the same
 `listPortalInboundReceipts` owner in one read-only repeatable-read transaction.
 It exports every matching page with receipt ID, client label, SKU, item name,
