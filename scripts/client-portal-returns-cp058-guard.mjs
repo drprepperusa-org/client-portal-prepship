@@ -394,8 +394,11 @@ const createBlock = (() => {
 })();
 
 check('a blank return reason is refused at creation', () => {
-  assert.match(createBlock, /A return reason is required[\s\S]{0,40}?400/,
-    'a missing reason must 400, not be accepted');
+  assert.match(createBlock, /validateReturnCreate\(body\)/, 'creation must use the shared request validator');
+  assert.match(createBlock, /fieldErrors[\s\S]{0,220}?400/, 'invalid fields must be rejected with 400 before persistence');
+  const contract = readFileSync('src/lib/client-portal/contracts/create-form-validation.ts', 'utf8');
+  assert.match(contract, /!text\(body\.reason\)[^\n]+errors\.reason = 'A return reason is required'/,
+    'the shared contract must reject missing/whitespace reasons');
   assert.match(createBlock, /const requestedReason = body\.reason\?\.trim\(\)/,
     'whitespace must not satisfy the requirement');
 });
@@ -425,8 +428,9 @@ check('the create UI does not advertise the reason as optional', () => {
     'the label still says optional while the backend requires it');
   assert.ok(!/reason: reason\.trim\(\) \|\| undefined/.test(modal),
     'the form still sends undefined for a blank reason');
-  assert.match(modal, /disabled=\{[^}]*!reason\.trim\(\)/,
-    'submit must be disabled on a blank reason rather than collecting a 400');
+  assert.match(modal, /validateReturnCreate\(/, 'the form must use the server request contract');
+  assert.match(modal, /if \(!validation\.check\(\)\) return;/, 'invalid submission must focus errors before sending an API request');
+  assert.ok(modal.indexOf('validation.check()') < modal.indexOf('portalApi.createReturn('), 'validation precedes the write');
 });
 
 // ── The UI surfaces the card assigns to the Client Portal ────────────────────

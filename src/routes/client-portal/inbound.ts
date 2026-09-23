@@ -1,3 +1,4 @@
+import { validateInboundCreate } from '../../lib/client-portal/contracts/create-form-validation';
 import { z } from 'zod';
 import { exportPortalInboundReceipts, InboundReceiptExportTooLarge } from '../../lib/client-portal/read-models/inbound-receipt-export';
 // Client-portal sub-router — extracted from the former single-file
@@ -126,6 +127,9 @@ app.post('/inbound', async (c) => {
     notes?: string;
     items?: Array<{ sku?: string; name?: string; expectedQty?: number; receivedQty?: number }>;
   };
+
+  const fieldErrors = validateInboundCreate(body);
+  if (Object.keys(fieldErrors).length) return c.json({ error: 'Check the highlighted fields.', fieldErrors }, 400);
 
   const clientId = typeof body.clientId === 'number' ? body.clientId : null;
   if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {

@@ -1,3 +1,4 @@
+import { validateReturnCreate, returnQuantityError } from '../../../lib/client-portal/contracts/create-form-validation';
 import { createReturnRequest, ReturnRequestRejectedError } from '../../../services/return-request';
 import type { Hono } from 'hono';
 import { and, eq, sql } from 'drizzle-orm';
@@ -57,6 +58,8 @@ function registerReturnCreateRoute(app: Hono): void {
       returnRecipientName?: string;
       items?: Array<{ sku?: string; name?: string; quantity?: number; orderItemId?: number }>;
     };
+    const fieldErrors = validateReturnCreate(body);
+    if (Object.keys(fieldErrors).length) return c.json({ error: Object.values(fieldErrors)[0], fieldErrors }, 400);
     const orderId = typeof body.orderId === 'number' ? body.orderId : null;
     if (orderId == null) return c.json({ error: 'orderId is required' }, 400);
 
@@ -89,12 +92,6 @@ function registerReturnCreateRoute(app: Hono): void {
     }
 
     const requestedRecipientName = body.returnRecipientName?.trim();
-    if (body.returnRecipientName != null && !requestedRecipientName) {
-      return c.json({ error: 'Return recipient name is required' }, 400);
-    }
-    if (requestedRecipientName && requestedRecipientName.length > 120) {
-      return c.json({ error: 'Return recipient name must be 120 characters or fewer' }, 400);
-    }
     const returnRecipientName = requestedRecipientName
       ?? returnRecipientNameFromOrder(order.raw, clientName);
 
@@ -109,13 +106,6 @@ function registerReturnCreateRoute(app: Hono): void {
     // a null reason, and a column constraint would either reject them or need a made-up
     // backfill value, which is the same lost information wearing a disguise.
     const requestedReason = body.reason?.trim();
-    if (!requestedReason) {
-      return c.json({ error: 'A return reason is required' }, 400);
-    }
-    if (requestedReason.length > 500) {
-      return c.json({ error: 'Return reason must be 500 characters or fewer' }, 400);
-    }
-
     const initiatedBy = scope.isGlobal ? 'three_pl' : 'client';
     const returnReference = await buildReturnReference(orderId, order.orderNumber);
     const orderedRows = await db
@@ -131,13 +121,14 @@ function registerReturnCreateRoute(app: Hono): void {
 
     const rawItems = Array.isArray(body.items) ? body.items : [];
     const cleanItems: Array<{ sku: string; name: string | null; quantity: number; orderItemId: number | null }> = [];
-    for (const item of rawItems.slice(0, 200)) {
+    for (const [index, item] of rawItems.slice(0, 200).entries()) {
       const sku = (item?.sku ?? '').trim();
       const quantity = Number(item?.quantity) || 0;
       if (!sku || quantity <= 0) continue;
       const ordered = orderedBySku.get(sku.toLowerCase());
-      if (ordered && quantity > ordered.qty) {
-        return c.json({ error: `Return quantity for ${sku} (${quantity}) exceeds the ordered quantity (${ordered.qty})` }, 400);
+      const quantityError = returnQuantityError(quantity, ordered?.qty);
+      if (quantityError) {
+        return c.json({ error: quantityError, fieldErrors: { [`items.${index}.quantity`]: quantityError } }, 400);
       }
 
       let orderItemId: number | null;
@@ -161,7 +152,7 @@ function registerReturnCreateRoute(app: Hono): void {
       });
     }
     if (!cleanItems.length) {
-      return c.json({ error: 'At least one returned item with a positive quantity is required' }, 400);
+      return c.json({ error: 'At least one returned item with a positive quantity is required', fieldErrors: { items: 'Choose at least one item to return.' } }, 400);
     }
 
     let created: Return;

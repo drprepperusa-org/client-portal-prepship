@@ -1,3 +1,5 @@
+import { validateReturnCreate, returnQuantityError } from '@client-portal-contracts/create-form-validation';
+import { useFieldValidation } from '@/components/ui/useFieldValidation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Undo2 } from 'lucide-react';
@@ -60,6 +62,19 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
   }, [order.data]);
   const dirty = reason !== '' || Object.values(qtys).some((value) => value !== '') || returnRecipientName !== initialRecipient;
 
+  const draftItems = items.map((item, index) => ({ sku: item.sku ?? item.name ?? '', quantity: qtys[index] ?? '' }));
+  const selectedIndices = draftItems.flatMap((item, index) => Number(item.quantity) > 0 ? [index] : []);
+  const requestErrors = validateReturnCreate({ orderId, reason, returnRecipientName, items: selectedIndices.map(index => draftItems[index]) });
+  const fieldErrors = Object.fromEntries(Object.entries(requestErrors).map(([field, message]) => {
+    const match = /^items\.(\d+)\.(.+)$/.exec(field);
+    return [match ? `items.${selectedIndices[Number(match[1])]}.${match[2]}` : field, message];
+  }));
+  items.forEach((item, index) => {
+    const error = returnQuantityError(qtys[index], Number(item.quantity) || 0);
+    if (error) fieldErrors[`items.${index}.quantity`] = error;
+  });
+  const validation = useFieldValidation(fieldErrors);
+
   const selectedCount = useMemo(
     () => Object.values(qtys).filter((v) => Number(v) > 0).length,
     [qtys],
@@ -83,6 +98,7 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
       toast.error('Return unavailable', order.data?.data.returnEligibility?.reason ?? 'Reload this order to check return eligibility.');
       return;
     }
+    if (!validation.check()) return;
     // Build the return items from the ordered lines with a positive requested qty.
     // Quantities are validated (≤ ordered) on the backend — we do not price them.
     const chosen = items
@@ -164,7 +180,7 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
       onCreated?.(returnId);
       onClose();
     } catch (err) {
-      toast.error('Could not create return', err instanceof Error ? err.message : 'Please try again.');
+      validation.reject(err, selectedIndices);
     } finally {
       setSaving(false);
     }
@@ -180,7 +196,9 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
       ) : order.data.data.returnEligibility?.allowed !== true ? (
         <p className="text-sm text-ink-3" role="status">{order.data.data.returnEligibility?.reason ?? 'Return eligibility is unavailable. Reload this order to try again.'}</p>
       ) : (
-        <div className="space-y-4">
+        <div ref={validation.ref} onChangeCapture={validation.changed} className="space-y-4">
+          {validation.summary}
+          <p className="text-xs text-ink-3">To save, choose at least one return quantity, enter a recipient name, and add a reason.</p>
           <div className="rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
             <p className="text-xs text-ink-3">Order</p>
             <p className="text-sm font-semibold text-ink">
@@ -193,12 +211,12 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">
               Items to return
             </p>
-            <div className="space-y-2">
+            <div className="space-y-2" {...validation.props('items')}>
               {items.length === 0 && <p className="text-sm text-ink-3">This order has no line items.</p>}
               {items.map((it, i) => {
                 const ordered = Number(it.quantity) || 0;
                 return (
-                  <div key={i} className="flex items-center gap-3 rounded-glass-sm bg-white/60 p-2.5 ring-1 ring-slate-200/70">
+                  <div key={i} className="flex flex-wrap items-center gap-3 rounded-glass-sm bg-white/60 p-2.5 ring-1 ring-slate-200/70">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-ink" title={it.name ?? ''}>
                         {it.name ?? it.sku ?? 'Item'}
@@ -207,9 +225,11 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
                     </div>
                     <span className="shrink-0 text-xs text-ink-3 tnum">Ordered {ordered}</span>
                     <input
+                      {...validation.props(`items.${i}.quantity`)}
                       className={field}
                       style={{ width: 84 }}
                       type="number"
+                      step="any"
                       min={0}
                       max={ordered || undefined}
                       value={qtys[i] ?? ''}
@@ -217,16 +237,19 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
                       placeholder="Qty"
                       aria-label={`Return quantity for ${it.name ?? it.sku ?? 'item'}`}
                     />
+                    <div className="w-full">{validation.feedback(`items.${i}.quantity`)}</div>
                   </div>
                 );
               })}
             </div>
+            {validation.feedback('items')}
           </div>
 
           <div className="space-y-2 rounded-glass-sm bg-white/60 p-3 ring-1 ring-slate-200/70">
-            <Labeled label="Return label recipient">
+            <Labeled label="Return label recipient" feedback={validation.feedback('returnRecipientName')}>
               <input
                 className={field}
+                {...validation.props('returnRecipientName')}
                 value={returnRecipientName}
                 onChange={(event) => setReturnRecipientName(event.target.value)}
                 maxLength={120}
@@ -240,11 +263,11 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
             </p>
           </div>
           {/* CP-058 AC-1: required. The backend rejects a blank reason, so this must not
-              advertise itself as optional — the button is disabled rather than letting the
-              operator fill the whole form and then collect a 400. */}
-          <Labeled label="Reason">
+              advertise itself as optional — shared request validation focuses the missing field before any API call. */}
+          <Labeled label="Reason" feedback={validation.feedback('reason')}>
             <textarea
               className={field + ' h-20 py-2'}
+              {...validation.props('reason')}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Why is this being returned? (damaged, wrong item, no longer needed…)"
@@ -262,11 +285,11 @@ function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
               <Button
                 variant="secondary"
                 onClick={() => submit('start_only')}
-                disabled={saving || selectedCount === 0 || !returnRecipientName.trim() || !reason.trim()}
+                disabled={saving}
               >
                 {saving ? 'Saving…' : 'Start return only'}
               </Button>
-              <Button leadingIcon={<Undo2 size={16} />} onClick={() => submit('with_label')} disabled={saving || selectedCount === 0 || !returnRecipientName.trim() || !reason.trim()}>
+              <Button leadingIcon={<Undo2 size={16} />} onClick={() => submit('with_label')} disabled={saving}>
                 {saving ? 'Saving & creating label…' : 'Save & create return label'}
               </Button>
             </div>

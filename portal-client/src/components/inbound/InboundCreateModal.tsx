@@ -1,3 +1,5 @@
+import { validateInboundCreate, CREATE_ITEMS_MAX } from '@client-portal-contracts/create-form-validation';
+import { useFieldValidation } from '@/components/ui/useFieldValidation';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
@@ -24,11 +26,13 @@ function DraftItemRow({
   index,
   onChange,
   onRemove,
+  validation,
 }: {
   item: DraftItem;
   index: number;
   onChange: (index: number, key: keyof DraftItem, value: string) => void;
   onRemove: (index: number) => void;
+  validation: ReturnType<typeof useFieldValidation>;
 }) {
   return (
     // flex-wrap so on a narrow phone the Qty + remove drop below SKU/name
@@ -38,6 +42,8 @@ function DraftItemRow({
         <input
           className={field}
           style={{ flex: 1 }}
+          {...validation.props(`items.${index}.sku`)}
+          aria-label={`SKU for item ${index + 1}`}
           value={item.sku}
           onChange={(e) => onChange(index, 'sku', e.target.value)}
           placeholder="SKU"
@@ -45,6 +51,8 @@ function DraftItemRow({
         <input
           className={field}
           style={{ flex: 2 }}
+          {...validation.props(`items.${index}.name`)}
+          aria-label={`Name for item ${index + 1}`}
           value={item.name}
           onChange={(e) => onChange(index, 'name', e.target.value)}
           placeholder="Item name"
@@ -55,6 +63,8 @@ function DraftItemRow({
         style={{ width: 80 }}
         type="number"
         min={0}
+        {...validation.props(`items.${index}.expectedQty`)}
+        aria-label={`Expected quantity for item ${index + 1}`}
         value={item.expectedQty}
         onChange={(e) => onChange(index, 'expectedQty', e.target.value)}
         placeholder="Qty"
@@ -66,6 +76,11 @@ function DraftItemRow({
       >
         <Trash2 size={15} />
       </button>
+      <div className="w-full">
+        {validation.feedback(`items.${index}.sku`)}
+        {validation.feedback(`items.${index}.name`)}
+        {validation.feedback(`items.${index}.expectedQty`)}
+      </div>
     </div>
   );
 }
@@ -83,6 +98,7 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
   const { accessToken } = useAuth();
   const [draft, setDraft] = useState(emptyDraft());
   const [saving, setSaving] = useState(false);
+  const validation = useFieldValidation(validateInboundCreate(draft));
 
   const setField = (k: keyof Draft, v: unknown) => setDraft((d) => ({ ...d, [k]: v }) as Draft);
   const setItem = (i: number, k: keyof DraftItem, v: string) => setDraft((d) => ({ ...d, items: d.items.map((it, j) => (j === i ? { ...it, [k]: v } : it)) }));
@@ -91,6 +107,8 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
 
   async function submitCreate() {
     if (!accessToken || saving) return;
+    if (!validation.check()) return;
+    const selectedIndices = draft.items.flatMap((item, index) => item.sku.trim() || item.name.trim() ? [index] : []);
     setSaving(true);
     try {
       await portalApi.createInbound(accessToken, {
@@ -109,7 +127,7 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
       onClose();
       setDraft(emptyDraft());
     } catch (err) {
-      toast.error('Could not create', err instanceof Error ? err.message : 'Please try again.');
+      validation.reject(err, selectedIndices);
     } finally {
       setSaving(false);
     }
@@ -118,40 +136,56 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
   return (
     <DraftModal dirty={JSON.stringify(draft) !== JSON.stringify(emptyDraft())} saving={saving} onClose={onClose} title="New inbound shipment" maxWidth={640}>
       {(requestClose) => (
-      <div className="space-y-4">
+      <div ref={validation.ref} onChangeCapture={validation.changed} className="space-y-4">
+        {validation.summary}
+        <p className="text-xs text-ink-3">Header fields are optional. For each quantity entered, add a SKU or item name. Expected quantities must be whole numbers of zero or more.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Labeled label="Client">
-            <select value={draft.clientId ?? ''} onChange={(e) => setField('clientId', e.target.value ? Number(e.target.value) : undefined)} className={field}>
+          <Labeled label="Client" feedback={validation.feedback('clientId')}>
+            <select {...validation.props('clientId')} value={draft.clientId ?? ''} onChange={(e) => setField('clientId', e.target.value ? Number(e.target.value) : undefined)} className={field}>
               <option value="">— Select client —</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name ?? `Client ${c.id}`}</option>)}
             </select>
           </Labeled>
-          <Labeled label="Status">
-            <select value={draft.status} onChange={(e) => setField('status', e.target.value)} className={field}>
+          <Labeled label="Status" feedback={validation.feedback('status')}>
+            <select {...validation.props('status')} value={draft.status} onChange={(e) => setField('status', e.target.value)} className={field}>
               {STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
             </select>
           </Labeled>
-          <Labeled label="Reference / PO #"><input className={field} value={draft.reference} onChange={(e) => setField('reference', e.target.value)} placeholder="PO-1024" /></Labeled>
-          <Labeled label="Supplier"><input className={field} value={draft.supplier} onChange={(e) => setField('supplier', e.target.value)} placeholder="Acme Wholesale" /></Labeled>
-          <Labeled label="Expected date"><DatePicker value={draft.expectedDate || null} onChange={(v) => setField('expectedDate', v)} /></Labeled>
-          <Labeled label="Carrier"><input className={field} value={draft.carrier} onChange={(e) => setField('carrier', e.target.value)} placeholder="UPS Freight" /></Labeled>
-          <Labeled label="Tracking #"><input className={field} value={draft.trackingNumber} onChange={(e) => setField('trackingNumber', e.target.value)} /></Labeled>
+          <Labeled label="Reference / PO #" feedback={validation.feedback('reference')}>
+            <input {...validation.props('reference')} className={field} value={draft.reference} onChange={(e) => setField('reference', e.target.value)} placeholder="PO-1024" />
+          </Labeled>
+          <Labeled label="Supplier" feedback={validation.feedback('supplier')}>
+            <input {...validation.props('supplier')} className={field} value={draft.supplier} onChange={(e) => setField('supplier', e.target.value)} placeholder="Acme Wholesale" />
+          </Labeled>
+          <Labeled label="Expected date" feedback={validation.feedback('expectedDate')}>
+            <div {...validation.props('expectedDate')}><DatePicker value={draft.expectedDate || null} onChange={(v) => { validation.changed(); setField('expectedDate', v); }} /></div>
+          </Labeled>
+          <Labeled label="Carrier" feedback={validation.feedback('carrier')}>
+            <input {...validation.props('carrier')} className={field} value={draft.carrier} onChange={(e) => setField('carrier', e.target.value)} placeholder="UPS Freight" />
+          </Labeled>
+          <Labeled label="Tracking #" feedback={validation.feedback('trackingNumber')}>
+            <input {...validation.props('trackingNumber')} className={field} value={draft.trackingNumber} onChange={(e) => setField('trackingNumber', e.target.value)} />
+          </Labeled>
         </div>
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">Items</p>
-          <div className="space-y-2">
+          <div className="space-y-2" {...validation.props('items')}>
             {draft.items.map((it, i) => (
-              <DraftItemRow key={i} item={it} index={i} onChange={setItem} onRemove={removeItem} />
+              <DraftItemRow key={i} item={it} index={i} onChange={setItem} onRemove={(i) => { validation.changed(); removeItem(i); }} validation={validation} />
             ))}
           </div>
+          {validation.feedback('items')}
           <button
-            onClick={addItem}
+            disabled={draft.items.length >= CREATE_ITEMS_MAX}
+            onClick={() => { validation.changed(); addItem(); }}
             className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-600"
           >
             <Plus size={14} /> Add item
           </button>
         </div>
-        <Labeled label="Notes"><textarea className={field + ' h-20 py-2'} value={draft.notes} onChange={(e) => setField('notes', e.target.value)} /></Labeled>
+        <Labeled label="Notes" feedback={validation.feedback('notes')}>
+          <textarea {...validation.props('notes')} className={field + ' h-20 py-2'} value={draft.notes} onChange={(e) => setField('notes', e.target.value)} />
+        </Labeled>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={requestClose}>Cancel</Button>
           <Button onClick={submitCreate} disabled={saving}>{saving ? 'Saving…' : 'Create inbound'}</Button>

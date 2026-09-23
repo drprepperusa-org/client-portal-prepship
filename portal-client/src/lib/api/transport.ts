@@ -5,7 +5,7 @@ const TIMEOUT_MS = 30000;
 const UPLOAD_TIMEOUT_MS = 120000;
 
 export type QueryValue = string | number | boolean | null | undefined;
-export type ApiError = Error & { status?: number };
+export type ApiError = Error & { status?: number; fieldErrors?: Record<string, string> };
 // A read carries its caller's cancellation signal; existing string-token callers
 // (including mutations) retain their current API and lifetime.
 export type RequestAuth = string | { accessToken: string; signal: AbortSignal };
@@ -50,14 +50,21 @@ async function request<T>(
 
 async function fail(response: Response): Promise<never> {
   let message = `${response.status} ${response.statusText}`;
+  const fieldErrors: Record<string, string> = {};
   try {
-    const body = (await response.json()) as { error?: string };
-    if (body.error) message = body.error;
+    const body = (await response.json()) as { error?: string; fieldErrors?: unknown };
+    if (typeof body.error === 'string') message = body.error;
+    if (body.fieldErrors && typeof body.fieldErrors === 'object' && !Array.isArray(body.fieldErrors)) {
+      for (const [field, value] of Object.entries(body.fieldErrors).slice(0, 200)) {
+        if (/^[a-zA-Z][a-zA-Z0-9.]{0,100}$/.test(field) && typeof value === 'string' && value.length <= 500) fieldErrors[field] = value;
+      }
+    }
   } catch {
     // Keep the status-derived message when the response is not JSON.
   }
   const error = new Error(message) as ApiError;
   error.status = response.status;
+  if (Object.keys(fieldErrors).length) error.fieldErrors = fieldErrors;
   throw error;
 }
 

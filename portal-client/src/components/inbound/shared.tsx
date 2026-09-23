@@ -9,15 +9,16 @@ export const STATUS_META: Record<string, { label: string; accent: Accent }> = {
   cancelled: { label: 'Cancelled', accent: 'rose' },
 };
 
-export const field = 'focus-ring h-10 w-full rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90';
+export const field = 'focus-ring h-10 w-full rounded-glass-sm border border-white/80 bg-white/60 px-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90 aria-[invalid=true]:ring-rose-400';
 
-export function Labeled({ label, children }: { label: string; children: ReactNode }) {
-  return (
+export function Labeled({ label, children, feedback }: { label: string; children: ReactNode; feedback?: ReactNode }) {
+  const control = (
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-ink-2">{label}</span>
       {children}
     </label>
   );
+  return feedback === undefined ? control : <div>{control}{feedback}</div>;
 }
 
 export function Cell({ label, value }: { label: string; value: string }) {

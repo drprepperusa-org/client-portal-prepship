@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-form-validation": "tsx scripts/client-portal-form-validation-test.ts",
     "test:client-portal-billing-identity-performance": "tsx scripts/client-portal-billing-identity-performance.ts",
     "test:client-portal-dashboard-loading:browser": "playwright test --config playwright.dashboard-performance.config.mjs --workers=1 --reporter=line",
     "test:client-portal-export-count-performance": "tsx scripts/client-portal-export-count-performance.ts",
