@@ -29,7 +29,7 @@ export const inboundApi = {
   receiveInventory: (token: RequestAuth, body: PortalInventoryReceiveInput) =>
     apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),
   createInbound: (token: RequestAuth, body: NewInboundInput) =>
-    apiPost<{ data: { id: number } }>(token, '/api/client-portal/inbound', body),
+    apiPost<{ data: PortalInbound; replayed: boolean }>(token, '/api/client-portal/inbound', body),
   receiveInbound: (
     token: RequestAuth,
     id: number,

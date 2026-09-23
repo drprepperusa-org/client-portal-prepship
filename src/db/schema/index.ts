@@ -25,4 +25,5 @@ export * from './fulfillment-outbox';
 export * from './analytics-cache';
 export * from './workflows';
 export * from './inbound';
+export * from './portal-inbound-create-requests';
 export * from './client-portal-audit-logs';

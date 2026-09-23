@@ -1,3 +1,5 @@
+import { createPortalInbound, InboundCreateRejected } from '../../services/portal-inbound-create';
+import type { NewInboundInput } from '../../lib/client-portal/contracts/inbound';
 import { validateInboundCreate } from '../../lib/client-portal/contracts/create-form-validation';
 import { z } from 'zod';
 import { exportPortalInboundReceipts, InboundReceiptExportTooLarge } from '../../lib/client-portal/read-models/inbound-receipt-export';
@@ -116,17 +118,7 @@ app.post('/inbound', async (c) => {
   if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
     return c.json({ error: 'Admin access required' }, 403);
   }
-  const body = (await c.req.json().catch(() => ({}))) as {
-    clientId?: number;
-    reference?: string;
-    supplier?: string;
-    status?: string;
-    carrier?: string;
-    trackingNumber?: string;
-    expectedDate?: string;
-    notes?: string;
-    items?: Array<{ sku?: string; name?: string; expectedQty?: number; receivedQty?: number }>;
-  };
+  const body = (await c.req.json().catch(() => ({}))) as NewInboundInput;
 
   const fieldErrors = validateInboundCreate(body);
   if (Object.keys(fieldErrors).length) return c.json({ error: 'Check the highlighted fields.', fieldErrors }, 400);
@@ -135,41 +127,16 @@ app.post('/inbound', async (c) => {
   if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
     return c.json({ error: 'Requested client is outside your access scope.' }, 403);
   }
-  const status = ['expected', 'in_transit', 'received', 'cancelled'].includes(body.status ?? '')
-    ? (body.status as string)
-    : 'expected';
-
-  const [head] = await db
-    .insert(inboundShipments)
-    .values({
-      clientId,
-      reference: body.reference?.trim() || null,
-      supplier: body.supplier?.trim() || null,
-      status,
-      carrier: body.carrier?.trim() || null,
-      trackingNumber: body.trackingNumber?.trim() || null,
-      expectedDate: body.expectedDate ? new Date(body.expectedDate) : null,
-      receivedDate: status === 'received' ? new Date() : null,
-      notes: body.notes?.trim() || null,
-      updatedAt: new Date(),
-    })
-    .returning();
-
-  const rawItems = Array.isArray(body.items) ? body.items : [];
-  const cleanItems = rawItems
-    .filter((it) => (it?.sku ?? '').trim() || (it?.name ?? '').trim())
-    .slice(0, 200)
-    .map((it) => ({
-      inboundId: head!.id,
-      sku: it.sku?.trim() || null,
-      name: it.name?.trim() || null,
-      expectedQty: Number(it.expectedQty) || 0,
-      receivedQty: Number(it.receivedQty) || 0,
-    }));
-  if (cleanItems.length) await db.insert(inboundItems).values(cleanItems);
-
-  await recordPortalAudit('portal.inbound.create', scope, { id: head!.id, clientId, items: cleanItems.length });
-  return c.json({ data: { id: head!.id } }, 201);
+  try {
+    const result = await createPortalInbound(scope, body);
+    if (!result.replayed) await recordPortalAudit('portal.inbound.create', scope, {
+      id: result.data.id, clientId: result.data.clientId, items: result.data.items.length,
+    });
+    return c.json(result, result.replayed ? 200 : 201);
+  } catch (error) {
+    if (error instanceof InboundCreateRejected) return c.json({ error: error.message }, error.status);
+    throw error;
+  }
 });
 
 // Receive an inbound shipment: set received quantities, mark received, and

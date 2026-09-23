@@ -38,6 +38,7 @@ export interface PortalInboundReceipt {
 }
 
 export interface NewInboundInput {
+  idempotencyKey?: string;
   clientId?: number;
   reference?: string;
   supplier?: string;
@@ -46,7 +47,7 @@ export interface NewInboundInput {
   trackingNumber?: string;
   expectedDate?: string;
   notes?: string;
-  items?: Array<{ sku?: string; name?: string; expectedQty?: number }>;
+  items?: Array<{ sku?: string; name?: string; expectedQty?: number; receivedQty?: number }>;
 }
 
 export interface PortalInventoryReceiveInput {

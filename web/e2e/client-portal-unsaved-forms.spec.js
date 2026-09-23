@@ -97,7 +97,10 @@ for (const kind of ['inbound', 'return']) {
     await expect(confirmation(page)).toHaveCount(0);
     await expect(form(page, kind).getByRole('textbox', { name: kind === 'return' ? 'Reason' : 'Reference / PO #', exact: true })).toBeDisabled();
     release(); await expect(form(page, kind)).toHaveCount(0); await expect(confirmation(page)).toHaveCount(0);
-    expect(state.posts[0].body).toEqual(state.posts[1].body);
+    const { idempotencyKey: firstKey, ...firstDraft } = state.posts[0].body;
+    const { idempotencyKey: retryKey, ...retriedDraft } = state.posts[1].body;
+    expect(firstDraft).toEqual(retriedDraft);
+    if (kind === 'inbound') expect(retryKey).not.toBe(firstKey); // the fixture rejected the first intent with 400 before saving
     expect(state.posts.filter(post => post.path.includes('/label'))).toHaveLength(0);
     let warned = false; page.on('dialog', async dialog => { warned = true; await dialog.dismiss(); });
     await page.reload(); expect(warned).toBe(false); expect(state.errors).toEqual([]);

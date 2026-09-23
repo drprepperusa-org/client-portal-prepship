@@ -1396,6 +1396,12 @@ Owner: `toPortalInboundDto` over `inbound_shipments` + `inbound_items`. Route:
 `listPortalInboundReceipts` over the canonical inventory ledger; CP does not
 copy receipts into inbound tables or infer multi-SKU batches.
 
+New Inbound creation delegates to `createPortalInbound`: header, item rows and
+actor-scoped retry receipt commit in one transaction. The saved confirmation and
+Open shipment action use its persisted `PortalInbound` DTO (including the existing
+backend unit totals); they never claim draft values were saved. Replay rechecks
+current client scope. Private request keys/hashes do not enter customer DTOs.
+
 Receiving-history CSV (`GET /inbound/receipts?format=csv`) delegates to the same
 `listPortalInboundReceipts` owner in one read-only repeatable-read transaction.
 It exports every matching page with receipt ID, client label, SKU, item name,

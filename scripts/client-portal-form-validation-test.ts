@@ -63,6 +63,10 @@ const returnRoutes = loadFixtureModule(returnsPath, {
   './billing-date': {}, './external-label': {}, './shared': { buildReturnReference: async () => '101-RETURN' },
 }, readFileSync(returnsPath, 'utf8') + '\nexport { registerReturnCreateRoute };');
 const inboundRoutes = loadFixtureModule('src/routes/client-portal/inbound.ts', {
+  '../../services/portal-inbound-create': {
+    createPortalInbound: async (_scope: unknown, body: unknown) => { writes.push(body); return { data: { id: 900, clientId: null, items: [] }, replayed: false }; },
+    InboundCreateRejected: class extends Error {},
+  },
   '../../lib/client-portal/contracts/create-form-validation': contract,
   '../../db/client': { db }, '../../lib/client-portal/query-params': query, '../../lib/client-portal/scope': scope,
   '../../lib/client-portal/audit': audit, '../../lib/client-portal/dto': {}, '../../services/inventory-movement': {},

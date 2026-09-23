@@ -31,6 +31,7 @@ export default function Inbound() {
 
   const [clientFilter, setClientFilter] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<PortalInbound | null>(null);
+  const [confirmation, setConfirmation] = useState<{ scope: string; shipment: PortalInbound } | null>(null);
   const [receiptPageSize, setReceiptPageSize] = useState(50);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -50,6 +51,9 @@ export default function Inbound() {
   }, [searchParams, isAdmin, setSearchParams]);
 
   const effectiveClientId = clientFilter ?? globalClientId;
+  const confirmationScope = JSON.stringify([userId, effectiveClientId]);
+  const created = confirmation?.scope === confirmationScope ? confirmation.shipment : null;
+  useEffect(() => { setConfirmation(null); }, [confirmationScope]);
   const [receiptPage, setReceiptPage] = useFilteredPage(JSON.stringify([effectiveClientId]));
   const receiptSort = useTableSort(setReceiptPage);
   const query = useInbound(effectiveClientId);
@@ -94,6 +98,15 @@ export default function Inbound() {
         </div>
       </GlassPanel>
 
+      {created && (
+        <GlassPanel className="flex flex-wrap items-center justify-between gap-3 p-4" role="status">
+          <div><p className="font-semibold text-ink">Inbound saved</p><p className="text-sm text-ink-2">{created.reference ?? `Shipment #${created.id}`}</p></div>
+          <div className="flex gap-2">
+            <Button onClick={() => setSelected(created)}>Open shipment</Button>
+            <Button variant="secondary" onClick={() => setConfirmation(null)}>Dismiss</Button>
+          </div>
+        </GlassPanel>
+      )}
       <GlassPanel className="p-2 sm:p-3">
         <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -172,7 +185,8 @@ export default function Inbound() {
       </GlassPanel>
 
       <InboundDetailDrawer selected={selected} onClose={() => setSelected(null)} canReceiveInventory={canReceiveInventory} />
-      <InboundCreateModal open={modalOpen} onClose={() => setModalOpen(false)} clients={clients} />
+      <InboundCreateModal open={modalOpen} onClose={() => setModalOpen(false)} clients={clients}
+        onCreated={shipment => setConfirmation({ scope: confirmationScope, shipment })} />
       <InboundImportModal open={importOpen} onClose={() => setImportOpen(false)} clients={clients} />
       <ReceiveInventoryModal open={receiveOpen} onClose={() => setReceiveOpen(false)} clients={clients} />
     </div>

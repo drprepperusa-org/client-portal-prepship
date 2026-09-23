@@ -4,13 +4,14 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 
 /** Mount only for an open draft; closed forms must not register router blockers. */
-export function DraftModal({ dirty, saving, onClose, title, maxWidth, children }: {
+export function DraftModal({ dirty, saving, onClose, title, maxWidth, children, discardMessage }: {
   dirty: boolean;
   saving: boolean;
   onClose: () => void;
   title: string;
   maxWidth: number;
   children: (requestClose: () => void) => ReactNode;
+  discardMessage?: string;
 }) {
   const blocker = useBlocker(dirty || saving);
   const [closeRequested, setCloseRequested] = useState(false);
@@ -66,7 +67,7 @@ export function DraftModal({ dirty, saving, onClose, title, maxWidth, children }
     <Modal open onClose={requestClose} title={confirming ? 'Discard unsaved changes?' : title} maxWidth={maxWidth}>
       {confirming && (
         <div className="space-y-4">
-          <p className="text-sm text-ink-2">Your changes have not been saved. Keep editing to finish, or discard this draft.</p>
+          <p className="text-sm text-ink-2">{discardMessage ?? 'Your changes have not been saved. Keep editing to finish, or discard this draft.'}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button ref={keepButton} variant="secondary" onClick={keepEditing}>Keep editing</Button>
             <Button variant="danger" onClick={discard}>Discard changes</Button>

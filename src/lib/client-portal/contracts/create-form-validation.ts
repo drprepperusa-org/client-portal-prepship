@@ -70,6 +70,10 @@ export function validateInboundCreate(input: unknown): FormFieldErrors {
   const body = record(input);
   if (!body) return { form: 'Enter valid inbound details.' };
   const errors: FormFieldErrors = {};
+  if (body.idempotencyKey != null && (typeof body.idempotencyKey !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.idempotencyKey))) {
+    errors.form = 'This save request is invalid. Close and reopen the form.';
+  }
   if (body.clientId != null && (typeof body.clientId !== 'number' || !Number.isInteger(body.clientId) || body.clientId <= 0 || body.clientId > MAX_INTEGER)) {
     errors.clientId = 'Choose a valid client.';
   }

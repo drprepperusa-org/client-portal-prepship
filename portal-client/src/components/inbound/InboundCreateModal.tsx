@@ -1,6 +1,8 @@
 import { validateInboundCreate, CREATE_ITEMS_MAX } from '@client-portal-contracts/create-form-validation';
 import { useFieldValidation } from '@/components/ui/useFieldValidation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { NewInboundInput, PortalInbound } from '@client-portal-contracts/inbound';
+import type { ApiError } from '@/lib/api/transport';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { DraftModal } from '@/components/ui/DraftModal';
@@ -86,18 +88,21 @@ function DraftItemRow({
 }
 
 /** "New inbound" modal: draft form + line items, submits via the portal API. */
-type InboundCreateProps = { open: boolean; onClose: () => void; clients: PortalClientRow[] };
+type InboundCreateProps = { open: boolean; onClose: () => void; clients: PortalClientRow[]; onCreated?: (shipment: PortalInbound) => void };
 export function InboundCreateModal(props: InboundCreateProps) {
   const { userId } = useAuth();
   return props.open ? <InboundDraft key={userId} {...props} /> : null;
 }
 
-function InboundDraft({ onClose, clients }: InboundCreateProps) {
+function InboundDraft({ onClose, clients, onCreated }: InboundCreateProps) {
   const toast = useToast();
   const qc = useQueryClient();
   const { accessToken } = useAuth();
   const [draft, setDraft] = useState(emptyDraft());
   const [saving, setSaving] = useState(false);
+  const attempt = useRef<NewInboundInput | null>(null);
+  const sending = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
   const validation = useFieldValidation(validateInboundCreate(draft));
 
   const setField = (k: keyof Draft, v: unknown) => setDraft((d) => ({ ...d, [k]: v }) as Draft);
@@ -106,12 +111,14 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
   const removeItem = (i: number) => setDraft((d) => ({ ...d, items: d.items.filter((_, j) => j !== i) }));
 
   async function submitCreate() {
-    if (!accessToken || saving) return;
-    if (!validation.check()) return;
+    if (!accessToken || sending.current) return;
+    if (!attempt.current && !validation.check()) return;
     const selectedIndices = draft.items.flatMap((item, index) => item.sku.trim() || item.name.trim() ? [index] : []);
     setSaving(true);
+    sending.current = true;
     try {
-      await portalApi.createInbound(accessToken, {
+      attempt.current ??= {
+        idempotencyKey: crypto.randomUUID(),
         clientId: draft.clientId ? Number(draft.clientId) : undefined,
         reference: draft.reference || undefined,
         supplier: draft.supplier || undefined,
@@ -121,23 +128,37 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
         expectedDate: draft.expectedDate || undefined,
         notes: draft.notes || undefined,
         items: draft.items.filter((it) => it.sku.trim() || it.name.trim()).map((it) => ({ sku: it.sku.trim() || undefined, name: it.name.trim() || undefined, expectedQty: Number(it.expectedQty) || 0 })),
-      });
-      await qc.invalidateQueries({ queryKey: ['inbound'] });
-      toast.success('Inbound created', 'The receiving record was added.');
+      };
+      const result = await portalApi.createInbound(accessToken, attempt.current);
+      // A refresh failure cannot turn a committed create into a failed save.
+      void qc.invalidateQueries({ queryKey: ['inbound'] }).catch(() => {});
+      toast.success('Inbound saved', result.data.reference ?? `Shipment #${result.data.id}`);
+      if (Array.isArray(result.data.items)) onCreated?.(result.data);
       onClose();
-      setDraft(emptyDraft());
     } catch (err) {
+      const status = (err as ApiError)?.status;
+      // These responses are definitive rejections before persistence. Other failures may follow commit.
+      if (!uncertain && (status === 400 || status === 401 || status === 403 || status === 422)) {
+        attempt.current = null;
+        setUncertain(false);
+      } else setUncertain(true);
       validation.reject(err, selectedIndices);
     } finally {
+      sending.current = false;
       setSaving(false);
     }
   }
 
   return (
-    <DraftModal dirty={JSON.stringify(draft) !== JSON.stringify(emptyDraft())} saving={saving} onClose={onClose} title="New inbound shipment" maxWidth={640}>
+    <DraftModal dirty={uncertain || JSON.stringify(draft) !== JSON.stringify(emptyDraft())} saving={saving} onClose={onClose} title="New inbound shipment" maxWidth={640}
+      discardMessage={uncertain ? 'This shipment may already be saved. Keep editing and use Retry save to confirm it. Discarding closes this form but does not undo a saved shipment.' : undefined}>
       {(requestClose) => (
       <div ref={validation.ref} onChangeCapture={validation.changed} className="space-y-4">
         {validation.summary}
+        {uncertain && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-ink-2">
+          We could not confirm the save. Retry save checks the same request without creating a second shipment. Your original details are kept below.
+        </p>}
+        <fieldset disabled={uncertain} className="min-w-0 space-y-4">
         <p className="text-xs text-ink-3">Header fields are optional. For each quantity entered, add a SKU or item name. Expected quantities must be whole numbers of zero or more.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Labeled label="Client" feedback={validation.feedback('clientId')}>
@@ -186,9 +207,10 @@ function InboundDraft({ onClose, clients }: InboundCreateProps) {
         <Labeled label="Notes" feedback={validation.feedback('notes')}>
           <textarea {...validation.props('notes')} className={field + ' h-20 py-2'} value={draft.notes} onChange={(e) => setField('notes', e.target.value)} />
         </Labeled>
+        </fieldset>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={requestClose}>Cancel</Button>
-          <Button onClick={submitCreate} disabled={saving}>{saving ? 'Saving…' : 'Create inbound'}</Button>
+          <Button onClick={submitCreate} disabled={saving}>{saving ? 'Saving…' : uncertain ? 'Retry save' : 'Create inbound'}</Button>
         </div>
       </div>
       )}

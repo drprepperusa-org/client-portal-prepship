@@ -22,6 +22,7 @@ const { sql } = await import('../../src/db/client');
 for (const file of [
   'drizzle/0027_credential_accounts_source_of_truth.sql',
   'drizzle/0037_store_account_sync_state.sql',
+  'drizzle/0053_portal_inbound_create_requests.sql',
 ]) {
   await sql.file(file);
 }
