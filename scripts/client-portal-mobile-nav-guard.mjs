@@ -47,8 +47,11 @@ assert(
 assert(
   layout.includes('useDialogFocus(drawer') &&
     dialogFocus.includes("document.body.style.overflow = 'hidden'") &&
-    dialogFocus.includes('document.body.style.overflow = previousOverflow'),
-  'the shared dialog hook locks background scroll while the drawer is open and restores it on close',
+    dialogFocus.includes('if (!dialogs.length) unlockedOverflow = document.body.style.overflow') &&
+    dialogFocus.includes('dialogs.push(panel)') &&
+    dialogFocus.includes('dialogs.splice(index, 1)') &&
+    dialogFocus.includes('if (!dialogs.length) document.body.style.overflow = unlockedOverflow'),
+  'the shared dialog hook preserves the original scroll state and restores it only after the last dialog closes',
 );
 assert(
   !layout.includes('document.body.style.overflow'),

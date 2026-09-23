@@ -149,6 +149,7 @@ test('Escape protects return inside order drawer and restores focus after Keep e
   await expect(page.getByRole('textbox', { name: 'Reason', exact: true })).toBeFocused(); await retained(page, 'return');
   await page.keyboard.press('Escape'); await confirmation(page).getByRole('button', { name: 'Discard changes' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
   await expect(page.getByRole('button', { name: 'Start a return', exact: true })).toBeFocused();
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden'); expect(state.errors).toEqual([]);

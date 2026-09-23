@@ -19,3 +19,6 @@
 - Full-site certification passed: build/bundle, portal smoke, complete existing UI suite, shared modal/drawer accessibility and failure-state checks. Its environment-dependent pure guards used the same throwaway values as CI.
 - Hosted CI now includes the focused browser suite. Exact-SHA CI and deployment receipts recorded separately after push.
 - No backend, migration, provider or environment changes. No production business writes or real label operations. Rollback is a revert of this commit; drafts are memory-only.
+
+## Hosted guard alignment
+The first hosted run passed 187/188 guards. Mobile navigation's scroll-lock guard pinned the retired `previousOverflow` variable. Update it to require stack registration/removal and first-open/last-close preservation. The browser proof additionally checks that closing the return modal keeps scrolling locked while the order drawer remains open, and that closing the final drawer restores scrolling. Product code is unchanged in this follow-up.
