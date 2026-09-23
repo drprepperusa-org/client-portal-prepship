@@ -1,5 +1,8 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
+const dialogs: HTMLElement[] = [];
+let unlockedOverflow = '';
+
 const FOCUSABLE = [
   'a[href]',
   'button:not([disabled])',
@@ -11,7 +14,7 @@ const FOCUSABLE = [
 
 function focusableElements(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true',
+    (element) => !element.matches(':disabled') && !element.closest('[hidden], [aria-hidden="true"]') && element.getClientRects().length > 0,
   );
 }
 
@@ -28,16 +31,20 @@ export function useDialogFocus(
     if (!open) return;
 
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
+    const panel = containerRef.current;
+    if (!panel) return;
+    if (!dialogs.length) unlockedOverflow = document.body.style.overflow;
+    dialogs.push(panel);
     document.body.style.overflow = 'hidden';
 
     const focusFrame = window.requestAnimationFrame(() => {
       const container = containerRef.current;
-      if (!container) return;
+      if (!container || dialogs.at(-1) !== panel) return;
       (focusableElements(container)[0] ?? container).focus();
     });
 
     function onKeyDown(event: KeyboardEvent) {
+      if (dialogs.at(-1) !== panel) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         onCloseRef.current();
@@ -70,8 +77,11 @@ export function useDialogFocus(
     return () => {
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus();
+      const wasTop = dialogs.at(-1) === panel;
+      const index = dialogs.indexOf(panel);
+      if (index !== -1) dialogs.splice(index, 1);
+      if (!dialogs.length) document.body.style.overflow = unlockedOverflow;
+      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
     };
   }, [containerRef, open]);
 }

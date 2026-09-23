@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Undo2 } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
+import { DraftModal } from '@/components/ui/DraftModal';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
@@ -21,17 +21,19 @@ import { field, Labeled } from '@/components/inbound/shared';
  * CP-045 keeps the Gardena return address fixed. The recipient/attention name
  * is editable and persisted by the backend before label purchase.
  */
-export function ReturnCreateModal({
-  open,
-  orderId,
-  onClose,
-  onCreated,
-}: {
+type ReturnCreateProps = {
   open: boolean;
   orderId: number | null;
   onClose: () => void;
   onCreated?: (returnId: number) => void;
-}) {
+};
+
+export function ReturnCreateModal(props: ReturnCreateProps) {
+  const { userId } = useAuth();
+  return props.open ? <ReturnDraft key={`${userId}:${props.orderId}`} {...props} /> : null;
+}
+
+function ReturnDraft({ open, orderId, onClose, onCreated }: ReturnCreateProps) {
   const toast = useToast();
   const qc = useQueryClient();
   const { accessToken } = useAuth();
@@ -44,14 +46,19 @@ export function ReturnCreateModal({
   const [qtys, setQtys] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
 
-  // Reset the draft whenever a new order's modal opens.
+  const initialized = useRef(false);
+  const [initialRecipient, setInitialRecipient] = useState('');
+  // The first successful order response supplies the default once per open draft.
+  // Background refetches must never erase the user's reason or quantities.
   useEffect(() => {
-    if (open) {
-      setReason('');
-      setQtys({});
-      setReturnRecipientName(order.data?.data.clientName?.trim() ?? '');
+    if (!initialized.current && order.data?.data) {
+      initialized.current = true;
+      const name = order.data.data.clientName?.trim() ?? '';
+      setInitialRecipient(name);
+      setReturnRecipientName(name);
     }
-  }, [open, orderId, order.data?.data.clientName]);
+  }, [order.data]);
+  const dirty = reason !== '' || Object.values(qtys).some((value) => value !== '') || returnRecipientName !== initialRecipient;
 
   const selectedCount = useMemo(
     () => Object.values(qtys).filter((v) => Number(v) > 0).length,
@@ -164,7 +171,8 @@ export function ReturnCreateModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Start a return" maxWidth={620}>
+    <DraftModal dirty={dirty} saving={saving} onClose={onClose} title="Start a return" maxWidth={620}>
+      {(requestClose) => <>
       {order.isLoading ? (
         <p className="text-sm text-ink-3">Loading order…</p>
       ) : order.isError || !order.data?.data ? (
@@ -245,10 +253,10 @@ export function ReturnCreateModal({
             />
           </Labeled>
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <span className="text-xs text-ink-3">{selectedCount} item{selectedCount === 1 ? '' : 's'} selected</span>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={requestClose}>Cancel</Button>
               {/* AC-1: the third action. Deliberately a secondary button — buying a
                   label stays the default, so no existing habit silently changes. */}
               <Button
@@ -265,6 +273,7 @@ export function ReturnCreateModal({
           </div>
         </div>
       )}
-    </Modal>
+      </>}
+    </DraftModal>
   );
 }

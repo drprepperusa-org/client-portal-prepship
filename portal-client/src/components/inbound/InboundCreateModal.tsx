@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
+import { DraftModal } from '@/components/ui/DraftModal';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
@@ -71,7 +71,13 @@ function DraftItemRow({
 }
 
 /** "New inbound" modal: draft form + line items, submits via the portal API. */
-export function InboundCreateModal({ open, onClose, clients }: { open: boolean; onClose: () => void; clients: PortalClientRow[] }) {
+type InboundCreateProps = { open: boolean; onClose: () => void; clients: PortalClientRow[] };
+export function InboundCreateModal(props: InboundCreateProps) {
+  const { userId } = useAuth();
+  return props.open ? <InboundDraft key={userId} {...props} /> : null;
+}
+
+function InboundDraft({ onClose, clients }: InboundCreateProps) {
   const toast = useToast();
   const qc = useQueryClient();
   const { accessToken } = useAuth();
@@ -110,7 +116,8 @@ export function InboundCreateModal({ open, onClose, clients }: { open: boolean; 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New inbound shipment" maxWidth={640}>
+    <DraftModal dirty={JSON.stringify(draft) !== JSON.stringify(emptyDraft())} saving={saving} onClose={onClose} title="New inbound shipment" maxWidth={640}>
+      {(requestClose) => (
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Labeled label="Client">
@@ -146,10 +153,11 @@ export function InboundCreateModal({ open, onClose, clients }: { open: boolean; 
         </div>
         <Labeled label="Notes"><textarea className={field + ' h-20 py-2'} value={draft.notes} onChange={(e) => setField('notes', e.target.value)} /></Labeled>
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={requestClose}>Cancel</Button>
           <Button onClick={submitCreate} disabled={saving}>{saving ? 'Saving…' : 'Create inbound'}</Button>
         </div>
       </div>
-    </Modal>
+      )}
+    </DraftModal>
   );
 }

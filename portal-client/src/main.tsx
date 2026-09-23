@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { ToastProvider } from './components/ui/Toast';
@@ -52,20 +52,24 @@ window.addEventListener('load', () => {
   window.setTimeout(() => sessionStorage.removeItem(RELOAD_FLAG), 5_000);
 });
 
+// Keep the existing route tree while enabling supported navigation blockers.
+const router = createBrowserRouter([{
+  path: '*',
+  element: (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <PortalFiltersProvider>
+          <ToastProvider>
+            <ChunkErrorBoundary><App /></ChunkErrorBoundary>
+          </ToastProvider>
+        </PortalFiltersProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  ),
+}]);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <PortalFiltersProvider>
-            <ToastProvider>
-              <ChunkErrorBoundary>
-                <App />
-              </ChunkErrorBoundary>
-            </ToastProvider>
-          </PortalFiltersProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    </BrowserRouter>
+    <RouterProvider router={router} />
   </React.StrictMode>,
 );
