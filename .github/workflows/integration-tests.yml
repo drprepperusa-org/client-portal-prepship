@@ -91,7 +91,7 @@ jobs:
         run: npm run test:client-portal-orders-export:integration
       - name: Verify inbound CSV preview, validation and retry-safe atomic import
         run: npm run test:client-portal-inbound-import:integration
-      - name: Verify inbound receiving validation and atomic inventory movements
+      - name: Verify inbound receiving preview, validation and atomic inventory movements
         run: npm run test:client-portal-inbound-receive:integration
       - name: Verify inbound search, status, pagination and scope
         run: npm run test:client-portal-inbound-search:integration

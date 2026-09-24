@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import { previewPortalInboundImport, importPortalInbound, InboundImportRejected } from '../../services/portal-inbound-import';
 import { INBOUND_IMPORT_MAX_CHARS } from '../../lib/client-portal/contracts/inbound-import';
 import { receivePortalInbound, InboundReceiveRejected } from '../../services/portal-inbound-receive';
+import { previewPortalInboundReceive } from '../../services/portal-inbound-receive-plan';
 import { validateInboundReceive } from '../../lib/client-portal/contracts/inbound-receive-validation';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
 import { isClientPortalScope } from '../../lib/client-portal/scope';
@@ -112,6 +113,21 @@ app.post('/inbound', async (c) => {
 });
 
 // Validate the request; the receiving owner checks membership, scope and persistence.
+app.post('/inbound/:id{[0-9]+}/receive/preview', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) return c.json({ error: 'Admin access required' }, 403);
+  c.header('Cache-Control', 'private, no-store');
+  const body = await c.req.json().catch(() => null);
+  const fieldErrors = validateInboundReceive(body);
+  if (Object.keys(fieldErrors).length) return c.json({ error: 'Check the highlighted fields.', fieldErrors }, 400);
+  try {
+    return c.json({ data: await previewPortalInboundReceive(scope, Number(c.req.param('id')), body) });
+  } catch (error) {
+    if (error instanceof InboundReceiveRejected) return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
 app.patch('/inbound/:id{[0-9]+}/receive', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;

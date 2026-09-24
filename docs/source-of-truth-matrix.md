@@ -1414,9 +1414,21 @@ rejects invalid quantities before persistence. The service locks the header,
 checks client scope, status and exact item membership, then saves quantities and
 canonical inventory movements atomically. Already received/cancelled shipments
 cannot be written again. Inventory additions require an assigned client and an
-unambiguous SKU match; unmatched rows are explicit in the response. The protected
+unambiguous SKU match; positive unmatched rows block inventory-enabled receiving. The protected
 worksheet keeps failed drafts and refreshes inbound receipts and inventory after
 success; a later read failure cannot be presented as a failed receive.
+
+`planPortalInboundReceive` owns the shared read-only preview and locked commit
+plan. `InboundReceivePreview` exposes canonical expected quantities, entered
+receiving intent, difference (entered minus expected), shortage/extra/exact status,
+same-client case-insensitive SKU match status and planned inventory additions.
+Totals sum those plan rows; they are not stock balances. The event clock is the
+preview database snapshot until the receipt commits. React renders these fields
+without recalculating matches or quantities. Edits invalidate the preview, and
+confirmation rebuilds it under shipment/item and matched-inventory locks. Its
+fingerprint pins source identities and intent; scope and status are independently
+rechecked. Missing/duplicate positive matches block the whole inventory-enabled
+receipt; explicitly disabling inventory additions plans zero movements.
 
 Inbound CSV preview delegates to `parseInboundImport` using database clients
 within the caller's explicit client scope. CSV rows are draft intent; their

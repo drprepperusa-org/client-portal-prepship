@@ -1,4 +1,5 @@
 import type { InboundImportInput, InboundImportPreview, InboundImportResult } from '@client-portal-contracts/inbound-import';
+import type { InboundReceiveConfirmation, InboundReceivePreview } from '@client-portal-contracts/inbound-receive-preview';
 import type { RequestAuth } from '../transport';
 import type { ListOpts, Paginated } from '@client-portal-contracts/common';
 import type {
@@ -35,10 +36,12 @@ export const inboundApi = {
     apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),
   createInbound: (token: RequestAuth, body: NewInboundInput) =>
     apiPost<{ data: PortalInbound; replayed: boolean }>(token, '/api/client-portal/inbound', body),
+  previewInboundReceive: (token: RequestAuth, id: number, body: InboundReceiveInput) =>
+    apiPost<{ data: InboundReceivePreview }>(token, `/api/client-portal/inbound/${id}/receive/preview`, body),
   receiveInbound: (
     token: RequestAuth,
     id: number,
-    body: InboundReceiveInput,
+    body: InboundReceiveConfirmation,
   ) =>
     apiPatch<{
       data: { id: number; status: string; bumps: Array<{ sku: string; qty: number; matched: boolean }> };
