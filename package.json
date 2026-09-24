@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-inbound-import:integration": "tsx scripts/integration/client-portal-inbound-import.integration.ts",
     "test:client-portal-inbound-receive:integration": "tsx scripts/integration/client-portal-inbound-receive.integration.ts",
     "test:client-portal-inbound-search:integration": "tsx scripts/integration/client-portal-inbound-search.integration.ts",
     "test:client-portal-inbound-create:integration": "tsx scripts/integration/client-portal-inbound-create.integration.ts",

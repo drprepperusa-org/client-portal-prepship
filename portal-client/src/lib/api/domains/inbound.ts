@@ -1,3 +1,4 @@
+import type { InboundImportInput, InboundImportPreview, InboundImportResult } from '@client-portal-contracts/inbound-import';
 import type { RequestAuth } from '../transport';
 import type { ListOpts, Paginated } from '@client-portal-contracts/common';
 import type {
@@ -42,10 +43,8 @@ export const inboundApi = {
     apiPatch<{
       data: { id: number; status: string; bumps: Array<{ sku: string; qty: number; matched: boolean }> };
     }>(token, `/api/client-portal/inbound/${id}/receive`, body),
-  importInbound: (token: RequestAuth, shipments: NewInboundInput[]) =>
-    apiPost<{ data: { created: number; itemsCreated: number; skipped: number } }>(
-      token,
-      '/api/client-portal/inbound/import',
-      { shipments },
-    ),
+  previewInboundImport: (token: RequestAuth, csv: string) =>
+    apiPost<{ data: InboundImportPreview }>(token, '/api/client-portal/inbound/import/preview', { csv }),
+  importInbound: (token: RequestAuth, input: InboundImportInput) =>
+    apiPost<{ data: InboundImportResult }>(token, '/api/client-portal/inbound/import', input, 120000),
 };

@@ -54,7 +54,7 @@ jobs:
         run: npm run build:web
 
       - name: Unsaved return and inbound drafts, navigation and save recovery browser proof
-        run: npx playwright test web/e2e/client-portal-unsaved-forms.spec.js web/e2e/client-portal-form-validation.spec.js web/e2e/client-portal-inbound-create.spec.js web/e2e/client-portal-inbound-search.spec.js web/e2e/client-portal-inbound-receive.spec.js --workers=1
+        run: npx playwright test web/e2e/client-portal-unsaved-forms.spec.js web/e2e/client-portal-form-validation.spec.js web/e2e/client-portal-inbound-create.spec.js web/e2e/client-portal-inbound-search.spec.js web/e2e/client-portal-inbound-receive.spec.js web/e2e/client-portal-inbound-import.spec.js --workers=1
 
       - name: Saved filter views, scope, persistence and storage failure browser proof
         run: npx playwright test web/e2e/client-portal-saved-views.spec.js --workers=1

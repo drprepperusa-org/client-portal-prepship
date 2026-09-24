@@ -1418,6 +1418,16 @@ unambiguous SKU match; unmatched rows are explicit in the response. The protecte
 worksheet keeps failed drafts and refreshes inbound receipts and inventory after
 success; a later read failure cannot be presented as a failed receive.
 
+Inbound CSV preview delegates to `parseInboundImport` using database clients
+within the caller's explicit client scope. CSV rows are draft intent; their
+validation, grouping, normalized status and preview counts are backend-owned.
+`importPortalInbound` checks the current preview fingerprint and commits the
+whole batch with durable actor-scoped receipts in the existing private create
+request table. A batch-specific hash prevents altered retries; replay checks
+current shipment scope and deletion. React only presents row feedback, paginates
+preview rows, and sends the immutable CSV/fingerprint/key. It never decides
+which invalid rows to skip or invents persisted import counts.
+
 Receiving-history CSV (`GET /inbound/receipts?format=csv`) delegates to the same
 `listPortalInboundReceipts` owner in one read-only repeatable-read transaction.
 It exports every matching page with receipt ID, client label, SKU, item name,

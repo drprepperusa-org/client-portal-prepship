@@ -217,7 +217,7 @@ export default function Inbound() {
       <InboundDetailDrawer selected={selected} onClose={() => setSelected(null)} canReceiveInventory={canReceiveInventory} />
       <InboundCreateModal open={modalOpen} onClose={() => setModalOpen(false)} clients={clients}
         onCreated={shipment => setConfirmation({ scope: confirmationScope, shipment })} />
-      <InboundImportModal open={importOpen} onClose={() => setImportOpen(false)} clients={clients} />
+      <InboundImportModal open={importOpen} onClose={() => setImportOpen(false)} />
       <ReceiveInventoryModal open={receiveOpen} onClose={() => setReceiveOpen(false)} clients={clients} />
     </div>
   );

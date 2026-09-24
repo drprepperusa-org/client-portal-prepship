@@ -7,8 +7,8 @@ import { exportPortalInboundReceipts, InboundReceiptExportTooLarge } from '../..
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
 // aggregator), so these relative paths keep their /api/client-portal/* surface.
 import { Hono } from 'hono';
-import { db } from '../../db/client';
-import { inboundShipments, inboundItems } from '../../db/schema/inbound';
+import { previewPortalInboundImport, importPortalInbound, InboundImportRejected } from '../../services/portal-inbound-import';
+import { INBOUND_IMPORT_MAX_CHARS } from '../../lib/client-portal/contracts/inbound-import';
 import { receivePortalInbound, InboundReceiveRejected } from '../../services/portal-inbound-receive';
 import { validateInboundReceive } from '../../lib/client-portal/contracts/inbound-receive-validation';
 import { recordPortalAudit } from '../../lib/client-portal/audit';
@@ -129,75 +129,35 @@ app.patch('/inbound/:id{[0-9]+}/receive', async (c) => {
   }
 });
 
-// Bulk import inbound shipments (CSV/feed). Each shipment is created with its
-// line items. Out-of-scope client rows are skipped, not rejected. Admin-only.
+const importPreviewQuery = z.object({ csv: z.string().max(INBOUND_IMPORT_MAX_CHARS) });
+const importQuery = importPreviewQuery.extend({ idempotencyKey: z.string().uuid(), fingerprint: z.string().regex(/^[0-9a-f]{64}$/) });
+app.post('/inbound/import/preview', async (c) => {
+  const scope = scopeOrResponse(c);
+  if (!isClientPortalScope(scope)) return scope;
+  c.header('Cache-Control', 'private, no-store');
+  const parsed = importPreviewQuery.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Paste a CSV of 1 MiB or smaller.' }, 400);
+  try {
+    const data = await previewPortalInboundImport(scope, parsed.data.csv);
+    return c.json({ data });
+  } catch (error) {
+    if (error instanceof InboundImportRejected) return c.json({ error: error.message }, error.status);
+    throw error;
+  }
+});
 app.post('/inbound/import', async (c) => {
   const scope = scopeOrResponse(c);
   if (!isClientPortalScope(scope)) return scope;
-  if (!scope.isGlobal && !scope.permissions.includes('settings:write')) {
-    return c.json({ error: 'Admin access required' }, 403);
+  const parsed = importQuery.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Preview the CSV before importing. An import request key is required.' }, 400);
+  try {
+    const data = await importPortalInbound(scope, parsed.data);
+    if (!data.replayed) await recordPortalAudit('portal.inbound.import', scope, { created: data.created, itemsCreated: data.itemsCreated, skipped: 0 });
+    return c.json({ data }, data.replayed ? 200 : 201);
+  } catch (error) {
+    if (error instanceof InboundImportRejected) return c.json({ error: error.message }, error.status);
+    throw error;
   }
-  const body = (await c.req.json().catch(() => ({}))) as {
-    shipments?: Array<{
-      clientId?: number;
-      reference?: string;
-      supplier?: string;
-      status?: string;
-      carrier?: string;
-      trackingNumber?: string;
-      expectedDate?: string;
-      notes?: string;
-      items?: Array<{ sku?: string; name?: string; expectedQty?: number }>;
-    }>;
-  };
-  const shipments = Array.isArray(body.shipments) ? body.shipments.slice(0, 500) : [];
-  if (!shipments.length) return c.json({ error: 'No rows to import' }, 400);
-
-  let created = 0;
-  let itemsCreated = 0;
-  let skipped = 0;
-  for (const s of shipments) {
-    const clientId = typeof s.clientId === 'number' ? s.clientId : null;
-    if (!scope.isGlobal && clientId != null && !scope.clientIds.includes(clientId)) {
-      skipped++;
-      continue;
-    }
-    const status = ['expected', 'in_transit', 'received', 'cancelled'].includes(s.status ?? '')
-      ? (s.status as string)
-      : 'expected';
-    const [head] = await db
-      .insert(inboundShipments)
-      .values({
-        clientId,
-        reference: s.reference?.trim() || null,
-        supplier: s.supplier?.trim() || null,
-        status,
-        carrier: s.carrier?.trim() || null,
-        trackingNumber: s.trackingNumber?.trim() || null,
-        expectedDate: s.expectedDate ? new Date(s.expectedDate) : null,
-        notes: s.notes?.trim() || null,
-        updatedAt: new Date(),
-      })
-      .returning();
-    created++;
-    const its = (Array.isArray(s.items) ? s.items : [])
-      .filter((it) => (it?.sku ?? '').trim() || (it?.name ?? '').trim())
-      .slice(0, 200)
-      .map((it) => ({
-        inboundId: head!.id,
-        sku: it.sku?.trim() || null,
-        name: it.name?.trim() || null,
-        expectedQty: Number(it.expectedQty) || 0,
-        receivedQty: 0,
-      }));
-    if (its.length) {
-      await db.insert(inboundItems).values(its);
-      itemsCreated += its.length;
-    }
-  }
-
-  await recordPortalAudit('portal.inbound.import', scope, { created, itemsCreated, skipped });
-  return c.json({ data: { created, itemsCreated, skipped } }, 201);
 });
 
 export default app;
