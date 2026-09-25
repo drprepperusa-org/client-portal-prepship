@@ -50,7 +50,7 @@ const dashboard = {
     cancelledOrders: metric(0), shipmentsCreated: metric(5), unitsPerOrder: 23 / 11 }],
 };
 
-async function setup(page, { hidden = [], empty = false } = {}) {
+async function setup(page, { hidden = [], empty = false, analysisEmpty = false } = {}) {
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
   const user = { id: 'dashboard-loading', aud: 'authenticated', role: 'authenticated', email: 'fixture@example.test',
     app_metadata: { role: 'admin', permissions: ['scope:global'] }, user_metadata: {} };
@@ -65,7 +65,9 @@ async function setup(page, { hidden = [], empty = false } = {}) {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith('/api/client-portal/')) {
       requests.push(url.pathname);
-      const body = url.pathname.endsWith('/dashboard') ? { ...dashboard, ...(empty ? { daily: [] } : {}) } :
+      const body = url.pathname.endsWith('/analysis') ? analysisFixture(analysisEmpty) :
+        url.pathname.endsWith('/analysis/sku-orders') ? skuFixture :
+        url.pathname.endsWith('/dashboard') ? { ...dashboard, ...(empty ? { daily: [] } : {}) } :
         url.pathname.endsWith('/me') ? { ...user, isAdmin: true, isGlobal: true, isRestricted: false,
           canViewFinancials: true, canCustomizeTables: true, clientIds: [], storeIds: [] } :
         url.pathname.endsWith('/clients') ? { data: [{ id: 1, name: 'Alpha' }] } :
@@ -77,6 +79,80 @@ async function setup(page, { hidden = [], empty = false } = {}) {
   });
   return requests;
 }
+
+const analysisBaseline = process.env.ANALYSIS_PERF_BASELINE === '1';
+const sku = { sku: 'ANALYSIS-SKU', name: 'Analysis fixture item', inv_sku_id: 1, client_id: 1,
+  client_name: 'Alpha', orders: 4, pending: 0, total_qty: 23, total_revenue: '100', daily_qty: [23] };
+const analysisFixture = empty => ({ data: empty ? [] : [sku], topSkus: empty ? [] : [sku],
+  dateBuckets: ['2026-09-17'], totalSkus: empty ? 0 : 1, totalOrders: empty ? 0 : 4,
+  totalUnits: empty ? 0 : 23, totalRevenue: empty ? 0 : 100, orderCombinations: [],
+  pagination: { page: 1, pageSize: 50, total: empty ? 0 : 1, totalPages: 1 } });
+const skuFixture = { sku: sku.sku, totalUnits: 23, averageUnitsPerDay: 23,
+  avgShippingStandard: '2', avgShippingExpedited: '0', dailySales: [{ day: '2026-09-17', units: 23 }],
+  orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 } };
+
+test('Analysis data, search and SKU details do not wait for charts', async ({ page }, info) => {
+  const requests = await setup(page);
+  let held;
+  await page.route('**/assets/charts-*.js', route => { held = route; });
+  await page.goto('/analysis', { waitUntil: 'commit' });
+  await expect.poll(() => Boolean(held)).toBe(true);
+  const search = page.getByRole('textbox', { name: 'Search Analysis SKUs' });
+  const row = page.getByRole('button', { name: 'View SKU details for ANALYSIS-SKU', exact: true });
+  if (analysisBaseline) await page.waitForTimeout(1000);
+  else await expect(row).toBeVisible();
+  const result = { searchVisibleBeforeChartRelease: await search.isVisible(),
+    analysisRequestedBeforeChartRelease: requests.includes('/api/client-portal/analysis') };
+  console.log(JSON.stringify(result));
+  await info.attach('analysis-chart-dependency', { body: JSON.stringify(result), contentType: 'application/json' });
+  expect(result.searchVisibleBeforeChartRelease).toBe(!analysisBaseline);
+  expect(result.analysisRequestedBeforeChartRelease).toBe(!analysisBaseline);
+  if (!analysisBaseline) {
+    await row.click();
+    const drawer = page.getByRole('dialog', { name: sku.name, exact: true });
+    await expect(drawer.getByText('Avg std shipping', { exact: true })).toBeVisible();
+    await expect(drawer.getByText('$2.00', { exact: true })).toBeVisible();
+    expect(requests).toContain('/api/client-portal/analysis/sku-orders');
+    await page.getByRole('button', { name: 'Close panel', exact: true }).click();
+  }
+  await held.continue();
+  const trend = page.getByRole('figure', { name: 'Daily units sold for top SKUs', exact: true });
+  await expect(trend).toBeVisible();
+  await trend.getByText('View chart data', { exact: true }).click();
+  await expect(trend.getByRole('cell', { name: '23', exact: true })).toBeVisible();
+  await row.click();
+  const chart = page.getByRole('figure', { name: 'Units sold for selected SKU', exact: true });
+  await expect(chart).toBeVisible();
+  await chart.getByText('View chart data', { exact: true }).click();
+  await expect(chart.getByRole('cell', { name: '23', exact: true })).toBeVisible();
+});
+
+test('empty Analysis does not download chart code', async ({ page }) => {
+  await setup(page, { analysisEmpty: true });
+  const charts = [];
+  page.on('request', request => { if (/\/assets\/charts-[^/]+\.js/.test(request.url())) charts.push(request.url()); });
+  await page.goto('/analysis', { waitUntil: 'networkidle' });
+  await expect(page.getByText('No sales data', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Search Analysis SKUs' })).toBeVisible();
+  console.log(JSON.stringify({ analysisEmptyChartRequests: charts.length }));
+  expect(charts).toHaveLength(analysisBaseline ? 1 : 0);
+});
+
+test('failed chart download on Analysis preserves the table and recovers on reload', async ({ page }) => {
+  test.skip(analysisBaseline, 'The baseline has no isolated Analysis chart boundary');
+  await setup(page);
+  let fail = true;
+  await page.route('**/assets/charts-*.js', route => fail ? route.abort() : route.continue());
+  await page.goto('/analysis', { waitUntil: 'commit' });
+  await expect(page.getByRole('alert').first()).toContainText('Chart could not load');
+  await expect(page.getByRole('button', { name: 'View SKU details for ANALYSIS-SKU', exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Search Analysis SKUs' }).fill('ANALYSIS');
+  await expect(page.getByRole('textbox', { name: 'Search Analysis SKUs' })).toHaveValue('ANALYSIS');
+  fail = false;
+  await page.getByRole('button', { name: 'Reload chart', exact: true }).first().click();
+  await expect(page.getByRole('figure', { name: 'Daily units sold for top SKUs', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
 
 test('KPI data and controls do not wait for the chart library', async ({ page }, info) => {
   const requests = await setup(page);

@@ -14,7 +14,7 @@ export class DeferredChart extends Component<{ children: ReactNode; height?: num
     if (this.state.failed) {
       return (
         <div role="alert" className="grid place-content-center gap-2 text-center text-sm text-ink-3" style={{ minHeight: height }}>
-          <p>Chart could not load. Your other dashboard data is still available.</p>
+          <p>Chart could not load. Your other page data is still available.</p>
           <button type="button" className="focus-ring rounded-lg px-3 py-2 font-semibold text-brand-700" onClick={() => window.location.reload()}>
             Reload chart
           </button>
