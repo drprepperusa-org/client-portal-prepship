@@ -3,9 +3,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useDebounced } from '@/lib/useDebounced';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 import type { SortState } from '@/components/ui/data-table/types';
-import { useMemo, useState } from 'react';
+import { lazy, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp, Boxes, DollarSign, Package, Inbox } from 'lucide-react';
 import { Thumb } from '@/components/ui/Thumb';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
@@ -16,8 +15,7 @@ import { TableUpdateStatus } from '@/components/ui/TableUpdateStatus';
 import { QueryState } from '@/components/ui/QueryState';
 import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
-import { TopSkuTrendChart } from '@/components/charts/Charts';
-import { ChartDataTable } from '@/components/charts/ChartAccessibility';
+import { DeferredChart } from '@/components/charts/DeferredChart';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { OrderDetailLoader } from '@/components/OrderDetailLoader';
 import { staggerContainer } from '@/lib/motion';
@@ -25,7 +23,10 @@ import { useAnalysis, useCanCustomizeTables, useSkuOrders } from '@/lib/hooks';
 import { usePortalFilters } from '@/lib/portalContext';
 import { money, shortDate, orderStatusMeta } from '@/lib/status';
 import type { AnalysisOrderCombination, AnalysisSkuRow, SkuOrdersResult } from '@/lib/api';
-import { CHART_THEME } from '@/lib/accents';
+
+// Chart downloads must not block the Analysis request, table, or SKU details.
+const TopSkuTrendChart = lazy(() => import('@/components/charts/Charts').then(module => ({ default: module.TopSkuTrendChart })));
+const SkuSalesChart = lazy(() => import('@/components/charts/SkuSalesChart'));
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 const TOP_N = 5;
@@ -181,7 +182,9 @@ function AnalysisView() {
           {loading ? (
             <Skeleton className="h-[260px]" />
           ) : topSkus.length ? (
-            <TopSkuTrendChart data={trendData} skus={topSkus} />
+            <DeferredChart>
+              <TopSkuTrendChart data={trendData} skus={topSkus} />
+            </DeferredChart>
           ) : (
             <EmptyState
               icon={<Inbox size={24} />}
@@ -364,41 +367,9 @@ function SkuPanel({ row, onOpenOrder }: { row: AnalysisSkuRow; onOpenOrder: (id:
       <div className="rounded-glass-sm bg-white/60 p-4 ring-1 ring-slate-200/70">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Units sold — selected {days} days</p>
         {chart.length ? (
-          <figure aria-label="Units sold for selected SKU">
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart
-                data={chart}
-                accessibilityLayer
-                margin={{ top: 8, right: 4, left: -24, bottom: 0 }}
-              >
-                <XAxis
-                  dataKey="day"
-                  tick={{ fontSize: 10, fill: CHART_THEME.axis }}
-                  interval="preserveStartEnd"
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgb(var(--brand-rgb) / 0.06)' }}
-                  contentStyle={{
-                    borderRadius: 12,
-                    border: `1px solid ${CHART_THEME.tooltipBorder}`,
-                    background: CHART_THEME.tooltipBackground,
-                    fontSize: 12,
-                  }}
-                />
-                <Bar dataKey="units" fill={CHART_THEME.brand} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <ChartDataTable
-              title="Units sold for selected SKU"
-              rows={chart}
-              columns={[
-                { key: 'day', label: 'Day', render: (point) => point.day },
-                { key: 'units', label: 'Units', render: (point) => point.units.toLocaleString() },
-              ]}
-            />
-          </figure>
+          <DeferredChart height={160}>
+            <SkuSalesChart data={chart} />
+          </DeferredChart>
         ) : (
           <p className="py-6 text-center text-sm text-ink-3">No sales in this window.</p>
         )}
