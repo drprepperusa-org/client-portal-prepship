@@ -677,10 +677,17 @@ test('modal and drawer trap focus, close with Escape, and restore focus', async 
 
   await page.goto(`${baseUrl}/inbound`);
   const openModal = page.getByRole('button', { name: 'New inbound' });
+  const layoutLeftBeforeModal = await page.locator('#portal-main').evaluate((node) =>
+    node.parentElement?.parentElement?.getBoundingClientRect().left,
+  );
   await openModal.focus();
   await openModal.click();
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible();
+  const layoutLeftWithModal = await page.locator('#portal-main').evaluate((node) =>
+    node.parentElement?.parentElement?.getBoundingClientRect().left,
+  );
+  expect(layoutLeftWithModal).toBe(layoutLeftBeforeModal);
   await expect(modal).toHaveAttribute('aria-labelledby', /.+/);
   await expect(page.getByRole('button', { name: 'Close' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');

@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 
 const dialogs: HTMLElement[] = [];
 let unlockedOverflow = '';
+let unlockedPaddingRight = '';
 
 const FOCUSABLE = [
   'a[href]',
@@ -34,6 +35,14 @@ export function useDialogFocus(
     const panel = containerRef.current;
     if (!panel) return;
     if (!dialogs.length) unlockedOverflow = document.body.style.overflow;
+    if (!dialogs.length) {
+      unlockedPaddingRight = document.body.style.paddingRight;
+      const bodyPaddingRight = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${bodyPaddingRight + scrollbarWidth}px`;
+      }
+    }
     dialogs.push(panel);
     document.body.style.overflow = 'hidden';
 
@@ -81,6 +90,7 @@ export function useDialogFocus(
       const index = dialogs.indexOf(panel);
       if (index !== -1) dialogs.splice(index, 1);
       if (!dialogs.length) document.body.style.overflow = unlockedOverflow;
+      if (!dialogs.length) document.body.style.paddingRight = unlockedPaddingRight;
       if (wasTop && previousFocus?.isConnected) previousFocus.focus();
     };
   }, [containerRef, open]);
