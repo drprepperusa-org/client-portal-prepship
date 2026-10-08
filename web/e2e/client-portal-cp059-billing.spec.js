@@ -10,6 +10,7 @@
  * surface that has nothing to do with either.
  */
 import { expect, test } from '@playwright/test';
+import { renderPortalInvoiceHtml } from '../../src/lib/client-portal/invoice-html';
 
 const baseUrl = 'http://127.0.0.1:5177';
 const storageKey = 'sb-portal-e2e-auth-token';
@@ -244,6 +245,81 @@ test('billing sorting keeps existing rows and count visible until the server res
   const references = page.getByRole('cell').filter({ hasText: /^SORT-[AB]$/ });
   await expect(references).toHaveText(['SORT-B', 'SORT-A']);
   await expect(firstRow).toContainText('$8.60');
+});
+
+test('Customs/Duties matches backend amounts in periods and line items and delegates sorting', async ({ page }) => {
+  const errors = await setupBilling(page, [
+    canonical({ orderId: 3410, orderNumber: '3410', displayReference: '3410', destination: 'International',
+      customsDutiesTotal: 3.49, hasCustomsDutiesLine: true, rowTotal: 28.81 }),
+    canonical({ orderId: 3411, orderNumber: '3411', displayReference: '3411', destination: 'International',
+      customsDutiesTotal: 0, hasCustomsDutiesLine: true, rowTotal: 25.32 }),
+    canonical({ orderId: 3412, orderNumber: '3412', displayReference: '3412', destination: 'International',
+      customsDutiesTotal: 0, hasCustomsDutiesLine: false, rowTotal: 25.32 }),
+    canonical({ orderId: 3413, orderNumber: '3413', displayReference: '3413', destination: 'International',
+      customsDutiesTotal: 0, hasCustomsDutiesLine: true, rowTotal: 0 }),
+  ]);
+  // Full-period totals deliberately differ from this page's rows. The UI must render the
+  // API's own totals and must never add duties again to rowTotal.
+  await page.route('**/api/client-portal/invoice-summary?**', route => route.fulfill({ json: {
+    data: [{ clientId: 1, clientName: 'Acme', periodStart: '2026-08-01', periodEnd: '2026-08-31',
+      orders: 25, customsDutiesTotal: 99, rowTotal: 124.32 }],
+    totals: { orders: 25, customsDutiesTotal: 99, rowTotal: 124.32 }, billingVisible: true,
+  } }));
+  await page.goto(`${baseUrl}/billing`);
+  const dutyHeader = page.getByRole('columnheader', { name: 'Customs/Duties' });
+  await expect(dutyHeader).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'Acme' })).toContainText('$99.00');
+  await expect(page.locator('tfoot')).toContainText('$99.00');
+  await expect(page.locator('tfoot')).toContainText('$124.32');
+  await page.getByRole('row').filter({ hasText: 'Acme' }).click();
+  await expect(dutyHeader).toBeVisible();
+  const headers = await page.getByRole('columnheader').allTextContents();
+  const dutyIndex = headers.findIndex(text => text.includes('Customs/Duties'));
+  const shippingIndex = headers.findIndex(text => text.trim() === 'Shipping');
+  expect(dutyIndex).toBe(shippingIndex + 1);
+  for (const [reference, amount, total] of [
+    ['3410', '$3.49', '$28.81'], ['3411', '$0.00', '$25.32'],
+    ['3412', '—', '$25.32'], ['3413', '$0.00', '$0.00'],
+  ]) {
+    const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: `View shipment information for order ${reference}`, exact: true }) });
+    await expect(row.getByRole('cell').nth(dutyIndex)).toHaveText(amount);
+    await expect(row.getByRole('cell').last()).toHaveText(total);
+  }
+  const request = page.waitForRequest(request => {
+    const url = new URL(request.url());
+    return url.pathname.endsWith('/invoice-details') && url.searchParams.get('sortBy') === 'customsDutiesTotal';
+  });
+  await dutyHeader.getByRole('button', { name: 'Customs/Duties', exact: true }).click();
+  const url = new URL((await request).url());
+  expect(url.searchParams.get('page')).toBe('1');
+  expect(url.searchParams.get('clientId')).toBe('1');
+  expect(errors).toEqual([]);
+});
+
+test('Customs/Duties printable invoice keeps headers, amounts and footer aligned', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const details = [
+    canonical({ destination: 'International', pickpackTotal: 2.5, additionalTotal: 1,
+      packageTotal: 0.99, shippingTotal: 20.83, customsDutiesTotal: 3.49, hasCustomsDutiesLine: true, rowTotal: 28.81 }),
+    canonical({ displayReference: 'ZERO', destination: 'International', customsDutiesTotal: 0, hasCustomsDutiesLine: true }),
+    canonical({ displayReference: 'UNENTERED', destination: 'International', customsDutiesTotal: 0, hasCustomsDutiesLine: false }),
+  ];
+  await page.setContent(renderPortalInvoiceHtml({ clientName: 'Acme', dateFrom: '2026-10-01', dateTo: '2026-10-15', details,
+    invoiceTotals: { orderCount: 3, qty: 3, pickPackTotal: 7.5, additionalTotal: 1, packageTotal: 0.99,
+      shippingTotal: 33.03, customsDutiesTotal: 3.49, storageTotal: 0, adjustmentTotal: 0, returnTotal: 0,
+      returnProcessingTotal: 0, returnPostageTotal: 0, replacePostageTotal: 0, replacePickPackTotal: 0, grandTotal: 46.01 } }));
+  await page.emulateMedia({ media: 'print' });
+  const headers = await page.locator('thead th').allTextContents();
+  expect(headers).toHaveLength(20);
+  const index = headers.indexOf('Customs/Duties');
+  for (const [row, amount] of [[0, '$3.49'], [1, '$0.00'], [2, '—']]) {
+    await expect(page.locator('tbody tr').nth(row).locator('td').nth(index)).toHaveText(amount);
+  }
+  await expect(page.locator('tfoot td').nth(index - 4)).toHaveText('$3.49');
+  await expect(page.locator('tfoot td').last()).toHaveText('$46.01');
+  await expect(page.locator('.total')).toContainText('$46.01');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('customs-duties-print.png'), fullPage: true });
 });
 
 test('rapid billing sorts ignore an older response', async ({ page }) => {

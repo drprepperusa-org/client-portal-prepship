@@ -5,10 +5,9 @@ import type { BillingInvoiceDetailRow } from './contracts/billing';
  * Pure string rendering — the route stays responsible for scope/financial
  * gating, the client lookup, and computing the totals it passes in.
  *
- * Layout mirrors the admin app's invoice (Bill To header, seven summary
+ * Layout mirrors the admin app's invoice (Bill To header, eight summary
  * cards, green Total Amount Due bar, SKU-based line table) — but the numbers
- * come from this repo's pure per-component totals (the admin template's
- * Pick & Pack card double-counts additional units; this one does not).
+ * come from PrepShip's canonical event rows and invoice totals.
  */
 
 export function escHtml(value: string | number | null | undefined): string {
@@ -28,6 +27,7 @@ export interface InvoiceTotals {
   additionalTotal: number;
   packageTotal: number;
   shippingTotal: number;
+  customsDutiesTotal?: number | null;
   storageTotal: number;
   returnProcessingTotal: number;
   returnPostageTotal: number;
@@ -69,7 +69,7 @@ type InvoiceDetailRows = BillingInvoiceDetailRow[];
 
 const invoicePrintStyles = `
     * { box-sizing: border-box; }
-    /* FIT THE PAGE. Nineteen columns: an 1120px body hid the right-hand ones behind a horizontal
+    /* FIT THE PAGE. Twenty columns: an 1120px body hid the right-hand ones behind a horizontal
        scrollbar on screen and clipped them off a portrait print. The body uses the viewport, the
        table is fixed-layout at 100% so every column is always on the page, headers wrap by word,
        and print is landscape with the header row repeated on every page. */
@@ -104,7 +104,7 @@ const invoicePrintStyles = `
     .client { text-align: right; }
     .client strong { display: block; font-size: 18px; }
     .client .gen { font-size: 11px; color: #9ca3af; }
-    .summary { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin: 22px 0; }
+    .summary { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin: 22px 0; }
     .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
     .label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; font-weight: 800; }
     .value { margin-top: 4px; font-size: 17px; font-weight: 800; }
@@ -130,11 +130,11 @@ const invoicePrintStyles = `
       font-size: 12px;
     }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
-    /* Mixed case, no letter-spacing: at 19 columns an uppercase "DESTINATION" no longer fits a
+    /* Mixed case, no letter-spacing: at 20 columns an uppercase "DESTINATION" no longer fits a
        column and broke mid-word. A header word breaks only when it cannot fit on its own line. */
     th { background: #f9fafb; color: #374151; font-size: 8px; font-weight: 800; overflow-wrap: break-word; vertical-align: bottom; }
     td, th { border: 1px solid #e5e7eb; padding: 5px 2px; text-align: left; overflow-wrap: break-word; }
-    /* Column widths for the fixed layout: the text columns need room; the thirteen money/qty
+    /* Column widths for the fixed layout: the text columns need room; the fourteen money/qty
        columns share the remainder equally. Percentages, so one rule set fits a 1280px screen
        and a landscape page alike. */
     th.col-date { width: 8.5%; }
@@ -270,6 +270,7 @@ export function renderPortalInvoiceHtml(input: {
         <td class="num">${moneyOrDash(detail.packageTotal)}</td>
         <td>${escHtml(detail.boxSize ?? '')}</td>
         <td class="num">${moneyOrDash(detail.shippingTotal)}</td>
+        <td class="num">${detail.hasCustomsDutiesLine === true && detail.customsDutiesTotal != null ? money(detail.customsDutiesTotal) : '&mdash;'}</td>
         <td class="num">${moneyOrDash(detail.storageTotal)}</td>
         <td class="num">${signedMoneyOrDash(detail.adjustmentTotal)}</td>
         <td class="num">${returnMoney(detail.hasReturnProcessingLine, detail.returnProcessingTotal)}</td>
@@ -305,6 +306,7 @@ export function renderPortalInvoiceHtml(input: {
     <div class="card"><div class="label">Add'l Units</div><div class="value">${moneyOrDash(invoiceTotals.additionalTotal)}</div></div>
     <div class="card"><div class="label">Packages</div><div class="value">${moneyOrDash(invoiceTotals.packageTotal)}</div></div>
     <div class="card"><div class="label">Shipping</div><div class="value">${moneyOrDash(invoiceTotals.shippingTotal)}</div></div>
+    <div class="card"><div class="label">Customs/Duties</div><div class="value">${invoiceTotals.customsDutiesTotal == null ? '&mdash;' : money(invoiceTotals.customsDutiesTotal)}</div></div>
     <div class="card"><div class="label">Storage</div><div class="value">${moneyOrDash(invoiceTotals.storageTotal)}</div></div>
     <!-- Was labelled "Fulfillment Fee" while rendering the GRAND TOTAL, so one label named two
          different quantities across the two apps — in PrepShip, Fulfillment Fee is
@@ -319,13 +321,14 @@ export function renderPortalInvoiceHtml(input: {
       <th class="col-date">Billing / Activity Date</th><th class="col-ref">Reference</th><th class="col-type">Type</th><th class="col-dest">Destination</th><th class="col-sku">SKU(s)</th><th class="num">Qty</th>
       <th class="num">Pick &amp; Pack</th><th class="num">Addl Units</th>
       <th class="num">Box Charge</th><th class="col-box">Box Size</th><th class="num">Shipping</th>
+      <th class="num">Customs/Duties</th>
       <th class="num">Storage</th><th class="num">Adjustment</th>
       <th class="num">Return Processing</th><th class="num">Return Postage</th>
       <th class="num">Return Total</th>
       <th class="num">Replacement Postage</th><th class="num">Replacement Pick &amp; Pack</th>
       <th class="num">Fulfillment Fee</th>
     </tr></thead>
-    <tbody>${detailRows || '<tr><td colspan="19">No billable order rows found for this period.</td></tr>'}</tbody>
+    <tbody>${detailRows || '<tr><td colspan="20">No billable order rows found for this period.</td></tr>'}</tbody>
     <tfoot>
       <tr>
         <td colspan="5">${invoiceTotals.orderCount} orders</td>
@@ -335,6 +338,7 @@ export function renderPortalInvoiceHtml(input: {
         <td class="num">${money(invoiceTotals.packageTotal)}</td>
         <td></td>
         <td class="num">${money(invoiceTotals.shippingTotal)}</td>
+        <td class="num">${invoiceTotals.customsDutiesTotal == null ? '&mdash;' : money(invoiceTotals.customsDutiesTotal)}</td>
         <td class="num">${money(invoiceTotals.storageTotal)}</td>
         <td class="num">${money(invoiceTotals.adjustmentTotal)}</td>
         <td class="num">${money(invoiceTotals.returnProcessingTotal)}</td>

@@ -72,12 +72,14 @@ export interface CanonicalBillingEventRow {
   // Fee presence — distinct from amount. A missing line is not a zero line.
   hasReturnPostageLine: boolean | null;
   hasReturnProcessingLine: boolean | null;
+  hasCustomsDutiesLine: boolean | null;
 
   // Money — rendered verbatim, never summed or defaulted here.
   pickpackTotal: number | null;
   additionalTotal: number | null;
   packageTotal: number | null;
   shippingTotal: number | null;
+  customsDutiesTotal: number | null;
   storageTotal: number | null;
   adjustmentTotal: number | null;
   returnPostageTotal: number | null;
@@ -118,6 +120,7 @@ const REQUIRED_NUMBER_FIELDS = [
 
 const ALLOWED_NUMBER_FIELDS = [
   'pickpackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal', 'storageTotal',
+  'customsDutiesTotal',
   'adjustmentTotal', 'returnPostageTotal', 'returnProcessingTotal', 'returnTotal',
   // PS-512. Optional on the producer DTO, like the return totals — allowlisted so the money can
   // reach a customer surface, never required, since not every row has replacement activity.
@@ -126,6 +129,7 @@ const ALLOWED_NUMBER_FIELDS = [
 
 const ALLOWED_BOOLEAN_FIELDS = [
   'hasReturnPostageLine', 'hasReturnProcessingLine', 'rolledFromWeekend',
+  'hasCustomsDutiesLine',
 ] as const;
 
 /** The exact identity format PrepShip publishes: 32 lowercase hex characters. */
@@ -333,6 +337,14 @@ export function toCanonicalBillingEventRow(
   if (row.hasReturnPostageLine === true && asNumber(row.returnPostageTotal) === null) return null;
   if (row.hasReturnProcessingLine === true && asNumber(row.returnProcessingTotal) === null) return null;
 
+  // PrepShip owns duty presence and amount, including cancellation zeroing. Older
+  // producers may omit both; a partial or malformed pair must never become $0.00.
+  if (row.hasCustomsDutiesLine !== undefined || row.customsDutiesTotal !== undefined) {
+    if (typeof row.hasCustomsDutiesLine !== 'boolean'
+      || typeof row.customsDutiesTotal !== 'number'
+      || !Number.isFinite(row.customsDutiesTotal)) return null;
+  }
+
   const out: Record<string, unknown> = {
     clientId,
     // Producer-issued. The portal carries it verbatim and never mints one.
@@ -389,6 +401,8 @@ export type CanonicalBillingTotals = {
   additionalTotal: number;
   packageTotal: number;
   shippingTotal: number;
+  /** Null when an older producer does not supply this category; never locally derived. */
+  customsDutiesTotal?: number | null;
   storageTotal: number;
   adjustmentTotal: number;
   replacePostageTotal: number;
@@ -412,6 +426,7 @@ const TOTALS_FIELDS = [
  * field must not blank a customer's invoice, so a missing field reads as 0. But a field that is
  * PRESENT and unparseable is a contract breach and yields null, so the caller fails closed
  * instead of printing a silent $0.00 — a zero on a real invoice is a customer-visible lie.
+ * Customs/Duties preserves missing-category data as null for older producers.
  */
 export function parseCanonicalBillingTotals(raw: unknown): CanonicalBillingTotals | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -424,7 +439,10 @@ export function parseCanonicalBillingTotals(raw: unknown): CanonicalBillingTotal
     if (!Number.isFinite(n)) return null;
     out[field] = n;
   }
-  return out as unknown as CanonicalBillingTotals;
+  const customsDutiesTotal = src.customsDutiesTotal;
+  if (customsDutiesTotal != null
+    && (typeof customsDutiesTotal !== 'number' || !Number.isFinite(customsDutiesTotal))) return null;
+  return { ...out, customsDutiesTotal: customsDutiesTotal ?? null } as CanonicalBillingTotals;
 }
 
 export type CanonicalBillingDetailsResult =

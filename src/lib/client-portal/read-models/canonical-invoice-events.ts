@@ -81,6 +81,7 @@ const SORTABLE = new Set([
   'returnPostageTotal', 'returnProcessingTotal', 'grandTotal',
   'itemSkus', 'qty', 'boxSize', 'pickpackTotal', 'additionalTotal', 'packageTotal',
   'shippingTotal', 'storageTotal', 'adjustmentTotal', 'returnTotal',
+  'customsDutiesTotal',
   'replacePostageTotal', 'replacePickPackTotal',
 ]);
 
@@ -243,6 +244,7 @@ export function toPortalDetailRow(
       additionalTotal: row.additionalTotal,
       packageTotal: row.packageTotal,
       shippingTotal: row.shippingTotal,
+      customsDutiesTotal: row.customsDutiesTotal,
       storageTotal: row.storageTotal,
       returnPostageTotal: row.returnPostageTotal,
       returnProcessingTotal: row.returnProcessingTotal,
@@ -261,6 +263,7 @@ export function toPortalDetailRow(
       destination: row.destination,
       hasReturnPostageLine: row.hasReturnPostageLine,
       hasReturnProcessingLine: row.hasReturnProcessingLine,
+      hasCustomsDutiesLine: row.hasCustomsDutiesLine,
     };
   }
 }

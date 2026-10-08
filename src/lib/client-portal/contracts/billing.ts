@@ -38,6 +38,7 @@ export interface BillingInvoiceSummaryRow {
   additionalTotal: number | string;
   packageTotal: number | string;
   shippingTotal: number | string;
+  customsDutiesTotal?: number | null;
   storageTotal: number | string;
   returnPostageTotal: number | string;
   returnProcessingTotal: number | string;
@@ -56,6 +57,7 @@ export interface BillingInvoiceTotals {
   packageTotal: number | string;
   storageTotal: number | string;
   shippingTotal: number | string;
+  customsDutiesTotal?: number | null;
   returnPostageTotal: number | string;
   returnProcessingTotal: number | string;
   rowTotal: number | string;
@@ -91,6 +93,9 @@ export interface BillingInvoiceDetailRow {
   additionalTotal?: number | string | null;
   packageTotal?: number | string | null;
   shippingTotal?: number | string | null;
+  /** PrepShip billing event amount and presence, at billingEffectiveDate. No portal formula. */
+  customsDutiesTotal?: number | null;
+  hasCustomsDutiesLine?: boolean | null;
   storageTotal?: number | string | null;
   returnPostageTotal?: number | string | null;
   returnProcessingTotal?: number | string | null;

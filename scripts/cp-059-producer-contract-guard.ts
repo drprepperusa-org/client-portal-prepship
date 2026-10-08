@@ -268,11 +268,11 @@ const bodyRows = (html.match(/<tbody>[\s\S]*?<\/tbody>/) ?? [''])[0]
 assert.equal(bodyRows.length, accepted.length, `every accepted row must render (${bodyRows.length} vs ${accepted.length})`);
 
 // A row whose return fee is ABSENT must blank both return cells, whatever amount it carries.
-const HTML_PROCESSING = 13;
-const HTML_POSTAGE = 14;
+const HTML_PROCESSING = 14;
+const HTML_POSTAGE = 15;
 for (const [index, row] of accepted.entries()) {
   const cells = [...bodyRows[index].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].trim());
-  assert.equal(cells.length, 19, `row ${index} rendered ${cells.length} cells`);
+  assert.equal(cells.length, 20, `row ${index} rendered ${cells.length} cells`);
   if (row.hasReturnPostageLine === false) {
     assert.equal(cells[HTML_POSTAGE], '&mdash;',
       `an absent postage line must blank, not print the ${row.returnPostageTotal} it carries`);
@@ -347,12 +347,12 @@ const cellMoney = (cell: string): number => {
   return parsed;
 };
 
-// 6 Pick&Pack · 7 Addl · 8 Box Charge · 10 Shipping · 11 Storage · 12 Adjustment
-// 13 Return Processing · 14 Return Postage · 15 Replacement Postage · 16 Replacement Pick&Pack
-// Return Processing (13) and Return Postage (14) are breakouts WITHIN Return Total (15), so
+// 6 Pick&Pack · 7 Addl · 8 Box Charge · 10 Shipping · 11 Customs/Duties · 12 Storage · 13 Adjustment
+// 14 Return Processing · 15 Return Postage · 17 Replacement Postage · 18 Replacement Pick&Pack
+// Return Processing (14) and Return Postage (15) are breakouts WITHIN Return Total (16), so
 // only the total participates — counting all three would double-count return money.
-const HTML_COMPONENTS = [6, 7, 8, 10, 11, 12, 15, 16, 17];
-const HTML_TOTAL = 18;
+const HTML_COMPONENTS = [6, 7, 8, 10, 11, 12, 13, 16, 17, 18];
+const HTML_TOTAL = 19;
 
 let reconciledRows = 0;
 let rowsCarryingReplacement = 0;
@@ -366,7 +366,7 @@ for (const [index, chunk] of bodyRows.entries()) {
     + `(${printedTotal}). A category is carried but not displayed.`,
   );
   reconciledRows += 1;
-  if (cellMoney(cells[16] ?? '') > 0 || cellMoney(cells[17] ?? '') > 0) rowsCarryingReplacement += 1;
+  if (cellMoney(cells[17] ?? '') > 0 || cellMoney(cells[18] ?? '') > 0) rowsCarryingReplacement += 1;
 }
 // Setup check: if no row carried replacement money, the reconciliation above would hold for a
 // trivial reason and prove nothing about the categories this exists to surface.

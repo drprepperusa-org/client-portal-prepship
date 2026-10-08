@@ -10,6 +10,7 @@ export const INVOICE_SORT_FIELDS: Readonly<Record<string, string>> = {
   destination: 'destination', sku: 'itemSkus', qty: 'qty', pickpack: 'pickpackTotal',
   addl: 'additionalTotal', boxcost: 'packageTotal', boxsize: 'boxSize',
   shipping: 'shippingTotal', storage: 'storageTotal', adjustment: 'adjustmentTotal',
+    customsDuties: 'customsDutiesTotal',
   returnprocessing: 'returnProcessingTotal', returnpostage: 'returnPostageTotal',
   returntotal: 'returnTotal', replacepostage: 'replacePostageTotal',
   replacepickpack: 'replacePickPackTotal', fee: 'grandTotal',
