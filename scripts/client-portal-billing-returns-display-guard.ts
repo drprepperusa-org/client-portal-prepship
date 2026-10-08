@@ -146,13 +146,13 @@ const html = renderPortalInvoiceHtml({
 });
 
 // Column order in the printable row, taken from the template in invoice-html.ts.
-const HTML_CELLS = 19;
-const HTML_PROCESSING = 13;
-const HTML_POSTAGE = 14;
-const HTML_RETURN_TOTAL = 15;
-const HTML_REPLACE_POSTAGE = 16;
-const HTML_REPLACE_PICKPACK = 17;
-const HTML_ROW_TOTAL = 18;
+const HTML_CELLS = 20;
+const HTML_PROCESSING = 14;
+const HTML_POSTAGE = 15;
+const HTML_RETURN_TOTAL = 16;
+const HTML_REPLACE_POSTAGE = 17;
+const HTML_REPLACE_PICKPACK = 18;
+const HTML_ROW_TOTAL = 19;
 
 const htmlRows = new Map<string, string[]>();
 for (const chunk of (html.match(/<tbody>[\s\S]*?<\/tbody>/) ?? [''])[0].split('</tr>')) {

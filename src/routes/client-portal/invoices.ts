@@ -185,6 +185,7 @@ app.get('/invoice-summary', async (c) => {
     additionalTotal: String(totals.additionalTotal),
     packageTotal: String(totals.packageTotal),
     shippingTotal: String(totals.shippingTotal),
+    customsDutiesTotal: totals.customsDutiesTotal ?? null,
     storageTotal: String(totals.storageTotal),
     returnPostageTotal: String(totals.returnPostageTotal),
     returnProcessingTotal: String(totals.returnProcessingTotal),
@@ -203,12 +204,14 @@ app.get('/invoice-summary', async (c) => {
       packageTotal: acc.packageTotal + Number(r.packageTotal ?? 0),
       storageTotal: acc.storageTotal + Number(r.storageTotal ?? 0),
       shippingTotal: acc.shippingTotal + Number(r.shippingTotal ?? 0),
+      customsDutiesTotal: acc.customsDutiesTotal == null || r.customsDutiesTotal == null
+        ? null : acc.customsDutiesTotal + r.customsDutiesTotal,
       // CP-031: return charges as their own backend-owned footer totals.
       returnPostageTotal: acc.returnPostageTotal + Number(r.returnPostageTotal ?? 0),
       returnProcessingTotal: acc.returnProcessingTotal + Number(r.returnProcessingTotal ?? 0),
       rowTotal: acc.rowTotal + Number(r.rowTotal ?? 0),
     }),
-    { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, returnPostageTotal: 0, returnProcessingTotal: 0, rowTotal: 0 },
+    { orders: 0, pickpackTotal: 0, additionalTotal: 0, packageTotal: 0, storageTotal: 0, shippingTotal: 0, customsDutiesTotal: 0 as number | null, returnPostageTotal: 0, returnProcessingTotal: 0, rowTotal: 0 },
   );
   await recordPortalAudit('portal.invoice_summary.view', scope, { clientId, rows: rows.length, dateFrom: range.fromDay, dateTo: range.toDay });
   return c.json({ data: canonicalRows, totals, billingVisible: true });
@@ -282,6 +285,7 @@ app.get('/invoice', async (c) => {
     additionalTotal: canonicalTotals.additionalTotal,
     packageTotal: canonicalTotals.packageTotal,
     shippingTotal: canonicalTotals.shippingTotal,
+    customsDutiesTotal: canonicalTotals.customsDutiesTotal,
     storageTotal: canonicalTotals.storageTotal,
     returnProcessingTotal: canonicalTotals.returnProcessingTotal,
     returnPostageTotal: canonicalTotals.returnPostageTotal,

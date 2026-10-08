@@ -29,6 +29,7 @@ export type PeriodSummary = {
   box: number;
   storage: number;
   shipping: number;
+  customsDuties: number | null;
   returnPostage: number;
   returnProcessing: number;
   fee: number;
@@ -46,6 +47,7 @@ export const EMPTY_BILLING_TOTALS: BillingTotals = {
   box: 0,
   storage: 0,
   shipping: 0,
+  customsDuties: null,
   returnPostage: 0,
   returnProcessing: 0,
   fee: 0,
@@ -125,6 +127,15 @@ export function buildSummaryColumns({
     moneyColumn('addl', 'Addl Units', 110, (row) => row.additional, totals.additional),
     moneyColumn('box', 'Box Charge', 110, (row) => row.box, totals.box),
     moneyColumn('shipping', 'Shipping', 120, (row) => row.shipping, totals.shipping),
+    {
+      key: 'customsDuties',
+      header: 'Customs/Duties',
+      defaultWidth: 140,
+      className: moneyRight,
+      render: (row) => <span className="tnum text-ink-2">{row.customsDuties == null ? '—' : money(row.customsDuties)}</span>,
+      sortAccessor: (row) => row.customsDuties,
+      footer: <span className="tnum">{totals.customsDuties == null ? '—' : money(totals.customsDuties)}</span>,
+    },
     moneyColumn(
       'returnProcessing',
       'Return Processing',
@@ -344,6 +355,18 @@ export function buildInvoiceLineColumns(
       sortAccessor: (row) => row.boxSize ?? '',
     },
     invoiceMoneyColumn('shipping', 'Shipping', 110, (row) => row.shippingTotal),
+    {
+      key: 'customsDuties',
+      header: 'Customs/Duties',
+      defaultWidth: 140,
+      className: moneyRight,
+      // Presence and money both come from PrepShip. Explicit zero differs from no charge entered.
+      render: (row) => <span className="tnum text-ink-2">{
+        row.hasCustomsDutiesLine === true && row.customsDutiesTotal != null
+          ? money(row.customsDutiesTotal) : '—'
+      }</span>,
+      sortAccessor: (row) => row.customsDutiesTotal,
+    },
     invoiceMoneyColumn('storage', 'Storage', 100, (row) => row.storageTotal),
     // CP-059 AC-6. These four categories were already inside rowTotal and already crossed the
     // DTO boundary, but had no column — so an outbound row could show components summing to

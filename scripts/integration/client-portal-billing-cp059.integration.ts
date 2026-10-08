@@ -240,7 +240,8 @@ async function main(): Promise<void> {
   const seen = [...p1.rows, ...p2.rows].map((r) => r.displayReference);
   if (new Set(seen).size !== 3) throw new Error(`pages must not duplicate or drop rows: ${seen.join('|')}`);
   for (const result of [p1, p2]) {
-    assert.deepEqual(result.totals, pageTotals, 'page changed whole-range canonical totals');
+    assert.deepEqual(result.totals, { ...pageTotals, customsDutiesTotal: null },
+      'page changed whole-range totals or invented duties omitted by the older producer');
   }
   ok('pagination yields 2 + 1 across 3 events, no duplicates, total stays the event count');
 
@@ -547,19 +548,18 @@ async function main(): Promise<void> {
   // document contains. If any absent line printed money, the blank count drops below the
   // expected one.
   //
-  // Column 13 is Return Postage and 12 is Return Processing (invoice-html.ts row template).
+  // Column indexes below follow the invoice-html.ts row template.
   const cellsOfPrintedRow = (chunk: string) =>
     [...chunk.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => (m[1] ?? '').trim());
   const expectedBlankPostage = producerRows.filter((r) => r.hasReturnPostageLine === false).length;
   const expectedBlankProcessing = producerRows.filter((r) => r.hasReturnProcessingLine === false).length;
   const printedCells = printedRows.map(cellsOfPrintedRow);
-  // Column layout after PS-512 made replacement and adjustment visible (19 columns):
-  //   11 Storage · 12 Adjustment · 13 Return Processing · 14 Return Postage · 15 Return Total
-  //   16 Replacement Postage · 17 Replacement Pick&Pack · 18 Fulfillment Fee
-  // These were 12/13 when the table had 15 columns; the counts silently shifted by one, which
-  // is why an index-based assertion needs the layout written down beside it.
-  const HTML_RETURN_PROCESSING = 13;
-  const HTML_RETURN_POSTAGE = 14;
+  // Customs/Duties follows Shipping at index 11 (20 columns):
+  //   12 Storage · 13 Adjustment · 14 Return Processing · 15 Return Postage · 16 Return Total
+  //   17 Replacement Postage · 18 Replacement Pick&Pack · 19 Fulfillment Fee
+  // Keep these positions aligned with the print template so absence checks target return fees.
+  const HTML_RETURN_PROCESSING = 14;
+  const HTML_RETURN_POSTAGE = 15;
   const blankPostage = printedCells.filter((cells) => cells[HTML_RETURN_POSTAGE] === '&mdash;').length;
   const blankProcessing = printedCells.filter((cells) => cells[HTML_RETURN_PROCESSING] === '&mdash;').length;
 
