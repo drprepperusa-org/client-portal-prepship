@@ -36,6 +36,7 @@ for (const shape of fixture.shapes) {
     const safe = toCanonicalBillingEventRow({ ...source, providerAccountId: 'internal', labelCost: 999 });
     assert.ok(safe, shape.name);
     const row = toPortalDetailRow(safe);
+    assert.equal(row.qty, source.displayQty, 'Qty must carry canonical item quantity, never the fee-line quantity');
     assert.equal(row.customsDutiesTotal, source.customsDutiesTotal);
     assert.equal(row.hasCustomsDutiesLine, source.hasCustomsDutiesLine);
     assert.equal(row.rowTotal, source.grandTotal, 'never add duties again to PrepShip grandTotal');
@@ -47,6 +48,10 @@ for (const shape of fixture.shapes) {
   if (expected.has(shape.name)) {
     assert.deepEqual([rows[0].customsDutiesTotal, rows[0].hasCustomsDutiesLine, rows[0].rowTotal], expected.get(shape.name));
   }
+  if (shape.name.startsWith('quantity-')) {
+    assert.equal(shape.rows[0].qty, '1.00', 'the regression must retain the misleading raw fee-line quantity');
+    assert.equal(rows[0].qty, shape.name === 'quantity-three-items' ? '3' : '4');
+  }
   const html = renderPortalInvoiceHtml({ clientName: 'Fixture', dateFrom: '2026-10-01', dateTo: '2026-10-15',
     details: rows, invoiceTotals: { ...totals, qty: 1 } });
   const headers = [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map(match => match[1]);
@@ -57,6 +62,7 @@ for (const shape of fixture.shapes) {
   rows.forEach((row: any, index: number) => {
     const rendered = cells(bodyRows[index]![1]!);
     assert.equal(rendered.length, headers.length);
+    assert.equal(rendered[headers.indexOf('Qty')], String(row.qty), 'print uses the same canonical quantity as the grid');
     assert.equal(rendered[dutiesIndex], row.hasCustomsDutiesLine ? `$${row.customsDutiesTotal.toFixed(2)}` : '&mdash;');
     assert.equal(rendered.at(-1), `$${row.rowTotal.toFixed(2)}`);
   });
@@ -64,7 +70,7 @@ for (const shape of fixture.shapes) {
   assert.equal(footer[dutiesIndex - 4], '$99.00', 'full-period duty total comes from upstream, not visible rows');
   assert.equal(footer.at(-1), '$124.32');
 }
-assert.equal(rowsChecked, 7);
+assert.equal(rowsChecked, 9);
 const source = fixture.shapes[0].rows[0];
 for (const over of [
   { customsDutiesTotal: '3.49' }, { customsDutiesTotal: NaN }, { customsDutiesTotal: Infinity },
@@ -83,6 +89,11 @@ for (const value of ['3.49', '', NaN, Infinity, true]) {
   assert.equal(parseCanonicalBillingTotals({ ...totals, customsDutiesTotal: value }), null);
 }
 assert.equal(INVOICE_SORT_FIELDS.customsDuties, 'customsDutiesTotal');
+assert.equal(INVOICE_SORT_FIELDS.qty, 'displayQty');
+const quantityRows = ['3.5', '3.05', '12', '4'].map((displayQty, i) => toCanonicalBillingEventRow({ ...source,
+  canonicalEventId: String(i).repeat(32), qty: '1.00', displayQty })!);
+assert.deepEqual(orderCanonicalEvents(quantityRows, 'displayQty', 'asc').map(row => row.displayQty), ['3.05', '3.5', '4', '12']);
+assert.deepEqual(orderCanonicalEvents(quantityRows, 'displayQty', 'desc').map(row => row.displayQty), ['12', '4', '3.5', '3.05']);
 const sortRows = [3.49, 0, 12.99].map((amount, i) => toCanonicalBillingEventRow({ ...source,
   canonicalEventId: String(i).repeat(32), customsDutiesTotal: amount })!);
 assert.deepEqual(orderCanonicalEvents(sortRows, 'customsDutiesTotal', 'asc').map(row => row.customsDutiesTotal), [0, 3.49, 12.99]);

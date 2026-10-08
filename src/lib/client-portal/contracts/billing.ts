@@ -88,6 +88,7 @@ export interface BillingInvoiceDetailRow {
   billingEffectiveDate?: string | null;
   billingPolicyVersion?: string | null;
   rolledFromWeekend?: boolean;
+  /** PrepShip displayQty, not its raw billing-line qty; includes canonical item totals. */
   qty?: number | string | null;
   pickpackTotal?: number | string | null;
   additionalTotal?: number | string | null;

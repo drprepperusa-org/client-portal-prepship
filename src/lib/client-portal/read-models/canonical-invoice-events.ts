@@ -79,15 +79,19 @@ const SORTABLE = new Set([
   'orderNumber', 'displayReference', 'rowType', 'destination', 'clientName',
   'shipDate', 'actualActivityDate', 'billingEffectiveDate',
   'returnPostageTotal', 'returnProcessingTotal', 'grandTotal',
-  'itemSkus', 'qty', 'boxSize', 'pickpackTotal', 'additionalTotal', 'packageTotal',
+  'itemSkus', 'qty', 'displayQty', 'boxSize', 'pickpackTotal', 'additionalTotal', 'packageTotal',
   'shippingTotal', 'storageTotal', 'adjustmentTotal', 'returnTotal',
   'customsDutiesTotal',
   'replacePostageTotal', 'replacePickPackTotal',
 ]);
 
 function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, key: string, dir: 1 | -1): number {
-  const av = (a as unknown as Record<string, unknown>)[key];
-  const bv = (b as unknown as Record<string, unknown>)[key];
+  const value = (row: CanonicalBillingEventRow) => {
+    const raw = (row as unknown as Record<string, unknown>)[key];
+    return key === 'displayQty' && raw != null && raw !== '' && Number.isFinite(Number(raw)) ? Number(raw) : raw;
+  };
+  const av = value(a);
+  const bv = value(b);
   // Nulls sort last regardless of direction: a missing value is not "smaller", and letting it
   // float to the top of a money column would read as a zero.
   if (av === null || av === undefined) return bv === null || bv === undefined ? 0 : 1;
@@ -238,7 +242,8 @@ export function toPortalDetailRow(
       billingEffectiveDate: row.billingEffectiveDate,
       billingPolicyVersion: row.billingPolicyVersion,
       rolledFromWeekend: row.rolledFromWeekend ?? undefined,
-      qty: row.qty,
+      // PrepShip owns item totals and non-item quantity display. Raw qty counts a fee line.
+      qty: row.displayQty,
       // Money, verbatim. Null stays null.
       pickpackTotal: row.pickpackTotal,
       additionalTotal: row.additionalTotal,

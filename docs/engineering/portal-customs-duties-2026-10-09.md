@@ -55,3 +55,22 @@ cards fit without horizontal clipping.
 
 Scope is local source and offline/mock tests only. No production mutations,
 labels, postage, printing, marketplace notifications, push or deployment.
+
+## Follow-up: item quantity display
+
+The portal's `toPortalDetailRow` discarded PrepShip `displayQty` and instead exposed
+raw billing-line `qty`, so a fee line with quantity 1 hid an order's three or four
+item units. The canonical owners are PrepShip `summarizeBillingItemsForDetail`
+and `toBillingDetailOrderRows`; they already issue the correct display quantity.
+The portal projection now delegates directly to `displayQty`. The grid, print row
+and existing backend print quantity footer consume that DTO. Qty sort intent maps
+to PrepShip `displayQty`, matching its own Billing view; unpaged display sorting
+normalizes that numeric string, including fractions. No SKU-text parsing, frontend
+item summation, or fallback to billing-line quantity is permitted.
+
+The producer fixture now includes two more cases (nine total rows): Booster-gel-001
+quantity 2 plus HU-10 quantity 1, and Booster-gel-001 quantity 4. Both retain raw
+fee quantity 1 while producing display quantities 3 and 4. Boundary and print
+assertions verify the projection; a browser test checks both values and upstream
+sort intent. Typecheck, producer contract, sort/pagination, table sorting and
+architecture checks passed. This quantity fix is local and not deployed.

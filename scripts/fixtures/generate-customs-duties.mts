@@ -34,6 +34,7 @@ function load(file: string): any {
   return module.exports;
 }
 const { toBillingDetailOrderRows } = load('src/services/billing-detail-row-sot.ts');
+const { summarizeBillingItemsForDetail } = load('src/services/billing-detail-utils.ts');
 const base = { clientId: 7, orderId: 3410, orderNumber: '3410', shipDate: '2026-10-08',
   billingEffectiveDate: '2026-10-08', destinationCountry: 'CA', orderStatus: 'shipped', qty: '1.00' };
 const ordinary = [
@@ -51,6 +52,12 @@ const cases = [
   { name: 'cancelled', lines: [...ordinary, duty].map(line => ({ ...line, orderStatus: 'cancelled', cancelledNoChargeBillingLine: true })) },
   { name: 'independent-return', lines: [...ordinary, duty, { ...base, returnId: 41, lineType: 'return_postage', totalCost: '4.25' }] },
   { name: 'fractional-cents-sum', lines: [...ordinary, { ...duty, totalCost: '0.10' }, { ...duty, totalCost: '0.20' }] },
+  { name: 'quantity-three-items', lines: ordinary.map(line => ({ ...line, ...summarizeBillingItemsForDetail([
+    { sku: 'Booster-gel-001', quantity: 2 }, { sku: 'HU-10', quantity: 1 },
+  ]) })) },
+  { name: 'quantity-four-items', lines: ordinary.map(line => ({ ...line, ...summarizeBillingItemsForDetail([
+    { sku: 'Booster-gel-001', quantity: 4 },
+  ]) })) },
 ];
 const shapes = cases.map(({ name, lines }) => ({ name, lines, rows: toBillingDetailOrderRows(lines) }));
 const contentHash = createHash('sha256').update(JSON.stringify(shapes)).digest('hex');

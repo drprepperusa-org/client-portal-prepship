@@ -247,6 +247,28 @@ test('billing sorting keeps existing rows and count visible until the server res
   await expect(firstRow).toContainText('$8.60');
 });
 
+test('Qty displays canonical item totals and sorts through PrepShip displayQty', async ({ page }) => {
+  const rows = [
+    canonical({ displayReference: '3837', skus: 'Booster-gel-001 x2\nHU-10', qty: '3' }),
+    canonical({ displayReference: '3839', skus: 'Booster-gel-001 x4', qty: '4' }),
+  ];
+  await setupBilling(page, rows);
+  await openDetailRows(page);
+  const headings = await page.getByRole('columnheader').allTextContents();
+  const qtyIndex = headings.findIndex(text => text.trim() === 'Qty');
+  expect(qtyIndex).toBeGreaterThan(-1);
+  for (const [reference, qty] of [['3837', '3'], ['3839', '4']]) {
+    const row = page.getByRole('row').filter({ has: page.getByText(reference, { exact: true }) });
+    await expect(row.getByRole('cell').nth(qtyIndex)).toHaveText(qty);
+  }
+  const request = page.waitForRequest(req => {
+    const url = new URL(req.url());
+    return url.pathname.endsWith('/invoice-details') && url.searchParams.get('sortBy') === 'displayQty';
+  });
+  await page.getByRole('columnheader').nth(qtyIndex).click();
+  await request;
+});
+
 test('Customs/Duties matches backend amounts in periods and line items and delegates sorting', async ({ page }) => {
   const errors = await setupBilling(page, [
     canonical({ orderId: 3410, orderNumber: '3410', displayReference: '3410', destination: 'International',
