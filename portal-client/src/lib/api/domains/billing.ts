@@ -123,7 +123,7 @@ export const billingApi = {
     dateFrom: string,
     dateTo: string,
     clientId?: number,
-    granularity: 'half' | 'month' = 'half',
+    granularity: 'half' | 'month' = 'month',
   ) =>
     apiGet<{
       data: BillingInvoicePeriodSummaryRow[];

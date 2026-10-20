@@ -16,7 +16,6 @@ import type { InvoiceSelection } from './types';
 interface InvoicePeriodListProps {
   clients: PortalClientRow[];
   clientFilter: number | undefined;
-  granularity: 'half' | 'month';
   summary: PeriodSummary[];
   totals: BillingTotals;
   from: string;
@@ -30,7 +29,6 @@ interface InvoicePeriodListProps {
   error: unknown;
   onRetry: () => void;
   onClientFilterChange: (clientId: number | undefined) => void;
-  onGranularityChange: (granularity: 'half' | 'month') => void;
   onSelect: (selection: InvoiceSelection) => void;
   onExportAll: () => void;
   onExport: (row: PeriodSummary, busyKey: string) => void;
@@ -70,22 +68,6 @@ export function InvoicePeriodList(props: InvoicePeriodListProps) {
               ))}
             </select>
           )}
-          {([['half', 'Semi-Monthly'], ['month', 'Monthly']] as const).map(([value, label]) => (
-            <button
-              type="button"
-              key={value}
-              onClick={() => props.onGranularityChange(value)}
-              className={cn(
-                'focus-ring min-h-11 cursor-pointer rounded-glass-sm px-3 py-1.5 text-xs font-semibold transition-colors sm:min-h-8',
-                props.granularity === value
-                  ? 'bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-glass'
-                  : 'bg-white/60 text-ink-2 ring-1 ring-slate-200/70 hover:bg-white',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-          <div className="mx-0.5 h-5 w-px bg-slate-200" aria-hidden />
           <button
             type="button"
             onClick={props.onExportAll}

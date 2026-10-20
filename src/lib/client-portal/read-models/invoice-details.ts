@@ -105,8 +105,8 @@ type PortalInvoicePeriodSummaryRow = {
  * Billing identities: one row per client per period, no locally computed money.
  * The route fills all financial fields from PrepShip, never from this query.
  * Preserve the existing sum(total_cost) sort without exposing it as a total. Default
- * granularity is SEMI-MONTHLY (1st–15th and 16th–end of month); 'month'
- * combines both halves into one full-month row (1st–EOM). UTC effective-day
+ * granularity is monthly (1st–EOM). Explicit 'half' requests remain supported
+ * for existing API callers (1st–15th and 16th–EOM). UTC effective-day
  * boundaries — the same boundaries the range filters use. SQL-aggregated,
  * no row cap.
  */
@@ -115,9 +115,9 @@ export async function portalInvoicePeriodSummary(
   input: { clientId?: number | null; dateFrom: string; dateTo: string; granularity?: 'half' | 'month' },
 ) {
   const halfExpr =
-    input.granularity === 'month'
-      ? sql`'0'`
-      : sql`(case when extract(day from ${invoiceEffectiveDay} at time zone 'UTC') <= 15 then 1 else 2 end)::text`;
+    input.granularity === 'half'
+      ? sql`(case when extract(day from ${invoiceEffectiveDay} at time zone 'UTC') <= 15 then 1 else 2 end)::text`
+      : sql`'0'`;
   const rows = await db.execute<PortalInvoicePeriodSummaryRow>(sql`
     select
       b.client_id,

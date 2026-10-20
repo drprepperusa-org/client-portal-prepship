@@ -119,7 +119,10 @@ export function keyBillingSummaryRows<R extends BillingSummaryIdentityRow>(
     if (seen.has(identity)) return { ok: false, reason: 'duplicate_client_period' };
     seen.add(identity);
 
-    keyed.push({ row, clientId, key, dateFrom, dateTo });
+    // The visible period and its drill-in/export must describe the same window
+    // as the canonical money. Full calendar labels would widen a partial range.
+    const visibleRow = hasStart ? { ...row, periodStart: dateFrom, periodEnd: dateTo } : row;
+    keyed.push({ row: visibleRow, clientId, key, dateFrom, dateTo });
   }
 
   const periods = new Map<string, BillingSummaryPeriod>();

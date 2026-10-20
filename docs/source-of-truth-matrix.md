@@ -1238,6 +1238,13 @@ and `client-portal-active-surfaces-guard.mjs`.
 
 ### Billing
 
+The Billing page and toolbar share one applied date range. Draft custom dates
+apply together, and changing the range clears a previously selected period.
+The page requests monthly identities only; month is also the API/read-model
+default. Explicit half-month API requests remain compatible. Date ranges still
+clamp canonical PrepShip totals and the returned row's dates, so drill-in and
+exports use that same window; monthly grouping does not widen the charge window.
+
 | UI label | Frontend field | Backend DTO field | Canonical owner | Event clock | Classification |
 | --- | --- | --- | --- | --- | --- |
 | Per-client / period amounts | `pickpackTotal`, `additionalTotal`, `shippingTotal`, `storageTotal`, `packageTotal`, `returnPostageTotal`, `returnProcessingTotal`, `rowTotal` | same | PrepShip `/billing/invoice-totals`, assigned by `/invoice-summary` with no local money fallback (CP-067) | canonical effective billing day, period clamped to the requested range | backend-owned-truth |
@@ -1293,6 +1300,9 @@ backend owner as the paginated list. Client/store access remains on the linked
 order through `returnScopePredicate`. Explicit client/store/order, search, status,
 sort and optional date filters apply to every page. Dates use `returns.created_at`
 with inclusive UTC bounds, shared by the table and export.
+The Returns page sends the shared toolbar date range to both reads and exports,
+and resets pagination when that range changes. Created is the first default column;
+Status, Delivery and Tracking remain defined but start hidden in the versioned layout.
 `returns/export.ts` pages this owner and loads each page's `return_items` in one
 read-only repeatable-read transaction. `return-csv.ts` projects the canonical
 reference, order number, existing client label, item names/SKUs/quantities, DTO

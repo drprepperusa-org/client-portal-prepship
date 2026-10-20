@@ -45,6 +45,9 @@ const keysOf = (r: ReturnType<typeof keyBillingSummaryRows>) =>
   check('the periods the caller will send are the clamped ones',
     r.ok && [...r.periods.keys()].join(',') === '2026-08-04|2026-08-15,2026-08-16|2026-08-31,2026-09-01|2026-09-02',
     r.ok ? [...r.periods.keys()].join(',') : String(keysOf(r)));
+  check('visible row dates keep drill-in and exports inside the same clamped window',
+    r.ok && r.keyed.map(({ row }) => `${row.periodStart}|${row.periodEnd}`).join(',') ===
+      '2026-08-04|2026-08-15,2026-08-16|2026-08-31,2026-09-01|2026-09-02');
 }
 
 // ── 1b. BOTH clamps on ONE row: the selected range sits entirely inside one period ──

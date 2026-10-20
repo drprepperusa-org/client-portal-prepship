@@ -9,7 +9,7 @@ const tables = [
     row:n=>({id:n,sku:reference(n),name:reference(n),inventoryQuantity:n,stockStatus:'in',warehouseShipped30d:n}) },
   { path: '/shipments', api:'/shipments', header:'Order', key:'order', col:0,
     row:n=>({id:n,orderId:n,orderNumber:reference(n),items:[],shipmentStatus:'in_transit',customerShippingRate:n,shipDate:'2026-09-01'}) },
-  { path:'/returns', api:'/returns', header:'Return ref', key:'returnReference', col:0,
+  { path:'/returns', api:'/returns', header:'Return ref', key:'returnReference', col:1,
     row:n=>({id:n,orderId:n,returnReference:reference(n),orderNumber:reference(n),status:'requested',returnedSkus:[],returnedQuantity:n,createdAt:'2026-09-01'}) },
   { path:'/inbound', api:'/inbound/receipts', header:'SKU', key:'sku', col:1,
     row:n=>({id:n,inventoryId:n,sku:reference(n),name:reference(n),receivedUnits:n,receivedAt:'2026-09-01',clientName:'Fixture'}) },
@@ -19,7 +19,7 @@ const tables = [
 const summary = {clientId:1,clientName:'Fixture',periodStart:'2026-09-01',periodEnd:'2026-09-15',orders:102,rowTotal:1};
 const billingFields = {
   'Billing Date':'billingEffectiveDate', Reference:'displayReference', Type:'rowType', Destination:'destination',
-  'SKU(s)':'itemSkus', Qty:'qty', 'Pick & Pack':'pickpackTotal', 'Addl Units':'additionalTotal',
+  'SKU(s)':'itemSkus', Qty:'displayQty', 'Pick & Pack':'pickpackTotal', 'Addl Units':'additionalTotal',
   'Box Charge':'packageTotal', 'Box Size':'boxSize', Shipping:'shippingTotal', Storage:'storageTotal',
   Adjustment:'adjustmentTotal', 'Return Processing':'returnProcessingTotal', 'Return Postage':'returnPostageTotal',
   'Return Total':'returnTotal', 'Replacement Postage':'replacePostageTotal', 'Replacement Pick & Pack':'replacePickPackTotal',

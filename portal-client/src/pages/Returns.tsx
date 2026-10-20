@@ -33,13 +33,14 @@ import {
 import type { PortalReturnRow } from '@/lib/api';
 import { useReturnTrackingRefresh } from '@/lib/useReturnTrackingRefresh';
 import { usePortalFilters } from '@/lib/portalContext';
+import { rangeToTimestamps } from '@/lib/api/scope';
 import { money, shortDate } from '@/lib/status';
 import { useFilteredPage } from '@/lib/useFilteredPage';
 
 // CP-034: return tracking URLs are backend-built carrier links. The portal
 // renders copyable text when the carrier is unknown and never exposes identity.
 export default function Returns() {
-  const { clientId: globalClientId } = usePortalFilters();
+  const { clientId: globalClientId, dateRange } = usePortalFilters();
   const { userId } = useAuth();
   const queryClient = useQueryClient();
   const clients = useClients().data?.data ?? [];
@@ -64,10 +65,11 @@ export default function Returns() {
     if (newParam) setCreateOrderId(Number(newParam));
   }, [newParam]);
 
-  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, effectiveClientId, statusFilter, orderFilter]));
+  const [page, setPage] = useFilteredPage(JSON.stringify([debouncedSearch, effectiveClientId, statusFilter, orderFilter, dateRange.dateFrom, dateRange.dateTo]));
   const tableSort = useTableSort(setPage);
 
   const exportFilters = { sortBy: tableSort.sortBy, sortDir: tableSort.sortDir,
+    ...rangeToTimestamps({ from: dateRange.dateFrom, to: dateRange.dateTo }),
     search: debouncedSearch,
     status: statusFilter || undefined,
     clientId: effectiveClientId,
@@ -83,6 +85,13 @@ export default function Returns() {
 
   const columns: Column<PortalReturnRow>[] = useMemo(
     () => [
+      {
+        key: 'created',
+        header: 'Created',
+        defaultWidth: 130,
+        render: (row) => <span className="text-ink-3 tnum">{shortDate(row.createdAt)}</span>,
+        sortAccessor: (row) => row.createdAt ?? '',
+      },
       {
         key: 'returnReference',
         header: 'Return ref',
@@ -147,6 +156,7 @@ export default function Returns() {
       {
         key: 'status',
         header: 'Status',
+        defaultHidden: true,
         defaultWidth: 190,
         render: (row) => {
           const status = returnStatusMeta(row.status);
@@ -166,6 +176,7 @@ export default function Returns() {
       {
         key: 'delivery',
         header: 'Delivery',
+        defaultHidden: true,
         defaultWidth: 130,
         render: (row) => (
           <span className="text-ink-2">
@@ -179,6 +190,7 @@ export default function Returns() {
       {
         key: 'tracking',
         header: 'Tracking #',
+        defaultHidden: true,
         defaultWidth: 180,
         render: (row) => {
           if (!row.trackingNumber) return <span className="text-ink-3">—</span>;
@@ -254,13 +266,6 @@ export default function Returns() {
           </span>
         ),
         sortAccessor: (row) => row.returnCustomerShippingRate ?? -1,
-      },
-      {
-        key: 'created',
-        header: 'Created',
-        defaultWidth: 130,
-        render: (row) => <span className="text-ink-3 tnum">{shortDate(row.createdAt)}</span>,
-        sortAccessor: (row) => row.createdAt ?? '',
       },
     ],
     [],
@@ -348,8 +353,9 @@ export default function Returns() {
           emptyTitle={statusFilter || debouncedSearch ? 'No matching returns' : 'No returns yet'}
           emptyMessage="Start a return from an order or shipment, and it will appear here."
         >
+          {/* Apply new defaults without deleting the previous saved layout or columns. */}
           <DataTable isUpdating={query.isFetching && !query.isLoading} sort={tableSort.sort} onSortChange={tableSort.onSortChange}
-            tableId="returns"
+            tableId="returns-created-first"
             columns={columns}
             rows={rows}
             rowKey={(row) => String(row.id)}

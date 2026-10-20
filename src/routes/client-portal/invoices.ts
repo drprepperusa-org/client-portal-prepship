@@ -110,7 +110,7 @@ app.get('/invoice-summary', async (c) => {
   if (range instanceof Response) return range;
   const clientId = requestedClientId(c);
   // groupBy=period → one row per client per billing period; granularity
-  // 'half' (default, 1st–15th / 16th–EOM) or 'month' (combined 1st–EOM).
+  // 'month' by default; explicit 'half' remains available for existing API callers.
   // Without groupBy the plain per-client rollup is returned.
   const rows =
     c.req.query('groupBy') === 'period'
@@ -118,7 +118,7 @@ app.get('/invoice-summary', async (c) => {
           clientId,
           dateFrom: range.fromUtc,
           dateTo: range.toUtcExclusive,
-          granularity: c.req.query('granularity') === 'month' ? 'month' : 'half',
+          granularity: c.req.query('granularity') === 'half' ? 'half' : 'month',
         })
       : await portalInvoiceSummary(scope, { clientId, dateFrom: range.fromUtc, dateTo: range.toUtcExclusive });
   // ── CP-067: the LIST's money comes from PrepShip's owner, like the invoice ──

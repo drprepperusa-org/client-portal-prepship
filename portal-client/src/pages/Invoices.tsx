@@ -43,12 +43,11 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   const [detailSort, setDetailSort] = useState<InvoiceSort>({ key: 'order', dir: 'desc' });
   // CP-008: billed shipping comes from the selected billing row, never label cost.
   const [shipmentModal, setShipmentModal] = useState<InvoiceShipmentSelection | null>(null);
-  const [granularity, setGranularity] = useState<'half' | 'month'>('half');
   const [clientFilter, setClientFilter] = useState<number | undefined>();
 
   const clientsQuery = useClients();
   const clients = clientsQuery.data?.data ?? [];
-  const summaryQuery = useInvoicePeriodSummaryRange(from, to, granularity, clientFilter);
+  const summaryQuery = useInvoicePeriodSummaryRange(from, to, 'month', clientFilter);
   const billingDenied = summaryQuery.isError && errorStatus(summaryQuery.error) === 403;
   const billingVisible = summaryQuery.data?.billingVisible !== false && !billingDenied;
   // CP-070: PrepShip's finalization verdict for exactly the days and client this list shows.
@@ -119,7 +118,6 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
         <InvoicePeriodList
           clients={clients}
           clientFilter={clientFilter}
-          granularity={granularity}
           summary={summary}
           totals={totals}
           from={from}
@@ -133,7 +131,6 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           error={summaryQuery.error}
           onRetry={() => { void Promise.all([summaryQuery.refetch(), clientsQuery.refetch()]); }}
           onClientFilterChange={setClientFilter}
-          onGranularityChange={setGranularity}
           onSelect={(value) => { setSelected(value); setDetailPage(1); }}
           onExportAll={() => { void actions.exportAllPeriods(); }}
           onExport={(row, key) => {

@@ -195,7 +195,7 @@ export function useInvoiceSummaryRange(dateFrom: string, dateTo: string) {
 export function useInvoicePeriodSummaryRange(
   dateFrom: string,
   dateTo: string,
-  granularity: 'half' | 'month' = 'half',
+  granularity: 'half' | 'month' = 'month',
   explicitClientId?: number,
 ) {
   const { clientId: globalClientId } = usePortalFilters();

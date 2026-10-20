@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { FileBarChart, RefreshCw, Clock } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
@@ -9,6 +9,7 @@ import { useBillingStatus, useMe } from '@/lib/hooks';
 import { useAuth } from '@/auth';
 import { portalApi } from '@/lib/api';
 import { presetRange, type Preset } from '@/lib/dateRange';
+import { usePortalFilters } from '@/lib/portalContext';
 import BillingClients from './Invoices';
 
 function timeAgo(iso?: string | null): string {
@@ -27,6 +28,7 @@ function timeAgo(iso?: string | null): string {
  *  Billing viewers may request canonical generation from PrepShip. Tenant
  *  scope stays backend-owned; the portal never calculates or persists truth. */
 export default function Billing() {
+  const { dateRange, setDateRange } = usePortalFilters();
   const toast = useToast();
   const qc = useQueryClient();
   const { accessToken } = useAuth();
@@ -43,13 +45,20 @@ export default function Billing() {
   // Shared date range drives the billing view. Custom dates are staged in a
   // draft first — the query only refires on "Apply range", never on each
   // individual date change. Presets apply instantly (one click = both dates).
-  const initial = presetRange('90');
-  const [preset, setPreset] = useState<Preset>('90');
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
-  const [draftFrom, setDraftFrom] = useState(initial.from);
-  const [draftTo, setDraftTo] = useState(initial.to);
+  const from = dateRange.dateFrom;
+  const to = dateRange.dateTo;
+  const [preset, setPreset] = useState<Preset>('custom');
+  const [draftFrom, setDraftFrom] = useState(from);
+  const [draftTo, setDraftTo] = useState(to);
   const [updating, setUpdating] = useState(false);
+  useEffect(() => {
+    setDraftFrom(from);
+    setDraftTo(to);
+    const presets: Record<string, Preset> = {
+      all: 'all', this_month: 'month', last_month: 'lastmonth', last_30: '30', last_90: '90',
+    };
+    setPreset(presets[dateRange.preset ?? ''] ?? 'custom');
+  }, [from, to, dateRange.preset]);
 
   const rangeDirty = draftFrom !== from || draftTo !== to;
   const rangeValid = Boolean(draftFrom) && Boolean(draftTo) && draftFrom <= draftTo;
@@ -59,14 +68,13 @@ export default function Billing() {
     setPreset(p);
     setDraftFrom(r.from);
     setDraftTo(r.to);
-    setFrom(r.from);
-    setTo(r.to);
+    const names = { all: 'all', month: 'this_month', lastmonth: 'last_month', '30': 'last_30', '90': 'last_90' };
+    setDateRange({ dateFrom: r.from, dateTo: r.to, preset: names[p] });
   }
 
   function applyRange() {
     if (!rangeValid) return;
-    setFrom(draftFrom);
-    setTo(draftTo);
+    setDateRange({ dateFrom: draftFrom, dateTo: draftTo, preset: 'custom' });
   }
 
   function invalidateBilling() {
@@ -86,8 +94,7 @@ export default function Billing() {
     setUpdating(true);
     try {
       const result = await portalApi.generateBilling(accessToken, draftFrom, draftTo);
-      setFrom(draftFrom);
-      setTo(draftTo);
+      setDateRange({ dateFrom: draftFrom, dateTo: draftTo, preset: 'custom' });
       await invalidateBilling();
       toast.success('Billing updated', result.message);
     } catch (error) {
@@ -149,7 +156,7 @@ export default function Billing() {
         </p>
       </GlassPanel>
 
-      <BillingClients from={from} to={to} />
+      <BillingClients key={`${from}:${to}`} from={from} to={to} />
     </div>
   );
 }

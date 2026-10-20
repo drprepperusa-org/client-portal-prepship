@@ -147,7 +147,7 @@ test.describe('CP-070 AC-1 — banner copy and placement', () => {
 
       // Nonblocking: the list still responds, and the banner stays.
       const before = requests.summary.length;
-      await page.getByRole('button', { name: 'Monthly', exact: true }).click();
+      await page.getByRole('button', { name: 'Last Month', exact: true }).click();
       await expect.poll(() => requests.summary.length).toBeGreaterThan(before);
       await expect(banner(page)).toHaveText(OPEN_COPY);
       expect(errors).toEqual([]);
