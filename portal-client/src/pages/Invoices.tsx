@@ -20,9 +20,11 @@ import {
 } from '@/components/billing/BillingFinalizationBanner';
 import { EmptyState } from '@/components/ui/Display';
 import { GlassPanel } from '@/components/ui/Glass';
+import { Button } from '@/components/ui/Button';
 import {
   useBillingFinalizationCoverage,
   useCanCustomizeTables,
+  useBillingColumns,
   useClients,
   useInvoiceDetailsRange,
   useInvoicePeriodSummaryRange,
@@ -36,6 +38,7 @@ function errorStatus(error: unknown): number | undefined {
 export default function Invoices({ from, to }: { from: string; to: string }) {
   const { accessToken } = useAuth();
   const canCustomizeTables = useCanCustomizeTables();
+  const columnSettings = useBillingColumns();
   const [selected, setSelected] = useState<InvoiceSelection | null>(null);
   const [detailPage, setDetailPage] = useState(1);
   const [detailPageSize, setDetailPageSize] = useState(100);
@@ -105,6 +108,14 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
   }
 
   const busyKey = selected ? `${selected.clientId}-${selected.from}` : '';
+  if (columnSettings.isPending) return <p role="status" className="p-4 text-sm text-ink-3">Loading billing columns…</p>;
+  if (columnSettings.isError || !columnSettings.data) return (
+    <GlassPanel className="space-y-3 p-4">
+      <p role="alert">Billing column settings could not be loaded.</p>
+      <Button variant="secondary" onClick={() => columnSettings.refetch()}>Retry billing columns</Button>
+    </GlassPanel>
+  );
+
   return (
     <div className="space-y-4">
       {selected == null ? (
@@ -125,6 +136,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           exporting={actions.exporting}
           opening={actions.opening}
           canCustomizeTables={canCustomizeTables}
+          clientVisibleColumns={columnSettings.data?.summary ?? []}
           isLoading={summaryQuery.isLoading || clientsQuery.isLoading}
           isUpdating={summaryQuery.isFetching && !summaryQuery.isLoading}
           isError={summaryQuery.isError || clientsQuery.isError}
@@ -149,6 +161,7 @@ export default function Invoices({ from, to }: { from: string; to: string }) {
           sort={detailSort}
           exporting={actions.exporting}
           canCustomizeTables={canCustomizeTables}
+          clientVisibleColumns={columnSettings.data?.lineItems ?? []}
           isLoading={detailQuery.isLoading}
           isUpdating={detailQuery.isFetching && !detailQuery.isLoading}
           isError={detailQuery.isError}

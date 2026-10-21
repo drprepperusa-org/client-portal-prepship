@@ -11,6 +11,7 @@
  */
 import { expect, test } from '@playwright/test';
 import { renderPortalInvoiceHtml } from '../../src/lib/client-portal/invoice-html';
+import { BILLING_COLUMN_SECTIONS } from '../../src/lib/client-portal/contracts/billing-columns';
 
 const baseUrl = 'http://127.0.0.1:5177';
 const storageKey = 'sb-portal-e2e-auth-token';
@@ -175,7 +176,9 @@ async function setupBilling(page, eventRows = EVENT_ROWS) {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith('/api/client-portal/')) {
       let body = { data: [], billingVisible: true };
-      if (url.pathname.includes('invoice-details')) {
+      if (url.pathname.endsWith('/billing/columns')) {
+        body = { summary: BILLING_COLUMN_SECTIONS.summary.map(([key]) => key), lineItems: BILLING_COLUMN_SECTIONS.lineItems.map(([key]) => key), revision: null, canManage: true };
+      } else if (url.pathname.includes('invoice-details')) {
         body = { data: eventRows, billingVisible: true };
       } else if (url.pathname.includes('invoice-summary')) {
         // The Billing page renders PERIODS first and the event rows are a drill-in, so a

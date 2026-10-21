@@ -23,6 +23,7 @@ interface InvoicePeriodListProps {
   exporting: string | null;
   opening: string | null;
   canCustomizeTables: boolean;
+  clientVisibleColumns: string[];
   isLoading: boolean;
   isUpdating: boolean;
   isError: boolean;
@@ -94,7 +95,7 @@ export function InvoicePeriodList(props: InvoicePeriodListProps) {
       >
         <DataTable isUpdating={props.isUpdating}
           tableId="invoices-summary"
-          columns={summaryColumns}
+          columns={summaryColumns.filter((column) => column.key === 'invoice' || props.clientVisibleColumns.includes(column.key))}
           rows={props.summary}
           rowKey={(row) => `${row.clientId}-${row.periodStart}`}
           allowColumnCustomization={props.canCustomizeTables}

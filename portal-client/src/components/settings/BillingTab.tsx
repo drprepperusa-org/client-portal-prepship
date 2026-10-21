@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Display';
 import { QueryState } from '@/components/ui/QueryState';
 import { useClients } from '@/lib/hooks';
+import { BillingColumnSettings } from './BillingColumnSettings';
 
 /* BILLING - point at the real Billing/Invoices data instead of a
    fabricated card + plan. Payment methods are operator-managed. */
@@ -30,6 +31,7 @@ export function BillingTab() {
   return (
     <div className="space-y-5">
       <SectionTitle title="Billing" subtitle="Your invoices and billed client accounts" />
+      <BillingColumnSettings />
       <div className="space-y-2">
         {clients.length === 0 && <p className="text-sm text-ink-3">No billed accounts in scope.</p>}
         {clients.map((c) => (

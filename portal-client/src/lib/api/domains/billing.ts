@@ -15,7 +15,8 @@ import {
   billingRangeParams,
   defaultRange,
 } from '../scope';
-import { apiBlob, apiGet, apiPost, apiText } from '../transport';
+import { apiBlob, apiGet, apiPost, apiPut, apiText } from '../transport';
+import type { BillingColumnSettings, BillingColumnUpdate } from '@client-portal-contracts/billing-columns';
 
 type BillingGenerateResult = {
   generated: number;
@@ -79,6 +80,9 @@ async function runBillingGenerate(
 }
 
 export const billingApi = {
+  billingColumns: (token: RequestAuth) => apiGet<BillingColumnSettings>(token, '/api/client-portal/billing/columns'),
+  saveBillingColumns: (token: RequestAuth, input: BillingColumnUpdate) =>
+    apiPut<BillingColumnSettings>(token, '/api/client-portal/billing/columns', input),
   reports: (token: RequestAuth, range: PortalDateRange) =>
     apiGet<PortalReports>(token, '/api/client-portal/reports', {
       ...billingRangeFromPortal(range),

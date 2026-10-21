@@ -28,6 +28,7 @@ import clientActivityRoute from './client-portal/client-activity';
 import rateSheetRoute from './client-portal/rate-sheet';
 import attentionRoute from './client-portal/attention';
 import notificationPreferencesRoute from './client-portal/notification-preferences';
+import billingColumnsRoute from './client-portal/billing-columns';
 
 const app = new Hono();
 
@@ -50,5 +51,6 @@ app.route('/', clientActivityRoute);
 app.route('/', rateSheetRoute);
 app.route('/', attentionRoute);
 app.route('/', notificationPreferencesRoute);
+app.route('/', billingColumnsRoute);
 
 export default app;

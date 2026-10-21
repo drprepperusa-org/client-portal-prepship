@@ -21,6 +21,7 @@ interface InvoiceLineItemsProps {
   sort: InvoiceSort;
   exporting: string | null;
   canCustomizeTables: boolean;
+  clientVisibleColumns: string[];
   isLoading: boolean;
   isUpdating: boolean;
   isError: boolean;
@@ -89,7 +90,7 @@ export function InvoiceLineItems(props: InvoiceLineItemsProps) {
       >
         <DataTable isUpdating={props.isUpdating}
           tableId="invoices-lines"
-          columns={lineColumns}
+          columns={lineColumns.filter((column) => props.clientVisibleColumns.includes(column.key))}
           rows={props.lineItems}
           // CP-059: keyed on RELATIONAL EVENT identity, not the order.
           //

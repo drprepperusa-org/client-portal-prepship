@@ -49,6 +49,9 @@ export function useTokenQuery<T>(key: unknown[], fn: (token: RequestAuth) => Pro
 const LIVE_ORDERS_MS = 10 * 60 * 1000;
 
 export const useMe = () => useTokenQuery(['me'], portalApi.me);
+export const useBillingColumns = () => useTokenQuery(['billing-columns'], portalApi.billingColumns, true, {
+  alwaysRefetch: true, refetchOnWindowFocus: true, refetchInterval: 30_000,
+});
 export function useCanCustomizeTables(): boolean {
   const me = useMe().data;
   return Boolean(me?.isAdmin || me?.isGlobal);
