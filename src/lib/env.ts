@@ -38,6 +38,8 @@ const schema = z.object({
   PUBLIC_API_URL: z.string().url().optional(),
   // Canonical PrepShip API used for admin-owned mutations that the Client
   // Portal may request but must never implement as a second source of truth.
+  // Enable only after PrepShip's bounded canonical batch endpoint is deployed.
+  PREPSHIP_INVOICE_TOTALS_BATCH_ENABLED: booleanFlag(false),
   PREPSHIP_API_URL: z.string().url().optional(),
   CRON_SECRET: z.string().optional(),
   DB_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),

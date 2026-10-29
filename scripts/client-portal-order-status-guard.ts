@@ -198,8 +198,9 @@ check(
   'the transactional return-request recheck reads the same six signals as the DTO badge',
 );
 check(
-  (readModelCode.match(/orderOutboundShipmentMatchSql\('s'\)/g) ?? []).length === 2,
-  'the tracking-number and carrier-code subqueries use the same orderOutboundShipmentMatchSql row set',
+  (readModelCode.match(/orderOutboundShipmentMatchSql\('s'\)/g) ?? []).length === 1
+    && (readModelCode.match(/activeShipmentIdentity: activeShipmentIdentitySql\(\)/g) ?? []).length === 2,
+  'list and detail share one tracking/carrier projection through orderOutboundShipmentMatchSql',
 );
 check(
   !/tracking_status|activeTrackingStatus|hasActiveShipment\b|hasVoidedShipment\b/.test(readModelCode),

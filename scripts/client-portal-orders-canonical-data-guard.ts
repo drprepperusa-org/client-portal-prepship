@@ -85,7 +85,7 @@ check(
 const readModel = read('src/lib/client-portal/read-models/orders.ts');
 const itemLoader = readModel.slice(
   readModel.indexOf('async function loadCanonicalOrderItems'),
-  readModel.indexOf('const activeShipmentTrackingNumberSql'),
+  readModel.indexOf('const activeShipmentIdentitySql'),
 );
 check(
   itemLoader.includes('.from(orderItems)') && itemLoader.includes('inArray(orderItems.orderId, orderIds)') &&
@@ -96,20 +96,21 @@ check((readModel.match(/canonicalItems:/g) ?? []).length === 2, 'both Orders lis
 check(
   readModel.includes('coalesce(nullif(trim(s.label_tracking)') &&
     readModel.includes('coalesce(s.voided, false) = false') &&
-    (readModel.match(/activeShipmentTrackingNumber:/g) ?? []).length === 4,
+    (readModel.match(/activeShipmentIdentity: activeShipmentIdentitySql\(\)/g) ?? []).length === 2 &&
+    (readModel.match(/activeShipmentTrackingNumber: row.activeShipmentIdentity\?\.trackingNumber/g) ?? []).length === 2,
   'list and detail select the latest non-voided shipment display tracking identity',
 );
 // CP-069: the tracking-number and carrier-code subqueries pick from OUTBOUND rows only — the ONE
 // shared PrepShip aggregate match (order_id, or client-scoped order_number, AND is_return = false)
 // — so a return label's number can never become the order's displayTrackingNumber.
 const trackingSubqueries = readModel.slice(
-  readModel.indexOf('const activeShipmentTrackingNumberSql'),
+  readModel.indexOf('const activeShipmentIdentitySql'),
   readModel.indexOf('export const PORTAL_ORDER_STATUS_FILTERS'),
 );
 check(
-  (trackingSubqueries.match(/orderOutboundShipmentMatchSql\('s'\)/g) ?? []).length === 2 &&
+  (trackingSubqueries.match(/orderOutboundShipmentMatchSql\('s'\)/g) ?? []).length === 1 &&
     !/s\.order_id = \$\{orders\.id\}/.test(trackingSubqueries),
-  'CP-069: both tracking/carrier subqueries match rows through orderOutboundShipmentMatchSql (no local order match)',
+  'CP-069: the shared tracking/carrier projection matches rows through orderOutboundShipmentMatchSql (no local order match)',
 );
 const lifecycle = read('src/lib/client-portal/order-lifecycle.ts');
 const matchFragment = lifecycle.slice(lifecycle.indexOf('export function orderOutboundShipmentMatchSql'), lifecycle.indexOf('export function hasActiveOutboundShipmentSql'));

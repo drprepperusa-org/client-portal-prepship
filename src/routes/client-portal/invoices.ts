@@ -9,7 +9,7 @@ import { billingDayRange, type BillingDayRange } from '../../lib/client-portal/b
 import { isClientPortalScope } from '../../lib/client-portal/scope';
 import { clientFilterPredicate } from '../../lib/client-portal/predicates';
 import { renderPortalInvoiceHtml } from '../../lib/client-portal/invoice-html';
-import { fetchCanonicalInvoiceTotals } from '../../lib/client-portal/prepship-invoice-totals-proxy';
+import { fetchCanonicalInvoiceTotals, fetchCanonicalInvoiceTotalsBatch, canonicalInvoiceTotalsBatchEnabled } from '../../lib/client-portal/prepship-invoice-totals-proxy';
 import type { CanonicalBillingTotals } from '../../lib/client-portal/prepship-billing-details-proxy';
 import { assignCanonicalTotals, keyBillingSummaryRows } from '../../lib/client-portal/billing-summary-canonical-keys';
 // CP-059 moved the DETAIL grain to canonical billing events, so portalInvoiceDetails is no
@@ -159,7 +159,14 @@ app.get('/invoice-summary', async (c) => {
   // Independent period reads overlap in pairs. Bound upstream pressure for long ranges,
   // preserve period order, and finish the current pair before returning any error.
   // No cross-request cache: every summary still reads the caller's current canonical totals.
-  for (let offset = 0; offset < periods.length; offset += 2) {
+  if (canonicalInvoiceTotalsBatchEnabled) {
+    const result = await fetchCanonicalInvoiceTotalsBatch(listAuthorization, keyedResult.periods, listRequestId);
+    if (!result.ok) {
+      await recordPortalAudit('portal.invoice_summary.failed', scope, { clientId, reason: result.code });
+      return c.json({ error: result.error, code: result.code }, result.status as 401 | 403 | 502 | 503);
+    }
+    for (const [key, totals] of result.byPeriod) canonicalByPeriod.set(key, totals);
+  } else for (let offset = 0; offset < periods.length; offset += 2) {
     const batch = periods.slice(offset, offset + 2);
     const results = await Promise.all(batch.map(async ([key, { dateFrom, dateTo, clientIds }]) =>
       [key, await fetchCanonicalInvoiceTotals(listAuthorization, { clientIds, dateFrom, dateTo }, listRequestId)] as const,

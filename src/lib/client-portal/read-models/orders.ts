@@ -72,18 +72,13 @@ async function loadCanonicalOrderItems(orderIds: number[], reader: OrderReader =
 // (the shared PrepShip aggregate row set: matched by order_id or client-scoped order_number,
 // voided = false, is_return = false). A return label's tracking number can never become the
 // order's tracking number.
-const activeShipmentTrackingNumberSql = () => sql<string | null>`(
-  select coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), ''))
-  from shipments s
-  where ${orderOutboundShipmentMatchSql('s')}
-    and coalesce(s.voided, false) = false
-    and coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), '')) is not null
-  order by s.id desc
-  limit 1
-)`;
-
-const activeShipmentCarrierCodeSql = () => sql<string | null>`(
-  select coalesce(nullif(trim(s.label_carrier), ''), nullif(trim(s.carrier_code), ''))
+// One latest-shipment lookup returns both display fields. The canonical outbound
+// predicate and latest tracked row ordering remain authoritative; no rate/status rules move here.
+const activeShipmentIdentitySql = () => sql<{ trackingNumber: string; carrierCode: string | null } | null>`(
+  select jsonb_build_object(
+    'trackingNumber', coalesce(nullif(trim(s.label_tracking), ''), nullif(trim(s.tracking_number), '')),
+    'carrierCode', coalesce(nullif(trim(s.label_carrier), ''), nullif(trim(s.carrier_code), ''))
+  )
   from shipments s
   where ${orderOutboundShipmentMatchSql('s')}
     and coalesce(s.voided, false) = false
@@ -182,8 +177,7 @@ export async function listPortalOrders(
         // shipments. Never orders.shipping_amount (buyer-paid store shipping); never
         // the internal carrier / service / selected-rate.
         resolvedShippingRate: orderCustomerShippingRateSql(),
-        activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
-        activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
+        activeShipmentIdentity: activeShipmentIdentitySql(),
         // CP-069: canonical signals for the backend-owned order fulfillment status
         // (lib/client-portal/order-status.ts) — whether the order has an active / a voided
         // OUTBOUND shipment (PrepShip's aggregate rule: voided, is_return), from the ONE
@@ -232,8 +226,8 @@ export async function listPortalOrders(
           hasActiveOutboundShipment: row.hasActiveOutboundShipment,
           hasVoidedOutboundShipment: row.hasVoidedOutboundShipment,
           canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
-          activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
-          activeShipmentCarrierCode: row.activeShipmentCarrierCode,
+          activeShipmentTrackingNumber: row.activeShipmentIdentity?.trackingNumber ?? null,
+          activeShipmentCarrierCode: row.activeShipmentIdentity?.carrierCode ?? null,
           hasActiveReplacement: row.hasActiveReplacement,
           activeReplacementStatus: row.activeReplacementStatus,
           activeReplacementCount: row.activeReplacementCount,
@@ -262,8 +256,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       // summed over the order's shipments — the SAME resolver the Shipments surface
       // uses. Never orders.shipping_amount.
       resolvedShippingRate: orderCustomerShippingRateSql(),
-      activeShipmentTrackingNumber: activeShipmentTrackingNumberSql(),
-      activeShipmentCarrierCode: activeShipmentCarrierCodeSql(),
+      activeShipmentIdentity: activeShipmentIdentitySql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts).
       ...orderFulfillmentSignalSelects(),
@@ -288,8 +281,8 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       hasActiveOutboundShipment: row.hasActiveOutboundShipment,
       hasVoidedOutboundShipment: row.hasVoidedOutboundShipment,
       canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
-      activeShipmentTrackingNumber: row.activeShipmentTrackingNumber,
-      activeShipmentCarrierCode: row.activeShipmentCarrierCode,
+      activeShipmentTrackingNumber: row.activeShipmentIdentity?.trackingNumber ?? null,
+      activeShipmentCarrierCode: row.activeShipmentIdentity?.carrierCode ?? null,
       hasActiveReplacement: row.hasActiveReplacement,
       activeReplacementStatus: row.activeReplacementStatus,
       activeReplacementCount: row.activeReplacementCount,

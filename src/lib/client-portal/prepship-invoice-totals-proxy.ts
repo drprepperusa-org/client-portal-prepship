@@ -17,6 +17,8 @@
  * This fetches the SAME totals the invoice reads, per client, for one period.
  */
 import { env } from '../env';
+export { fetchCanonicalInvoiceTotalsBatch } from './prepship-invoice-totals-batch-proxy';
+export const canonicalInvoiceTotalsBatchEnabled = env.PREPSHIP_INVOICE_TOTALS_BATCH_ENABLED;
 import {
   parseCanonicalBillingTotals,
   type CanonicalBillingTotals,

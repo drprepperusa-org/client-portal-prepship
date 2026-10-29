@@ -413,7 +413,7 @@ export type CanonicalBillingTotals = {
   grandTotal: number;
 };
 
-const TOTALS_FIELDS = [
+export const TOTALS_FIELDS = [
   'orderCount', 'pickPackTotal', 'additionalTotal', 'packageTotal', 'shippingTotal',
   'storageTotal', 'adjustmentTotal', 'replacePostageTotal', 'replacePickPackTotal',
   'returnTotal', 'returnPostageTotal', 'returnProcessingTotal', 'grandTotal',

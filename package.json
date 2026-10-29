@@ -7,6 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:client-portal-shipment-projection": "tsx scripts/client-portal-shipment-projection-test.ts",
+    "test:client-portal-billing-batch": "tsx scripts/client-portal-billing-batch-test.ts",
     "test:billing-column-settings": "tsx scripts/billing-column-settings-test.ts",
     "test:client-portal-monthly-dates:browser": "playwright test web/e2e/client-portal-monthly-dates.spec.js --workers=1 --reporter=line",
     "test:client-portal-monthly-periods:integration": "tsx scripts/integration/client-portal-monthly-periods.integration.ts",
