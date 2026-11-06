@@ -40,3 +40,9 @@ The source of truth remains PrepShip's shared pricing and access owners; no prod
 account grants, prices, invoices, shipments or marketplace actions were changed in testing.
 
 All 196 local release guards passed. CI browser jobs are pinned to Ubuntu 24.04 because the installed Playwright version cannot install Chromium on Ubuntu 26.04. The pinned upstream finalization contract also matches through the authenticated GitHub connection; the CI-specific PREPSHIP_CONTRACT_TOKEN was reported expired and is being renewed separately.
+
+The token was renewed and all four hosted cross-repository parity checks passed.
+Remaining browser fixtures now supply the canonical billing-column policy, assert
+inbound SKU/name cells separately, and require Returns exports to preserve the list's
+date filters. Repaired scenarios, all 22 export/finalization scenarios, and all 16
+production-dashboard loading scenarios pass without changing application behavior.

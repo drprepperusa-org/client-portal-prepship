@@ -14,6 +14,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { BILLING_COLUMN_SECTIONS } from '../../src/lib/client-portal/contracts/billing-columns';
 
 const baseUrl = 'http://127.0.0.1:5177';
 const storageKey = 'sb-portal-e2e-auth-token';
@@ -117,6 +118,9 @@ async function setupBilling(page, clients) {
           },
           billingVisible: true,
         };
+      } else if (url.pathname.endsWith('/billing/columns')) {
+        body = { summary: BILLING_COLUMN_SECTIONS.summary.map(([key]) => key),
+          lineItems: BILLING_COLUMN_SECTIONS.lineItems.map(([key]) => key), revision: null, canManage: true };
       } else if (url.pathname.endsWith('/clients')) {
         body = { data: clients.map((client) => ({ id: client.id, name: client.name })) };
       }
