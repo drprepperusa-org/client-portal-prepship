@@ -11,3 +11,17 @@ User input and stale JWT grants are the entry points for invalid data. Backend f
 Proof: `npm run test:rate-sheet-permissions`, relevant-package scoped-read test, existing access/architecture guards, and `web/e2e/client-portal-rate-sheet.spec.js` (admin switch, service and box saves, denial, client filtering, mobile). All mutation tests use disposable fixtures; no production grants or pricing were changed while implementing this feature.
 
 Release PrepShip backend before the portal. Until the upstream capability endpoint is ready, the portal stays read-only.
+
+## Local verification, 2026-11-07
+
+Both builds and typechecks pass. The new permission/proxy tests, client-price isolation tests,
+and seven Rate Sheet/admin browser scenarios pass. PrepShip's configuration transaction tests
+cover immediate revocation, cross-client denial, audit rollback, explicit free boxes and
+publishing a client price over an inherited catalog default.
+
+The full Client Portal release suite is not green on the existing base: its inbound
+customization guard still assumes admin-only columns, its export guard expects the older
+CSV-only expression, the integration wiring check omits the monthly-period suite, and
+Returns exceeds the existing function-size limit. The older portal-wide browser suite
+also fails. Those unrelated surfaces were not changed for rate editing. No production
+deployment, account grant or price mutation has been performed for this feature.
