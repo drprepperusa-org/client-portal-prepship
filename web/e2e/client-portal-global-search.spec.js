@@ -28,7 +28,9 @@ async function setup(page) {
     if (name === 'awaiting-active-count') body = { count: 0 };
     if (categories.includes(name)) {
       const params = Object.fromEntries(url.searchParams);
-      state.requests.push({ name, ...params });
+      // Layout also warms unfiltered Orders/Inventory after foreground work.
+      // Record submitted searches (including full-list navigation), not those timer-driven reads.
+      if (params.search !== undefined) state.requests.push({ name, ...params });
       if (params.pageSize === '5') {
         if (state.hold && params.clientId === '1') await state.hold;
         if (state.failed === name) { await route.fulfill({ status: 503, json: { error: 'Unavailable' } }); return; }
