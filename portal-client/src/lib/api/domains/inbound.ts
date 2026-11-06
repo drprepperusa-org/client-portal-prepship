@@ -32,6 +32,10 @@ export const inboundApi = {
     format: 'csv', clientId: opts.clientId, dateFrom: opts.dateFrom, dateTo: opts.dateTo,
     sortBy: opts.sortBy, sortDir: opts.sortDir,
   }, 'text/csv'),
+  inboundReceiptsXlsx: (token: RequestAuth, opts: ListOpts) => apiBlob(token, '/api/client-portal/inbound/receipts', {
+    format: 'xlsx', clientId: opts.clientId, dateFrom: opts.dateFrom, dateTo: opts.dateTo,
+    sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
   receiveInventory: (token: RequestAuth, body: PortalInventoryReceiveInput) =>
     apiPost<{ data: PortalInventoryReceiveResult }>(token, '/api/client-portal/inventory/receive', body),
   createInbound: (token: RequestAuth, body: NewInboundInput) =>

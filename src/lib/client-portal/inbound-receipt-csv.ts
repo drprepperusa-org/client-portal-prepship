@@ -11,11 +11,15 @@ function cell(value: string | number | null | undefined) {
 }
 
 const line = (values: Array<string | number | null | undefined>) => values.map(cell).join(',') + '\r\n';
+export const inboundReceiptExportHeaders = ['Receipt ID', 'Client', 'SKU', 'Item name', 'Received quantity', 'Received date (UTC)'];
+export function inboundReceiptExportValues(item: PortalInboundReceipt) {
+  return [item.id, item.clientName, item.sku, item.name, item.receivedUnits, item.receivedAt];
+}
 /** Presentation-only projection of the same redacted DTO used by the receiving history table. */
 export function inboundReceiptCsvHeader() {
-  return '\uFEFF' + line(['Receipt ID', 'Client', 'SKU', 'Item name', 'Received quantity', 'Received date (UTC)']);
+  return '\uFEFF' + line(inboundReceiptExportHeaders);
 }
 
 export function inboundReceiptCsvRow(item: PortalInboundReceipt) {
-  return line([item.id, item.clientName, item.sku, item.name, item.receivedUnits, item.receivedAt]);
+  return line(inboundReceiptExportValues(item));
 }

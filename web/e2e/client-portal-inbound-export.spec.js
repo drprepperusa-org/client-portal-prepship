@@ -31,10 +31,14 @@ async function receiptsFixture(page) {
   await page.route('**/api/client-portal/inbound/receipts?*',async route=>{
     const url=new URL(route.request().url());const params=Object.fromEntries(url.searchParams);
     expect(route.request().method()).toBe('GET');
-    if(params.format==='csv') {
+    if(params.format==='csv' || params.format==='xlsx') {
       state.exports.push(params);
       if(state.gate)await state.gate;
       if(state.failure){await route.fulfill({status:state.failure,json:{error:'private_details'}});return;}
+      if(params.format==='xlsx') {
+        await route.fulfill({contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          headers:{'Content-Disposition':'attachment; filename="inbound-receipts.xlsx"'},body:Buffer.from('PK-fixture-backend-workbook')});return;
+      }
       await route.fulfill({contentType:'text/csv; charset=utf-8',headers:{'Content-Disposition':'attachment; filename="inbound-receipts-fixture.csv"'},body:fileBytes});return;
     }
     state.requests.push(params);
@@ -79,6 +83,29 @@ test('Inbound CSV preserves backend bytes and matches client and sort across all
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.screenshot({path:test.info().outputPath('inbound-export-mobile.png')});
+});
+
+test('Inbound Excel downloads backend workbook bytes and keeps client scope, retries and mobile layout',async({page})=>{
+  const state=await receiptsFixture(page);await page.goto(base+'/inbound');
+  const excel=page.getByRole('button',{name:'Export Excel',exact:true});
+  await expect(excel).toBeEnabled();
+  await page.getByRole('button',{name:'All clients',exact:true}).click();
+  await page.getByRole('button',{name:'Beta',exact:true}).click();
+  await expect.poll(()=>state.requests.at(-1)?.clientId).toBe('2');
+  state.failure=503;await excel.click();
+  await expect(page.getByRole('alert').filter({hasText:'Could not export receiving history'})).toBeVisible();
+  state.failure=0;
+  const event=page.waitForEvent('download');await excel.click();const file=await event;
+  expect(file.suggestedFilename()).toBe('inbound-receipts.xlsx');
+  const chunks=[];for await(const chunk of await file.createReadStream())chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString()).toBe('PK-fixture-backend-workbook');
+  expect(state.exports.at(-1)).toMatchObject({format:'xlsx',clientId:'2'});
+  expect(state.exports.at(-1).page).toBeUndefined();
+  await expect(page.getByText('Excel downloaded with all matching receipts. Dates are in UTC.')).toBeVisible();
+  await page.setViewportSize({width:390,height:844});await expect(excel).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  state.empty=true;await page.getByRole('combobox',{name:'Filter by client'}).selectOption('1');
+  await expect(excel).toBeDisabled();
 });
 test('Inbound export reports progress and safe errors, permits retry and disables empty exports',async({page})=>{
   const state=await receiptsFixture(page);await page.goto(base+'/inbound');

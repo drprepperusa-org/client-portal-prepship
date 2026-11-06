@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import JSZip from 'jszip';
 import { Hono } from 'hono';
 import { setupTestEnv } from './guard';
 import { loadFixtureModule } from '../lib/load-fixture-module';
@@ -91,6 +92,20 @@ try {
     assert.equal((await alpha.request('/inbound/receipts?'+invalid)).status,400);
   }
   assert.equal((await appFor([]).request('/inbound/receipts?format=csv')).status,403);
+  for (const [app, query, expectedRows] of [[alpha, dates, 507], [beta, '', 1], [alpha, `&clientId=${b.id}`, 0],
+    [store, dates, 507]] as const) {
+    const excel = await app.request('/inbound/receipts?format=xlsx' + query);
+    assert.equal(excel.status, 200);
+    assert.equal(excel.headers.get('cache-control'), 'private, no-store');
+    assert.match(excel.headers.get('content-type')!, /spreadsheetml.sheet/);
+    assert.equal(excel.headers.get('content-disposition'), 'attachment; filename="inbound-receipts.xlsx"');
+    const workbook = await JSZip.loadAsync(await excel.arrayBuffer());
+    const worksheet = await workbook.file('xl/worksheets/sheet1.xml')!.async('string');
+    assert.equal((worksheet.match(/<row /g) ?? []).length, expectedRows + 1);
+    if (app !== beta) assert.ok(!worksheet.includes('PRIVATE-BETA'));
+    assert.ok(!worksheet.includes('PRIVATE-NOTE'));
+  }
+  assert.equal((await appFor([]).request('/inbound/receipts?format=xlsx')).status,403);
   const caller={userId:'receipt-export-fixture',clientIds:[a.id],storeIds:[],isGlobal:false,isRestricted:true,
     permissions:[],canViewFinancials:false,canViewCredentials:false};
   let observed=false;

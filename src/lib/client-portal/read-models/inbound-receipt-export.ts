@@ -2,12 +2,16 @@ import { db } from '../../../db/client';
 import { listPortalInboundReceipts, type ReceiptListOptions } from './inbound-receipts';
 import { inboundReceiptCsvHeader, inboundReceiptCsvRow, INBOUND_RECEIPT_EXPORT_MAX_BYTES, INBOUND_RECEIPT_EXPORT_MAX_ROWS } from '../inbound-receipt-csv';
 import type { ClientPortalScope } from '../scope';
+import { inboundReceiptExportValues } from '../inbound-receipt-csv';
+import { renderInboundReceiptXlsx } from '../inbound-receipt-xlsx';
 
 export class InboundReceiptExportTooLarge extends Error {}
 
 /** One read-only snapshot: concurrent imports cannot skip/duplicate rows between pages. */
-export async function exportPortalInboundReceipts(scope: ClientPortalScope, filters: Omit<ReceiptListOptions, 'page' | 'pageSize'>) {
-  return db.transaction(async tx => {
+export async function exportPortalInboundReceipts(scope: ClientPortalScope, filters: Omit<ReceiptListOptions, 'page' | 'pageSize'>,
+  format: 'csv' | 'xlsx' = 'csv') {
+  const workbookRows: Array<Array<string | number | null>> = [];
+  const result = await db.transaction(async tx => {
     const lines = [inboundReceiptCsvHeader()];
     let bytes = Buffer.byteLength(lines[0]!);
     let rows = 0;
@@ -23,6 +27,7 @@ export async function exportPortalInboundReceipts(scope: ClientPortalScope, filt
         bytes += Buffer.byteLength(line);
         if (bytes > INBOUND_RECEIPT_EXPORT_MAX_BYTES) throw new InboundReceiptExportTooLarge('Too many bytes');
         lines.push(line);
+        if (format === 'xlsx') workbookRows.push(inboundReceiptExportValues(receipt));
         rows++;
       }
       if (page >= result.pagination.totalPages) {
@@ -31,4 +36,6 @@ export async function exportPortalInboundReceipts(scope: ClientPortalScope, filt
       }
     }
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
+  // Finish the snapshot before formatting; never hold a DB transaction during ZIP compression.
+  return { ...result, xlsx: format === 'xlsx' ? await renderInboundReceiptXlsx(workbookRows) : undefined };
 }

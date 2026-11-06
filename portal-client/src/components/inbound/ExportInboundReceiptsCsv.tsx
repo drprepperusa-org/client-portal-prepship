@@ -9,25 +9,27 @@ import { downloadFile } from '@/lib/downloadFile';
 export function ExportInboundReceiptsCsv({ filters, disabled }: { filters: ListOpts; disabled: boolean }) {
   const { accessToken, userId } = useAuth();
   const pending = useRef<AbortController | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'csv' | 'xlsx' | null>(null);
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    setBusy(false); setMessage('');
+    setBusy(null); setMessage('');
     return () => { pending.current?.abort(); pending.current = null; };
   }, [accessToken, userId]);
 
-  async function exportCsv() {
+  async function exportFile(format: 'csv' | 'xlsx') {
     if (!accessToken || pending.current) return;
     const controller = new AbortController();
     pending.current = controller;
-    setBusy(true); setMessage(''); setFailed(false);
+    setBusy(format); setMessage(''); setFailed(false);
     try {
-      const file = await portalApi.inboundReceiptsCsv({ accessToken, signal: controller.signal }, filters);
+      const request = format === 'xlsx' ? portalApi.inboundReceiptsXlsx : portalApi.inboundReceiptsCsv;
+      const file = await request({ accessToken, signal: controller.signal }, filters);
       if (controller.signal.aborted) return;
-      if (!file.contentType.toLowerCase().startsWith('text/csv')) throw new Error('Unexpected file type');
-      downloadFile({ bytes: file.bytes, filename: file.filename ?? 'inbound-receipts.csv' });
-      setMessage('CSV downloaded with all matching receipts. Dates are in UTC.');
+      const contentType = format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
+      if (!file.contentType.toLowerCase().startsWith(contentType)) throw new Error('Unexpected file type');
+      downloadFile({ bytes: file.bytes, filename: file.filename ?? `inbound-receipts.${format}` });
+      setMessage(`${format === 'xlsx' ? 'Excel' : 'CSV'} downloaded with all matching receipts. Dates are in UTC.`);
     } catch (error) {
       if (controller.signal.aborted) return;
       const status = (error as { status?: number }).status;
@@ -38,15 +40,20 @@ export function ExportInboundReceiptsCsv({ filters, disabled }: { filters: ListO
     } finally {
       if (pending.current === controller) {
         pending.current = null;
-        setBusy(false);
+        setBusy(null);
       }
     }
   }
 
   return <div className="space-y-1">
-    <Button variant="secondary" size="sm" disabled={disabled || !accessToken} loading={busy}
-      leadingIcon={<Download size={15} />} onClick={() => void exportCsv()}>{busy ? 'Exporting…' : 'Export CSV'}</Button>
-    {busy && <p role="status" className="text-xs text-ink-2">Preparing your CSV…</p>}
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" disabled={disabled || !accessToken || busy !== null} loading={busy === 'xlsx'}
+        leadingIcon={<Download size={15} />} onClick={() => void exportFile('xlsx')}>{busy === 'xlsx' ? 'Exporting…' : 'Export Excel'}</Button>
+      <Button variant="secondary" size="sm" disabled={disabled || !accessToken || busy !== null} loading={busy === 'csv'}
+        leadingIcon={<Download size={15} />} onClick={() => void exportFile('csv')}>{busy === 'csv' ? 'Exporting…' : 'Export CSV'}</Button>
+    </div>
+    <p className="text-xs text-ink-2">Excel keeps column widths and wraps long text.</p>
+    {busy && <p role="status" className="text-xs text-ink-2">Preparing your {busy === 'xlsx' ? 'Excel file' : 'CSV'}…</p>}
     {message && <p role={failed ? 'alert' : 'status'} className="text-xs text-ink-2">{message}</p>}
   </div>;
 }

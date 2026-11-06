@@ -2,6 +2,7 @@ import { createPortalInbound, InboundCreateRejected } from '../../services/porta
 import type { NewInboundInput } from '../../lib/client-portal/contracts/inbound';
 import { validateInboundCreate } from '../../lib/client-portal/contracts/create-form-validation';
 import { z } from 'zod';
+import { INBOUND_RECEIPT_XLSX_TYPE } from '../../lib/client-portal/inbound-receipt-xlsx';
 import { exportPortalInboundReceipts, InboundReceiptExportTooLarge } from '../../lib/client-portal/read-models/inbound-receipt-export';
 // Client-portal sub-router — extracted from the former single-file
 // src/routes/client-portal.ts. Mounted at '/' by that file (now a thin
@@ -26,7 +27,7 @@ import {
 
 const app = new Hono();
 const receiptRangeQuery = z.object({
-  format: z.literal('csv').optional(),
+  format: z.enum(['csv', 'xlsx']).optional(),
   clientId: z.coerce.number().int().positive().optional(),
   storeId: z.coerce.number().int().positive().optional(),
   dateFrom: z.string().datetime({ offset: true }).optional(),
@@ -49,10 +50,15 @@ app.get('/inbound/receipts', async (c) => {
   const storeId = requestedStoreId(c);
   const filters = { clientId, storeId, dateFrom, dateTo,
     sortBy: c.req.query('sortBy'), sortDir: c.req.query('sortDir') };
-  if (format === 'csv') {
+  if (format === 'csv' || format === 'xlsx') {
     try {
-      const result = await exportPortalInboundReceipts(scope, filters);
+      const result = await exportPortalInboundReceipts(scope, filters, format);
       await recordPortalAudit('portal.inbound.receipts.export', scope, { ...filters, rows: result.rows });
+      if (format === 'xlsx') {
+        c.header('Content-Type', INBOUND_RECEIPT_XLSX_TYPE);
+        c.header('Content-Disposition', 'attachment; filename="inbound-receipts.xlsx"');
+        return c.body(new Uint8Array(result.xlsx!));
+      }
       c.header('Content-Type', 'text/csv; charset=utf-8');
       c.header('Content-Disposition', 'attachment; filename="inbound-receipts.csv"');
       return c.body(result.csv);
