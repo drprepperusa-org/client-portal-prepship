@@ -54,7 +54,7 @@ export default function Inbound() {
   const effectiveClientId = clientFilter ?? globalClientId;
   const confirmationScope = JSON.stringify([userId, effectiveClientId]);
   const created = confirmation?.scope === confirmationScope ? confirmation.shipment : null;
-  useEffect(() => { setConfirmation(null); }, [confirmationScope]);
+  useEffect(() => { setConfirmation(null); setSelected(null); }, [confirmationScope]);
   const [receiptPage, setReceiptPage] = useFilteredPage(JSON.stringify([effectiveClientId]));
   const receiptSort = useTableSort(setReceiptPage);
   const [searchInput, setSearchInput] = useState('');
@@ -115,13 +115,13 @@ export default function Inbound() {
           </div>
         </GlassPanel>
       )}
-      <GlassPanel className="p-2 sm:p-3">
+      <GlassPanel className="p-2 sm:p-3" role="region" aria-label="Received inventory">
         <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <PackageCheck size={17} className="text-emerald-600" />
             <div>
               <p className="text-sm font-semibold text-ink">Received inventory</p>
-              <p className="text-xs text-ink-3">Canonical receipts recorded in PrepShip</p>
+              <p className="text-xs text-ink-3">{clients.find(client => client.id === effectiveClientId)?.name ?? (clients.length === 1 ? clients[0].name : 'All assigned clients')} · Individual inventory receipts</p>
             </div>
           </div>
           <div className="sm:shrink-0">
@@ -142,11 +142,12 @@ export default function Inbound() {
           <DataTable isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
             tableId="inbound-receipts"
             sort={receiptSort.sort} onSortChange={receiptSort.onSortChange}
-            columns={INBOUND_RECEIPT_COLUMNS}
+            columns={showClientFilter ? INBOUND_RECEIPT_COLUMNS : INBOUND_RECEIPT_COLUMNS.filter(column => column.key !== 'client')}
             rows={receiptRows}
             rowKey={(row) => String(row.id)}
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
+            maxBodyHeight="32rem"
           />
           {receiptPagination && (
             <Pagination
@@ -166,7 +167,7 @@ export default function Inbound() {
           <PackageOpen size={17} className="text-brand-600" />
           <div>
             <p className="text-sm font-semibold text-ink">Expected shipments</p>
-            <p className="text-xs text-ink-3">Purchase orders and ASNs arriving at the warehouse</p>
+            <p className="text-xs text-ink-3">Open a shipment to compare expected and received units by product.</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3 px-3 pb-3">

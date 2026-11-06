@@ -139,7 +139,7 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h3 className="font-semibold text-ink">Packaging</h3>
-                <p className="mt-1 text-sm text-ink-3">Configured box prices before billing adjustments. Final charges appear on invoices.</p>
+                <p className="mt-1 text-sm text-ink-3">Configured box prices before billing adjustments, for this client’s relevant packaging. Final charges appear on invoices.</p>
               </div>
               {sheet.packages.length > 0 && (
                 <label className="relative flex w-full items-center sm:max-w-sm">
@@ -166,9 +166,9 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
             ) : sheet.packages.length ? (
               <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No packaging matches “{packageQuery}”.</p>
             ) : (
-              <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No packaging prices configured for this client.</p>
+              <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No published prices for this client’s relevant packaging yet.</p>
             )}
-            <p className="text-xs text-ink-3">Only saved box prices are listed. An unlisted box has no published price here.</p>
+            <p className="text-xs text-ink-3">Only relevant boxes with saved client prices are listed, including free packaging. Unused catalog boxes are excluded.</p>
           </section>
         </div>
       )}

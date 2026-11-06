@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 const base = 'http://127.0.0.1:5177';
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
-async function fixture(page) {
+async function fixture(page, shipmentOverride = {}) {
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
   const user = { id: 'inbound-search-user', email: 'search@example.test', aud: 'authenticated', role: 'authenticated',
     app_metadata: { role: 'admin', permissions: ['scope:global'] }, user_metadata: {} };
@@ -32,7 +32,7 @@ async function fixture(page) {
         clientId: Number(q.clientId ?? 1), clientName: 'Client One', status: q.status ?? 'expected',
         supplier: 'Fixture supplier', carrier: null, trackingNumber: 'TRACK-FOUND', expectedDate: null, receivedDate: null, notes: null,
         createdAt: '2026-09-23T00:00:00Z', expectedUnits: 12, receivedUnits: 0,
-        items: [{ id: 1, sku: 'SKU-OLD', name: 'Full shipment item', expectedQty: 12, receivedQty: 0 }] }],
+        items: [{ id: 1, sku: 'SKU-OLD', name: 'Full shipment item', expectedQty: 12, receivedQty: 0 }], ...shipmentOverride }],
       pagination: { page: current, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
     }
     await route.fulfill({ json: body });
@@ -50,7 +50,16 @@ test('Expected shipment search, status and page size query the server and reset 
   await expect(region.getByText('MATCH-SKU-OLD', { exact: true }).filter({ visible: true })).toBeVisible();
   expect(state.requests.at(-1)).toMatchObject({ search: 'SKU-OLD', page: '1', pageSize: '50' });
   await region.getByRole('button', { name: 'View inbound MATCH-SKU-OLD', exact: true }).click();
-  await expect(page.getByRole('dialog').getByText('Full shipment item · SKU-OLD')).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('Full shipment item', {exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('SKU-OLD', {exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('columnheader', {name:'Units received'})).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('row', {name:'Total units 12 0'})).toBeVisible();
+  await page.screenshot({path:test.info().outputPath('inbound-worksheet-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await expect(page.getByRole('dialog').getByText('Full shipment item', {exact:true})).toBeVisible();
+  await page.screenshot({path:test.info().outputPath('inbound-worksheet-mobile.png')});
+  await page.setViewportSize({width:1280,height:900});
   await page.keyboard.press('Escape');
   await region.getByRole('button', { name: 'Clear filters', exact: true }).click();
   await expect(region.getByText('PO-PAGE-1-CLIENT-all').filter({ visible: true })).toBeVisible();
@@ -97,4 +106,32 @@ test('Late search response cannot replace newer results or another client scope'
   state.release();
   await expect(region.getByText('MATCH-held', { exact: true })).toHaveCount(0);
   expect(state.requests.at(-1)).toMatchObject({ search: 'latest', clientId: '2', page: '1' });
+});
+
+test('Receiving worksheet shows complete product names and recorded totals on desktop and mobile', async ({page}) => {
+  await page.setViewportSize({width:1440,height:1000});
+  const {region} = await fixture(page, {
+    clientName:'Heritage Kids Press', status:'received', supplier:'Heritage Kids Press',
+    expectedDate:'2026-05-21T12:00:00Z', receivedDate:'2026-05-21T12:00:00Z',
+    expectedUnits:286,receivedUnits:312,
+    items:[
+      {id:1,sku:'korean-songbook-1',name:'I Love to Sing in Korean: Nursery Rhymes',expectedQty:130,receivedQty:130},
+      {id:2,sku:'tagalog-songbook-2',name:'I Love to Sing in Tagalog: Animal Songs',expectedQty:104,receivedQty:104},
+      {id:3,sku:'spanish-songbook-1',name:'I Love to Sing in Spanish: Nursery Rhymes',expectedQty:52,receivedQty:78},
+    ],
+  });
+  await region.getByRole('button',{name:'View inbound PO-PAGE-1-CLIENT-all',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.getByRole('row',{name:'Total units 286 312'})).toBeVisible();
+  await expect(dialog.getByRole('row',{name:/spanish-songbook-1 52 78/})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Receive shipment'})).toHaveCount(0);
+  await page.screenshot({path:test.info().outputPath('inbound-worksheet-preview.png')});
+  await page.setViewportSize({width:390,height:844});
+  await expect(dialog.getByRole('columnheader',{name:'Units received'})).toBeVisible();
+  expect(await dialog.locator('table').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await page.screenshot({path:test.info().outputPath('inbound-worksheet-preview-mobile.png')});
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({width:1440,height:1000});
+  await page.getByLabel('Filter by client',{exact:true}).selectOption('2');
+  await expect(dialog).toHaveCount(0);
 });

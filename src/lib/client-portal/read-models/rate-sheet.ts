@@ -6,10 +6,11 @@ import { packages } from '../../../db/schema/packages';
 import type { PortalRateSheet } from '../contracts/rate-sheet';
 import { clientFilterPredicate } from '../predicates';
 import type { ClientPortalScope } from '../scope';
+import { fetchRelevantClientPackageIds } from '../prepship-client-packages-proxy';
 
 /** Read the same saved configuration as PrepShip Billing. No pricing formula,
  * defaults, warehouse costs, markups or shipping/provider identities cross this DTO. */
-export async function listPortalRateSheets(scope: ClientPortalScope, clientId?: number): Promise<PortalRateSheet[]> {
+export async function listPortalRateSheets(scope: ClientPortalScope, clientId: number | undefined, authorization: string, requestId?: string): Promise<PortalRateSheet[]> {
   if (!scope.canViewFinancials) throw new Error('financials:read required');
   const rows = await db.select({
     clientId: clients.id,
@@ -28,6 +29,16 @@ export async function listPortalRateSheets(scope: ClientPortalScope, clientId?: 
     .orderBy(asc(clients.name), asc(clients.id));
   if (!rows.length) return [];
 
+  // Scope first: never ask PrepShip about an unassigned client. The canonical
+  // owner excludes unused legacy associations; CP must not rederive usage.
+  const relevantByClient = new Map<number, Set<number>>();
+  // Bound upstream concurrency for internal users with many assigned clients.
+  for (let offset = 0; offset < rows.length; offset += 4) {
+    await Promise.all(rows.slice(offset, offset + 4).map(async (row) => {
+      relevantByClient.set(row.clientId, await fetchRelevantClientPackageIds(row.clientId, authorization, requestId));
+    }));
+  }
+
   // The client IDs come only from the scoped selector above. Prices are the
   // explicit client configuration; catalog unit_cost is intentionally not read.
   const prices = await db.select({
@@ -45,6 +56,7 @@ export async function listPortalRateSheets(scope: ClientPortalScope, clientId?: 
     .orderBy(asc(packages.name), asc(packages.id));
   const byClient = new Map<number, PortalRateSheet['packages']>();
   for (const price of prices) {
+    if (!relevantByClient.get(price.clientId)?.has(price.packageId)) continue;
     const entries = byClient.get(price.clientId) ?? [];
     entries.push({
       packageId: price.packageId,

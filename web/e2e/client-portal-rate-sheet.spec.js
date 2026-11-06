@@ -53,7 +53,7 @@ test('Rate Sheet renders exact prices, precision, dates and missing/zero/inactiv
  await page.getByRole('button',{name:'Expand rates for Zero rates'}).click();
  await expect(page.getByText('$0.00',{exact:true})).toBeVisible();
  await expect(page.getByText('Service rates updated Sep 1, 2026',{exact:true}).first()).toBeVisible();
- await expect(page.getByText('Configured box prices before billing adjustments.',{exact:false}).first()).toBeVisible();
+ await expect(page.getByText('Configured box prices before billing adjustments, for this client’s relevant packaging.',{exact:false}).first()).toBeVisible();
  const packageSearch=page.getByRole('combobox',{name:'Find packaging for Alpha'});
  await expect(packageSearch).toHaveAttribute('list',/.+/);
  await packageSearch.fill('Medium');

@@ -642,7 +642,12 @@ test('Inbound renders PrepShip receipt truth without synthetic batching', async 
   await expect(receiptTable.getByText('Booster-gel-001', { exact: true })).toBeVisible();
   await expect(receiptTable.getByText('Booster Gel', { exact: true })).toBeVisible();
   await expect(receiptTable.getByText('1,980', { exact: true })).toBeVisible();
+  await expect(receiptTable.getByText('MB/L No. 180-20829804', { exact: true })).not.toBeVisible();
+  await receiptTable.locator('summary').first().focus();
+  await page.keyboard.press('Enter');
   await expect(receiptTable.getByText('MB/L No. 180-20829804', { exact: true })).toBeVisible();
+  await receiptTable.locator('summary').first().click();
+  await page.screenshot({path:test.info().outputPath('inbound-receiving-history.png'),fullPage:true});
   await expect(page.getByText('Expected shipments', { exact: true })).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });

@@ -1580,6 +1580,22 @@ Box prices are labeled before billing adjustments; the portal does not duplicate
 PrepShip's package markup/override formula. No shipping quotes are synthesized.
 Date filters do not apply; update clocks belong to each configuration row. Only
 saved custom-package prices are listed, with explicit copy for unpublished boxes.
+Relevant package identities come from PrepShip's `clientUsedPackagePricingRows`
+through authenticated `GET /billing/package-prices`, after CP client scoping.
+`fetchRelevantClientPackageIds` is a transport/identity adapter only: it neither
+reconstructs shipment usage nor treats all saved associations as relevant. The
+read model intersects those identities with the scoped saved-price rows. Used
+free boxes remain visible; unused legacy zero associations do not. Upstream
+failure returns an unavailable error, never the complete catalog. Warehouse
+cost/margin fields from the internal upstream response are discarded.
+
+Inbound's receiving worksheet is display-only: item quantities and header totals
+come verbatim from `toPortalInboundDto`. The green received column is a visual
+column cue, not a new reconciliation status. Expected units are not relabeled
+as shipped/sent units. Historical carton counts, units per carton, and fulfillment
+channel are absent from the inbound schema and are explicitly not inferred.
+Inventory receipts remain separate ledger rows, with expandable source notes;
+the portal does not reconstruct shipments from receipt dates or backfill notes.
 
 ### DJ-approved exceptions
 

@@ -16,8 +16,10 @@ app.get('/rate-sheet', async (c) => {
     return c.json({ error: 'invalid_client_id' }, 400);
   }
   const clientId = rawClientId == null ? undefined : Number(rawClientId);
+  const authorization = c.req.header('authorization');
+  if (!authorization) return c.json({ error: 'Missing bearer token' }, 401);
   try {
-    const data = await listPortalRateSheets(scope, clientId);
+    const data = await listPortalRateSheets(scope, clientId, authorization, c.req.header('x-request-id'));
     await recordPortalAudit('portal.rate_sheet.view', scope, { clientId, rows: data.length });
     return c.json({ data });
   } catch (error) {

@@ -4,10 +4,23 @@ import { setupTestEnv } from './guard';
 import type { PortalRateSheet } from '../../src/lib/client-portal/contracts/rate-sheet';
 
 setupTestEnv();
+process.env.PREPSHIP_API_URL = 'https://prepship-packaging.test';
 const { sql } = await import('../../src/db/client');
 const { default: routes } = await import('../../src/routes/client-portal/rate-sheet');
 const originalFetch = globalThis.fetch;
-globalThis.fetch = (async () => { throw Error('Rate sheet fixtures block external requests'); }) as typeof fetch;
+const relevant = new Map<number, number[]>();
+const requested: number[] = [];
+let upstreamFailure = false;
+globalThis.fetch = (async (input, init) => {
+  const url = new URL(String(input));
+  assert.equal(url.origin, 'https://prepship-packaging.test');
+  assert.equal(url.pathname, '/billing/package-prices');
+  assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer rate-fixture');
+  const clientId = Number(url.searchParams.get('clientId'));
+  requested.push(clientId);
+  if (upstreamFailure) return Response.json({error:'private upstream error'}, {status:503});
+  return Response.json({data:(relevant.get(clientId) ?? []).map(packageId => ({packageId, unitCost:123, marginPct:90}))});
+}) as typeof fetch;
 function appFor(clientIds: number[], financials = true, admin = false, storeIds: number[] = []) {
   const app = new Hono();
   app.use('*', async (c, next) => {
@@ -19,7 +32,7 @@ function appFor(clientIds: number[], financials = true, admin = false, storeIds:
   app.route('/',routes); return app;
 }
 async function get(app: Hono, params = '') {
-  const response = await app.request(`/rate-sheet?${params}`);
+  const response = await app.request(`/rate-sheet?${params}`, {headers:{authorization:'Bearer rate-fixture'}});
   assert.equal(response.status,200,await response.clone().text());
   assert.equal(response.headers.get('cache-control'),'private, no-store');
   return (await response.json() as {data:PortalRateSheet[]}).data;
@@ -36,13 +49,16 @@ try {
     (${b.id},9.99,1,4.99,0.5000,30,80,true,'2026-09-02T12:00:00Z'),
     (${inactive.id},1.50,1,0,0.0001,0,0,false,'2026-09-03T12:00:00Z'),
     (${zero.id},0,1,0,0,0,0,true,'2026-09-04T12:00:00Z')`;
-  const [box,provider] = await sql`insert into packages(name,source,length,width,height,unit_cost,carrier_code,package_code)
+  const [box,provider,unused] = await sql`insert into packages(name,source,length,width,height,unit_cost,carrier_code,package_code)
     values ('Rate Test Box','custom',7,4,2,0.07,'private-carrier','private-code'),
-           ('Provider secret box','shipstation',8,5,3,0.99,'private-carrier','private-code') returning id`;
-  assert.ok(box && provider); packageIds = [box.id,provider.id];
+           ('Provider secret box','shipstation',8,5,3,0.99,'private-carrier','private-code'),
+           ('Unused legacy box','custom',20,20,20,0.99,null,null) returning id`;
+  assert.ok(box && provider && unused); packageIds = [box.id,provider.id,unused.id];
   await sql`insert into client_package_prices(client_id,package_id,price,updated_at) values
     (${a.id},${box.id},0.20,'2026-09-05T12:00:00Z'),(${b.id},${box.id},9.99,'2026-09-05T12:00:00Z'),
-    (${a.id},${provider.id},999.99,'2026-09-05T12:00:00Z'),(${zero.id},${box.id},0,'2026-09-05T12:00:00Z')`;
+    (${a.id},${provider.id},999.99,'2026-09-05T12:00:00Z'),(${zero.id},${box.id},0,'2026-09-05T12:00:00Z'),
+    (${a.id},${unused.id},0,'2026-09-05T12:00:00Z')`;
+  relevant.set(a.id,[box.id]); relevant.set(b.id,[box.id]); relevant.set(zero.id,[box.id]);
   const alpha = appFor([a.id]), admin = appFor([],true,true);
   const [rate] = await get(alpha);
   assert.deepEqual(rate,{
@@ -57,7 +73,9 @@ try {
   const free=(await get(appFor([zero.id])))[0]!;
   assert.equal(free.configurationStatus,'configured'); assert.equal(free.services?.pickPackFee,'0.00');
   assert.equal(free.packages[0]?.configuredPrice,'0.00');
+  const beforeDenied = requested.length;
   assert.equal((await get(alpha,`clientId=${b.id}`)).length,0);
+  assert.equal(requested.length, beforeDenied, 'unauthorized client is never requested upstream');
   assert.equal((await get(admin,`clientId=${b.id}`))[0]?.services?.pickPackFee,'9.99');
   assert.equal((await get(appFor([a.id,b.id]),`clientId=${a.id}`)).length,1);
   assert.equal((await get(appFor([],true,false,[7711]))).length,0);
@@ -65,10 +83,16 @@ try {
   const denied=await appFor([a.id],false).request('/rate-sheet');
   assert.equal(denied.status,403); assert.ok(!(await denied.text()).includes('2.50'));
   for (const input of ['-1','abc','1.2','0','']) assert.equal((await alpha.request(`/rate-sheet?clientId=${input}`)).status,400);
+  assert.equal((await alpha.request('/rate-sheet')).status,401);
+  upstreamFailure = true;
+  const upstreamError = await alpha.request('/rate-sheet', {headers:{authorization:'Bearer rate-fixture'}});
+  assert.equal(upstreamError.status,503);
+  assert.deepEqual(await upstreamError.json(),{error:'rate_sheet_unavailable'});
+  upstreamFailure = false;
   // Inject a DB failure in this guarded, disposable database; never report it as missing rates.
   await sql`alter table billing_config rename to rate_sheet_fixture_config`;
   try {
-    const failure=await alpha.request('/rate-sheet'); assert.equal(failure.status,503);
+    const failure=await alpha.request('/rate-sheet', {headers:{authorization:'Bearer rate-fixture'}}); assert.equal(failure.status,503);
     assert.deepEqual(await failure.json(),{error:'rate_sheet_unavailable'});
   } finally { await sql`alter table rate_sheet_fixture_config rename to billing_config`; }
   console.log('PASS Rate Sheet: exact saved values, precision, zero/missing/inactive, scope, financial permission, safe DTO and DB failure');

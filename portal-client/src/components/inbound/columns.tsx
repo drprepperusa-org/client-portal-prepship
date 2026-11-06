@@ -63,8 +63,8 @@ export const INBOUND_COLUMNS: Column<PortalInbound>[] = [
   },
   {
     key: 'units',
-    header: 'Units',
-    defaultWidth: 110,
+    header: 'Received / Expected',
+    defaultWidth: 165,
     className: 'text-right',
     render: (row) => (
       <span className="tnum text-ink-2">{row.receivedUnits}/{row.expectedUnits}</span>
@@ -98,14 +98,14 @@ export const INBOUND_RECEIPT_COLUMNS: Column<PortalInboundReceipt>[] = [
   {
     key: 'sku',
     header: 'SKU',
-    defaultWidth: 150,
-    render: (row) => <span className="font-mono text-xs text-ink-2">{row.sku}</span>,
+    defaultWidth: 180,
+    render: (row) => <span className="break-words font-mono text-xs text-ink-2">{row.sku}</span>,
     sortAccessor: (row) => row.sku,
   },
   {
     key: 'product',
     header: 'Product',
-    defaultWidth: 220,
+    defaultWidth: 300,
     render: (row) => <span className="text-ink-2">{row.name ?? '—'}</span>,
     sortAccessor: (row) => row.name ?? '',
   },
@@ -136,8 +136,13 @@ export const INBOUND_RECEIPT_COLUMNS: Column<PortalInboundReceipt>[] = [
   {
     key: 'note',
     header: 'Note',
-    defaultWidth: 220,
-    render: (row) => <span className="text-ink-3">{row.note ?? '—'}</span>,
+    defaultWidth: 150,
+    render: (row) => row.note ? (
+      <details className="text-sm text-ink-2">
+        <summary className="focus-ring cursor-pointer rounded py-2 text-brand-700">View note<span className="sr-only"> for receipt #{row.id}</span></summary>
+        <p className="mt-1 break-words leading-relaxed text-ink-3">{row.note}</p>
+      </details>
+    ) : <span className="text-ink-3">—</span>,
     sortAccessor: (row) => row.note ?? '',
   },
 ];
