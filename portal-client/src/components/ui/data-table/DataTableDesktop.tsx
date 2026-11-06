@@ -11,6 +11,7 @@ import {
 } from './useDataTableInteractions';
 
 interface HeaderProps<T> {
+  worksheet: boolean;
   ordered: Column<T>[];
   layout: ColumnLayout;
   interactions: DataTableInteractions;
@@ -22,6 +23,7 @@ interface HeaderProps<T> {
 }
 
 function DataTableHeader<T>({
+  worksheet,
   ordered,
   layout,
   interactions,
@@ -52,10 +54,12 @@ function DataTableHeader<T>({
                 ? (sort.dir === 'asc' ? 'ascending' : 'descending')
                 : undefined}
               className={cn(
-                'group select-none overflow-hidden px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-3 transition-colors',
+                'group select-none overflow-hidden font-semibold transition-colors',
+                worksheet ? 'border-r border-slate-300 px-3 py-2 text-sm text-ink last:border-r-0' : 'px-4 py-3 text-xs uppercase tracking-wide text-ink-3',
                 stickyHeader
-                  ? 'sticky top-0 z-20 bg-white/95 shadow-[inset_0_-1px_0_theme(colors.slate.200)]'
+                  ? cn('sticky top-0 z-20 shadow-[inset_0_-1px_0_theme(colors.slate.200)]', worksheet ? 'bg-sky-100' : 'bg-white/95')
                   : 'relative',
+                worksheet && !stickyHeader && 'bg-sky-100',
                 canDrag ? 'cursor-grab active:cursor-grabbing' : column.sortAccessor && 'cursor-pointer',
                 sort?.key === column.key && 'text-brand-600',
                 isDragging && 'opacity-40',
@@ -172,6 +176,7 @@ function DataTableFooter<T>({
 }
 
 interface DataTableDesktopProps<T> {
+  appearance: 'default' | 'worksheet';
   isUpdating: boolean;
   ordered: Column<T>[];
   rows: T[];
@@ -192,15 +197,21 @@ interface DataTableDesktopProps<T> {
 export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
   const interactions = useDataTableInteractions(props.layout);
   const hasRowAction = props.onRowClick != null;
+  const worksheet = props.appearance === 'worksheet';
   return (
-    <div className="hidden min-w-0 max-w-full md:block">
+    <div className={cn('min-w-0 max-w-full', worksheet ? 'block' : 'hidden md:block')}>
       {props.customizable && (
         <DataTableColumnControls layout={props.layout} byKey={props.byKey} isUpdating={props.isUpdating} />
       )}
       {!props.customizable && <TableUpdateStatus updating={props.isUpdating} />}
+      {worksheet && <p className="mb-2 text-xs text-ink-2 md:hidden">Scroll sideways to view all columns.</p>}
       <div
+        role={worksheet ? 'region' : undefined}
+        aria-label={worksheet ? 'Scrollable worksheet' : undefined}
+        tabIndex={worksheet ? 0 : undefined}
         className={cn(
-          'max-w-full rounded-glass',
+          'max-w-full',
+          worksheet ? 'focus-ring relative rounded-md border border-slate-300 bg-white' : 'rounded-glass',
           props.stickyHeader ? 'overflow-auto' : 'overflow-x-auto',
         )}
         style={props.stickyHeader ? { maxHeight: props.maxBodyHeight } : undefined}
@@ -209,6 +220,7 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
           className="border-collapse text-sm"
           style={{
             width: props.layout.totalWidth + (hasRowAction ? 52 : 0),
+            minWidth: worksheet ? '100%' : undefined,
             tableLayout: 'fixed',
           }}
         >
@@ -219,6 +231,7 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
             {hasRowAction && <col style={{ width: 52 }} />}
           </colgroup>
           <DataTableHeader
+            worksheet={worksheet}
             ordered={props.ordered}
             layout={props.layout}
             interactions={interactions}
@@ -235,7 +248,8 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
                 key={props.rowKey(row)}
                 onClick={() => props.onRowClick?.(row)}
                 className={cn(
-                  'border-b border-slate-100 transition-colors last:border-0 hover:bg-brand-50/50',
+                  'border-b transition-colors last:border-0 hover:bg-brand-50/50',
+                  worksheet ? 'border-slate-200' : 'border-slate-100',
                   props.onRowClick && 'cursor-pointer',
                   props.rowClassName?.(row),
                 )}
@@ -244,7 +258,8 @@ export function DataTableDesktop<T>(props: DataTableDesktopProps<T>) {
                   <td
                     key={column.key}
                     className={cn(
-                      'overflow-hidden px-4 py-3.5 align-middle text-ink-2',
+                      'overflow-hidden align-middle text-ink-2',
+                      worksheet ? 'border-r border-slate-200 px-3 py-2 leading-snug last:border-r-0' : 'px-4 py-3.5',
                       column.className,
                     )}
                   >

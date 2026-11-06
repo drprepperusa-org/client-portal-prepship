@@ -115,20 +115,23 @@ export default function Inbound() {
           </div>
         </GlassPanel>
       )}
-      <GlassPanel className="p-2 sm:p-3" role="region" aria-label="Received inventory">
-        <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <PackageCheck size={17} className="text-emerald-600" />
-            <div>
-              <p className="text-sm font-semibold text-ink">Received inventory</p>
-              <p className="text-xs text-ink-3">{clients.find(client => client.id === effectiveClientId)?.name ?? (clients.length === 1 ? clients[0].name : 'All assigned clients')} · Individual inventory receipts</p>
-            </div>
+      <section className="min-w-0 rounded-glass-sm border border-slate-200 bg-white p-3 sm:p-4" role="region" aria-label="Received inventory">
+        <div className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-ink">Receiving worksheet</h2>
+            <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+              <dt className="text-ink-2">Client name</dt>
+              <dd className="break-words bg-amber-50 px-2 font-semibold text-ink">{clients.find(client => client.id === effectiveClientId)?.name ?? (clients.length === 1 ? clients[0].name : 'All assigned clients')}</dd>
+              <dt className="text-ink-2">Records</dt>
+              <dd className="text-ink">Inventory receipts{receiptPagination ? ` · ${receiptPagination.total.toLocaleString()} records` : ''}</dd>
+            </dl>
           </div>
           <div className="sm:shrink-0">
             <ExportInboundReceiptsCsv key={JSON.stringify([userId, exportFilters])} filters={exportFilters}
               disabled={!receiptRows.length || receiptQuery.isFetching || receiptQuery.isError} />
           </div>
         </div>
+        <p className="mb-3 text-xs text-ink-2">Recorded receipts by product. Received quantities are highlighted in green; each row retains its receipt and date.</p>
         <QueryState showUpdateStatus={false}
           isLoading={receiptQuery.isLoading}
           isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
@@ -140,6 +143,7 @@ export default function Inbound() {
           emptyMessage="No PrepShip receipts have been recorded."
         >
           <DataTable isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
+            appearance="worksheet"
             tableId="inbound-receipts"
             sort={receiptSort.sort} onSortChange={receiptSort.onSortChange}
             columns={showClientFilter ? INBOUND_RECEIPT_COLUMNS : INBOUND_RECEIPT_COLUMNS.filter(column => column.key !== 'client')}
@@ -147,7 +151,7 @@ export default function Inbound() {
             rowKey={(row) => String(row.id)}
             allowColumnCustomization={canCustomizeTables}
             stickyHeader
-            maxBodyHeight="32rem"
+            maxBodyHeight="min(65vh, 42rem)"
           />
           {receiptPagination && (
             <Pagination
@@ -160,7 +164,7 @@ export default function Inbound() {
             />
           )}
         </QueryState>
-      </GlassPanel>
+      </section>
 
       <GlassPanel className="p-2 sm:p-3" role="region" aria-label="Expected shipments">
         <div className="flex items-center gap-2 px-3 py-3">

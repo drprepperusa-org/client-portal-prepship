@@ -24,6 +24,7 @@ export function DataTable<T>({
   stickyHeader = false,
   isUpdating = false,
   maxBodyHeight = 'calc(100vh - 15rem)',
+  appearance = 'default',
 }: DataTableProps<T>) {
   // Structural layout remains an explicit admin/global opt-in. Without it,
   // persisted order/visibility is ignored and resizing stays session-only.
@@ -75,8 +76,9 @@ export function DataTable<T>({
 
   return (
     <div aria-busy={isUpdating}>
-      <div className="md:hidden"><TableUpdateStatus updating={isUpdating} /></div>
+      {appearance === 'default' && <div className="md:hidden"><TableUpdateStatus updating={isUpdating} /></div>}
       <DataTableDesktop
+        appearance={appearance}
         ordered={ordered}
         rows={sortedRows}
         rowKey={rowKey}
@@ -93,7 +95,7 @@ export function DataTable<T>({
         sort={sort}
         onToggleSort={toggleSort}
       />
-      <DataTableMobile
+      {appearance === 'default' && <DataTableMobile
         sort={sort}
         onToggleSort={toggleSort}
         ordered={ordered}
@@ -102,7 +104,7 @@ export function DataTable<T>({
         rowClassName={rowClassName}
         onRowClick={onRowClick}
         rowActionLabel={rowActionLabel}
-      />
+      />}
     </div>
   );
 }

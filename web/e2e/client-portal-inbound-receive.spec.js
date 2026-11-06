@@ -88,6 +88,7 @@ test('Invalid and blank receiving quantities are inline; explicit zero saves and
   await expect(modal).toHaveCount(0);
   expect(state.writes[0]).toEqual({ previewFingerprint: 'a'.repeat(64), addToInventory: true, items: [{ id: 11, receivedQty: 0 }, { id: 12, receivedQty: 2 }] });
   await expect.poll(() => state.receiptReads).toBeGreaterThan(priorReads);
+  await page.locator('summary[aria-label="View note for receipt #123"]').click();
   await expect(page.getByText('Inbound PO-RECEIVE', { exact: true }).filter({ visible: true })).toBeVisible();
   expect(state.errors).toEqual([]);
 });

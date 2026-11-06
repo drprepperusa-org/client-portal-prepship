@@ -89,23 +89,16 @@ export const INBOUND_COLUMNS: Column<PortalInbound>[] = [
 
 export const INBOUND_RECEIPT_COLUMNS: Column<PortalInboundReceipt>[] = [
   {
-    key: 'receipt',
-    header: 'Receipt',
-    defaultWidth: 110,
-    render: (row) => <span className="font-semibold text-ink">#{row.id}</span>,
-    sortAccessor: (row) => row.id,
-  },
-  {
     key: 'sku',
     header: 'SKU',
-    defaultWidth: 180,
-    render: (row) => <span className="break-words font-mono text-xs text-ink-2">{row.sku}</span>,
+    defaultWidth: 210,
+    render: (row) => <span className="break-words text-sm text-ink">{row.sku}</span>,
     sortAccessor: (row) => row.sku,
   },
   {
     key: 'product',
-    header: 'Product',
-    defaultWidth: 300,
+    header: 'Product description',
+    defaultWidth: 400,
     render: (row) => <span className="text-ink-2">{row.name ?? '—'}</span>,
     sortAccessor: (row) => row.name ?? '',
   },
@@ -120,7 +113,7 @@ export const INBOUND_RECEIPT_COLUMNS: Column<PortalInboundReceipt>[] = [
     key: 'units',
     header: 'Received units',
     defaultWidth: 140,
-    className: 'text-right',
+    className: 'bg-emerald-100 text-right',
     render: (row) => (
       <span className="tnum font-semibold text-ink">{row.receivedUnits.toLocaleString()}</span>
     ),
@@ -134,9 +127,16 @@ export const INBOUND_RECEIPT_COLUMNS: Column<PortalInboundReceipt>[] = [
     sortAccessor: (row) => row.receivedAt,
   },
   {
+    key: 'receipt',
+    header: 'Receipt',
+    defaultWidth: 110,
+    render: (row) => <span className="font-medium text-ink">#{row.id}</span>,
+    sortAccessor: (row) => row.id,
+  },
+  {
     key: 'note',
     header: 'Note',
-    defaultWidth: 150,
+    defaultWidth: 130,
     render: (row) => row.note ? (
       <details className="text-sm text-ink-2">
         <summary aria-label={`View note for receipt #${row.id}`} className="focus-ring cursor-pointer rounded py-2 text-brand-700">View note</summary>

@@ -32,6 +32,7 @@ interface DataTableCommonProps<T> {
   stickyHeader?: boolean;
   maxBodyHeight?: string;
   isUpdating?: boolean;
+  appearance?: 'default' | 'worksheet';
 }
 
 export type DataTableProps<T> = DataTableCommonProps<T> & (

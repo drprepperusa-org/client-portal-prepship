@@ -123,7 +123,11 @@ test('Receiving worksheet shows complete product names and recorded totals on de
   await region.getByRole('button',{name:'View inbound PO-PAGE-1-CLIENT-all',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('row',{name:'Total units 286 312'})).toBeVisible();
-  await expect(dialog.getByRole('row',{name:/spanish-songbook-1 52 78/})).toBeVisible();
+  await expect(dialog.getByRole('row').filter({hasText:'spanish-songbook-1'})).toContainText('52');
+  await expect(dialog.getByRole('row').filter({hasText:'spanish-songbook-1'})).toContainText('78');
+  await expect(dialog.getByRole('columnheader',{name:'SKU',exact:true})).toBeVisible();
+  await expect(dialog.getByRole('columnheader',{name:'Product description',exact:true})).toBeVisible();
+  await expect(dialog.getByText('Units per carton',{exact:true})).toHaveCount(0);
   await expect(dialog.getByRole('button',{name:'Receive shipment'})).toHaveCount(0);
   await page.screenshot({path:test.info().outputPath('inbound-worksheet-preview.png')});
   await page.setViewportSize({width:390,height:844});

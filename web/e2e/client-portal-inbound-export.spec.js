@@ -81,6 +81,10 @@ test('Inbound CSV preserves backend bytes and matches client and sort across all
   await expect(page.getByText('CSV downloaded with all matching receipts. Dates are in UTC.')).toBeVisible();
   await page.setViewportSize({width:390,height:844});
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeVisible();
+  await expect(page.getByText('Scroll sideways to view all columns.',{exact:true})).toBeVisible();
+  const worksheet=page.getByRole('region',{name:'Scrollable worksheet',exact:true});
+  await worksheet.focus();await page.keyboard.press('End');
+  expect(await worksheet.evaluate(element=>element.scrollWidth>element.clientWidth)).toBe(true);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.screenshot({path:test.info().outputPath('inbound-export-mobile.png')});
 });
@@ -171,6 +175,8 @@ test('A full receipt page does not create blank document space below the table',
     expect(size.height,'Hidden receipt labels must stay inside the table scroll area').toBeLessThanOrEqual(Math.max(size.viewport,size.contentEnd)+40);
   };
   await checkPageBounds();
+  await expect(receipts.getByRole('columnheader',{name:/Product description/})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Receiving worksheet',exact:true})).toBeVisible();
   const note=receipts.locator('summary[aria-label="View note for receipt #1"]');
   await note.focus();await page.keyboard.press('Enter');
   await expect(receipts.getByText('Opening balance source note for receipt 1',{exact:true})).toBeVisible();
