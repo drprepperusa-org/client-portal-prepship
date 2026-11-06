@@ -26,7 +26,7 @@ export function DataTable<T>({
   maxBodyHeight = 'calc(100vh - 15rem)',
   appearance = 'default',
 }: DataTableProps<T>) {
-  // Structural layout remains an explicit admin/global opt-in. Without it,
+  // Structural layout remains an explicit page opt-in. Without it,
   // persisted order/visibility is ignored and resizing stays session-only.
   const customizable = Boolean(tableId) && allowColumnCustomization;
   const layout = useColumnLayout(customizable ? tableId : undefined, columns);

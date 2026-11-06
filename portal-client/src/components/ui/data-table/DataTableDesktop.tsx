@@ -42,6 +42,8 @@ function DataTableHeader<T>({
           const isDragging = interactions.dragKey === column.key;
           const isDropTarget = interactions.overKey === column.key
             && interactions.dragKey !== column.key;
+          const dropAfter = interactions.dragKey != null
+            && layout.order.indexOf(interactions.dragKey) < layout.order.indexOf(column.key);
           return (
             <th
               key={column.key}
@@ -67,7 +69,7 @@ function DataTableHeader<T>({
                 column.className,
               )}
             >
-              {isDropTarget && <span className="absolute inset-y-0 left-0 w-0.5 bg-brand-500" />}
+              {isDropTarget && <span className={cn('absolute inset-y-0 w-0.5 bg-brand-500', dropAfter ? 'right-0' : 'left-0')} />}
               <span className={cn(
                 'flex items-center gap-1',
                 column.className?.includes('text-right') && 'justify-end',
@@ -75,7 +77,7 @@ function DataTableHeader<T>({
                 {canDrag && (
                   <GripVertical
                     size={12}
-                    className="shrink-0 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100"
+                    className={cn('shrink-0 transition-opacity', worksheet ? 'text-ink-3' : 'text-slate-300 opacity-0 group-hover:opacity-100')}
                     aria-hidden
                   />
                 )}

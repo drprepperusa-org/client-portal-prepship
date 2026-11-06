@@ -131,7 +131,7 @@ export default function Inbound() {
               disabled={!receiptRows.length || receiptQuery.isFetching || receiptQuery.isError} />
           </div>
         </div>
-        <p className="mb-3 text-xs text-ink-2">Recorded receipts by product. Received quantities are highlighted in green; each row retains its receipt and date.</p>
+        <p className="mb-3 text-xs text-ink-2">Drag column headers to rearrange this worksheet, or use Columns. Your layout is saved in this browser.</p>
         <QueryState showUpdateStatus={false}
           isLoading={receiptQuery.isLoading}
           isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
@@ -143,13 +143,14 @@ export default function Inbound() {
           emptyMessage="No PrepShip receipts have been recorded."
         >
           <DataTable isUpdating={receiptQuery.isFetching && !receiptQuery.isLoading}
+            key={`inbound-receipts:${userId}`}
             appearance="worksheet"
-            tableId="inbound-receipts"
+            tableId={`inbound-receipts:${userId}`}
             sort={receiptSort.sort} onSortChange={receiptSort.onSortChange}
             columns={showClientFilter ? INBOUND_RECEIPT_COLUMNS : INBOUND_RECEIPT_COLUMNS.filter(column => column.key !== 'client')}
             rows={receiptRows}
             rowKey={(row) => String(row.id)}
-            allowColumnCustomization={canCustomizeTables}
+            allowColumnCustomization
             stickyHeader
             maxBodyHeight="min(65vh, 42rem)"
           />

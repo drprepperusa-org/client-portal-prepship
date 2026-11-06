@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 const base = 'http://127.0.0.1:5177';
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
-async function setup(page, custom) {
+async function setup(page, custom, client = false) {
   const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-  const user={id:'sort-test',aud:'authenticated',role:'authenticated',email:'sort@portal-e2e.test',app_metadata:{role:'admin',permissions:['scope:global']},user_metadata:{}};
+  const user={id:'sort-test',aud:'authenticated',role:'authenticated',email:'sort@portal-e2e.test',app_metadata:{role:client?'client_user':'admin',permissions:client?[]:['scope:global']},user_metadata:{}};
   const token=[encode({alg:'HS256',typ:'JWT'}),encode({...user,sub:user.id,exp:4102444800}),'fixture'].join('.');
   await page.addInitScript(session=>localStorage.setItem('sb-portal-e2e-auth-token',JSON.stringify(session)),{
     access_token:token,refresh_token:'fixture',expires_at:4102444800,expires_in:2147483647,token_type:'bearer',user,
@@ -13,8 +13,8 @@ async function setup(page, custom) {
     if(url.pathname.startsWith('/api/client-portal/')) {
       const extra=await custom?.(url);
       let body=extra??{data:[],pagination:{page:1,pageSize:50,total:0,totalPages:1}};
-      if(extra===undefined && url.pathname.endsWith('/me'))body={...user,isAdmin:true,isGlobal:true,isRestricted:false,canViewFinancials:true,canViewAudit:true,clientIds:[],storeIds:[]};
-      if(extra===undefined && url.pathname.endsWith('/clients'))body={data:[{id:1,name:'Alpha'},{id:2,name:'Beta'}]};
+      if(extra===undefined && url.pathname.endsWith('/me'))body={...user,isAdmin:!client,isGlobal:!client,isRestricted:client,canViewFinancials:true,canViewAudit:!client,clientIds:client?[1]:[],storeIds:[]};
+      if(extra===undefined && url.pathname.endsWith('/clients'))body={data:client?[{id:1,name:'Alpha'}]:[{id:1,name:'Alpha'},{id:2,name:'Beta'}]};
       if(extra===undefined && url.pathname.endsWith('/sync-status'))body={status:'ok',lastSyncAt:null};
       if(extra===undefined && url.pathname.endsWith('/awaiting-active-count'))body={count:102};
       await route.fulfill({json:body}); return;
@@ -25,9 +25,9 @@ async function setup(page, custom) {
 }
 
 const fileBytes = '\uFEFF"Receipt ID","SKU","Received quantity"\r\n"1","SKU-A","3"\r\n"505","SKU-B","9"\r\n';
-async function receiptsFixture(page) {
+async function receiptsFixture(page, client = false) {
   const state = { requests: [], exports: [], failure: 0, gate: null, empty: false };
-  await setup(page);
+  await setup(page, undefined, client);
   await page.route('**/api/client-portal/inbound/receipts?*',async route=>{
     const url=new URL(route.request().url());const params=Object.fromEntries(url.searchParams);
     expect(route.request().method()).toBe('GET');
@@ -185,4 +185,49 @@ test('A full receipt page does not create blank document space below the table',
   await page.setViewportSize({width:2388,height:1138});
   await checkPageBounds();
   await page.screenshot({path:test.info().outputPath('inbound-scroll-bounds.png'),fullPage:true});
+});
+
+test('Client users can drag every worksheet column in both directions and keep their own layout',async({page})=>{
+  await page.setViewportSize({width:1800,height:1000});
+  const state=await receiptsFixture(page,true);
+  await page.addInitScript(()=>localStorage.setItem('prepship.tbl.inbound-receipts:other-user.v1',JSON.stringify({order:['note','receipt','sku'],hidden:['sku']})));
+  await page.goto(base+'/inbound');
+  const region=page.getByRole('region',{name:'Received inventory',exact:true});
+  const headers=region.getByRole('columnheader');
+  const header=name=>region.getByRole('columnheader').filter({has:page.getByRole('separator',{name:`Resize ${name} column`,exact:true})});
+  const names=['SKU','Product description','Received units','Received','Receipt','Note'];
+  await expect(headers).toHaveCount(6);
+  await expect(headers.first()).toContainText('SKU');
+  for(const name of names)await expect(header(name)).toHaveAttribute('draggable','true');
+  const requestsBefore=state.requests.length;
+  for(const name of ['Receipt','Note','Received','Received units','Product description','SKU']) {
+    await header(name).dragTo(headers.first());
+    await expect(headers.first()).toContainText(name);
+  }
+  await header('SKU').dragTo(headers.last());
+  await expect(headers.last()).toContainText('SKU');
+  await expect(region.locator('tbody tr').first().getByRole('cell').last()).toHaveText('SKU-A');
+  await header('Receipt').dragTo(headers.first());
+  await expect(region.locator('tbody tr').first().getByRole('cell').first()).toHaveText('#1');
+  expect(state.requests.length).toBe(requestsBefore);
+  const expected=await headers.allTextContents();
+  await page.reload();
+  await expect(headers).toHaveText(expected);
+  await region.getByRole('button',{name:'Reset',exact:true}).click();
+  await expect(headers.first()).toContainText('SKU');
+  await expect(headers.last()).toContainText('Note');
+  await expect(region.getByRole('button',{name:'Reset',exact:true})).toHaveCount(0);
+});
+
+test('Client worksheet column controls support keyboard and touch movement',async({page})=>{
+  await receiptsFixture(page,true);await page.setViewportSize({width:390,height:844});
+  await page.goto(base+'/inbound');
+  const region=page.getByRole('region',{name:'Received inventory',exact:true});
+  await region.getByRole('button',{name:/^Columns/}).click();
+  const left=region.getByRole('button',{name:'Move Receipt left',exact:true});
+  await left.focus();await page.keyboard.press('Enter');
+  await expect(region.getByRole('columnheader').nth(3)).toContainText('Receipt');
+  await region.getByRole('button',{name:'Move Receipt right',exact:true}).click();
+  await expect(region.getByRole('columnheader').nth(4)).toContainText('Receipt');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });

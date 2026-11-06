@@ -203,9 +203,11 @@ export function useColumnLayout(tableId: string | undefined, columns: ColumnLayo
   const reorder = useCallback((dragKey: string, targetKey: string) => {
     if (dragKey === targetKey) return;
     setOrder((prev) => {
+      // Use the target's original position so a rightward drag can reach the
+      // last column, just as a leftward drag can reach the first.
+      const idx = prev.indexOf(targetKey);
+      if (idx === -1 || !prev.includes(dragKey)) return prev;
       const next = prev.filter((k) => k !== dragKey);
-      const idx = next.indexOf(targetKey);
-      if (idx === -1) return prev;
       next.splice(idx, 0, dragKey);
       return next;
     });
