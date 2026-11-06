@@ -63,7 +63,12 @@ test('Lost save response retries the original request and opens the one saved sh
   expect(state.posts).toHaveLength(3); expect(state.posts[1]).toEqual(state.posts[0]); expect(state.posts[2]).toEqual(state.posts[0]); expect(state.saved.size).toBe(1);
   await page.getByRole('button', { name: 'Open shipment', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'SERVER-PO', exact: true });
-  await expect(drawer).toBeVisible(); await expect(drawer.getByText('Saved item · MY-SKU')).toBeVisible();
+  await expect(drawer).toBeVisible();
+  // The receiving worksheet keeps the server's SKU and description in separate columns.
+  const savedItem = drawer.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'MY-SKU', exact: true }) });
+  await expect(savedItem.getByRole('cell', { name: 'Saved item', exact: true })).toBeVisible();
+  await expect(savedItem.getByRole('cell', { name: '2', exact: true })).toBeVisible();
+  await expect(savedItem.getByRole('cell', { name: '0', exact: true })).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 test('Definitive validation failure allows editing and a new valid save intent', async ({ page }) => {
