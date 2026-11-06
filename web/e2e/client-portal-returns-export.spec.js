@@ -56,7 +56,9 @@ test('Returns CSV downloads backend bytes with current client, status, search an
   expect(first.suggestedFilename()).toBe('returns-fixture.csv');
   const chunks=[];for await(const chunk of await first.createReadStream())chunks.push(chunk);
   expect(Buffer.concat(chunks).toString('utf8')).toBe(fileBytes);
-  expect(state.exports[0].dateFrom).toBeUndefined();expect(state.exports[0].page).toBeUndefined();
+  expect(state.exports[0].dateFrom).toBe(state.requests.at(-1).dateFrom);
+  expect(state.exports[0].dateTo).toBe(state.requests.at(-1).dateTo);
+  expect(state.exports[0].page).toBeUndefined();
   await page.getByRole('button',{name:'All clients',exact:true}).click();
   await page.getByRole('button',{name:'Alpha',exact:true}).click();
   await page.getByRole('combobox',{name:'Filter by status'}).selectOption('requested');
@@ -69,9 +71,9 @@ test('Returns CSV downloads backend bytes with current client, status, search an
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();
   await download(page);
   const exported=state.exports.at(-1),listed=state.requests.at(-1);
-  for(const key of ['orderId','clientId','status','search','sortBy','sortDir'])expect(exported[key]).toBe(listed[key]);
+  for(const key of ['orderId','clientId','status','search','sortBy','sortDir','dateFrom','dateTo'])expect(exported[key]).toBe(listed[key]);
   expect(exported).toMatchObject({orderId:'123',clientId:'2',status:'requested',search:'CSV',sortBy:'order',sortDir:'asc'});
-  expect(exported.dateFrom).toBeUndefined();expect(exported.dateTo).toBeUndefined();
+  expect(exported.dateFrom).toBeTruthy();expect(exported.dateTo).toBeTruthy();
   expect(exported.page).toBeUndefined();expect(exported.pageSize).toBeUndefined();
   await expect(page.getByText('CSV downloaded with all matching returns. Dates are in UTC.')).toBeVisible();
   await page.setViewportSize({width:390,height:844});

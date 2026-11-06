@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { BILLING_COLUMN_SECTIONS } from '../../src/lib/client-portal/contracts/billing-columns';
 const base = 'http://127.0.0.1:5177';
 const ids = Array.from({ length: 102 }, (_, i) => ((i + 1) * 37) % 103);
 const reference = n => `SORT-${n}`;
@@ -578,6 +579,10 @@ test('Billing defaults to Reference descending and maps every header to canonica
   const requests=[];
   await setup(page,url=>{
     if(url.pathname.endsWith('/invoice-summary'))return {data:[summary],totals:summary,billingVisible:true};
+    if(url.pathname.endsWith('/billing/columns'))return {
+      summary:BILLING_COLUMN_SECTIONS.summary.map(([key])=>key),
+      lineItems:BILLING_COLUMN_SECTIONS.lineItems.map(([key])=>key),revision:null,canManage:true,
+    };
     if(!url.pathname.endsWith('/invoice-details'))return;
     const key=url.searchParams.get('sortBy'),dir=url.searchParams.get('sortDir');requests.push({key,dir});
     const data=[3857,3855,3918,3892,3890,3845,3880,3913].sort((a,b)=>(a-b)*(dir==='desc'?-1:1)).map(n=>({
