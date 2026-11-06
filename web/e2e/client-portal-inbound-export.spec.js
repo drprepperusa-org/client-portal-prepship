@@ -125,3 +125,31 @@ test('Changing receipt sorting cancels the old export and exports the current or
   release();state.gate=null;
   await download(page);expect(downloads).toHaveLength(1);expect(state.exports.at(-1).sortBy).toBe('sku');
 });
+
+test('A full receipt page does not create blank document space below the table',async({page})=>{
+  await page.setViewportSize({width:1440,height:900});
+  await setup(page,url=>{
+    if(!url.pathname.endsWith('/inbound/receipts'))return;
+    return {data:Array.from({length:50},(_,index)=>({id:index+1,inventoryId:index+1,clientId:1,clientName:'Alpha',
+      sku:`BOOK-${index+1}`,name:`Long product description for received book ${index+1}`,
+      receivedUnits:20,receivedAt:'2026-09-01T00:00:00Z',note:`Opening balance source note for receipt ${index+1}`})),
+      pagination:{page:1,pageSize:50,total:50,totalPages:1}};
+  });
+  await page.goto(base+'/inbound');
+  const receipts=page.getByRole('region',{name:'Received inventory',exact:true}).getByRole('table');
+  await expect(receipts.getByText('#50',{exact:true})).toBeAttached();
+  const checkPageBounds=async()=>{
+    const size=await page.evaluate(()=>({height:document.documentElement.scrollHeight,
+      contentEnd:document.querySelector('main').getBoundingClientRect().bottom+scrollY,viewport:innerHeight}));
+    expect(size.height,'Hidden receipt labels must stay inside the table scroll area').toBeLessThanOrEqual(Math.max(size.viewport,size.contentEnd)+40);
+  };
+  await checkPageBounds();
+  const note=receipts.locator('summary[aria-label="View note for receipt #1"]');
+  await note.focus();await page.keyboard.press('Enter');
+  await expect(receipts.getByText('Opening balance source note for receipt 1',{exact:true})).toBeVisible();
+  await checkPageBounds();
+  await note.press('Enter');
+  await page.setViewportSize({width:2388,height:1138});
+  await checkPageBounds();
+  await page.screenshot({path:test.info().outputPath('inbound-scroll-bounds.png'),fullPage:true});
+});

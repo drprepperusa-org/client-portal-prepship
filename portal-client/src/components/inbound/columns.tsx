@@ -139,7 +139,7 @@ export const INBOUND_RECEIPT_COLUMNS: Column<PortalInboundReceipt>[] = [
     defaultWidth: 150,
     render: (row) => row.note ? (
       <details className="text-sm text-ink-2">
-        <summary className="focus-ring cursor-pointer rounded py-2 text-brand-700">View note<span className="sr-only"> for receipt #{row.id}</span></summary>
+        <summary aria-label={`View note for receipt #${row.id}`} className="focus-ring cursor-pointer rounded py-2 text-brand-700">View note</summary>
         <p className="mt-1 break-words leading-relaxed text-ink-3">{row.note}</p>
       </details>
     ) : <span className="text-ink-3">—</span>,
