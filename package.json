@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:rate-sheet-permissions": "tsx scripts/client-portal-rate-sheet-permissions-test.ts",
     "test:client-portal-inbound-xlsx": "tsx scripts/client-portal-inbound-xlsx-test.ts",
     "test:client-portal-shipment-projection": "tsx scripts/client-portal-shipment-projection-test.ts",
     "test:client-portal-billing-batch": "tsx scripts/client-portal-billing-batch-test.ts",

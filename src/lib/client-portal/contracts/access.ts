@@ -104,6 +104,7 @@ export interface PortalAccessUser {
 }
 
 export interface AccessUserPatch {
+  canEditRateSheet?: boolean;
   role?: 'admin' | 'client_user';
   clientIds?: number[];
   displayName?: string;

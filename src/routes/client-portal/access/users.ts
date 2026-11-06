@@ -3,6 +3,7 @@ import { isAdminEmail } from '../../../lib/admin-emails';
 import { canManageAccessTarget, isAccessAssignmentWithinBoundary } from '../../../lib/client-portal/access-policy';
 import { recordPortalAudit } from '../../../lib/client-portal/audit';
 import { clientPortalCapabilities } from '../../../lib/client-portal/capabilities';
+import { RATE_SHEET_WRITE_PERMISSION } from '../../../lib/client-portal/contracts/rate-sheet';
 import { scopeOrResponse } from '../../../lib/client-portal/query-params';
 import {
   accessAppMeta,
@@ -11,6 +12,7 @@ import {
   normalizeMetadataIds,
   stringArray,
   userIsAdminLike,
+  userIsBanned,
 } from '../../../lib/client-portal/read-models/access';
 import { isClientPortalScope } from '../../../lib/client-portal/scope';
 import { supabaseAdmin } from '../../../lib/supabase';
@@ -34,6 +36,15 @@ export function registerAccessUserMutationRoutes(app: Hono): void {
     const parsed = patchAccessUserBody.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: 'Invalid access update' }, 400);
     const body = parsed.data;
+
+    // Only a currently active global admin may grant/revoke money-edit access.
+    // Refresh metadata so an old JWT cannot retain permission-granting authority.
+    if (body.canEditRateSheet !== undefined) {
+      if (!scope.isGlobal || !scope.userId) return c.json({ error: 'Global admin access required' }, 403);
+      const { data, error } = await supabaseAdmin.auth.admin.getUserById(scope.userId);
+      if (error || !data?.user) return c.json({ error: 'Could not verify admin access' }, 503);
+      if (!(isAdminEmail(data.user.email) || accessAppMeta(data.user).role === 'admin') || userIsBanned(data.user)) return c.json({ error: 'Global admin access required' }, 403);
+    }
 
     const { data: target, error: getErr } = await supabaseAdmin.auth.admin.getUserById(id);
     if (getErr || !target?.user) return c.json({ error: 'User not found' }, 404);
@@ -84,6 +95,11 @@ export function registerAccessUserMutationRoutes(app: Hono): void {
       }
     }
     if (body.clientIds !== undefined) meta.clientIds = normalizeMetadataIds(body.clientIds);
+    if (body.canEditRateSheet !== undefined) {
+      const permissions = stringArray(meta.permissions).filter((permission) => permission !== RATE_SHEET_WRITE_PERMISSION);
+      if (body.canEditRateSheet) permissions.push(RATE_SHEET_WRITE_PERMISSION);
+      meta.permissions = permissions;
+    }
 
     const updates: Record<string, unknown> = { app_metadata: meta };
     if (body.displayName !== undefined) {
@@ -101,6 +117,7 @@ export function registerAccessUserMutationRoutes(app: Hono): void {
       active: body.active,
       clientIds: body.clientIds !== undefined ? nextClientIds : undefined,
       renamed: body.displayName !== undefined ? true : undefined,
+      canEditRateSheet: body.canEditRateSheet,
     });
     if (auditDenied) return auditDenied;
 
@@ -115,6 +132,7 @@ export function registerAccessUserMutationRoutes(app: Hono): void {
       active: body.active ?? undefined,
       clientIds: body.clientIds !== undefined ? normalizeMetadataIds(body.clientIds) : undefined,
       renamed: body.displayName !== undefined ? true : undefined,
+      canEditRateSheet: body.canEditRateSheet,
     });
     return c.json({ ok: true });
   });

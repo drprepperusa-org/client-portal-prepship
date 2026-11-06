@@ -11,7 +11,7 @@ async function setup(page, custom) {
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
     if(url.pathname.startsWith('/api/client-portal/')) {
-      const extra=await custom?.(url);
+      const extra=await custom?.(url, route.request());
       let body=extra??{data:[],pagination:{page:1,pageSize:50,total:0,totalPages:1}};
       if(extra===undefined && url.pathname.endsWith('/me'))body={...user,isAdmin:true,isGlobal:true,isRestricted:false,canViewFinancials:true,canViewAudit:true,clientIds:[],storeIds:[]};
       if(extra===undefined && url.pathname.endsWith('/clients'))body={data:[{id:1,name:'Alpha'},{id:2,name:'Beta'}]};
@@ -39,6 +39,88 @@ function fixture(url){
  if(!url.pathname.endsWith('/rate-sheet'))return;
  const id=url.searchParams.get('clientId');return {data:sheets.filter(s=>!id||s.clientId===Number(id))};
 }
+
+test('Rate sheet permission enables scoped service and box edits, additions and immediate refreshed values', async ({ page }) => {
+ let allowed=false; let sheet=structuredClone(sheets[0]); const writes=[];
+ await setup(page,(url, request)=>{
+   if(url.pathname.endsWith('/rate-sheet/access'))return {canEditRateSheet:allowed};
+   if(url.pathname.endsWith('/rate-sheet'))return {data:[sheet]};
+   if(request.method()==='POST' && url.pathname.includes('/rate-sheet/')) {
+     const body=request.postDataJSON(); writes.push(body);
+     expect(body.clientId).toBe(1);
+     if(url.pathname.endsWith('/services'))sheet.services={...sheet.services,...body,includedUnits:body.pickPackMaxUnits};
+     if(url.pathname.endsWith('/package'))sheet.packages=sheet.packages.map(p=>p.packageId===body.packageId?{...p,configuredPrice:body.price}:p);
+     if(url.pathname.endsWith('/add-box'))sheet.packages.push({packageId:99,name:body.name,dimensions:`${body.length} × ${body.width} × ${body.height} in`,configuredPrice:body.charge,updatedAt:'2026-11-07'});
+     return {ok:true};
+   }
+ });
+ await page.goto(base+'/rates');
+ await expect(page.getByRole('heading',{name:'Alpha',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add box',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Edit service rates',exact:true})).toHaveCount(0);
+ allowed=true; await page.getByRole('button',{name:'Refresh rates'}).click();
+ await page.getByRole('button',{name:'Edit service rates',exact:true}).click();
+ await page.getByLabel('Pick & pack ($)',{exact:false}).fill('3.25');
+ await page.getByRole('button',{name:'Save rates',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page.getByText('$3.25',{exact:true})).toBeVisible();
+ expect(writes[0].storageFeePerCuFt).toBe('0.1234');
+ await page.getByRole('button',{name:'Edit price for Small box',exact:true}).click();
+ await page.getByLabel('Price per box ($)',{exact:false}).fill('0.00');
+ await page.getByRole('button',{name:'Save rates',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page.getByText('$0.00',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Add box',exact:true}).click();
+ await page.getByLabel('Box name (optional)',{exact:true}).fill('New client box');
+ for (const [label,value] of [['Length (in)','12'],['Width (in)','9'],['Height (in)','3'],['Price per box ($)','0.20']])await page.getByLabel(label,{exact:false}).fill(value);
+ await page.setViewportSize({width:390,height:844});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:test.info().outputPath('rate-sheet-add-box-mobile.png'),fullPage:true});
+ await page.getByRole('button',{name:'Save rates',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'New client box',exact:true})).toBeVisible();
+ expect(writes).toHaveLength(3);
+ allowed=false; await page.getByRole('button',{name:'Refresh rates'}).click();
+ await expect(page.getByRole('button',{name:'Add box',exact:true})).toHaveCount(0);
+});
+
+test('Rate sheet save rejection retains saved display and shows the server error', async ({page})=>{
+ await setup(page,url=>url.pathname.endsWith('/rate-sheet/access')?{canEditRateSheet:true}:url.pathname.endsWith('/rate-sheet')?{data:[sheets[0]]}:undefined);
+ await page.route('**/api/client-portal/rate-sheet/package',route=>route.fulfill({status:403,json:{error:'Rate sheet editing permission required.'}}));
+ await page.goto(base+'/rates');
+ await page.getByRole('button',{name:'Edit price for Small box',exact:true}).click();
+ await page.getByLabel('Price per box ($)',{exact:false}).fill('9.99');
+ await page.getByRole('button',{name:'Save rates',exact:true}).click();
+ await expect(page.getByRole('alert')).toContainText('Rate sheet editing permission required.');
+ await expect(page.getByText('$0.20',{exact:true})).toBeVisible();
+});
+
+test('Admin can switch rate editing on and off without changing client assignments', async ({page})=>{
+ const user={id:'client-editor',email:'client@rates.test',name:'Client',role:'client_user',isAdmin:false,isGlobal:false,isProtected:false,active:true,
+   permissions:['financials:read'],clientIds:[1],storeIds:[],clients:[{id:1,name:'Alpha'}],createdAt:null,lastSignInAt:null};
+ const patches=[];
+ await setup(page,(url,request)=>{
+   if(url.pathname.endsWith('/me'))return {id:'sort-test',email:'sort@portal-e2e.test',role:'admin',isAdmin:true,isGlobal:true,canManageAdmins:true,canManageUsers:true,canViewFinancials:true,clientIds:[],storeIds:[]};
+   if(url.pathname.endsWith('/access-list'))return {data:[user]};
+   if(url.pathname.endsWith('/access-list/client-editor') && request.method()==='PATCH') {
+     const patch=request.postDataJSON();patches.push(patch);
+     user.permissions=patch.canEditRateSheet?['financials:read','rate-sheet:write']:['financials:read']; return {ok:true};
+   }
+ });
+ await page.goto(base+'/settings');
+ await page.getByRole('tab',{name:'Access',exact:true}).click();
+ await page.getByRole('button',{name:'Edit',exact:true}).click();
+ const permission=page.getByRole('switch',{name:/Allow adding and editing rate sheets/});
+ await expect(permission).not.toBeChecked(); await permission.check();
+ await page.screenshot({path:test.info().outputPath('admin-rate-sheet-permission.png'),fullPage:true});
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ expect(patches[0].canEditRateSheet).toBe(true); expect(patches[0].clientIds).toEqual([1]);
+ await page.getByRole('button',{name:'Edit',exact:true}).click();
+ await expect(permission).toBeChecked(); await permission.uncheck();
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ expect(patches[1].canEditRateSheet).toBe(false); expect(patches[1].clientIds).toEqual([1]);
+});
 test('Rate Sheet renders exact prices, precision, dates and missing/zero/inactive states on desktop and mobile',async({page})=>{
  await page.setViewportSize({width:1440,height:1000});const requests=[];
  await setup(page,url=>{if(url.pathname.endsWith('/rate-sheet'))requests.push(url);return fixture(url);});
@@ -94,6 +176,7 @@ test('Rate Sheet retries errors, refreshes saved rates and rejects late client r
  await page.setViewportSize({width:1440,height:900});await setup(page,fixture);
  let fail=true,refreshed=false,slowAlpha=false;
  await page.route('**/api/client-portal/rate-sheet*',async route=>{
+   if(new URL(route.request().url()).pathname.endsWith('/access')){await route.fulfill({json:{canEditRateSheet:false}});return;}
    if(fail){await route.fulfill({status:503,json:{error:'private_database_error'}});return;}
    const url=new URL(route.request().url());
    if(slowAlpha&&url.searchParams.get('clientId')==='1')await new Promise(r=>setTimeout(r,1500));

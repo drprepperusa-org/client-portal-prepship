@@ -1,4 +1,6 @@
 /** Current saved billing configuration, not historical invoices or shipping quotes. */
+export const RATE_SHEET_WRITE_PERMISSION = 'rate-sheet:write';
+
 export interface PortalRateSheet {
   clientId: number;
   clientName: string;

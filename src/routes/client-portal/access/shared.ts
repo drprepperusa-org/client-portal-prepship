@@ -24,6 +24,7 @@ export const inviteAccessUserBody = z.object({
 });
 
 export const patchAccessUserBody = z.object({
+  canEditRateSheet: z.boolean().optional(),
   role: z.enum(['admin', 'client_user']).optional(),
   clientIds: z.unknown().optional(),
   displayName: z.string().trim().max(120).nullable().optional(),

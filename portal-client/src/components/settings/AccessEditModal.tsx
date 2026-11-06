@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { RadioGroup, Select } from '@/components/ui/Selection';
 import { useToast } from '@/components/ui/Toast';
 import { portalApi, type PortalAccessUser, type PortalClientRow } from '@/lib/api';
+import { RATE_SHEET_WRITE_PERMISSION } from '@client-portal-contracts/rate-sheet';
 
 /* Edit modal: role, assigned client stores, and display name for one login. */
 export function AccessEditModal({
@@ -38,6 +39,7 @@ export function AccessEditModal({
   // numeric chips for inactive / out-of-scope client IDs.
   const [clientIds, setClientIds] = useState<string[]>(() => user.clientIds.map(String).filter((id) => validIds.has(id)));
   const [saving, setSaving] = useState(false);
+  const [canEditRateSheet, setCanEditRateSheet] = useState(user.permissions.includes(RATE_SHEET_WRITE_PERMISSION));
 
   async function save() {
     if (!token) return;
@@ -46,6 +48,7 @@ export function AccessEditModal({
       await portalApi.updateAccessUser(token, user.id, {
         role,
         displayName: name.trim(),
+        ...(canManageAdmins && role === 'client_user' ? { canEditRateSheet } : {}),
         // Store assignment only applies to scoped client users; admins are global.
         // Re-merge orphan ids so out-of-view assignments aren't silently dropped.
         ...(role === 'client_user'
@@ -110,6 +113,15 @@ export function AccessEditModal({
           </p>
         )}
 
+        {canManageAdmins && role === 'client_user' && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3">
+            <input type="checkbox" role="switch" checked={canEditRateSheet} onChange={(event) => setCanEditRateSheet(event.target.checked)}
+              disabled={saving} className="focus-ring mt-1 h-5 w-5 shrink-0 accent-brand-600" />
+            <span><span className="block text-sm font-semibold text-ink">Allow adding and editing rate sheets</span>
+              <span className="mt-1 block text-xs text-ink-3">Updates service rates and box prices in both PrepShip and the Client Portal, for this user’s assigned clients only.</span>
+            </span>
+          </label>
+        )}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" size="sm" onClick={onClose} disabled={saving}>
             Cancel

@@ -41,6 +41,15 @@ Status key:
 
 ## Domain Matrix
 
+### Rate sheet permissions and configured prices
+
+Supabase admin-owned `rate-sheet:write` controls client editing. PrepShip's
+`rate-sheet-access.ts` checks current grants and assignments for every command.
+`billing-rate-configuration.ts` and `billing-package-box.ts` own the shared
+`billing_config` and `client_package_prices` writes and their required audit.
+Client Portal proxies the user's bearer token; it does not own pricing writes.
+See [Rate sheet editing](rate-sheet-editing.md) for scope, rollout and tests.
+
 ### Portal audit activity detail
 
 `client_portal_audit_logs.event`, `metadata`, actor and `created_at` are the historical

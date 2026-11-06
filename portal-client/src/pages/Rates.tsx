@@ -4,9 +4,10 @@ import { Box, ChevronDown, ChevronLeft, ChevronRight, Layers, RefreshCw, Receipt
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
-import { useMe, useRateSheet } from '@/lib/hooks';
+import { useMe, useRateSheet, useTokenQuery } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
-import type { PortalRateSheet } from '@/lib/api';
+import { portalApi, type PortalRateSheet } from '@/lib/api';
+import { RateSheetEditModal, type RateSheetEditor } from '@/components/rates/RateSheetEditModal';
 import { shortDate } from '@/lib/status';
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
@@ -14,7 +15,7 @@ const statusLabels = { configured: 'Configured', inactive: 'Billing inactive', n
 
 const PACKAGES_PER_PAGE = 12;
 
-function PackageRate({ box }: { box: PortalRateSheet['packages'][number] }) {
+function PackageRate({ box, onEdit }: { onEdit?: () => void; box: PortalRateSheet['packages'][number] }) {
   // Display formatting only: preserve named packages, omit repeated dimensions.
   const normalized = (text: string) => text.toLowerCase().replace(/×/g, 'x').replace(/\s+/g, '').replace(/in$/, '');
   const dimensionName = box.dimensions && normalized(box.name) === normalized(box.dimensions);
@@ -29,6 +30,7 @@ function PackageRate({ box }: { box: PortalRateSheet['packages'][number] }) {
       <div className="shrink-0 text-right">
         <p className="text-lg font-semibold text-ink tnum">{currency.format(Number(box.configuredPrice))}</p>
         <p className="text-xs text-ink-3">/ box</p>
+        {onEdit && <Button size="sm" variant="ghost" aria-label={`Edit price for ${box.name}`} onClick={onEdit}>Edit</Button>}
       </div>
     </li>
   );
@@ -38,6 +40,8 @@ export default function Rates() {
   const me = useMe();
   const canView = Boolean(me.data?.canViewFinancials);
   const query = useRateSheet(canView);
+  const access = useTokenQuery(['rate-sheet-access'], portalApi.rateSheetAccess, canView, { alwaysRefetch: true, refetchOnWindowFocus: true, refetchInterval: 30000 });
+  const canEdit = access.data?.canEditRateSheet === true && !access.isError;
   const rows = query.data?.data ?? [];
   return (
     <div className="space-y-4">
@@ -45,13 +49,13 @@ export default function Rates() {
         <SectionTitle title="Rate sheet" subtitle="Current configured PrepShip service pricing · USD" />
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" leadingIcon={<RefreshCw size={16} />} disabled={!canView || query.isFetching}
-            onClick={() => void query.refetch()}>Refresh rates</Button>
+            onClick={() => { void query.refetch(); void access.refetch(); }}>Refresh rates</Button>
           <Link to="/invoices"><Button leadingIcon={<ReceiptText size={16} />}>View invoices</Button></Link>
         </div>
       </GlassPanel>
       <p className="px-1 text-xs leading-relaxed text-ink-3">
         These are the current saved rates for the selected client, regardless of the date filter.
-        Invoice charges may include shipment-specific adjustments. Contact your account manager to change your rates.
+        Invoice charges may include shipment-specific adjustments. {canEdit ? 'You have permission to add and edit your assigned clients’ rates.' : 'Contact your account manager to change your rates.'}
       </p>
       <QueryState isLoading={me.isLoading || (canView && query.isLoading)}
         isError={me.isError || (canView && query.isError)} isUpdating={canView && query.isFetching && !query.isLoading}
@@ -60,7 +64,7 @@ export default function Rates() {
         emptyMessage="Choose another client or ask your account manager to check your access.">
         {canView ? (
           <div className="space-y-4">{rows.map((row, index) => (
-            <ClientRates key={row.clientId} sheet={row} defaultOpen={rows.length === 1 || index === 0} />
+            <ClientRates key={row.clientId} sheet={row} defaultOpen={rows.length === 1 || index === 0} canEdit={canEdit} onSaved={async () => { await query.refetch(); }} onDenied={() => { void access.refetch(); }} />
           ))}</div>
         ) : (
           <GlassPanel className="p-6">
@@ -83,7 +87,8 @@ function ServiceRate({ label, value, unit, icon: Icon }: { label: string; value:
   );
 }
 
-function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOpen: boolean }) {
+function ClientRates({ sheet, defaultOpen, canEdit, onSaved, onDenied }: { sheet: PortalRateSheet; defaultOpen: boolean; canEdit: boolean; onSaved: () => Promise<void>; onDenied: () => void }) {
+  const [editor, setEditor] = useState<RateSheetEditor | null>(null);
   const service = sheet.services;
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [packageQuery, setPackageQuery] = useState('');
@@ -141,6 +146,12 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
               Billing is inactive for this client. The saved rates below are shown for reference.
             </p>
           )}
+          {canEdit && <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setEditor({ kind: 'services' })}>
+              {service ? 'Edit service rates' : 'Add service rates'}
+            </Button>
+            <Button size="sm" onClick={() => setEditor({ kind: 'add-box' })}>Add box</Button>
+          </div>}
           {service ? (
             <dl className="grid gap-3 lg:grid-cols-3">
               <ServiceRate icon={Box} label="Pick & pack" value={service.pickPackFee}
@@ -181,7 +192,7 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
             {filteredPackages.length ? (
               <>
                 <ul aria-label={`Packages for ${sheet.clientName}`} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {visiblePackages.map((box) => <PackageRate key={box.packageId} box={box} />)}
+                  {visiblePackages.map((box) => <PackageRate key={box.packageId} box={box} onEdit={canEdit ? () => setEditor({ kind: 'package', box }) : undefined} />)}
                 </ul>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
                   <p className="text-xs text-ink-3" role="status">Showing {pageStart + 1}–{pageStart + visiblePackages.length} of {filteredPackages.length} packages</p>
@@ -189,7 +200,8 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
                     <Button variant="ghost" className="w-11 px-0" aria-label="Previous packaging page" disabled={currentPage === 1} onClick={() => setPackagePage(currentPage - 1)}><ChevronLeft size={17} aria-hidden /></Button>
                     {Array.from({ length: Math.min(5, pageCount) }, (_, index) => firstPageButton + index).map((page) => (
                       <button key={page} type="button" aria-label={`Packaging page ${page}`} aria-current={page === currentPage ? 'page' : undefined}
-                        onClick={() => setPackagePage(page)} className={cn('focus-ring h-11 min-w-11 rounded-lg border text-sm font-semibold', page === currentPage ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-white text-ink-2 hover:bg-brand-50')}>
+                        onClick={() => setPackagePage(page)} className={cn('focus-ring h-11 min-w-11 rounded-lg border text-sm font-semibold',
+                          page === currentPage ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-white text-ink-2 hover:bg-brand-50')}>
                         {page}
                       </button>
                     ))}
@@ -206,6 +218,7 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
           </section>
         </div>
       )}
+      {canEdit && editor && <RateSheetEditModal sheet={sheet} editor={editor} onClose={() => setEditor(null)} onSaved={onSaved} onDenied={onDenied} />}
     </GlassPanel>
   );
 }
