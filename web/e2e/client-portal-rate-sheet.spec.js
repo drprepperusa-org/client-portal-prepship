@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 const base = 'http://127.0.0.1:5177';
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 async function setup(page, custom) {
   const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
   const user={id:'sort-test',aud:'authenticated',role:'authenticated',email:'sort@portal-e2e.test',app_metadata:{role:'admin',permissions:['scope:global']},user_metadata:{}};
@@ -53,12 +54,12 @@ test('Rate Sheet renders exact prices, precision, dates and missing/zero/inactiv
  await page.getByRole('button',{name:'Expand rates for Zero rates'}).click();
  await expect(page.getByText('$0.00',{exact:true})).toBeVisible();
  await expect(page.getByText('Service rates updated Sep 1, 2026',{exact:true}).first()).toBeVisible();
- await expect(page.getByText('Configured box prices before billing adjustments, for this client’s relevant packaging.',{exact:false}).first()).toBeVisible();
+ await expect(page.getByText('Configured prices for your client. Final charges appear on invoices.',{exact:true}).first()).toBeVisible();
  const packageSearch=page.getByRole('combobox',{name:'Find packaging for Alpha'});
  await expect(packageSearch).toHaveAttribute('list',/.+/);
  await packageSearch.fill('Medium');
- await expect(page.getByRole('cell',{name:'Medium box',exact:false})).toBeVisible();
- await expect(page.getByRole('cell',{name:'Small box',exact:false})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Medium box',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Small box',exact:true})).toHaveCount(0);
  await packageSearch.fill('mailer');
  await expect(page.getByText('No packaging matches “mailer”.',{exact:true})).toBeVisible();
  await packageSearch.fill('');
@@ -71,7 +72,7 @@ test('Rate Sheet renders exact prices, precision, dates and missing/zero/inactiv
  await expect(page.getByRole('heading',{name:'Alpha',exact:true})).toBeVisible();
  expect(requests.at(-1).searchParams.get('clientId')).toBe('1');
  expect(requests.at(-1).searchParams.has('dateFrom')).toBe(false);
- await expect(page.getByRole('cell',{name:'$0.20',exact:true})).toBeVisible();
+ await expect(page.getByRole('list',{name:'Packages for Alpha'}).getByText('$0.20',{exact:true})).toBeVisible();
  await page.screenshot({path:test.info().outputPath('rate-sheet-desktop.png')});
  await page.setViewportSize({width:390,height:844});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
@@ -121,4 +122,50 @@ test('Rate Sheet retries errors, refreshes saved rates and rejects late client r
  await page.route('**/api/client-portal/rate-sheet*',route=>route.fulfill({json:{data:[]}}));
  await page.getByRole('button',{name:'Refresh rates'}).click();
  await expect(page.getByText('No rate sheets for this client selection',{exact:true})).toBeVisible();
+});
+
+test('Packaging grid paginates all scoped boxes, searches across pages and adapts to mobile',async({page})=>{
+ let count=32;
+ const packages=Array.from({length:32},(_,i)=>({packageId:100+i,name:i===0?'10x10x1':`Client box ${i+1}`,
+   dimensions:i===0?'10 × 10 × 1 in':null,configuredPrice:i===0?'0.00':'0.1234',updatedAt:'2026-11-06T12:00:00Z'}));
+ await setup(page,url=>{
+   if(url.pathname.endsWith('/me'))return {id:'sort-test',isAdmin:false,isGlobal:false,isRestricted:true,canViewFinancials:true,clientIds:[1],storeIds:[]};
+   if(url.pathname.endsWith('/clients'))return {data:[{id:1,name:'Alpha'}]};
+   if(url.pathname.endsWith('/rate-sheet'))return {data:[{...sheets[0],packages:packages.slice(0,count)}]};
+ });
+ await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/rates');
+ const list=page.getByRole('list',{name:'Packages for Alpha',exact:true});
+ const entries=list.getByRole('listitem');
+ await expect(entries).toHaveCount(12);
+ await expect(page.getByText('Showing 1–12 of 32 packages',{exact:true})).toBeVisible();
+ await expect(entries.first().getByRole('heading')).toHaveText('10 × 10 × 1 in');
+ await expect(entries.first().getByText('10x10x1',{exact:true})).toHaveCount(0);
+ await expect(entries.first().getByText('$0.00',{exact:true})).toBeVisible();
+ await expect(entries.nth(1).getByText('$0.1234',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'All clients',exact:true})).toHaveCount(0);
+ const rects=await entries.evaluateAll(nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));
+ expect(rects[0].y).toBe(rects[2].y);expect(rects[2].x).toBeGreaterThan(rects[0].x);
+ expect(rects[3].y).toBeGreaterThan(rects[0].y);
+ await page.screenshot({path:test.info().outputPath('packaging-grid-desktop.png'),fullPage:true});
+ await page.getByRole('button',{name:'Packaging page 3',exact:true}).click();
+ await expect(entries).toHaveCount(8);
+ await expect(page.getByText('Showing 25–32 of 32 packages',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Next packaging page'})).toBeDisabled();
+ const search=page.getByRole('combobox',{name:'Find packaging for Alpha'});
+ await search.fill('Client box 2');
+ await expect(entries).toHaveCount(11);
+ await expect(page.getByText('Showing 1–11 of 11 packages',{exact:true})).toBeVisible();
+ await search.fill('nothing');await expect(entries).toHaveCount(0);
+ await expect(page.getByText('No packaging matches “nothing”.',{exact:true})).toBeVisible();
+ await search.fill('');await expect(entries).toHaveCount(12);
+ await page.getByRole('button',{name:'Packaging page 3',exact:true}).click();
+ count=2;await page.getByRole('button',{name:'Refresh rates',exact:true}).click();
+ await expect(entries).toHaveCount(2);
+ await expect(page.getByText('Showing 1–2 of 2 packages',{exact:true})).toBeVisible();
+ for(const size of [{width:375,height:812},{width:812,height:375}]) {
+   await page.setViewportSize(size);
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ }
+ await page.setViewportSize({width:375,height:812});
+ await page.screenshot({path:test.info().outputPath('packaging-grid-mobile.png'),fullPage:true});
 });

@@ -1,25 +1,38 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, RefreshCw, ReceiptText, Search } from 'lucide-react';
+import { Box, ChevronDown, ChevronLeft, ChevronRight, Layers, RefreshCw, ReceiptText, Search, Warehouse, type LucideIcon } from 'lucide-react';
 import { GlassPanel, SectionTitle } from '@/components/ui/Glass';
 import { Button } from '@/components/ui/Button';
 import { QueryState } from '@/components/ui/QueryState';
-import { DataTable, type Column } from '@/components/ui/DataTable';
-import { useCanCustomizeTables, useMe, useRateSheet } from '@/lib/hooks';
+import { useMe, useRateSheet } from '@/lib/hooks';
+import { cn } from '@/lib/cn';
 import type { PortalRateSheet } from '@/lib/api';
 import { shortDate } from '@/lib/status';
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
 const statusLabels = { configured: 'Configured', inactive: 'Billing inactive', not_configured: 'Services not configured' };
 
-const packageColumns: Column<PortalRateSheet['packages'][number]>[] = [
-  { key: 'box', header: 'Box', render: (box) => <div className="min-w-0">
-    <span className="break-words font-medium">{box.name}</span>
-    <span className="block text-xs text-ink-3">{box.dimensions ?? 'Dimensions not recorded'}</span>
-  </div> },
-  { key: 'price', header: 'Configured price / box', render: (box) => currency.format(Number(box.configuredPrice)) },
-  { key: 'updated', header: 'Updated', render: (box) => shortDate(box.updatedAt) },
-];
+const PACKAGES_PER_PAGE = 12;
+
+function PackageRate({ box }: { box: PortalRateSheet['packages'][number] }) {
+  // Display formatting only: preserve named packages, omit repeated dimensions.
+  const normalized = (text: string) => text.toLowerCase().replace(/×/g, 'x').replace(/\s+/g, '').replace(/in$/, '');
+  const dimensionName = box.dimensions && normalized(box.name) === normalized(box.dimensions);
+  return (
+    <li className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
+      <Box size={23} className="hidden shrink-0 text-ink-2 sm:block" aria-hidden />
+      <div className="min-w-0 flex-1 sm:border-l sm:border-slate-200 sm:pl-3">
+        <h4 className="break-words text-sm font-semibold text-ink">{dimensionName ? box.dimensions : box.name}</h4>
+        {!dimensionName && <p className="mt-1 break-words text-xs text-ink-3">{box.dimensions ?? 'Dimensions not recorded'}</p>}
+        <p className="mt-1 text-xs text-ink-3">Updated {shortDate(box.updatedAt)}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-lg font-semibold text-ink tnum">{currency.format(Number(box.configuredPrice))}</p>
+        <p className="text-xs text-ink-3">/ box</p>
+      </div>
+    </li>
+  );
+}
 
 export default function Rates() {
   const me = useMe();
@@ -36,10 +49,10 @@ export default function Rates() {
           <Link to="/invoices"><Button leadingIcon={<ReceiptText size={16} />}>View invoices</Button></Link>
         </div>
       </GlassPanel>
-      <GlassPanel className="p-4 text-sm text-ink-3">
+      <p className="px-1 text-xs leading-relaxed text-ink-3">
         These are the current saved rates for the selected client, regardless of the date filter.
         Invoice charges may include shipment-specific adjustments. Contact your account manager to change your rates.
-      </GlassPanel>
+      </p>
       <QueryState isLoading={me.isLoading || (canView && query.isLoading)}
         isError={me.isError || (canView && query.isError)} isUpdating={canView && query.isFetching && !query.isLoading}
         onRetry={() => void (me.isError ? me.refetch() : query.refetch())}
@@ -60,22 +73,21 @@ export default function Rates() {
   );
 }
 
-function ServiceRate({ label, value, unit }: { label: string; value: string; unit: string }) {
+function ServiceRate({ label, value, unit, icon: Icon }: { label: string; value: string; unit: string; icon: LucideIcon }) {
   return (
-    <div className="min-w-0 rounded-glass-sm bg-slate-50 p-4 ring-1 ring-slate-200/70">
-      <dt className="text-sm text-ink-3">{label}</dt>
-      <dd className="mt-1 text-xl font-semibold text-ink tnum"><span>{currency.format(Number(value))}</span>
-        <span className="mt-1 block text-xs font-normal text-ink-3">{unit}</span>
-      </dd>
+    <div className="grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-3 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
+      <dt className="flex items-center gap-2 text-sm font-semibold text-ink"><Icon size={20} className="shrink-0 text-brand-700" aria-hidden />{label}</dt>
+      <dd className="row-span-2 text-xl font-semibold text-ink tnum">{currency.format(Number(value))}</dd>
+      <dd className="mt-1 text-xs text-ink-3">{unit}</dd>
     </div>
   );
 }
 
 function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOpen: boolean }) {
   const service = sheet.services;
-  const canCustomizeTables = useCanCustomizeTables();
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [packageQuery, setPackageQuery] = useState('');
+  const [packagePage, setPackagePage] = useState(1);
   const packageListId = useId();
   const packagePanelId = `client-rates-${sheet.clientId}`;
   const filteredPackages = useMemo(() => {
@@ -85,6 +97,12 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
       `${box.name} ${box.dimensions ?? ''}`.toLocaleLowerCase().includes(query),
     );
   }, [packageQuery, sheet.packages]);
+  // Paginate only the already-scoped DTO. Pricing and relevance stay backend-owned.
+  const pageCount = Math.max(1, Math.ceil(filteredPackages.length / PACKAGES_PER_PAGE));
+  const currentPage = Math.min(packagePage, pageCount);
+  const pageStart = (currentPage - 1) * PACKAGES_PER_PAGE;
+  const visiblePackages = filteredPackages.slice(pageStart, pageStart + PACKAGES_PER_PAGE);
+  const firstPageButton = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
 
   useEffect(() => {
     if (defaultOpen) setIsOpen(true);
@@ -94,7 +112,7 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
     <GlassPanel className="p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg font-semibold text-ink">{sheet.clientName}</h2>
+          <h2 className="font-display text-xl font-semibold text-ink sm:text-2xl">{sheet.clientName}</h2>
           <p className="mt-1 text-xs text-ink-3">
             {service ? `Service rates updated ${shortDate(service.updatedAt)}` : 'Service rates have not been configured.'}
           </p>
@@ -124,11 +142,11 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
             </p>
           )}
           {service ? (
-            <dl className="grid gap-3 sm:grid-cols-3">
-              <ServiceRate label="Pick & pack" value={service.pickPackFee}
+            <dl className="grid gap-3 lg:grid-cols-3">
+              <ServiceRate icon={Box} label="Pick & pack" value={service.pickPackFee}
                 unit={`Includes up to ${service.includedUnits} ${service.includedUnits === 1 ? 'unit' : 'units'}`} />
-              <ServiceRate label="Additional units" value={service.additionalUnitFee} unit="Per unit above the included quantity" />
-              <ServiceRate label="Storage" value={service.storageFeePerCuFt} unit="Per cubic foot per month" />
+              <ServiceRate icon={Layers} label="Additional units" value={service.additionalUnitFee} unit="Per additional unit" />
+              <ServiceRate icon={Warehouse} label="Storage" value={service.storageFeePerCuFt} unit="Per cubic foot / month" />
             </dl>
           ) : (
             <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">
@@ -138,8 +156,8 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
           <section aria-label={`Packaging rates for ${sheet.clientName}`} className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h3 className="font-semibold text-ink">Packaging</h3>
-                <p className="mt-1 text-sm text-ink-3">Configured box prices before billing adjustments, for this client’s relevant packaging. Final charges appear on invoices.</p>
+                <h3 className="text-lg font-semibold text-ink">Packaging rates <span className="ml-2 text-sm font-normal text-ink-3">{sheet.packages.length} packages</span></h3>
+                <p className="mt-1 text-sm text-ink-3">Configured prices for your client. Final charges appear on invoices.</p>
               </div>
               {sheet.packages.length > 0 && (
                 <label className="relative flex w-full items-center sm:max-w-sm">
@@ -148,8 +166,8 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
                     type="search"
                     list={packageListId}
                     value={packageQuery}
-                    onChange={(event) => setPackageQuery(event.target.value)}
-                    placeholder="Search or choose packaging"
+                    onChange={(event) => { setPackageQuery(event.target.value); setPackagePage(1); }}
+                    placeholder="Search box size or name"
                     aria-label={`Find packaging for ${sheet.clientName}`}
                     autoComplete="off"
                     className="focus-ring h-11 w-full rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-3 text-sm text-ink ring-1 ring-slate-200/70 placeholder:text-slate-400 focus:bg-white/90"
@@ -161,14 +179,30 @@ function ClientRates({ sheet, defaultOpen }: { sheet: PortalRateSheet; defaultOp
               )}
             </div>
             {filteredPackages.length ? (
-              <DataTable columns={packageColumns} rows={filteredPackages} rowKey={(box) => String(box.packageId)}
-                tableId={`portal-rates-packaging-${sheet.clientId}`} allowColumnCustomization={canCustomizeTables} />
+              <>
+                <ul aria-label={`Packages for ${sheet.clientName}`} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {visiblePackages.map((box) => <PackageRate key={box.packageId} box={box} />)}
+                </ul>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+                  <p className="text-xs text-ink-3" role="status">Showing {pageStart + 1}–{pageStart + visiblePackages.length} of {filteredPackages.length} packages</p>
+                  {pageCount > 1 && <nav aria-label={`Packaging pages for ${sheet.clientName}`} className="flex flex-wrap items-center gap-1">
+                    <Button variant="ghost" className="w-11 px-0" aria-label="Previous packaging page" disabled={currentPage === 1} onClick={() => setPackagePage(currentPage - 1)}><ChevronLeft size={17} aria-hidden /></Button>
+                    {Array.from({ length: Math.min(5, pageCount) }, (_, index) => firstPageButton + index).map((page) => (
+                      <button key={page} type="button" aria-label={`Packaging page ${page}`} aria-current={page === currentPage ? 'page' : undefined}
+                        onClick={() => setPackagePage(page)} className={cn('focus-ring h-11 min-w-11 rounded-lg border text-sm font-semibold', page === currentPage ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-200 bg-white text-ink-2 hover:bg-brand-50')}>
+                        {page}
+                      </button>
+                    ))}
+                    <Button variant="ghost" className="w-11 px-0" aria-label="Next packaging page" disabled={currentPage === pageCount} onClick={() => setPackagePage(currentPage + 1)}><ChevronRight size={17} aria-hidden /></Button>
+                  </nav>}
+                </div>
+              </>
             ) : sheet.packages.length ? (
               <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No packaging matches “{packageQuery}”.</p>
             ) : (
               <p className="rounded-glass-sm bg-slate-50 p-4 text-sm text-ink-3">No published prices for this client’s relevant packaging yet.</p>
             )}
-            <p className="text-xs text-ink-3">Only relevant boxes with saved client prices are listed, including free packaging. Unused catalog boxes are excluded.</p>
+            <p className="text-xs text-ink-3">Only your client’s relevant boxes with saved prices are listed, including $0.00 prices.</p>
           </section>
         </div>
       )}
