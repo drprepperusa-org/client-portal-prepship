@@ -72,8 +72,8 @@ export const MUTATIONS: readonly Mutation[] = [
   {
     label: 'Inbound receipts download rebuilds the backend Blob',
     file: 'portal-client/src/components/inbound/ExportInboundReceiptsCsv.tsx', guard: BUILDER,
-    from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? 'inbound-receipts.csv' });",
-    to: "downloadFile({ bytes: new Blob([file.bytes]), filename: file.filename ?? 'inbound-receipts.csv' });",
+    from: "downloadFile({ bytes: file.bytes, filename: file.filename ?? `inbound-receipts.${format}` });",
+    to: "downloadFile({ bytes: new Blob([file.bytes]), filename: file.filename ?? `inbound-receipts.${format}` });",
   },
   {
     label: 'Inbound receipts API replaces the backend file bytes',

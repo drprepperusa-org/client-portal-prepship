@@ -287,21 +287,7 @@ export default function Returns() {
                 Receive returns
               </Button>
             )}
-            <label className="relative flex items-center">
-              <Filter size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-                aria-label="Filter by status"
-                className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
-              >
-                <option value="">All statuses</option>
-                {RETURN_STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>{returnStatusMeta(status).label}</option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
-            </label>
+            <ReturnStatusFilter value={statusFilter} onChange={setStatusFilter} />
             {clients.length > 1 && (
               <label className="relative flex items-center">
                 <Building2 size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
@@ -392,5 +378,25 @@ export default function Returns() {
         <ReturnReceivingModal open={receivingOpen} onClose={() => setReceivingOpen(false)} />
       )}
     </div>
+  );
+}
+
+function ReturnStatusFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="relative flex items-center">
+      <Filter size={15} className="pointer-events-none absolute left-3 z-10 text-ink-3" />
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label="Filter by status"
+        className="focus-ring h-11 cursor-pointer appearance-none rounded-glass-sm border border-white/80 bg-white/60 pl-9 pr-9 text-sm font-medium text-ink ring-1 ring-slate-200/70 focus:bg-white/90"
+      >
+        <option value="">All statuses</option>
+        {RETURN_STATUS_OPTIONS.map((status) => (
+          <option key={status} value={status}>{returnStatusMeta(status).label}</option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-3 text-ink-3">▾</span>
+    </label>
   );
 }

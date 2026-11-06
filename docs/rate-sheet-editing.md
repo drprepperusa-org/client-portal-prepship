@@ -19,9 +19,24 @@ and seven Rate Sheet/admin browser scenarios pass. PrepShip's configuration tran
 cover immediate revocation, cross-client denial, audit rollback, explicit free boxes and
 publishing a client price over an inherited catalog default.
 
-The full Client Portal release suite is not green on the existing base: its inbound
-customization guard still assumes admin-only columns, its export guard expects the older
-CSV-only expression, the integration wiring check omits the monthly-period suite, and
-Returns exceeds the existing function-size limit. The older portal-wide browser suite
-also fails. Those unrelated surfaces were not changed for rate editing. No production
-deployment, account grant or price mutation has been performed for this feature.
+## Release check repairs, 2026-11-07
+
+The receiving-worksheet customization guard now permits only that user-scoped table's
+approved client reordering; other tables retain the shared admin/global gate. Export
+checks pin both server-generated CSV and XLSX transports and still reject rebuilding
+files locally (25/25 mutation cases killed). The monthly-period integration is enrolled
+in CI and passes against a disposable local database.
+
+Returns' status filter is extracted as a presentation-only component to meet the
+function-size limit. Browser fixtures explicitly open optional hidden columns and
+supply the canonical billing-column policy; they retain all customer-data assertions.
+Full-site certification passes, including all 41 portal UI scenarios, and all 15
+focused Rate Sheet/inbound export and customization scenarios pass.
+
+The shared Supabase server client explicitly supplies the documented ws transport for
+Node 20. Rate permission tests remove the native WebSocket constructor before importing
+the client, covering the CI compatibility failure without changing permission rules.
+The source of truth remains PrepShip's shared pricing and access owners; no production
+account grants, prices, invoices, shipments or marketplace actions were changed in testing.
+
+All 196 local release guards passed. CI browser jobs are pinned to Ubuntu 24.04 because the installed Playwright version cannot install Chromium on Ubuntu 26.04. The pinned upstream finalization contract also matches through the authenticated GitHub connection; the CI-specific PREPSHIP_CONTRACT_TOKEN was reported expired and is being renewed separately.

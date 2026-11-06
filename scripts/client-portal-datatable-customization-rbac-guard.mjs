@@ -55,7 +55,8 @@ assert(
 );
 assert(!/\{tableId && \(/.test(dt), 'customization controls are no longer gated on tableId alone');
 
-// 4. Every Client Portal DataTable uses the shared admin/global gate.
+// 4. Structural customization is admin/global except the explicitly approved
+// personal receiving worksheet. This is presentation only, never data access.
 assert(
   /export function useCanCustomizeTables\(\): boolean/.test(hooks) &&
     /const me = useMe\(\)\.data/.test(hooks) &&
@@ -91,10 +92,12 @@ for (const file of tableUsers) {
   for (const [i, tag] of dataTableTags.entries()) {
     const tableLabel = dataTableTags.length === 1 ? label : `${label} DataTable #${i + 1}`;
     assert(/tableId=/.test(tag), `${tableLabel} has a stable tableId for persisted admin layout`);
-    assert(
-      /allowColumnCustomization=\{(?:canCustomizeTables|props\.canCustomizeTables)\}/.test(tag),
-      `${tableLabel} enables column customization only through canCustomizeTables`,
-    );
+    const personalReceivingWorksheet = label.replaceAll('\\', '/') === 'portal-client/src/pages/Inbound.tsx'
+      && tag.includes('tableId={`inbound-receipts:${userId}`}');
+    assert(personalReceivingWorksheet
+      ? /\ballowColumnCustomization\s/.test(tag)
+      : /allowColumnCustomization=\{(?:canCustomizeTables|props\.canCustomizeTables)\}/.test(tag),
+    `${tableLabel} uses the shared gate or the user-scoped receiving worksheet opt-in`);
   }
 }
 

@@ -194,6 +194,8 @@ jobs:
           fi
       - name: Run CP-048 access security integration suite
         run: npm run test:client-portal-access-security:integration
+      - name: Run monthly invoice periods integration suite
+        run: npm run test:client-portal-monthly-periods:integration
       - name: Run shopify connect integration suite
         run: npm run test:shopify-connect-integration
       - name: Run PS-486 return eligibility integration suite

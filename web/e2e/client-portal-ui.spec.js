@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { buildPortalAuditActivity } from '../../src/lib/client-portal/read-models/audit-log-activity';
 
+import { BILLING_COLUMN_SECTIONS } from '../../src/lib/client-portal/contracts/billing-columns';
+
 const baseUrl = 'http://127.0.0.1:5177';
 const storageKey = 'sb-portal-e2e-auth-token';
 const day = '2026-07-09';
@@ -464,6 +466,10 @@ function responseFor(pathname, admin, capabilities = {}, returnOverrides = {}, i
   if (pathname === '/api/client-portal/returns/refresh-tracking' && method === 'POST') {
     return { checked: 1, failed: 0, updated: 0 };
   }
+  if (pathname === '/api/client-portal/billing/columns') {
+    return { summary: BILLING_COLUMN_SECTIONS.summary.map(([key]) => key),
+      lineItems: BILLING_COLUMN_SECTIONS.lineItems.map(([key]) => key), revision: null, canManage: true };
+  }
   if (pathname === '/api/client-portal/invoice-summary') {
     if (searchParams.get('groupBy') === 'period') {
       return { data: [invoicePeriodRow], totals: invoicePeriodTotals, billingVisible: true };
@@ -637,7 +643,7 @@ test('Inbound renders PrepShip receipt truth without synthetic batching', async 
   const errors = await setupPortal(page);
   await page.goto(`${baseUrl}/inbound`);
 
-  await expect(page.getByText('Received inventory', { exact: true })).toBeVisible();
+  await expect(page.getByText('Receiving worksheet', { exact: true })).toBeVisible();
   const receiptTable = page.getByRole('table');
   await expect(receiptTable.getByText('Booster-gel-001', { exact: true })).toBeVisible();
   await expect(receiptTable.getByText('Booster Gel', { exact: true })).toBeVisible();
@@ -727,6 +733,9 @@ test('tables expose keyboard sorting, row actions, and column movement', async (
   await page.getByRole('button', { name: /^Columns/ }).click();
   const moveOrderLeft = page.getByRole('button', { name: 'Move Order left' });
   await moveOrderLeft.focus();
+  await page.keyboard.press('Enter');
+  await expect(moveOrderLeft).toBeEnabled();
+  // Created now leads the default layout: Order moves from third to second, then first.
   await page.keyboard.press('Enter');
   await expect(moveOrderLeft).toBeDisabled();
   await expect(page.getByRole('button', { name: 'View return E2E-RET-1' })).toBeVisible();
@@ -1122,6 +1131,12 @@ test('CP-062 AC-2: an arrived return shows the backend flag and the delivered ti
     });
   });
   await page.goto(`${baseUrl}/returns`);
+  // These optional columns are hidden in the approved compact default layout.
+  await page.getByRole('button', { name: /^Columns/ }).click();
+  await page.getByRole('button', { name: 'Status', exact: true }).click();
+  await page.getByRole('button', { name: 'Tracking #', exact: true }).click();
+  await page.getByRole('button', { name: /^Columns/ }).click();
+
 
   // Scoped to the ROW (see the CP-058 note above): the status filter's hidden <option>s
   // would satisfy a page-wide match. The lifecycle chip must still read "In transit" —
@@ -1180,6 +1195,12 @@ test('CP-062: the portal never infers arrival — a delivered parcel on a receiv
     },
   });
   await page.goto(`${baseUrl}/returns`);
+  // These optional columns are hidden in the approved compact default layout.
+  await page.getByRole('button', { name: /^Columns/ }).click();
+  await page.getByRole('button', { name: 'Status', exact: true }).click();
+  await page.getByRole('button', { name: 'Tracking #', exact: true }).click();
+  await page.getByRole('button', { name: /^Columns/ }).click();
+
   const row = page.getByRole('row').filter({ hasText: 'E2E-RET-1' });
   await expect(row.getByText('Received', { exact: true })).toBeVisible();
   await expect(row.getByText(/^Delivered /)).toBeVisible();
@@ -1190,6 +1211,11 @@ test('CP-062: the portal never infers arrival — a delivered parcel on a receiv
 test('CP-058 AC-1/AC-2: a label-pending return reads as a deliberate state', async ({ page }) => {
   const errors = await setupPortal(page, { returnOverrides: { status: 'requested' } });
   await page.goto(`${baseUrl}/returns`);
+  // These optional columns are hidden in the approved compact default layout.
+  await page.getByRole('button', { name: /^Columns/ }).click();
+  await page.getByRole('button', { name: 'Status', exact: true }).click();
+  await page.getByRole('button', { name: /^Columns/ }).click();
+
 
   // "Requested" invited "requested from whom?". The return exists and is waiting on a
   // label, which is what the operator actually needs to know.

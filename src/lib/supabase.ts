@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type WebSocketLikeConstructor } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { env } from './env';
 
 export const supabaseAdmin = createClient(
@@ -6,6 +7,10 @@ export const supabaseAdmin = createClient(
   env.SUPABASE_SERVICE_ROLE_KEY,
   {
     auth: { autoRefreshToken: false, persistSession: false },
+    // The shared server client must also initialize on the supported Node 20 runtime.
+    // Providing transport does not open a realtime channel.
+    // ws implements this protocol; its Node event typings differ from DOM event typings.
+    realtime: { transport: WebSocket as unknown as WebSocketLikeConstructor },
   }
 );
 

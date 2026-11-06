@@ -173,11 +173,16 @@ const INBOUND_RECEIPT_ACCEPT = `inboundReceiptsCsv: (token: RequestAuth, opts: L
     format: 'csv', clientId: opts.clientId, dateFrom: opts.dateFrom, dateTo: opts.dateTo,
     sortBy: opts.sortBy, sortDir: opts.sortDir,
   }, 'text/csv')`;
+const INBOUND_RECEIPT_XLSX_ACCEPT = `inboundReceiptsXlsx: (token: RequestAuth, opts: ListOpts) => apiBlob(token, '/api/client-portal/inbound/receipts', {
+    format: 'xlsx', clientId: opts.clientId, dateFrom: opts.dateFrom, dateTo: opts.dateTo,
+    sortBy: opts.sortBy, sortDir: opts.sortDir,
+  }, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')`;
+const INBOUND_RECEIPT_TYPE_CHECK = "const contentType = format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';";
 const allowedBackendMedia = new Map([[AUDIT_DOMAIN, AUDIT_ACCEPT], [AUDIT_DOWNLOAD, AUDIT_TYPE_CHECK],
   [ORDER_DOMAIN, ORDER_ACCEPT], [ORDER_DOWNLOAD, AUDIT_TYPE_CHECK],
   [INVENTORY_DOMAIN, INVENTORY_ACCEPT], [INVENTORY_DOWNLOAD, AUDIT_TYPE_CHECK],
   [RETURN_DOMAIN, RETURN_ACCEPT], [RETURN_DOWNLOAD, AUDIT_TYPE_CHECK],
-  [INBOUND_RECEIPT_DOMAIN, INBOUND_RECEIPT_ACCEPT], [INBOUND_RECEIPT_DOWNLOAD, AUDIT_TYPE_CHECK],
+  [INBOUND_RECEIPT_DOMAIN, INBOUND_RECEIPT_ACCEPT], [INBOUND_RECEIPT_DOWNLOAD, INBOUND_RECEIPT_TYPE_CHECK],
   [SHIPMENT_DOMAIN, SHIPMENT_ACCEPT], [SHIPMENT_DOWNLOAD, AUDIT_TYPE_CHECK]]);
 const FORBIDDEN_MEDIA = [
   ['a CSV media type', /text\/csv/],
@@ -195,6 +200,10 @@ for (const file of sourceTreeFiles(['portal-client/src'], root)) {
   if (allowed) {
     assert.equal(source.split(allowed).length - 1, 1, `${rel}: exactly one reviewed backend CSV media expression`);
     source = source.replace(allowed, '');
+  }
+  if (rel === INBOUND_RECEIPT_DOMAIN) {
+    assert.equal(source.split(INBOUND_RECEIPT_XLSX_ACCEPT).length - 1, 1, 'exactly one reviewed backend inbound XLSX Accept');
+    source = source.replace(INBOUND_RECEIPT_XLSX_ACCEPT, '');
   }
   for (const [what, pattern] of FORBIDDEN_MEDIA) if (pattern.test(source)) offenders.push(`${rel}: ${what}`);
   // The workbook media type is allowed ONLY as the Accept header on the API call.
@@ -254,16 +263,21 @@ assert.doesNotMatch(shipmentDownload, /\bBlob\(|\bFile\(|createObjectURL|TextEnc
 ok('Shipments CSV UI preserves backend bytes and cannot become a local builder');
 
 const inboundReceiptDomain = read(INBOUND_RECEIPT_DOMAIN).replaceAll('\r\n', '\n');
+assert.ok(inboundReceiptDomain.includes(INBOUND_RECEIPT_XLSX_ACCEPT), 'Inbound XLSX returns the bare backend apiBlob call');
 assert.ok(inboundReceiptDomain.includes(INBOUND_RECEIPT_ACCEPT), 'Inbound receipts CSV fetcher returns the bare backend apiBlob call');
 assert.doesNotMatch(inboundReceiptDomain, /\.then\(|\bBlob\(|\bFile\(|bytes:|arrayBuffer|\.text\(\)|TextEncoder|btoa\(/,
   'Inbound receipts API domain never constructs, chains or reads file bytes');
 ok('Inbound receipts CSV API returns the backend file without replacing its bytes');
 
 const inboundReceiptDownload = read(INBOUND_RECEIPT_DOWNLOAD);
-assert.match(inboundReceiptDownload, /const file = await portalApi\.inboundReceiptsCsv\(\{ accessToken, signal: controller\.signal \}, filters\);/,
-  'Inbound receipts download obtains the backend CSV with caller filters and cancellation');
-assert.match(inboundReceiptDownload, /downloadFile\(\{ bytes: file\.bytes, filename: file\.filename \?\? 'inbound-receipts\.csv' \}\);/,
-  'Inbound receipts download hands the original Blob to the shared download helper');
+assert.ok(inboundReceiptDownload.includes("const request = format === 'xlsx' ? portalApi.inboundReceiptsXlsx : portalApi.inboundReceiptsCsv;"),
+  'Inbound selects only reviewed backend export methods');
+assert.match(inboundReceiptDownload, /const file = await request\(\{ accessToken, signal: controller\.signal \}, filters\);/,
+  'Inbound obtains backend bytes with caller filters and cancellation');
+assert.ok(inboundReceiptDownload.includes('downloadFile({ bytes: file.bytes, filename: file.filename ?? `inbound-receipts.${format}` });'),
+  'Inbound hands the original Blob to the shared download helper');
+assert.ok(inboundReceiptDownload.includes('file.contentType.toLowerCase().startsWith(contentType)'),
+  'Inbound checks the requested backend media type before download');
 assert.equal(count(inboundReceiptDownload, /downloadFile\(/g), 1, 'Inbound receipts download has one file sink');
 assert.doesNotMatch(inboundReceiptDownload, /\bBlob\(|\bFile\(|createObjectURL|TextEncoder|btoa\(|arrayBuffer|\.text\(\)|\.slice\(|\.join\(|JSON\.stringify|file\.bytes\s*=/,
   'Inbound receipts UI never assembles, reads, re-encodes or replaces file bytes');

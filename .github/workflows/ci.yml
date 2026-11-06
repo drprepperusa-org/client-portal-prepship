@@ -19,7 +19,8 @@ concurrency:
 jobs:
   static-checks:
     name: Typecheck + build + guard suite
-    runs-on: ubuntu-latest
+    # Playwright 1.60 supports Ubuntu 24.04, not the new 26.04 latest image.
+    runs-on: ubuntu-24.04
     env:
       # The guards read source and exercise pure functions — they never open a
       # database connection, so these are throwaway values whose only job is to

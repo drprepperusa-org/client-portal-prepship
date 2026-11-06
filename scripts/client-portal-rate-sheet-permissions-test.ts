@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { loadFixtureModule } from './lib/load-fixture-module';
+// Verify shared auth initialization on Node 20, which has no native WebSocket.
+Reflect.deleteProperty(globalThis, 'WebSocket');
 process.env.DATABASE_URL = 'postgres://fixture:fixture@127.0.0.1:1/rate_permissions';
 process.env.SUPABASE_URL = 'https://fixture.supabase.co';
 process.env.SUPABASE_ANON_KEY = 'fixture';
@@ -26,7 +28,9 @@ const { registerAccessUserMutationRoutes } = loadFixtureModule('src/routes/clien
 function appFor(global = true) {
   const app = new Hono();
   app.use('*', async (c, next) => {
-    for (const [key, value] of Object.entries({ userId: 'admin', email: 'admin@fixture.test', role: global ? 'admin' : 'client_user', permissions: ['financials:read','users:manage'], clientIds: [1], storeIds: [] })) c.set(key as never, value as never);
+    for (const [key, value] of Object.entries({ userId: 'admin', email: 'admin@fixture.test',
+      role: global ? 'admin' : 'client_user', permissions: ['financials:read','users:manage'],
+      clientIds: [1], storeIds: [] })) c.set(key as never, value as never);
     await next();
   });
   registerAccessUserMutationRoutes(app); return app;
