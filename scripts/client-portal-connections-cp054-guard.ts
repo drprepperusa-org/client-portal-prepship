@@ -265,7 +265,9 @@ check(
 );
 const hooks = read('portal-client/src/lib/hooks.ts');
 check(
-  hooks.includes('while (!cancelled && (document.hidden || qc.isFetching() > 0)) await pause()') &&
+  hooks.includes('while (!cancelled && (document.hidden || qc.isFetching() > 0)) await waitForForeground()') &&
+    hooks.includes('qc.getQueryCache().subscribe(resume)') &&
+    hooks.includes("document.removeEventListener('visibilitychange', resume)") &&
     hooks.includes('qc.isFetching() > 0') &&
     hooks.includes('await qc.prefetchQuery') &&
     !hooks.split('\n').some((line) => line.trimStart().startsWith('qc.prefetchQuery(')),

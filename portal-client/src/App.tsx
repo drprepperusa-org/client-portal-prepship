@@ -7,9 +7,9 @@ import { QueryState } from './components/ui/QueryState';
 
 // Eager: the login screen is the entry point for unauthenticated users.
 import Login from './pages/Login';
-import ActivateAccount from './pages/ActivateAccount';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
+const ActivateAccount = lazy(() => import('./pages/ActivateAccount'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 // Lazy: each authenticated page is its own chunk, loaded on navigation.
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -89,9 +89,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={loading ? <AuthSplash /> : isAuthed ? <Navigate to={signedInTarget} replace /> : <Login />} />
-      <Route path="/activate" element={<ActivateAccount />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/activate" element={<Lazy el={<ActivateAccount />} />} />
+      <Route path="/forgot-password" element={<Lazy el={<ForgotPassword />} />} />
+      <Route path="/reset-password" element={<Lazy el={<ResetPassword />} />} />
       <Route
         element={
           <RequireAuth>

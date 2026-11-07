@@ -6,7 +6,7 @@ import { BottomNav } from './BottomNav';
 import { LiquidBackground } from './LiquidBackground';
 import { ConnectionStatus } from '../ConnectionStatus';
 import { NAV, COMPONENTS_NAV } from '@/nav';
-import { usePrefetchPortal } from '@/lib/hooks';
+import { useAwaitingCount, usePrefetchPortal } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import { useDialogFocus } from '@/components/ui/useDialogFocus';
 
@@ -23,6 +23,8 @@ export function Layout() {
   const mobileNavRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const title = useTitle();
+  const awaitingQuery = useAwaitingCount();
+  const badge = { awaitingCount: awaitingQuery.data?.count, badgeUnavailable: awaitingQuery.isError };
   usePrefetchPortal();
   useDialogFocus(drawer, () => setDrawer(false), mobileNavRef);
 
@@ -51,7 +53,7 @@ export function Layout() {
         {/* Desktop sidebar */}
         <aside className={cn('relative hidden shrink-0 lg:block', collapsed ? 'w-[76px]' : 'w-64', 'transition-[width] duration-300')}>
           <div className="sticky top-4 h-[calc(100vh-2rem)]">
-            <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+            <Sidebar {...badge} collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
           </div>
         </aside>
 
@@ -96,13 +98,13 @@ export function Layout() {
           drawer ? 'translate-x-0' : 'pointer-events-none -translate-x-[120%]',
         )}
       >
-        <Sidebar collapsed={false} onToggle={() => {}} onNavigate={() => setDrawer(false)} />
+        <Sidebar {...badge} collapsed={false} onToggle={() => {}} onNavigate={() => setDrawer(false)} />
       </div>
 
       {/* Mobile bottom tab bar — primary destinations + a center create action.
           The full nav (overflow destinations) opens from the top-left menu.
           Hidden at lg+ where the sidebar is the nav. */}
-      <BottomNav />
+      <BottomNav {...badge} />
     </div>
   );
 }

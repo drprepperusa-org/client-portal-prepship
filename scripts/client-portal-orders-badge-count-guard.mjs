@@ -11,6 +11,7 @@ const readModel = read('src/lib/client-portal/read-models/orders.ts');
 const hooks = read('portal-client/src/lib/hooks.ts');
 const sidebar = read('portal-client/src/components/layout/Sidebar.tsx');
 const bottomNav = read('portal-client/src/components/layout/BottomNav.tsx');
+const layout = read('portal-client/src/components/layout/Layout.tsx');
 
 let failed = false;
 function assert(condition, message) {
@@ -89,11 +90,12 @@ assert(
 );
 assert(
   sidebar.includes('badge={item.to === \'/orders\' ? awaitingCount : undefined}') &&
-    bottomNav.includes("badge={item.to === '/orders' ? awaiting : undefined}") &&
-    sidebar.includes("badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}") &&
-    bottomNav.includes("badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}") &&
-    !sidebar.includes('useAwaitingCount().data?.count ?? 0') &&
-    !bottomNav.includes('useAwaitingCount().data?.count ?? 0'),
+    bottomNav.includes("badge={item.to === '/orders' ? awaitingCount : undefined}") &&
+    sidebar.includes("badgeUnavailable={item.to === '/orders' && badgeUnavailable}") &&
+    bottomNav.includes("badgeUnavailable={item.to === '/orders' && badgeUnavailable}") &&
+    layout.includes('awaitingCount: awaitingQuery.data?.count, badgeUnavailable: awaitingQuery.isError') &&
+    layout.includes('const awaitingQuery = useAwaitingCount()') &&
+    !sidebar.includes('useAwaitingCount') && !bottomNav.includes('useAwaitingCount'),
   'desktop sidebar and mobile bottom nav render the Orders count or an explicit unavailable state',
 );
 assert(

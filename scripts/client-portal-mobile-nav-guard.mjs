@@ -79,7 +79,7 @@ assert(
 // ── Mobile bottom tab bar (tabs + center create action) ──
 const inbound = read('portal-client/src/pages/Inbound.tsx');
 assert(
-  layout.includes('<BottomNav />'),
+  layout.includes('<BottomNav {...badge} />'),
   'Layout renders the mobile bottom tab bar',
 );
 assert(

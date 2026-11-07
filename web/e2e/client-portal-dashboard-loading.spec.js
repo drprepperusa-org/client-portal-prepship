@@ -24,6 +24,22 @@ test('signed-out entry does not fetch chart code', async ({ page }) => {
   else expect(charts).toHaveLength(0);
 });
 
+test('account recovery code loads when its public route opens', async ({ page }) => {
+  const chunks = [];
+  page.on('request', request => {
+    if (/\/assets\/(ActivateAccount|ForgotPassword|ResetPassword)-.*\.js/.test(request.url())) chunks.push(request.url());
+  });
+  await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:5178' ? route.continue() : route.abort());
+  await page.goto('/login', { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  expect(chunks).toHaveLength(0);
+  for (const [path, heading] of [['/forgot-password', 'Reset your password'], ['/reset-password', 'Recovery link required'], ['/activate', 'Invitation needed']]) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+  }
+  expect(new Set(chunks).size).toBe(3);
+});
+
 test('failed chart download preserves KPIs and can recover with reload', async ({ page }) => {
   test.skip(baseline, 'Regression for the new isolated chart loading boundary');
   await setup(page);

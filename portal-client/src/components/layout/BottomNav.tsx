@@ -2,7 +2,6 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Plus, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { NAV } from '@/nav';
-import { useAwaitingCount } from '@/lib/hooks';
 import { prefetchRoute } from '@/lib/routePrefetch';
 
 // Native-app style bottom tab bar for phones/tablets (hidden at lg+, where the
@@ -58,11 +57,9 @@ function Tab({ to, label, icon: Icon, active, badge, badgeUnavailable }: {
   );
 }
 
-export function BottomNav() {
+export function BottomNav({ awaitingCount, badgeUnavailable }: { awaitingCount?: number; badgeUnavailable: boolean }) {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const awaitingQuery = useAwaitingCount();
-  const awaiting = awaitingQuery.data?.count;
   return (
     <nav
       aria-label="Primary"
@@ -75,8 +72,8 @@ export function BottomNav() {
           label={item.label}
           icon={item.icon}
           active={isActive(item.to, pathname)}
-          badge={item.to === '/orders' ? awaiting : undefined}
-          badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}
+          badge={item.to === '/orders' ? awaitingCount : undefined}
+          badgeUnavailable={item.to === '/orders' && badgeUnavailable}
         />
       ))}
 

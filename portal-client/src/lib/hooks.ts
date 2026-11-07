@@ -375,16 +375,29 @@ export function usePrefetchPortal() {
     };
     const onVisibility = () => { if (document.hidden) cancelSpeculation(); };
     document.addEventListener('visibilitychange', onVisibility);
-    const pause = () => new Promise<void>(resolve => { wake = resolve; timer = setTimeout(resolve, 250); });
+    // A hidden tab or a slow foreground query can stay busy for minutes. Wake
+    // on visibility/query changes instead of checking the same state every 250ms.
+    const waitForForeground = () => new Promise<void>(resolve => {
+      const resume = () => {
+        if (!cancelled && (document.hidden || qc.isFetching() > 0)) return;
+        unsubscribe();
+        document.removeEventListener('visibilitychange', resume);
+        wake = undefined;
+        resolve();
+      };
+      const unsubscribe = qc.getQueryCache().subscribe(resume);
+      document.addEventListener('visibilitychange', resume);
+      wake = resume;
+      resume();
+    });
     const prefetch = async () => {
-      await pause();
       const reads = [
         { key: portalReadKeys.dashboard(dateRange.dateFrom, dateRange.dateTo, clientId), read: (auth: RequestAuth) => portalApi.backgroundDashboard(auth, dateRange, clientId) },
         { key: portalReadKeys.orders(clientId), read: (auth: RequestAuth) => portalApi.backgroundOrders(auth, { status: 'awaiting_shipment', clientId }) },
         { key: portalReadKeys.inventory(clientId), read: (auth: RequestAuth) => portalApi.backgroundInventory(auth, { clientId }) },
       ];
       for (const { key, read } of reads) {
-        while (!cancelled && (document.hidden || qc.isFetching() > 0)) await pause();
+        while (!cancelled && (document.hidden || qc.isFetching() > 0)) await waitForForeground();
         if (cancelled) return;
         activeKey = portalQueryKey(userId, key);
         await qc.prefetchQuery<unknown>({
@@ -394,7 +407,7 @@ export function usePrefetchPortal() {
         activeKey = undefined;
       }
     };
-    void prefetch();
+    timer = setTimeout(() => { void prefetch(); }, 250);
     return () => {
       cancelled = true; clearTimeout(timer); wake?.(); cancelSpeculation();
       document.removeEventListener('visibilitychange', onVisibility);

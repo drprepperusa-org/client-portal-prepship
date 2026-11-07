@@ -8,11 +8,13 @@ import { Tooltip } from '@/components/ui/Display';
 import { Avatar } from '@/components/ui/Display';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth';
-import { useAwaitingCount, useMe } from '@/lib/hooks';
+import { useMe } from '@/lib/hooks';
 import { prefetchRoute } from '@/lib/routePrefetch';
 import { portalApi } from '@/lib/api';
 
 interface SidebarProps {
+  awaitingCount?: number;
+  badgeUnavailable: boolean;
   collapsed: boolean;
   onToggle: () => void;
   onNavigate?: () => void;
@@ -98,7 +100,7 @@ function Row({
   );
 }
 
-export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, onNavigate, awaitingCount, badgeUnavailable }: SidebarProps) {
   const nav = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -108,8 +110,6 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const canManageUsers = me.data?.canManageUsers ?? false;
   const canViewAudit = me.data?.canViewAudit ?? false;
   const displayName = email ? email.split('@')[0] : 'Account';
-  const awaitingQuery = useAwaitingCount();
-  const awaitingCount = awaitingQuery.data?.count;
   // Backend capabilities own access-management and audit navigation.
   const navItems = NAV.filter((item) => {
     if (item.to === '/settings') return canManageUsers;
@@ -157,7 +157,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
             onNavigate={onNavigate}
             onItemClick={handleNavItemClick}
             badge={item.to === '/orders' ? awaitingCount : undefined}
-            badgeUnavailable={item.to === '/orders' && awaitingQuery.isError}
+            badgeUnavailable={item.to === '/orders' && badgeUnavailable}
           />
         ))}
       </nav>
