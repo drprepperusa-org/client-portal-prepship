@@ -85,6 +85,9 @@ const SORTABLE = new Set([
   'replacePostageTotal', 'replacePickPackTotal',
 ]);
 
+// Unpaged invoice reads use the same natural text ordering as PrepShip.
+const textOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
 function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, key: string, dir: 1 | -1): number {
   const value = (row: CanonicalBillingEventRow) => {
     const raw = (row as unknown as Record<string, unknown>)[key];
@@ -97,7 +100,7 @@ function compareRows(a: CanonicalBillingEventRow, b: CanonicalBillingEventRow, k
   if (av === null || av === undefined) return bv === null || bv === undefined ? 0 : 1;
   if (bv === null || bv === undefined) return -1;
   if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-  return String(av).localeCompare(String(bv), 'en', { numeric: true, sensitivity: 'base' }) * dir;
+  return textOrder.compare(String(av), String(bv)) * dir;
 }
 
 /**
