@@ -195,11 +195,17 @@ export function toPortalInboundDto(
   };
 }
 
+type PortalOrderFields = Pick<Order,
+  'id' | 'clientId' | 'storeId' | 'orderNumber' | 'externalOrderId' | 'sourceProvider' | 'sourceAccountId'
+  | 'orderStatus' | 'canonicalStatus' | 'externallyShipped' | 'orderDate' | 'shipToName' | 'shipToCity'
+  | 'shipToState' | 'shipToPostalCode' | 'carrierCode' | 'weightOz' | 'orderTotal' | 'raw' | 'items'
+>;
+
 export function toPortalOrderDto(
-  row: Order & {
+  row: PortalOrderFields & {
     clientName?: string | null;
     storeName?: string | null;
-    override?: OrderOverrides | null;
+    override?: Pick<OrderOverrides, 'trackingNumber'> | null;
     /** Billed shipping for this order (Σ billing_line_items line_type='shipping')
      *  — the customer-facing shipping charge, supplied by the route layer. */
     shippingCharged?: number | string | null;

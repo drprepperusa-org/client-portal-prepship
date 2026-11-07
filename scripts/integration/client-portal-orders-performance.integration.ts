@@ -105,6 +105,27 @@ try {
   assert.deepEqual((await owner.getPortalOrder(caller, fixtureOrder!.id)).items, itemSearch.data[0].items);
   assert.equal(await owner.getPortalOrder(scope('B', [b.id]), fixtureOrder!.id), null);
 
+  // Large provider payloads and internal quotes never belong in the page's DB
+  // projection. Legacy address, tax, promo, and tracking inputs still do.
+  await sql`update orders set raw = jsonb_build_object(
+      'shipTo', jsonb_build_object('street1','Legacy street','country','CA'),
+      'taxAmount', 1, 'ignoredPayload', repeat('x', 100000)),
+    raw_source_payload = jsonb_build_object('provider', repeat('x', 100000))
+    where id = ${fixtureOrder!.id}`;
+  await sql`insert into order_overrides(order_id,tracking_number,best_rate_json)
+    values (${fixtureOrder!.id}, 'LEGACY-TRACK', '{"internal":true}')`;
+  for (const canViewFinancials of [false, true]) {
+    const identity = { ...caller, canViewFinancials };
+    const list = await owner.listPortalOrders(identity, { ...opts, search: 'ITEM-B' });
+    const detail = await owner.getPortalOrder(identity, fixtureOrder!.id);
+    assert.deepEqual(list.data[0], detail);
+    assert.equal(detail.shipToLine1, 'Legacy street');
+    assert.equal(detail.shipToCountry, 'CA');
+    assert.equal(detail.displayTrackingNumber, 'LEGACY-TRACK');
+    assert.equal('chargeSummary' in detail, canViewFinancials);
+    if (canViewFinancials) assert(detail.chargeSummary.some((r: any) => r.kind === 'tax' && r.amount === 1));
+  }
+
   countReads = 0;
   const distinct = await Promise.all([
     owner.awaitingActiveOrderCount(caller, {}),

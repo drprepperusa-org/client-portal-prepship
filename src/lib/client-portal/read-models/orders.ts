@@ -42,6 +42,23 @@ type CanonicalOrderItemRow = {
 
 type OrderReader = Pick<typeof db, 'select'>;
 
+// List and detail share the DTO's projection. Provider payloads and saved rate
+// quotes can be large and aren't needed to render an order.
+function portalOrderFields(scope: ClientPortalScope) {
+  return {
+    id: orders.id, clientId: orders.clientId, storeId: orders.storeId, orderNumber: orders.orderNumber,
+    externalOrderId: orders.externalOrderId, sourceProvider: orders.sourceProvider, sourceAccountId: orders.sourceAccountId,
+    orderStatus: orders.orderStatus, canonicalStatus: orders.canonicalStatus, externallyShipped: orders.externallyShipped,
+    orderDate: orders.orderDate, shipToName: orders.shipToName, shipToCity: orders.shipToCity, shipToState: orders.shipToState,
+    shipToPostalCode: orders.shipToPostalCode, carrierCode: orders.carrierCode, weightOz: orders.weightOz, orderTotal: orders.orderTotal,
+    items: scope.canViewFinancials ? orders.items : sql<unknown[]>`'[]'::jsonb`,
+    raw: sql<Record<string, unknown>>`jsonb_build_object(
+      'shipTo', ${orders.raw}->'shipTo', 'externallyFulfilled', ${orders.raw}->'externallyFulfilled',
+      'taxAmount', ${orders.raw}->'taxAmount'
+    )`,
+  };
+}
+
 // Project complete item lines for each scoped order with the list/detail read.
 // Numeric fields stay strings, as in the standalone Drizzle item reader.
 const canonicalOrderItemsSql = sql<CanonicalOrderItemRow[]>`(
@@ -156,17 +173,16 @@ export async function listPortalOrders(
     return reader
       .select({
         ...(countInPage ? { matchedCount: sql<number>`count(*) over ()`.mapWith(Number) } : {}),
-        order: orders,
+        order: portalOrderFields(scope),
         items: canonicalOrderItemsSql,
-        override: orderOverrides,
+        override: { trackingNumber: orderOverrides.trackingNumber },
         clientName: clients.name,
-        storeIds: clients.storeIds,
         // CP-040: the ONE customer shipping value the Orders list needs — the backend
         // resolver's C. Shipping Rate (frozen billing_line_items shipping line per
         // shipment → live billing-config projection), summed over the order's
         // shipments. Never orders.shipping_amount (buyer-paid store shipping); never
         // the internal carrier / service / selected-rate.
-        resolvedShippingRate: orderCustomerShippingRateSql(),
+        resolvedShippingRate: scope.canViewFinancials ? orderCustomerShippingRateSql() : sql<null>`null::text`,
         activeShipmentIdentity: activeShipmentIdentitySql(),
         // CP-069: canonical signals for the backend-owned order fulfillment status
         // (lib/client-portal/order-status.ts) — whether the order has an active / a voided
@@ -240,14 +256,14 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
   const replacementsReady = await replacementsSchemaReady();
   const [row] = await db
     .select({
-      order: orders,
+      order: portalOrderFields(scope),
       items: canonicalOrderItemsSql,
-      override: orderOverrides,
+      override: { trackingNumber: orderOverrides.trackingNumber },
       clientName: clients.name,
       // CP-040: resolved customer shipping rate (frozen billing line → projection),
       // summed over the order's shipments — the SAME resolver the Shipments surface
       // uses. Never orders.shipping_amount.
-      resolvedShippingRate: orderCustomerShippingRateSql(),
+      resolvedShippingRate: scope.canViewFinancials ? orderCustomerShippingRateSql() : sql<null>`null::text`,
       activeShipmentIdentity: activeShipmentIdentitySql(),
       // Canonical signals for the backend-owned order fulfillment status
       // (see lib/client-portal/order-status.ts).
