@@ -121,6 +121,65 @@ test('Admin can switch rate editing on and off without changing client assignmen
  await expect(page.getByRole('dialog')).toHaveCount(0);
  expect(patches[1].canEditRateSheet).toBe(false); expect(patches[1].clientIds).toEqual([1]);
 });
+test('Settings Rate Sheet tab saves only the selected permission and reflects it in Access', async ({page})=>{
+ const user={id:'client-editor',email:'client@rates.test',name:'Client',role:'client_user',isAdmin:false,isGlobal:false,isProtected:false,active:true,
+   permissions:['financials:read'],clientIds:[1],storeIds:[],clients:[{id:1,name:'Alpha'}],createdAt:null,lastSignInAt:null};
+ const patches=[];
+ await setup(page,(url,request)=>{
+   if(url.pathname.endsWith('/me'))return {id:'sort-test',isAdmin:true,isGlobal:true,canManageAdmins:true,canManageUsers:true,canViewFinancials:true,clientIds:[],storeIds:[]};
+   if(url.pathname.endsWith('/access-list'))return {data:[user,{...user,id:'other',email:'other@rates.test',clients:[{id:2,name:'Beta'}]}]};
+   if(url.pathname.endsWith('/access-list/client-editor') && request.method()==='PATCH') {
+     const patch=request.postDataJSON();patches.push(patch);
+     user.permissions=patch.canEditRateSheet?['financials:read','rate-sheet:write']:['financials:read'];return {ok:true};
+   }
+ });
+ await page.goto(base+'/settings');
+ const tabs=page.getByRole('tablist',{name:'Settings sections'});
+ await expect(tabs.getByRole('tab')).toHaveText(['Profile','Notifications','Access','Billing','Rate Sheet']);
+ await tabs.getByRole('tab',{name:'Rate Sheet',exact:true}).click();
+ const permission=page.getByRole('switch',{name:'Allow rate sheet editing for client@rates.test',exact:true});
+ await expect(permission).not.toBeChecked();
+ await permission.click();
+ await expect(permission).toBeChecked();
+ expect(patches).toEqual([{canEditRateSheet:true}]);
+ await page.getByLabel('Find a client account').fill('Alpha');
+ await expect(page.getByRole('switch')).toHaveCount(1);
+ await page.setViewportSize({width:390,height:844});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:test.info().outputPath('rate-sheet-permissions-mobile.png'),fullPage:true});
+ await page.setViewportSize({width:1440,height:1000});
+ await page.screenshot({path:test.info().outputPath('rate-sheet-permissions-desktop.png'),fullPage:true});
+ await permission.focus(); await permission.press('Space');
+ await expect(permission).not.toBeChecked();
+ expect(patches).toEqual([{canEditRateSheet:true},{canEditRateSheet:false}]);
+ await tabs.getByRole('tab',{name:'Access',exact:true}).click();
+ await page.getByRole('button',{name:'Edit',exact:true}).click();
+ await expect(page.getByRole('switch',{name:/Allow adding and editing rate sheets/})).not.toBeChecked();
+});
+
+test('Settings rate permission denial keeps the saved switch off', async ({page})=>{
+ await setup(page,url=>{
+   if(url.pathname.endsWith('/me'))return {id:'sort-test',isAdmin:true,isGlobal:true,canManageAdmins:true,canManageUsers:true,clientIds:[],storeIds:[]};
+   if(url.pathname.endsWith('/access-list'))return {data:[{id:'client-editor',email:'client@rates.test',isAdmin:false,active:true,permissions:[],clients:[]}]};
+ });
+ await page.route('**/api/client-portal/access-list/client-editor',route=>route.fulfill({status:403,json:{error:'Global admin access required'}}));
+ await page.goto(base+'/settings');
+ await page.getByRole('tab',{name:'Rate Sheet',exact:true}).click();
+ const permission=page.getByRole('switch',{name:'Allow rate sheet editing for client@rates.test',exact:true});
+ await permission.click();
+ await expect(page.getByText('Global admin access required',{exact:true})).toBeVisible();
+ await expect(permission).not.toBeChecked();
+ await expect(permission).toBeEnabled();
+});
+
+test('Scoped account managers cannot open the rate permission tab', async ({page})=>{
+ await setup(page,url=>url.pathname.endsWith('/me')?{id:'sort-test',isAdmin:false,isGlobal:false,canManageAdmins:false,canManageUsers:true,clientIds:[1],storeIds:[]}:undefined);
+ await page.goto(base+'/settings');
+ await expect(page.getByRole('tab',{name:'Access',exact:true})).toBeVisible();
+ await expect(page.getByRole('tab',{name:'Rate Sheet',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('switch',{name:/Allow rate sheet editing/})).toHaveCount(0);
+});
+
 test('Rate Sheet renders exact prices, precision, dates and missing/zero/inactive states on desktop and mobile',async({page})=>{
  await page.setViewportSize({width:1440,height:1000});const requests=[];
  await setup(page,url=>{if(url.pathname.endsWith('/rate-sheet'))requests.push(url);return fixture(url);});

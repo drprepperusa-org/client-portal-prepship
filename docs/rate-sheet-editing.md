@@ -1,5 +1,11 @@
 # Rate sheet editing
 
+## Settings shortcut
+
+Global admins can also open **Settings → Rate Sheet**, beside Billing, to search client accounts and switch rate editing on or off. Each switch sends only `canEditRateSheet` to the existing audited access API; it never resubmits roles or client assignments. The displayed state comes from the refreshed access roster, and a denied save does not optimistically enable editing. The Access edit modal remains available and reads the same permissions.
+
+This is a presentation-only entry point. The canonical fresh-admin grant checks, PrepShip rate-writing permission checks, and assigned-client boundaries are unchanged. Browser coverage verifies grant/revoke, permission-only payloads, Access consistency, search, keyboard interaction, mobile layout, failed writes, and hiding the tab from scoped account managers.
+
 Admins use Settings → Access → select a client user → Edit → **Allow adding and editing rate sheets**. The grant is off by default and is stored in admin-owned Supabase app metadata as `rate-sheet:write`. It never adds broad financial or settings permissions. Grant/revoke requires a fresh active admin lookup and the existing mandatory access audit.
 
 The Rate Sheet gets its editing capability from PrepShip. Authorized users can add/edit service rates, edit an existing client box price, or add a priced box. Each request forwards that user's bearer token to `/billing/rate-sheet/*`; no privileged service token is substituted.

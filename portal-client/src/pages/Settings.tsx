@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Bell, Users, CreditCard } from 'lucide-react';
+import { User, Bell, Users, CreditCard, Tags } from 'lucide-react';
 import { GlassPanel } from '@/components/ui/Glass';
 import { ProfileTab } from '@/components/settings/ProfileTab';
 import { NotificationsTab } from '@/components/settings/NotificationsTab';
 import { AccessTab } from '@/components/settings/AccessTab';
 import { BillingTab } from '@/components/settings/BillingTab';
+import { RateSheetTab } from '@/components/settings/RateSheetTab';
 import { cn } from '@/lib/cn';
 import { useMe } from '@/lib/hooks';
 
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'team', label: 'Access', icon: Users },
   { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'rates', label: 'Rate Sheet', icon: Tags },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -78,6 +80,7 @@ export default function Settings() {
             {activeTab === 'notifications' && <NotificationsTab />}
             {activeTab === 'team' && <AccessTab />}
             {activeTab === 'billing' && <BillingTab />}
+            {activeTab === 'rates' && <RateSheetTab />}
           </motion.div>
         </AnimatePresence>
       </GlassPanel>
