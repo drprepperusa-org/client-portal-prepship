@@ -476,6 +476,8 @@ export async function fetchCanonicalBillingDetails(
   if (query.page !== undefined) {
     params.set('page', String(query.page));
     params.set('pageSize', String(query.pageSize ?? 100));
+    // Only the grid uses paged reads. Printed invoices request the full range and its totals.
+    params.set('omitInvoiceTotals', '1');
     if (query.sortBy) params.set('sortBy', query.sortBy);
     if (query.sortDir) params.set('sortDir', query.sortDir);
   }

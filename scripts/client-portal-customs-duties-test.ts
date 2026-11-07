@@ -111,15 +111,16 @@ try {
       return Response.json({ data: [{ clientId: 7, totals }] });
     }
     assert.equal(url.searchParams.get('sortBy'), 'customsDutiesTotal');
+    assert.equal(url.searchParams.get('omitInvoiceTotals'), '1');
     assert.equal(url.searchParams.get('clientId'), '7');
     return Response.json({ data: [{ ...source, ...(malformed ? { hasCustomsDutiesLine: null } : {}) }],
-      totals, pagination: { page: 2, pageSize: 1, total: 25, totalPages: 25 } });
+      pagination: { page: 2, pageSize: 1, total: 25, totalPages: 25 } });
   };
   const query = { clientId: 7, dateFrom: '2026-10-01', dateTo: '2026-10-15', page: 2, pageSize: 1, sortBy: 'customsDutiesTotal', sortDir: 'asc' };
   const page = await fetchCanonicalBillingDetails('Bearer fixture', query);
   assert.ok(page.ok);
   assert.equal(page.rows[0]?.customsDutiesTotal, 3.49);
-  assert.deepEqual(page.totals, totals);
+  assert.equal(page.totals, null);
   assert.equal(page.pagination?.total, 25);
   const summary = await fetchCanonicalInvoiceTotals('Bearer fixture', { clientIds: [7], dateFrom: query.dateFrom, dateTo: query.dateTo });
   assert.ok(summary.ok);
