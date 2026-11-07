@@ -84,13 +84,13 @@ check(
 
 const readModel = read('src/lib/client-portal/read-models/orders.ts');
 const itemLoader = readModel.slice(
-  readModel.indexOf('async function loadCanonicalOrderItems'),
+  readModel.indexOf('const canonicalOrderItemsSql'),
   readModel.indexOf('const activeShipmentIdentitySql'),
 );
 check(
-  itemLoader.includes('.from(orderItems)') && itemLoader.includes('inArray(orderItems.orderId, orderIds)') &&
-    itemLoader.includes('asc(orderItems.lineIndex)') && !itemLoader.includes('.limit('),
-  'Orders read-model batch-loads complete normalized order_items in line order',
+  itemLoader.includes('from ${orderItems} oi where oi.order_id = ${orders.id}') &&
+    itemLoader.includes('order by oi.line_index') && !/\blimit\b/i.test(itemLoader),
+  'Orders read-model selects complete normalized item lines for each scoped order in line order',
 );
 check((readModel.match(/canonicalItems:/g) ?? []).length === 2, 'both Orders list and detail supply canonicalItems to the same DTO');
 check(

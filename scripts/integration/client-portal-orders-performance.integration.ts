@@ -84,7 +84,26 @@ try {
   ]);
   assert.equal(searchPage.pagination.total, 1);
   assert.equal(plainBadge, 601);
-  assert.equal(countReads, 2, 'search result totals cannot satisfy an unfiltered badge');
+  assert.equal(countReads, 1, 'only the unfiltered badge needs a separate count');
+  const searchOpts = { ...opts, search: 'ORD-', pageSize: 10 };
+  for (const page of [1, 2, 60, 61]) {
+    const res = await owner.listPortalOrders(caller, { ...searchOpts, page });
+    assert.equal(res.pagination.total, 600);
+    assert.equal(res.data.length, page > 60 ? 0 : 10);
+  }
+  assert.equal((await owner.listPortalOrders(caller, { ...opts, search: 'OTHER-1' })).pagination.total, 0);
+  assert.equal((await owner.listPortalOrders(scope('B', [b.id]), { ...opts, search: 'OTHER-1' })).pagination.total, 1);
+  assert.equal((await owner.listPortalOrders(scope('none', []), searchOpts)).pagination.total, 0);
+  const [fixtureOrder] = await sql`select id from orders where order_number = 'ORD-1'`;
+  await sql`insert into order_items(order_id,line_index,sku,quantity,unit_price,line_total,order_status)
+    values (${fixtureOrder!.id}, 2, 'ITEM-B', 2, 1, 2, 'awaiting_shipment'),
+           (${fixtureOrder!.id}, 1, 'ITEM-A', 1, 1, 1, 'awaiting_shipment')`;
+  const itemSearch = await owner.listPortalOrders(caller, { ...opts, search: 'ITEM-B' });
+  assert.equal(itemSearch.pagination.total, 1);
+  assert.deepEqual(itemSearch.data[0].items.map((i: any) => i.sku), ['ITEM-A', 'ITEM-B']);
+  assert.equal(itemSearch.data[0].orderedUnits, 3);
+  assert.deepEqual((await owner.getPortalOrder(caller, fixtureOrder!.id)).items, itemSearch.data[0].items);
+  assert.equal(await owner.getPortalOrder(scope('B', [b.id]), fixtureOrder!.id), null);
 
   countReads = 0;
   const distinct = await Promise.all([

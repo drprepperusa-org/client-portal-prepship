@@ -1,7 +1,7 @@
 import { orderFulfillmentStatusSql } from '../order-status';
 import { tableOrderBy, referenceOrder, type SortInput } from './table-sort';
 import { orderFulfillmentSignalSelects } from '../order-fulfillment-signals';
-import { and, asc, desc, eq, gte, lte, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { clients } from '../../../db/schema/clients';
 import { orderItems } from '../../../db/schema/order-items';
@@ -42,31 +42,16 @@ type CanonicalOrderItemRow = {
 
 type OrderReader = Pick<typeof db, 'select'>;
 
-async function loadCanonicalOrderItems(orderIds: number[], reader: OrderReader = db): Promise<Map<number, CanonicalOrderItemRow[]>> {
-  const byOrder = new Map<number, CanonicalOrderItemRow[]>();
-  if (orderIds.length === 0) return byOrder;
-
-  const rows = await reader
-    .select({
-      orderId: orderItems.orderId,
-      sku: orderItems.sku,
-      name: orderItems.name,
-      quantity: orderItems.quantity,
-      unitPrice: orderItems.unitPrice,
-      lineTotal: orderItems.lineTotal,
-      imageUrl: orderItems.imageUrl,
-    })
-    .from(orderItems)
-    .where(inArray(orderItems.orderId, orderIds))
-    .orderBy(asc(orderItems.orderId), asc(orderItems.lineIndex));
-
-  for (const row of rows) {
-    const items = byOrder.get(row.orderId) ?? [];
-    items.push(row);
-    byOrder.set(row.orderId, items);
-  }
-  return byOrder;
-}
+// Project complete item lines for each scoped order with the list/detail read.
+// Numeric fields stay strings, as in the standalone Drizzle item reader.
+const canonicalOrderItemsSql = sql<CanonicalOrderItemRow[]>`(
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'orderId', oi.order_id, 'sku', oi.sku, 'name', oi.name,
+    'quantity', oi.quantity::text, 'unitPrice', oi.unit_price::text,
+    'lineTotal', oi.line_total::text, 'imageUrl', oi.image_url
+  ) order by oi.line_index), '[]'::jsonb)
+  from ${orderItems} oi where oi.order_id = ${orders.id}
+)`;
 
 // CP-069: the order's display tracking identity comes from its latest ACTIVE OUTBOUND shipment
 // (the shared PrepShip aggregate row set: matched by order_id or client-scoped order_number,
@@ -161,13 +146,18 @@ export async function listPortalOrders(
     opts.dateFrom ? gte(orders.orderDate, new Date(opts.dateFrom)) : undefined,
     opts.dateTo ? lte(orders.orderDate, new Date(opts.dateTo)) : undefined,
   );
+  // Search examines item and tracking evidence as well as the order itself.
+  // Count matched orders before pagination in the same scoped search scan.
+  const countInPage = Boolean(search) && snapshotTotal === undefined;
   const pageRead = (async () => {
     // CP-061: badge selects must be constants while the shared prod DB lacks the
     // replacement tables — a live subquery there would 500 the whole list.
     const replacementsReady = schemaReady ?? await replacementsSchemaReady();
-    const rows = await reader
+    return reader
       .select({
+        ...(countInPage ? { matchedCount: sql<number>`count(*) over ()`.mapWith(Number) } : {}),
         order: orders,
+        items: canonicalOrderItemsSql,
         override: orderOverrides,
         clientName: clients.name,
         storeIds: clients.storeIds,
@@ -205,14 +195,15 @@ export async function listPortalOrders(
       }, [desc(orders.orderDate), desc(orders.id)], orders.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
-    const canonicalItemsByOrder = await loadCanonicalOrderItems(rows.map((row) => row.order.id), reader);
-    return { rows, canonicalItemsByOrder };
   })();
-  // Count and page are independent. Start the count now so the badge/dashboard can
-  // reuse the same pending read; item enrichment remains dependent on the page's IDs.
-  const [{ rows, canonicalItemsByOrder }, count] = await Promise.all([
-    pageRead, snapshotTotal ?? countPortalOrders(scope, where, reader),
+  // Unsearched lists can share an in-flight count with the badge/dashboard.
+  const [rows, separateCount] = await Promise.all([
+    pageRead, snapshotTotal ?? (countInPage ? undefined : countPortalOrders(scope, where, reader)),
   ]);
+  // An empty first page proves there are no matches. A later empty page may
+  // be past the end, so obtain its exact total with the identical predicate.
+  const count = separateCount ?? rows[0]?.matchedCount ??
+    (page === 1 ? 0 : await countPortalOrders(scope, where, reader));
   return {
     data: rows.map((row) =>
       toPortalOrderDto(
@@ -225,7 +216,7 @@ export async function listPortalOrders(
           shippingCharged: row.resolvedShippingRate,
           hasActiveOutboundShipment: row.hasActiveOutboundShipment,
           hasVoidedOutboundShipment: row.hasVoidedOutboundShipment,
-          canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
+          canonicalItems: row.items,
           activeShipmentTrackingNumber: row.activeShipmentIdentity?.trackingNumber ?? null,
           activeShipmentCarrierCode: row.activeShipmentIdentity?.carrierCode ?? null,
           hasActiveReplacement: row.hasActiveReplacement,
@@ -250,6 +241,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
   const [row] = await db
     .select({
       order: orders,
+      items: canonicalOrderItemsSql,
       override: orderOverrides,
       clientName: clients.name,
       // CP-040: resolved customer shipping rate (frozen billing line → projection),
@@ -270,7 +262,6 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
     .where(and(eq(orders.id, id), orderScopePredicate(scope), activeClientPredicate()))
     .limit(1);
   if (!row) return null;
-  const canonicalItemsByOrder = await loadCanonicalOrderItems([row.order.id]);
   return toPortalOrderDto(
     {
       ...row.order,
@@ -280,7 +271,7 @@ export async function getPortalOrder(scope: ClientPortalScope, id: number) {
       shippingCharged: row.resolvedShippingRate,
       hasActiveOutboundShipment: row.hasActiveOutboundShipment,
       hasVoidedOutboundShipment: row.hasVoidedOutboundShipment,
-      canonicalItems: canonicalItemsByOrder.get(row.order.id) ?? [],
+      canonicalItems: row.items,
       activeShipmentTrackingNumber: row.activeShipmentIdentity?.trackingNumber ?? null,
       activeShipmentCarrierCode: row.activeShipmentIdentity?.carrierCode ?? null,
       hasActiveReplacement: row.hasActiveReplacement,
