@@ -49,6 +49,22 @@ async function download(page) {
   const event=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();
   return event;
 }
+test('Awaiting Orders supplies the sidebar count and a filtered search loads its own badge',async({page})=>{
+  const badgeReads=[];
+  page.on('request', req=>{if(new URL(req.url()).pathname.endsWith('/awaiting-active-count'))badgeReads.push(req.url())});
+  await ordersFixture(page);
+  await page.clock.install();
+  await page.goto(base+'/orders');
+  await expect(page.getByRole('table').getByText('CSV-1',{exact:true})).toBeVisible();
+  await page.clock.runFor(2500);
+  await expect(page.locator('aside').getByRole('link',{name:/Orders/})).toContainText('99+');
+  expect(badgeReads).toHaveLength(0);
+
+  await page.goto(base+'/orders?q=empty&tab=all');
+  await page.clock.runFor(3000);
+  await expect.poll(()=>badgeReads.length).toBe(1);
+  await expect(page.locator('aside').getByRole('link',{name:/Orders/})).toContainText('99+');
+});
 test('Orders CSV downloads backend bytes with current client, status, search and sorting across all pages',async({page})=>{
   const state=await ordersFixture(page);await page.goto(base+'/orders');
   await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeEnabled();

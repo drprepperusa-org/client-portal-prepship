@@ -1,7 +1,8 @@
 import { portalQueryKey, portalReadKeys } from './query-keys';
 import type { RequestAuth } from './api/transport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { portalApi, type ListOpts } from './api';
 // ListOpts is re-used by useReturns below (returns filter shape mirrors it).
@@ -79,7 +80,16 @@ export function useAttention() {
 }
 export function useAwaitingCount() {
   const { clientId } = usePortalFilters();
-  return useTokenQuery(['awaiting-count', clientId ?? 'scope'], (t) => portalApi.awaitingCount(t, clientId), true, {
+  const { pathname } = useLocation();
+  const [startupComplete, setStartupComplete] = useState(false);
+  useEffect(() => {
+    // The unfiltered Awaiting list publishes its exact total to this key. Give
+    // it the first read; filtered lists and Inventory still get a separate count.
+    const timer = window.setTimeout(() => setStartupComplete(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const enabled = startupComplete || (pathname !== '/orders' && pathname !== '/inventory');
+  return useTokenQuery(['awaiting-count', clientId ?? 'scope'], (t) => portalApi.awaitingCount(t, clientId), enabled, {
     refetchInterval: LIVE_ORDERS_MS,
     // CP-037: false so window focus can't refetch the badge (which is on every
     // page) outside the 10-minute cadence — React Query defaults this to true.
